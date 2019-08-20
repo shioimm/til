@@ -10,12 +10,14 @@ end
 
 indent = 0
 
-TracePoint.trace(:call, :return) do |tp|
-  indent -= 2 if tp.event == :return
-  print ' ' * indent
-  p tp
-  indent += 2 if tp.event == :call
-  # returnは必ずcallの後に呼ばれるので、-=でインデントの位置を元に戻していく
+TracePoint.trace(:call) do |tp|
+  puts "#{' ' * indent} -> #{tp.method_id}@#{tp.path}:#{tp.lineno}"
+  indent += 2
+end
+
+TracePoint.trace(:return) do |tp|
+  indent -= 2
+  puts "#{' ' * indent} <- #{tp.method_id}@#{tp.path}:#{tp.lineno}"
 end
 
 foo
