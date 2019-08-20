@@ -8,6 +8,14 @@ def bar
   nil
 end
 
-TracePoint.trace(:call, :return) { |tp| p tp }
+indent = 0
+
+TracePoint.trace(:call, :return) do |tp|
+  indent -= 2 if tp.event == :return
+  print ' ' * indent
+  p tp
+  indent += 2 if tp.event == :call
+  # returnは必ずcallの後に呼ばれるので、-=でインデントの位置を元に戻していく
+end
 
 foo
