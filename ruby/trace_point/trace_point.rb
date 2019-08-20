@@ -10,14 +10,14 @@ end
 
 indent = 0
 
-TracePoint.trace(:call) do |tp|
+TracePoint.new(:call) do |tp|
   puts "#{' ' * indent} -> #{tp.method_id}@#{tp.path}:#{tp.lineno}"
   indent += 2
-end
+end.enable
 
-TracePoint.trace(:return) do |tp|
+TracePoint.new(:return) do |tp|
   indent -= 2
   puts "#{' ' * indent} <- #{tp.method_id}@#{tp.path}:#{tp.lineno}"
-end
+end.enable
 
 foo
