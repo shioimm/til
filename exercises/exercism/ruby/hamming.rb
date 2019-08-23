@@ -19,3 +19,9 @@ class Hamming
 
     attr_reader :x, :y
 end
+
+# Array#zip
+# https://docs.ruby-lang.org/ja/2.6.0/method/Array/i/zip.html
+# Enumerable#count
+# https://docs.ruby-lang.org/ja/2.6.0/method/Enumerable/i/count.html
+# ブロックを渡すことができる
