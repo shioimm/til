@@ -1,3 +1,5 @@
+## レキシカルスコープ(見たままのスコープ)
+
 ```val.rb
 class Hoge
   def initialize(&block)
