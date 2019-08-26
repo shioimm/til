@@ -55,3 +55,15 @@ brew install opam
 
 #### テスト
 - 望む動作をしているか
+
+## テスト
+```ruby
+# function.ml
+let function x = x
+
+let test1 = function x = y
+```
+- インタプリタにテストファイルを読み込むだけでテストが自動的に実行される
+```
+# #use "function.ml" ;;
+```
