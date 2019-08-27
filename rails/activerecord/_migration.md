@@ -19,3 +19,14 @@ def change
   drop_table :users
 end
 ```
+
+### timestamp
+```ruby
+t.datetime :x_date, default: -> { 'NOW()' }
+```
+
+- CURRENT_TIMESTAMPを使用することができる
+  - DBのタイムゾーンはアプリケーション側と別に設定が必要
+```console
+ALTER DATABASE "DB_NAME" SET timezone TO 'Asia/Tokyo';
+```
