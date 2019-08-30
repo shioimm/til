@@ -10,11 +10,11 @@ class Hoge
 
   define_model_callbacks :create
 
-  before_create
+  before_create :fuga
 
   def create
     run_callbacks :create do
-      # updateメソッドが呼び出されると実行される
+      # createメソッドの内容を記述する
     end
   end
 
@@ -25,3 +25,4 @@ end
 ```
 
 - `define_model_callbacks :create`で`before_create`、 `around_create`、 `after_create`が使用できるようになる
+- コールバックは`extend ActiveModel::Callbacks`よりも下に記述する
