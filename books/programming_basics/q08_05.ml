@@ -19,9 +19,13 @@ type between_t = {
 
 (* 目的 : 駅名を受け取って路線名・駅名(かな)を返す *)
 (* display : station_t -> string *)
+(*
 let display station_t = match station_t with
   { name=n;kana=k;roman=rm;route=rt } ->
     rt ^ " / " ^ n ^ "(" ^ k ^")"
+*)
 
 (* test *)
+(*
 let test1 = display { name="茗荷谷";kana="みょうがだに";roman="myogadani";route="丸ノ内線" } = "丸ノ内線 / 茗荷谷(みょうがだに)"
+*)
