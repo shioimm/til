@@ -27,6 +27,15 @@ let yamada = {
   blood_type="A"
 }
 
+let sato = {
+  name = "sato nanzokore";
+  m = 168;
+  kg = 60;
+  month = 8;
+  date = 5;
+  blood_type = "O"
+}
+
 (*
 val suzuki : person_t =
   {name = "susuki tamako"; m = 158; kg = 50; month = 12; date = 31;
