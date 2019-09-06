@@ -1,7 +1,7 @@
 # Space Age from https://exercism.io
 
 class SpaceAge
-  SECONDS_PER_YEAR_ON_EARTH = 31557600
+  SECONDS_PER_YEAR_ON_EARTH   = 31557600
   SECONDS_PER_YEAR_ON_PLANETS = {
     earth:   SECONDS_PER_YEAR_ON_EARTH,
     mercury: SECONDS_PER_YEAR_ON_EARTH * 0.2408467,
@@ -26,5 +26,5 @@ class SpaceAge
     attr_reader :seconds
 end
 
-# define_method
+# Module#define_method
 # https://docs.ruby-lang.org/ja/2.6.0/method/Module/i/define_method.html
