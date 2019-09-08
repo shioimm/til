@@ -1,6 +1,6 @@
 #use "q08_05.ml"
 
-let global_station_list = [
+let global_information_list = [
   {name="代々木上原"; kana="よよぎうえはら"; roman="yoyogiuehara"; route="千代田線"};
   {name="代々木公園"; kana="よよぎこうえん"; roman="yoyogikouen"; route="千代田線"};
   {name="明治神宮前"; kana="めいじじんぐうまえ"; roman="meijijinguumae"; route="千代田線"};

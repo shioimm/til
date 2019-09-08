@@ -1,7 +1,7 @@
 (* from 浅井健一 著「プログラミングの基礎」 *)
 
 (* 目的 : 駅の情報を格納する型 *)
-type station_t = {
+type information_t = {
   name: string; (* 名前 *)
   kana: string; (* 名前かな *)
   roman: string; (* 名前ローマ字 *)
@@ -18,9 +18,9 @@ type between_t = {
 }
 
 (* 目的 : 駅名を受け取って路線名・駅名(かな)を返す *)
-(* display : station_t -> string *)
+(* display : station_information_t -> string *)
 (*
-let display station_t = match station_t with
+let display station_information_t = match station_information_t with
   { name=n;kana=k;roman=rm;route=rt } ->
     rt ^ " / " ^ n ^ "(" ^ k ^")"
 *)
