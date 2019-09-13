@@ -23,3 +23,17 @@ gem "webmock", :require => false
 - デフォルトで`Bundler.require`されているgemについて
   - `false`オプションでrequireを手動にする
   - 配列を渡してパスを指定する
+
+#### platformsオプション
+- [Platforms](https://bundler.io/v2.0/man/gemfile.5.html)
+- 処理系を特定する
+
+```
+ruby / mri  -> C Ruby (MRI), Rubinius or TruffleRuby, but NOT Windows
+mingw       -> Windows 32 bit 'mingw32' platform (aka RubyInstaller)
+x64_mingw   -> Windows 64 bit 'mingw32' platform (aka RubyInstaller x64)
+rbx         -> Rubinius
+jruby       -> JRuby
+truffleruby -> TruffleRuby
+mswin       -> Windows
+```
