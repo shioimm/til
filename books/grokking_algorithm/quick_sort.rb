@@ -2,8 +2,8 @@ def quick_sort(arr)
   if arr.length < 2
     arr
   else
-    pivot = arr.first
-    smaller = arr.select { |a| a < pivot }
+    pivot = arr.shift
+    smaller = arr.select { |a| a <= pivot }
     bigger = arr.select { |a| a > pivot }
     quick_sort(smaller) + [pivot] + quick_sort(bigger)
   end
