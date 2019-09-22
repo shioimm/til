@@ -23,28 +23,20 @@ let test1 = sum [] = 0
 let test2 = sum [1; 2; 3] = 6
 let test3 = sum [1; 3; 7; 4; 2; 8] = 25
 
-(* 目的：first は無視して rest_result に 1 を加える *)
-(* add_one : int -> int -> int *)
-let add_one first rest_result = 1 + rest_result
-
 (* 目的：受け取ったリスト lst の長さを求める *)
 (* length : 'a list -> int *)
 
-let length lst = fold_right add_one lst 0
+let length lst = fold_right (fun first rest_result -> 1 + rest_result) lst 0
 
 (* test *)
 let test4 = length [] = 0
 let test5 = length [1; 2; 3] = 3
 let test6 = length [1; 3; 7; 4; 2; 8] = 6
 
-(* 目的：first をリスト rest_result の先頭に加える *)
-(* cons : 'a -> 'a list -> 'a list *)
-let cons first rest_result = first :: rest_result
-
 (* 目的：lst1 と lst2 を受け取りそれらを結合したリストを返す *)
 (* append : 'a list -> 'a list -> 'a list *)
 
-let rec append lst1 lst2 = fold_right cons lst1 lst2
+let rec append lst1 lst2 = fold_right (fun first rest_result -> first :: rest_result) lst1 lst2
 
 (* test *)
 let test7 = append [] [] = []

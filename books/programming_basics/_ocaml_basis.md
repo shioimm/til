@@ -162,3 +162,40 @@ let notice student = match student with
 #### 本体
 - 再帰関数の場合は`let`の後に`rec`を付加
 - `first :: rest`の場合、再帰できるのは自己参照しているrestのみ
+
+## 局所変数定義
+```ruby
+let 変数名 = 式1 in 式2
+```
+- `let 変数名 = 式1` までを一区切りとして考える
+
+## 局所関数定義
+```ruby
+let 関数名 引数 = 式 in 式
+```
+
+```ruby
+let rec 関数名 引数 = 式 in 式
+```
+
+## 無名関数
+```ruby
+fun 引数 -> 式
+```
+
+```ruby
+(fun x -> x + 1) 5 ;;
+- : int = 6
+```
+- 再帰関数は定義できない
+
+#### 無名関数に名前を与える
+```
+let add_one = (fun x -> x + 1) 5 ;;
+val add_one : int = 6
+```
+
+## infix関数とprefix関数
+- 関数の後に引数を置く関数(普通の関数)
+- infix関数 -> `+`のように関数の前後に引数を置く関数
+  - `()`で囲むことによってprefix関数に変換することができる
