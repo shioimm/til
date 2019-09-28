@@ -277,3 +277,34 @@ type 'a option = None
 - `exception` XXXError -> 例外を定義する
   - `exception XXXError of 引数の型`
 - `try 式 with` -> 例外処理(例外が発生しなければ式の結果が返る)
+
+## モジュール
+```ruby
+module モジュール名 = struct
+  # 本体
+end
+```
+- モジュール名は大文字から始める
+
+### シグネチャの宣言
+- シグネチャ = モジュールのインタフェース定義(抽象データ型)
+```ruby
+module type シグネチャ名 = sig
+  # 本体
+end
+```
+
+### モジュールとシグネチャを同時に定義する
+```ruby
+module モジュール名 : シグネチャ名 = struct
+  # 本体
+end
+```
+
+```ruby
+module モジュール名 : sig
+  # シグネチャ本体
+end = struct
+  # モジュール本体
+end
+```
