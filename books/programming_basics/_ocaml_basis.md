@@ -264,3 +264,16 @@ Node (Empty, 7, Leaf(3)) ;;
 - 型に対応するmatch文を書く
   - 自己参照するケースが再帰呼び出しのケースに対応する
   - 自己参照する数だけ再帰呼び出しされる
+
+## オプション型
+```ruby
+type 'a option = None
+               | Some of 'a
+```
+- 値が無いか'a型の値があるかのどちらか
+
+## 例外処理
+- `raise XXXError` -> 例外を発生させる
+- `exception` XXXError -> 例外を定義する
+  - `exception XXXError of 引数の型`
+- `try 式 with` -> 例外処理(例外が発生しなければ式の結果が返る)
