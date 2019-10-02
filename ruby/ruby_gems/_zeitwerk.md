@@ -10,7 +10,8 @@
 
 ### classic modeの問題とZeitwerkが解決できること
 - ネストしたモジュールにおいて、ロードされる順番によって同名の別モジュールを呼び出すことがあった
-```
+
+```ruby
 # app/models/user.rb
 class User < ApplicationRecord
 end
