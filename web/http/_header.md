@@ -1,3 +1,12 @@
+### Feature-Policy
+- 参照: [https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy)
+- 参照: [機能ポリシーの使用](https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy/Using_Feature_Policy)
+- 参照: [Rails 6.1 adds HTTP Feature Policy](https://blog.saeloun.com/2019/10/01/rails-6-1-adds-http-feature-policy.html)
+- レスポンスヘッダに含まれる(iframeの`allow`属性で設定することもできる)
+- Webサイト全体でどの機能が使用できるかを制御する役割を持っている
+- Railsではconfig/initializers/feature_policy.rbに設定を置く(6.1以降)
+  - controllerで機能ごとに設定を上書きすることもできる
+
 ### Vary
 - from https://triple-underscore.github.io/RFC7231-ja.html#section-7.1.4
 - レスポンスヘッダに含まれる
