@@ -37,6 +37,51 @@
 ### その他
 - `X-`から始まるヘッダーは各アプリケーションで自由に設定されたもの
 
+## メソッド
+### [GET](https://developer.mozilla.org/ja/docs/Web/HTTP/Methods/GET)
+- サーバーに対してヘッダーとコンテンツを要求
+
+### [HEAD](https://developer.mozilla.org/ja/docs/Web/HTTP/Methods/HEAD)
+- サーバーに対してヘッダーを要求
+
+### [POST](https://developer.mozilla.org/ja/docs/Web/HTTP/Methods/POST)
+- サーバーに対してデータを送信
+
+### [PUT](https://developer.mozilla.org/ja/docs/Web/HTTP/Methods/PUT)
+- すでにURLが存在するコンテンツの置き換え
+
+### [DELETE](https://developer.mozilla.org/ja/docs/Web/HTTP/Methods/DELETE)
+- コンテンツとURLの削除
+
+### 廃止されたメソッド
+- LINK
+- UNLINK
+- CHECKOUT
+- CHECKIN
+- SHOWMETHOD
+- TEXTSEARCH
+- SEARCHJUMP
+- SEARCH
+
+## パス(URL)
+```
+https://www.oreilly.co.jp/index.shtml
+
+# スキーマ://ホスト名/パス
+
+# URLの全要素
+# スキーマ://ユーザ:パスワード@ホスト名:ポート/パス#フラグメント?クエリ
+```
+- WIP
+
+## ステータスコード
+- 100番台 -> 処理中
+- 200番台 -> 成功
+- 300番台 -> サーバーからクライアントへの指示
+  - リダイレクトなど -> リダイレクトはLocationヘッダを参照し、ヘッダごと送信し直す
+- 400番台 -> クライアント側の異常
+- 500番台 -> サーバー側の異常
+
 ## HTTP/0.9
 - ウェブサイトの情報をサーバーに要求する
   - ホスト名、ポート、パス、検索クエリ
