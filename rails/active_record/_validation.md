@@ -9,3 +9,10 @@
 validates :hoge, inclusion: { in: [true, false] }
 ```
 - 参照: [Active Record バリデーション](https://railsguides.jp/active_record_validations.html#inclusion)
+
+### uniquenessバリデーションに条件をつけたい
+- `conditions`オプションを使用する
+```ruby
+validates_uniqueness_of :title, conditions: -> { where.not(status: 'archived') }
+```
+- 参照: [ActiveRecord::Validations::ClassMethods](https://api.rubyonrails.org/classes/ActiveRecord/Validations/ClassMethods.html#method-i-validates_uniqueness_of)
