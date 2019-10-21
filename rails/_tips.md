@@ -15,3 +15,7 @@
 3.3M Oct  4 10:43 sidekiq.log
   0B Oct  9 12:41 test.log
 ```
+
+### `output error: #<ActionController::UnfilteredParameters: unable to convert unpermitted parameters to hash>`
+- コントローラでparamsを呼ぼうとすると発生する
+- 回避策としては`p params`もしくは`params.to_s`
