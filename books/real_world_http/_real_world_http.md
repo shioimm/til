@@ -202,8 +202,36 @@ https://www.oreilly.co.jp/index.shtml
 
 ## ダウンロード
 - レスポンスヘッダーに[Content-Disposition](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Disposition)が含まれる場合、ブラウザは保存ダイアログを出しデータを保存する
+- ダウンロードの中断が中断された場合、途中から再開する方法が提供されている
+  - 途中から再開 = ファイルの指定範囲を切り出してダウンロードする
+  - 指定範囲ダウンロードをサポートしているサーバーは次のヘッダーをレスポンスに付与する
+    - [Accept-Ranges](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Ranges)ヘッダーをレスポンスに付与する
+    - [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag) -> コンテンツの変更を検知するため
+  - ブラウザは[Range](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Range)ヘッダーをリクエストに与えて転送してほしい範囲を指定する
+    - Rangeヘッダーは複数範囲の指定も可能
+      - サーバーは`Content-Type: multipart/byteranges;`を返す
+      - ダウンロード時間短縮のためRangeヘッダーを使用し並列ダウンロードを行うことは、サーバーに負荷をかけるため推奨されていない
 
-### ダウンロードの中断・再開
+## [XMLHttpRequest](https://developer.mozilla.org/ja/docs/Web/API/XMLHttpRequest)
+- curlコマンドと同等の操作をJavaScriptから行うことができる機能
+- ページ全体を更新せずにデータを受け取ることができるため、Ajaxプログラミングで使用される
+
+### ブラウザのHTTPリクエストとの違い
+- 送受信時にHTMLの画面がリロードされない
+- GET / POST以外のメソッドも送信できる
+- キーと値が一対一になっているデータ形式以外のフォーマットでデータを送信できる(プレーンテキスト、JSON、XMLetc)
+- セキュリティのための制約を持つ
+
+### Comet
+- XMLHttpRequestを使用したレガシーなリアルタイム双方向通信
+- ポーリング -> 通知を受ける側が、通知の有無を頻繁に訊きにいく方式
+- ロングポーリング -> クライアントからサーバーにリクエストを送った後、即時にレスポンスを返さず保留する
+サーバー側から通信を完了させるか、リクエストがタイムアウトした際にレスポンスを返す
+- Cometはロングポーリングを使用している
+- 一メッセージあたりのオーバーヘッドが大きくサーバーからの連続したメッセージに強くない
+- Cometよりも後に、より応答性の良いサーバー通知の仕組みが作られた
+
+### セキュリティ
 WIP
 
 ## HTTP/0.9
