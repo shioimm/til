@@ -1,11 +1,30 @@
 ## Webpacker
-#### AssetsPathにnode_modulesを追加する
+### AssetsPathにnode_modulesを追加する
 ```ruby
 # config/initializers/assets.rb
 Rails.application.config.assets.paths << Rails.root.join('node_modules')
 ```
 
-#### `chosen_rails`を廃止してnode_modulesに`chosen-js`を追加する
+### WebpackerでFontAwesomeを使いたい
+- 参照: [Rails 5.2 + webpacker で FontAwesome 5 を利用する](https://qiita.com/fukmaru/items/427b43bd02a0b812212c)
+
+1. yarnにFontAwesomeを追加
+```
+$ yarn add @fortawesome/fontawesome-free
+```
+2. `app/javascripts/src/application.scss`でFontAwesomeを読み込む
+```scss
+$fa-font-path: '~@fortawesome/fontawesome-free/webfonts';
+@import '~@fortawesome/fontawesome-free/scss/fontawesome';
+@import '~@fortawesome/fontawesome-free/scss/regular';
+@import '~@fortawesome/fontawesome-free/scss/solid';
+```
+3. JS側にFontAwesomeをimportする
+```ruby
+import fontawesome from '@fortawesome/fontawesome'
+```
+
+### `chosen_rails`を廃止してnode_modulesに`chosen-js`を追加する
 - 参照: [Rails 5: Webpacker公式README — Webpack v4対応版（翻訳](https://techracho.bpsinc.jp/hachi8833/2018_05_24/56977)
 
 1. `yarn add chosen``yarn add chosen-js`を実行
