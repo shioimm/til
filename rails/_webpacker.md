@@ -19,7 +19,15 @@ $fa-font-path: '~@fortawesome/fontawesome-free/webfonts';
 @import '~@fortawesome/fontawesome-free/scss/regular';
 @import '~@fortawesome/fontawesome-free/scss/solid';
 ```
-3. JS側にFontAwesomeをimportする
+3. `app/javascript/packs/application.js`(エントリーポイント)に↑を読み込む
+```js
+import '../src/application.scss'
+```
+4. レイアウトに↑を読み込む
+```html
+= javascript_pack_tag 'application'
+```
+5. JS側にFontAwesomeをimportする
 ```ruby
 import fontawesome from '@fortawesome/fontawesome'
 ```
