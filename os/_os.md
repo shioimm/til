@@ -16,9 +16,23 @@
   - /bin
   - /usr/sbin
   - /sbin
+
 ```
 # touchコマンドの場合
 # binディレクトリにtouchコマンド実行ファイル格納されている
 ❯❯❯ which touch
 /usr/bin/touch
+```
+
+```
+# rubyコマンドの場合
+# .rbenv/shims以下のパスにシンボリックリンクが作られる
+❯❯❯ which ruby
+/.rbenv/shims/ruby
+```
+
+```
+# 次のコマンドでは、元のコマンド探索パス($PATH)に
+# /usr/local/bin(※コマンド実行ファイルのインストール先)を追加している
+echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 ```
