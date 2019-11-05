@@ -19,3 +19,6 @@
 ### `output error: #<ActionController::UnfilteredParameters: unable to convert unpermitted parameters to hash>`
 - コントローラでparamsを呼ぼうとすると発生する
 - 回避策としては`p params`もしくは`params.to_s`
+
+### manifest.jsonを確認する
+- ブラウザから`/packs/manifest.json`にアクセスする
