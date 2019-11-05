@@ -16,6 +16,7 @@
   - /bin
   - /usr/sbin
   - /sbin
+- パスは左から右に向かって優先的に探索される
 
 ```
 # touchコマンドの場合
@@ -29,6 +30,9 @@
 # .rbenv/shims以下のパスにシンボリックリンクが作られる
 ❯❯❯ which ruby
 /.rbenv/shims/ruby
+
+# rbenvは、shimをコマンド検索パスの先頭に挿入する
+# ~/.rbenv/shims:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
 ```
 
 ```
