@@ -52,3 +52,18 @@ saveに失敗した場合はこの`@instance`がview側に渡されるが、
 # becomesを使っても良かった
 = form_with model: @instance.becomes(Parent), url: parent_path, local: true do |f|
 ```
+
+### 二つの似たレコードがページネーションを挟んで存在するとき、片方が表示されない
+#### 挙動
+- `order(:starts_at, :ends_at)`で並び順を指定したレコードがあり、
+その中に同じ`starts_at`と`ends_at`をそれぞれ持つレコードx, yが存在している
+- 二つのレコードがページネーションの境界にあるとき、どちらのページでもxが表示され、yが表示されない
+
+#### 原因
+- orderしている条件が重複しているとき、どちらのレコードが先に並ぶかがランダムになるため(PostgreSQLの挙動)
+
+#### 対策
+- 並び順が必ず一意になるようにorderする
+```ruby
+order(:starts_at, :ends_at, :id)
+```
