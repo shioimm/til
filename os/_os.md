@@ -40,3 +40,13 @@
 # /usr/local/bin(※コマンド実行ファイルのインストール先)を追加している
 echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 ```
+
+### `bin`がつくコマンドとつかないコマンドの違い
+```
+❯❯❯ which bin/yarn
+bin/yarn
+❯❯❯ which yarn
+/usr/local/bin/yarn
+```
+- `bin`をつけると今のディレクトリ内のコマンドが呼ばれる
+- `bin`をつけないとグローバルなコマンドが呼ばれる
