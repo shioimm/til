@@ -1,3 +1,18 @@
+- 参照: [Active Record マイグレーション](https://railsguides.jp/active_record_migrations.html)
+
+### remove_column
+- カラムを削除する場合はあらかじめデータを引き抜く
+  - 例: Redashでデータをエクスポートする
+  - 例: Herokuでバックアップデータをダウンロードする
+
+```ruby
+  def change
+    # rails db:rollbackできるように型を指定する
+    # (カラムオプションがある場合はカラムオプションも指定)
+    remove_column :user, :birthday, :datetime, null: false
+  end
+```
+
 ### drop_table
 - テーブルを削除する際はreversibleにする
 
