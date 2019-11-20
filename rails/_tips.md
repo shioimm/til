@@ -1,4 +1,4 @@
-### `Your Disk is Almost Full on macOS`
+## `Your Disk is Almost Full on macOS`
 - logディレクトリの容量が増えて警告が表示されている場合は`rails log:clear`でlogを抹消できる
   - ただしsidekiq.logを除く
 
@@ -16,9 +16,9 @@
   0B Oct  9 12:41 test.log
 ```
 
-### `output error: #<ActionController::UnfilteredParameters: unable to convert unpermitted parameters to hash>`
+## `output error: #<ActionController::UnfilteredParameters: unable to convert unpermitted parameters to hash>`
 - コントローラでparamsを呼ぼうとすると発生する
 - 回避策としては`p params`もしくは`params.to_s`
 
-### manifest.jsonを確認する
+## manifest.jsonを確認する
 - ブラウザから`/packs/manifest.json`にアクセスする
