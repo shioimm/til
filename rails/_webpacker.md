@@ -1,4 +1,14 @@
 ## Webpacker
+### Webpakcerが追加するファイル一覧
+- `bin/webpack` -> コンパイルを実行するためのバイナリ
+- `bin/webpack-dev-server` -> コード変更時にホットリロードを実行するためのバイナリ
+- `config/webpacker.yml` -> Webpackerの設定を定義するyamlファイル
+- `node_modules/` -> node.jsのモジュール群
+- `package.json` -> node.jsの依存関係を記したJSONファイル
+- `config/webpack/environment.js` -> プラグインなどの設定ファイル
+- `app/javascript/packs/application.js` -> デフォルトのエントリーポイント
+  - ディレクトリも同時に生成される
+
 ### AssetsPathにnode_modulesを追加する
 ```ruby
 # config/initializers/assets.rb
