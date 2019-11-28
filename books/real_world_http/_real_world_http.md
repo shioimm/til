@@ -348,10 +348,37 @@ https://www.oreilly.co.jp/index.shtml
 - OpenIDプロバイダーのWebサイトにリダイレクト -> ユーザーが承認 -> リライニングパーティーにリダイレクト
 
 ### OpenSocial
-WIP
+- 認証だけでなく会員情報、友人関係、アクティビティ、情報の保存や共有、メッセージ送信など多岐にわたるAPIを有する
+- 認可・認証をすべてソーシャルネットワークサービスの事業提供者が行う
+- ドメインをまたいだ画オブサーバーへのリクエストやブラウザが使うAjax対応はSNSの外部のガジェットサーバーが行う
+- ガジェット提供者(ユーザーが利用したいサービス)とプラットフォーム提供者間の通信はHTTPで行う
 
 ### OAuth
-WIP
+- 認証ではなく認可のための仕組み
+- 用語
+  - 認可サーバー
+    - ユーザー情報を持つWebサービス
+  - リソースサーバー
+    - ユーザーが認可した権限でアクセスできる対象
+  - クライアント
+    - ユーザーが新たに使用したいサービス
+    - 認可サーバーにアプリケーション情報を登録し、専用のID(client_id, client_secret)を取得する必要がある
+- OpenIDと同じような画面遷移をする
+- フロー
+  - Authorization Code
+    - 通常のフロー
+    - Webサービスのサーバー内にclient_secretを隠せる場合に使用
+  - Implicit Code
+    - client_secret無しでアクセスできるパターン
+    - クライアントの身元を保証しない
+    - JSやアプリダウンロード向け
+  - Resource Owener Password Credentials Grant
+    - 認可サーバーに信頼されているクライアントで使う
+    - クライアント自身がユーザーのID/PWに触れる
+    - iOS内蔵のFacebook、Twitter向け
+  - Clients Credentials Grant
+    - ユーザーの同意なしにclient_id、client_secretだけを使用してアクセスできるようにする
+    - client_secretを外部から秘匿できる環境で使用
 
 ### OpenID Connect
 WIP
