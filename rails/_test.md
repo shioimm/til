@@ -1,4 +1,4 @@
-### モデルに依存しないテストの書き方
+## モデルに依存しないテストの書き方
 rspecの場合
 
 #### Structを使う
@@ -34,3 +34,45 @@ end
 #### どちらを使うか
 - 新しく作ったクラスに任意のattributeを定義したい -> Struct
 - 追加でattributeを定義する必要がない -> stub_const
+
+## shared_context / shared_examples
+### shared_context
+- 条件を共通化したいときに使う
+
+```ruby
+# spec/support/shared_contexts.rb
+# case: テストの実行中、実行時間を当日中に固定したい
+shared_context 'with freeze closing time before' do |closing_time|
+    before do
+    now = Time.zone.now
+    closing_time = closing_time
+    current_time = closing_time > now ? now : closing_time
+    Timecop.freeze(current_time)
+  end
+
+  after do
+    Timecop.return
+  end
+end
+```
+```ruby
+# Usage
+include_context 'with freeze termination time before', Time.zone.parse("#{Time.zone.today} 23:59")
+```
+
+### shared_examples
+- 振る舞いを共通化したいときに使う
+
+```ruby
+# spec/support/shared_examples.rb
+# case: 正常にレスポンスが返ってきた場合の挙動を定義したい
+shared_examples 'returns access is successful' do
+  it { is_expected.to be_successful }
+  it { is_expected.to have_http_status :ok }
+end
+```
+
+```ruby
+# Usage
+it_behaves_like 'returns access is successful'
+```
