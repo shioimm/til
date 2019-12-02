@@ -88,6 +88,36 @@ end
 it_behaves_like 'returns access is successful'
 ```
 
+### `shared_context`をメタデータを使う
+- 参照: [RSpec 3.5 から shared_context の使い方が少し変わっていた](https://masutaka.net/chalow/2017-11-10-2.html)
+
+```ruby
+# spec/support/shared_contexts.rb
+# case: ログイン状態で操作したい
+
+shared_context 'signin' do
+  let(:user) { create(:user) }
+  before { signin_as user }
+end
+```
+
+```ruby
+# spec/spec_helper.rb
+# メタデータとして使う対象のcontextを設定する
+
+RSpec.configure do |config|
+  config.include_context 'signin', :signin
+end
+```
+
+```ruby
+# spec/hoge_spec.rb
+
+context 'with logged in', :signin do
+  ...
+end
+```
+
 ## メール送信のテスト
 - 参照: [RSpec でキューイングした ActiveJob を同期実行する](https://qiita.com/upinetree/items/41a2a8fe9e1dd7c291ab)
 
