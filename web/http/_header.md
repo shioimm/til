@@ -8,20 +8,39 @@
   - controllerで機能ごとに設定を上書きすることもできる
 
 ### Vary
-- from https://triple-underscore.github.io/RFC7231-ja.html#section-7.1.4
+- from Webを支える技術 山本陽平・著
 - レスポンスヘッダに含まれる
-- Varyはキャッシュキーを拡張する役割を持っている
-```
-- キャッシュキーとは
-  - from https://cloud.google.com/cdn/docs/caching?hl=ja#cache-keys
-  - 保存されたキャッシュエントリを識別するためのインデックス
-  - リクエストが持っているキーとの比較によって、合致した場合に対応したオブジェクトが返される
-```
+- サーバーがコンテントネゴシエーションを行えるヘッダを示す
+  - コンテントネゴシエーション -> クライアントからAccept-\*ヘッダで指定された方式でサーバーがリソースを返すHTTPの機能
+- Varyヘッダの値に基づいて複数の表現をキャッシュできる
+- Varyに追加できるヘッダ
+  - Accept -> メディアタイプ
+  - Accept-Charset -> 文字エンコーディング
+  - Accept-Encoding -> 圧縮方式
+  - Accept-Language -> 自然言語
 
 - 例
 ```
-Vary: accept-encoding, accept-language
+Vary: Accept-Encoding, Accept-Language
 ```
-- ↑の場合レスポンスは、今後のリクエストにおいて、そのリクエストの [ Accept-Encoding, Accept-Language ] をキャッシュキーとして使用することを伝える
-  - リクエストの［ Accept-Encoding, Accept-Language ] が元のリクエストと同じ値だった場合のみ、レスポンスを返す
-  - レスポンスの [ Accept-Encoding, Accept-Language ] いずれかのヘッダ内にパラメータが追加される場合，後続のリクエストに対して意図と異なるオブジェクトが送信される可能性がある
+- このリソースは複数の圧縮方法と自然言語によって内容が変化する
+  - 最初のレスポンスと2回目のレスポンスで圧縮方法や言語が変わっても、
+  クライアントは最初のレスポンスのキャッシュを破棄せず、2回目のレスポンスの結果もキャッシュする
+  - ヘッダに\*が指定された場合、コンテントネゴシエーションが行われてもレスポンスをキャッシュするべきではない
+  - キャッシュキーはAccept-Encoding, Accept-Language
+    - キャッシュキー -> 保存されたキャッシュエントリを識別するインデックス
+      - リクエストが持っているキーとの比較によって、合致した場合に対応したオブジェクトが返される
+      - from https://cloud.google.com/cdn/docs/caching?hl=ja#cache-keys
+
+### ETag
+- from Webを支える技術 山本陽平・著
+- 参照: [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag)
+- レスポンスヘッダに含まれる
+- リソースが更新された場合、新しい値を生成して返す
+- 条件付きリクエストで条件を確認するために使用される
+- 頭文字のW\は弱いETag値(バイト単位で同じリソースであることを保証しない)を示す
+
+### Range
+- from Webを支える技術 山本陽平・著
+- リクエストヘッダに含まれる
+- 部分的GETでリソースの一部を取得する際、バイト単位で示される取得の範囲
