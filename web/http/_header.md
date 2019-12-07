@@ -31,3 +31,16 @@ Vary: Accept-Encoding, Accept-Language
     - キャッシュキー -> 保存されたキャッシュエントリを識別するインデックス
       - リクエストが持っているキーとの比較によって、合致した場合に対応したオブジェクトが返される
       - from https://cloud.google.com/cdn/docs/caching?hl=ja#cache-keys
+
+### ETag
+- from Webを支える技術 山本陽平・著
+- 参照: [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag)
+- レスポンスヘッダに含まれる
+- リソースが更新された場合、新しい値を生成して返す
+- 条件付きリクエストで条件を確認するために使用される
+- 頭文字のW\は弱いETag値(バイト単位で同じリソースであることを保証しない)を示す
+
+### Range
+- from Webを支える技術 山本陽平・著
+- リクエストヘッダに含まれる
+- 部分的GETでリソースの一部を取得する際、バイト単位で示される取得の範囲
