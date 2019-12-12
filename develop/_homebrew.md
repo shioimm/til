@@ -7,3 +7,8 @@
   - Homebrewの拡張
   - GUIアプリケーションをインストールする
   - ex. chromedriver, visual-studio-code
+
+## コマンド
+### インストールされているソフトを確認する
+- `brew search xx`
+  - Caskで入れているものも確認できる
