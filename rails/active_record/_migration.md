@@ -69,7 +69,7 @@ add_foreign_key :lessons, :users, column: :teacher_id
 - 参照: [マイグレーションにおいて参照先テーブル名を自動で推定できないカラムを外部キーとして指定する方法](https://qiita.com/kymmt90/items/03cb9366ff87db69f539)
 
 ### lock_version
-- モデルにlock_versionカラムを追加すると、モデルに楽観的ロックを追加できる
+- テーブルにlock_versionカラムを追加すると、該当するモデルに楽観的ロックを追加できる
 ```ruby
 add_column :books, :lock_version, :integer, default: 0, null: false
 ```
@@ -89,3 +89,23 @@ add_column :books, :lock_version, :integer, default: 0, null: false
   - レコード取得時に`ActiveRecord::Locking::Pessimistic#lock`を使用する
   - レコード更新前に`ActiveRecord::Locking::Pessimistic#lock!`を使用する
 - `ActiveRecord::Locking::Pessimistic#with_lock`を使用する
+
+### type
+- テーブルにtypeカラム(string)を追加すると、該当するモデルをSTIにすることができる
+- typeを実装したテーブルに該当するモデル = スーパークラス
+- 該当モデルを継承したクラス = サブクラス
+- レコード生成時、type属性にサブクラス名を指定する
+```ruby
+# Novelモデルのレコードを生成
+Book.new(type: 'Novel')
+# Bookモデルのレコードを生成
+Book.new(type: '')
+```
+- enumを使用することもできる
+```ruby
+class Book < ApplicationRecord
+  enum type: {
+    Novel: 'Novel',
+    Magazine: 'Magazine',
+  }
+```
