@@ -1,6 +1,6 @@
-# Jbuilder
+# jbuilder
 
-## Jbuilderの代表的な書き方一覧
+## 代表的な書き方一覧
 - 引用元: [rails/jbuilder](https://github.com/rails/jbuilder)
 
 - Jbuilder

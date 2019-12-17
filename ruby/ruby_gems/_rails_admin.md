@@ -1,3 +1,5 @@
+# rails_admin
+
 ### ダッシュボードを非表示にしたい
 - 参照: [Controlling visibility](https://github.com/sferik/rails_admin/wiki/Actions#controlling-visibility)
 - 全テーブルにクエリを投げるためDBに負荷がかかる
