@@ -1,3 +1,4 @@
+# sprockets
 ### [Howto]manifest.jsの記述について(sprockets4移行)
 - 参照: [Guide to upgrading from Sprockets 3.x to 4.x](https://github.com/rails/sprockets/blob/master/UPGRADING.md)
 - sprockets4以降は`app/assets/config/manifest.js`を使用してプリコンパイル対象のファイルを指定する
