@@ -25,21 +25,17 @@ let arr: [string, number] = ["str", 123]
 ### 関数
 - 返り値を型で指定する
 ```js
-function One(): number {
-  return 1
-}
+const one = (): number => 1
 ```
 - 返り値がない関数の型はvoid
 ```js
-function Hoge(): void {
+const hoge = (): void => {
   console.log('Hoge')
 }
 ```
 - 引数の型も同時に指定できる
 ```js
-function OnePlus(num: number): number {
-  return 1 + num
-}
+const onePlus = (num: number): number => 1 + num
 ```
 - 型としての関数
 ```js
