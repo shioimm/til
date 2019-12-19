@@ -39,6 +39,7 @@
 
 ### 構成要素
 - 参照: [How to write Javascript in Rails 6 | Webpacker, Yarn and Sprockets](https://blog.capsens.eu/how-to-write-javascript-in-rails-6-webpacker-yarn-and-sprockets-cdf990387463)
+- 参照: [Rails 6+Webpacker開発環境をJS強者ががっつりセットアップしてみた（翻訳）](https://techracho.bpsinc.jp/hachi8833/2019_11_28/83678)
 
 #### JSパッケージマネージャー
 - npm -> JSパッケージマネージャー
@@ -59,9 +60,11 @@
 
 #### Webpacker
 - RailsアプリケーションにWebpackを組み込むgem
+- 事前に設定されたWebpackにビューヘルパーを加えたものを提供することで生成されたアセットを対応付けられるようにする
 - 導入時点で設定ファイルが含まれている
-  - 例: `app/javascript/packs/application.js`
+  - 例: `app/javascript/packs/application.js` -> エントリーポイント
   - 例: `<%= javascript_pack_tag 'application' %>`
+- エントリーポイントから生成されたコンパイル済みのJSファイルパスをWebpackerから取得
 - Railsは`app/javascript/assets`(Webpacker)と`app/assets/assets`(Sprockets)両方のアセッツをプリコンパイルする
 - WebpackはES6モジュールをコンパイルする
 - HTMLはJSpackに含まれるものに直接アクセスできない
