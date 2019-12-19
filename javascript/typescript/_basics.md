@@ -42,6 +42,24 @@ const onePlus = (num: number): number => 1 + num
 // funcOnePlusにOnePlusのみを代入できるようになる
 let funcOnePlus: (num: number) => number
 ```
+- デフォルト引数を使う場合
+```js
+// 型の後に = デフォルト値 を渡す
+const count = (num: number = 1): void => {
+  while (num < 100) {
+    console.log(num)
+    num++
+  }
+  console.log('finished')
+}
+
+count(10)
+```
+- 引数に複数の要素を渡す場合(レスト演算子)
+```js
+// 配列で渡されるのでインデックスを指定できる
+const toConcat = (...args: string[]) => `this is ${args[0]} and ${args[1]}.`
+```
 
 ### オブジェクト
 - プロパティの型を指定する
