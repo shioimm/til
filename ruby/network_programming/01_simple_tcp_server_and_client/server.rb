@@ -1,6 +1,7 @@
 # 引用元: rubyネットワークプログラミング  / 簡単なtcpサーバとクライアント
 # http://www.geekpage.jp/programming/ruby-network/tcp-1.php
 # 参照: https://docs.ruby-lang.org/ja/2.6.0/class/tcpserver.html
+# 参照: https://docs.ruby-lang.org/ja/2.6.0/class/TCPSocket.html
 
 require 'socket'
 
