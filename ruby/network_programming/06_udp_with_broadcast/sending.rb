@@ -15,8 +15,8 @@ udp.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, 1)
 # BasicSocket#setsockoptはソケットのオプションを設定する
 # setsockopt(2)と同じ
 # 参照: https://nxmnpg.lemoda.net/ja/2/setsockopt
-# Socket::SOL_SOCKETはSocket level options(65535)
-# Socket::SO_BROADCASTはPermit sending of broadcast messages(32)
+# Socket::SOL_SOCKETはSocket level options(= 65535)
+# Socket::SO_BROADCASTはPermit sending of broadcast messages(= 32)
 
 udp.send('HELLO', 0, sockaddr)
 
