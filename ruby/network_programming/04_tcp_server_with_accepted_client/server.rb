@@ -9,9 +9,8 @@ s0 = TCPServer.open(20000)
 while true
   sock = s0.accept
 
-  # peeraddrはIPSocketのインスタンスメソッド
-  # 接続先ソケットの情報を表す配列を返す
   p sock.peeraddr
+  # IPSocket#peeraddrは接続先ソケットの情報を表す配列を返す
 
   while buf = sock.gets
     p buf

@@ -5,27 +5,28 @@
 
 require 'socket'
 
+s0 = TCPServer.open(20000)
 # ポート番号20000番で新しいサーバー接続をオープン
 # TCPServer.openはTCPServer.newのエイリアス
 # 内部でgetaddrinfo(3)を呼び出す
 ## getaddrinfo(3)
 ## https://kazmax.zpp.jp/cmd/g/getaddrinfo.3.html
-s0 = TCPServer.open(20000)
 
+sock = s0.accept
 # クライアントからの接続要求を受け付ける
 # TCPServer#acceptはTCPSocketのインスタンスを返す
-sock = s0.accept
 
-# クライアントからデータを受信する
-# TCPSocket#gets(IO#gets)はテキストを一行ずつ読み込んで表示する
 while buf = sock.gets
   p buf
 end
+# クライアントからデータを受信する
+# TCPSocket#gets(IO#gets)はテキストを一行ずつ読み込んで表示する
 
-# クライアントとの接続ソケットを閉じる
 sock.close
-# 待ち受けソケットを閉じる
+# クライアントとの接続ソケットを閉じる
+
 s0.close
+# 待ち受けソケットを閉じる
 
 # TCPSocket#closeとTCPServer#closeはIO#closeの継承
 # 入出力ポートを閉じる

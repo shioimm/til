@@ -8,8 +8,8 @@ begin
   sock = TCPSocket.open('127.0.0.1', 20000)
   raise
 rescue
-  # Kernel$$!は最後に例外が発生したExceptionオブジェクトを返す特殊変数
   puts "TCPSocket.open failed : #$!\n"
+  # Kernel$$!は最後に例外が発生したExceptionオブジェクトを返す特殊変数
 else
   sock.write("Hello")
   sock.close # 引用元ではelseに置かれていたが、ensureでも良さそう
