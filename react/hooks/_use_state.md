@@ -27,3 +27,29 @@ const App = () => {
   )
 }
 ```
+
+#### 抽象化されたstateを使用する
+```js
+import React, { useState } from 'react'
+
+const App = props => {
+  const [state, setState] = useState(props)
+  const { city, temp } = state
+
+  return (
+    <>
+      <p>City: {city}</p>
+      <p>Temperature: {temp}</p>
+
+      <input value={city} onChange={e => setState({ ...state, city: e.target.value })} />
+      <button onClick={() => setState({ ...state, temp: temp + 1 })}>+</button>
+      <button onClick={() => setState(props)}>reset</button>
+    </>
+  )
+}
+
+App.defaultProps= {
+  city: 'Fukuoka',
+  temp: 20
+}
+```
