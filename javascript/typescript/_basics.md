@@ -1,5 +1,7 @@
-# 基本
+# TypeScriptの基礎
 - 参照: [TypeScript基礎講座](https://www.udemy.com/course/typescript-y/)
+
+### 基本
 - `let`に続けて型を定義
 ```js
 let num: number = 123
@@ -92,6 +94,8 @@ let information: Info = {
 ```
 
 ### enum
+- 列挙型
+- デフォルトではインデックスと同じ数値が割り当てられるが上書きもできる
 ```js
 enum Cities {
   Tokyo,      // 0
@@ -100,4 +104,91 @@ enum Cities {
 }
 
 let city: Cities = Cities.Fukuoka // => 11
+```
+
+### インターフェース
+- オブジェクトを引数に受け取る際、プロパティの型を指定することができる
+```js
+const greet = (person: { name: string }): void => {
+  console.log(`Hello ${person.name}.`)
+}
+
+const person = {
+  name: 'Alice',
+  age: 30
+}
+
+greet(person)
+```
+
+#### interface
+- インターフェースプロパティを抽象化する
+```js
+interface Person {
+  name: string
+  age?: number // あってもなくても良い場合はプロパティ名に?をつける
+  [propName: string]: any // プロパティ名が決まっていない場合は[]を使って要素の型を指定する
+  greet(lastName: string): void // メソッドを定義する場合
+}
+
+const greet = (person: Person): void => {
+  console.log(`Hello ${person.name}.`)
+}
+
+const person: Person = { // Personであることを明示する
+  name: 'Bob',
+  age: 30,
+  languages: ['JavaScript', 'Ruby']
+  greet(lastName: string) {
+    console.log(`Hi, I am ${this.name} ${lastName}.`)
+  }
+}
+
+greet(person)
+person.greet('Marley')
+```
+
+- インターフェースを継承する
+```js
+interface AgedPerson extends Person {
+  age: number // ageプロパティを強制する
+}
+
+const youngPerson: AgedPerson = {
+  name: 'Alice',
+  age: 10
+}
+```
+
+- クラスでインターフェースを使う
+```js
+class Human implements Person {
+  name: string
+
+  constructor(name: string) {
+    this.name = name
+  }
+
+  greet(lastName: string) {
+    console.log(`Hi, I am ${this.name} ${lastName}.`)
+  }
+}
+
+const newPerson = new Human('Carol')
+
+greet(person)
+person.greet('King')
+```
+
+- 関数でインターフェースを使う
+```js
+interface DoubleValues {
+  (x: number, y: number): number
+}
+
+let doubleFunc: DoubleValues
+
+doubleFunc = (x: number, y: number) => {
+  return (x ** y)
+}
 ```
