@@ -52,5 +52,8 @@ eval "$(rbenv init -)"
 
 ### プラグイン
 - rbenv のコマンドはプラグイン方式になっている
-  - 例: `rbenv install` -> ruby-build
 - プラグインは~/.rbenv/pluginsに配置される
+
+#### ruby-build
+- [ruby-build](http://ruby.studio-kingdom.com/rbenv/ruby_build/)
+- `rbenv install`コマンドを提供するプラグイン
