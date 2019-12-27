@@ -5,16 +5,21 @@
 ```js
 import React, { useReducer, useState } from 'react'
 
+// action.typeを定数として定義
+const CREATE = 'CREATE'
+const DELETE = 'DELETE'
+const RESET  = 'RESET'
+
 // reducerの定義
 const bookReducer = (state = [], action) => {
   switch (action.type) {
-    case: 'CREATE'
+    case: CREATE
       const book = { title: action.title, author: action.author }
       const id = state.length === 0 ? 1 : state[length - 1].id + 1
       return [...state, { id, ...book }]
-    case: 'DELETE'
+    case: DELETE
       return state.filter(book => book.id !== action.id)
-    case: 'RESET'
+    case: RESET
       return []
     default:
       return state
@@ -32,16 +37,16 @@ const App = props => {
   // useReducerから定義したdispatchを呼ぶ
   const addBook = e => {
     e.preventDefault() // ボタンを押した際に画面のリロードを行わないようにする
-    dispatch({ type: 'CREATE', title, author })
+    dispatch({ type: CREATE, title, author })
     setState(props) // defaultPropsを呼んでstateを空にする
   }
   const deleteBook = id => {
     e.preventDefault
-    dispatch({ type: 'DELETE', id})
+    dispatch({ type: DELETE, id})
   }
   const resetBooks = e => {
     e.preventDefault
-    dispatch({ type: 'RESET' })
+    dispatch({ type: RESET })
   }
 
   const { title, author } = state
