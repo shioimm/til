@@ -2,6 +2,9 @@
 - 参照: [React Hooks 入門 - Hooksと Redux を組み合わせて最新のフロントエンド状態管理手法を習得しよう！](https://www.udemy.com/course/react-hooks-101/)
 - コンテキストを共有する(Prop Grilling問題を回避する)ためのhook
 - 共有したいデータを渡す側(Provider)と、共有したいデータを受け取る側(Consumer)の双方に読み込んで使う
+  - 引数 -> コンテキスト
+
+### 使い方
 ```js
 // app/javascript/contexts/MyContext.js
 

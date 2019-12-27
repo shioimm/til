@@ -2,6 +2,10 @@
 - 参照: [React Hooks 入門 - Hooksと Redux を組み合わせて最新のフロントエンド状態管理手法を習得しよう！](https://www.udemy.com/course/react-hooks-101/)
 - stateをreducerに渡し、reducerから新しいstateを返すためのhook
   - reducer -> stateとactionを受け取りaction.typeによってstateの値を変化させる純粋関数
+  - 第一引数 -> reducer
+  - 第二引数 -> stateの初期値
+
+### 使い方
 ```js
 import React, { useReducer, useState } from 'react'
 
