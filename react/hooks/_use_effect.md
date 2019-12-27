@@ -1,6 +1,10 @@
 # `useEffect`
 - 参照: [React Hooks 入門 - Hooksと Redux を組み合わせて最新のフロントエンド状態管理手法を習得しよう！](https://www.udemy.com/course/react-hooks-101/)
-- DOMを描画する際もしくはDOMが変更された際にコールバックを実行するhook
+- 監視する対象に対してDOMを描画する際、もしくはDOMが変更された際にコールバックを実行するhook
+  - 第一引数 -> コールバック関数
+  - 第二引数 -> 監視する対象の配列(ex: `[state]`)
+
+### 使い方
 ```js
 import React, { useEffect, useState } from 'react'
 

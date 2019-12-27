@@ -1,11 +1,14 @@
 # `useState`
 - 参照: [React Hooks 入門 - Hooksと Redux を組み合わせて最新のフロントエンド状態管理手法を習得しよう！](https://www.udemy.com/course/react-hooks-101/)
 - stateを使うためのhook
+  - 引数 -> 初期値
+
+### 使い方
 ```js
 import React, { useState } from 'react'
 
 const App = () => {
-  const [cout, setCount] = useState(0)
+  const [count, setCount] = useState(0)
   // 引数0は初期値
   // useState(0)の返り値は[0, function()]の配列
   //// 0 -> state
