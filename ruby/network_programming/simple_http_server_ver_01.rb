@@ -12,22 +12,27 @@ while true
 
   req = []
 
-  while message = socket.gets
-    message.chomp!
+  begin
+    while message = socket.gets
+      message.chomp!
 
-    message.empty? ? break : req << message
-  end
+      message.empty? ? break : req << message
+    end
 
-  # クライアント側で出力する
-  socket.puts 'HTTP/1.1 200 OK'
-  socket.puts 'Content-Type: text/plain'
-  socket.puts "\r\n"
-  socket.puts 'Hello!'
+    res = <<~HTTP
+      HTTP/1.1 200 OK
+      Content-Type: text/plain
 
+      Hello!
+    HTTP
+
+    # クライアント側で出力する
+    socket.puts res
   # サーバー側で出力する
-  puts req
-
-  socket.close
+    puts req
+  ensure
+    socket.close
+  end
 end
 
 # curl http://127.0.0.1:20000/でアクセス
