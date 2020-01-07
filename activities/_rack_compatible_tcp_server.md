@@ -81,13 +81,19 @@ end
 ```
 
 ### my_server.rb
-WIP
+- `MyServer::Server`の実行
+  - ソケットの作成
+    - ソケットでリクエストを受け付ける
+    - ソケットでレスポンスを返す
+      - Rackアプリケーションの実行
 ```ruby
 require 'socket'
 require_relative './rack/handler/my_server'
 
 module MyServer
   class Server
+    # Rackアプリケーションの返り値の取得のために最低限必要な環境変数
+    # WIP
     RACK_ENV = {
       'PATH_INFO'         => '/',
       'QUERY_STRING'      => '',
@@ -104,7 +110,7 @@ module MyServer
     }
 
     def initialize(*args)
-      @host, @port, @app = args
+      @host, @port, @app = args # Rack::Handler::MyServer.runから引き継いだ引数
       @status = nil
       @header = nil
       @body   = nil
@@ -113,6 +119,7 @@ module MyServer
     def start
       server = TCPServer.new(@host, @port)
 
+      # サーバー起動時メッセージを出力
       puts <<~MESSAGE
         #{@app} is running on #{@host}:#{@port}
         => Use Ctrl-C to stop
@@ -120,12 +127,19 @@ module MyServer
 
       loop do
         client = server.accept
+        # クライアントからの接続要求を受け付け、
+        # 接続したソケット(TCPSocketのインスタンス)を取得
 
         begin
           request = client.readpartial(2048)
+          # クライアントから送信されたリクエストを読み込み、文字列として取得
+          # IO#readpartialはデータを受け取るまではブロック状態を保つ
+
           puts request.split("\r\n")[0..1]
+          # リクエストを受信したことがわかるように、リクエストメッセージの一部を出力
 
           @status, @header, @body = @app.call(RACK_ENV)
+          # Rackアプリケーションを実行して返り値を取得
 
           client.puts <<~MESSAGE
             #{status}
@@ -134,6 +148,7 @@ module MyServer
           MESSAGE
         ensure
           client.close
+          # レスポンスを送信後にソケットを閉じる
         end
       end
     end
@@ -147,6 +162,8 @@ module MyServer
     end
 
     def body
+      # レスポンスボディとしてRack::BodyProxyのインスタンスが返ってくるため、
+      # Rack::BodyProxy#eachで内容を取得する
       res_body = []
       @body.each { |body| res_body << body }
       res_body.join("\n")
