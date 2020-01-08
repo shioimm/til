@@ -92,21 +92,23 @@ require_relative './rack/handler/my_server'
 
 module MyServer
   class Server
-    # Rackアプリケーションの返り値の取得のために最低限必要な環境変数
-    # WIP
+    # Rackアプリケーションの実行に必要な環境変数
+    # lib/rack/lint.rb:67 Rack::Lint#check_env
+    # PEP333から採用 => https://knzm.readthedocs.io/en/latest/pep-0333-ja.html
     RACK_ENV = {
-      'PATH_INFO'         => '/',
-      'QUERY_STRING'      => '',
-      'REQUEST_METHOD'    => 'GET',
-      'SERVER_NAME'       => 'MY_SERVER',
-      'SERVER_PORT'       => @port.to_s,
-      'rack.version'      => Rack::VERSION,
-      'rack.input'        => StringIO.new('').set_encoding('ASCII-8BIT'),
-      'rack.errors'       => $stderr,
-      'rack.multithread'  => false,
-      'rack.multiprocess' => false,
-      'rack.run_once'     => false,
-      'rack.url_scheme'   => 'http',
+      'PATH_INFO'         => '/',           # -> リクエストURLのうちドメイン下層のパス
+      'QUERY_STRING'      => '',            # -> リクエストURLのうち?以降のクエリ文字列
+      'REQUEST_METHOD'    => 'GET',         # -> HTTPリクエストメソッド
+      'SERVER_NAME'       => 'MY_SERVER',   # -> SCRIPT_NAME、PATH_INFOとの組み合わせでURLを構築する
+      'SERVER_PORT'       => @port.to_s,    # -> SCRIPT_NAME、PATH_INFOとの組み合わせでURLを構築する
+      'rack.version'      => Rack::VERSION, # -> Rackのバージョンを表す配列
+
+      'rack.input'        => StringIO.new('').set_encoding('ASCII-8BIT'), # -> 入力ストリーム / HTTP POSTデータを含むIO likeなオブジェクト
+      'rack.errors'       => $stderr, # -> エラーストリーム / puts、write、flushメソッドに対応するオブジェクト
+      'rack.multithread'  => false,   # -> アプリケーションが同じプロセス内の別のスレッドによって同時に呼び出されるかどうか
+      'rack.multiprocess' => false,   # -> アプリケーションが別のプロセスによって同時に呼び出されるかどうか
+      'rack.run_once'     => false,   # -> アプリケーションがそのプロセスの実行中に一度だけ起動されるかどうか(CGIのみ)
+      'rack.url_scheme'   => 'http',  # -> http or https
     }
 
     def initialize(*args)
