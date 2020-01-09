@@ -1,4 +1,6 @@
 # Bundler
+#### gemの内部実装を確認したい
+- [bundle open](https://bundler.io/v1.10/bundle_open.html)
 
 #### Gemfileから最新でないgemを探す
 - [bundle outdated](https://bundler.io/man/bundle-outdated.1.html)
@@ -12,6 +14,10 @@ bundle update -g development -g test
 
 #### gemの依存関係をビジュアライズする
 - [bundler viz](https://bundler.io/v2.0/man/bundle-viz.1.html)
+
+## `.bundle`
+- `config` -> Bundlerに関する設定を記述できる
+  - ex. `BUNDLE_PATH=vendor/bundle` -> デフォルトで`vendor/bundle`以下にgemがインストールされる
 
 ## Gemfile
 #### gitオプション

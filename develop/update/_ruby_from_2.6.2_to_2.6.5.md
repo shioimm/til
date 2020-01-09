@@ -1,0 +1,13 @@
+# Ruby2.6.5バージョンアップメモ
+- 2.6.3
+  - https://www.ruby-lang.org/ja/news/2019/04/17/ruby-2-6-3-released/
+    - 新元号「令和」の追加
+- 2.6.4
+  - https://www.ruby-lang.org/ja/news/2019/08/28/ruby-2-6-4-released/
+    - RDocにおけるjQueryの脆弱性の修正
+- 2.6.5
+  - https://www.ruby-lang.org/ja/news/2019/10/01/ruby-2-6-5-released/
+    - Shell#[]およびShell#testのコード挿入脆弱性
+    - WEBrick における HTTP レスポンス偽装の脆弱性修正
+    - File.fnmatch の NUL 文字挿入脆弱性
+    - WEBrickのDigest認証に関する正規表現Denial of Serviceの脆弱性
