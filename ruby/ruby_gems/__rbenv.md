@@ -1,5 +1,4 @@
 # rbenv
-
 ## rbenvはどのように動作するか
 - 参照: [How It Works](https://github.com/rbenv/rbenv/blob/master/README.md#how-it-works)
 - 参照: [rbenv + ruby-build はどうやって動いているのか](https://takatoshiono.hatenablog.com/entry/2015/01/09/012040)
@@ -57,3 +56,7 @@ eval "$(rbenv init -)"
 #### ruby-build
 - [ruby-build](http://ruby.studio-kingdom.com/rbenv/ruby_build/)
 - `rbenv install`コマンドを提供するプラグイン
+
+### RubyGems Environment
+- `$ gem env`コマンドでRuby Gemsの実行環境を確認できる
+  - `GEM PATH`にgemが格納されている
