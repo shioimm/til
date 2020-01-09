@@ -1,5 +1,8 @@
 # Bundler
 
+#### gemの内部実装を確認したい
+- [bundle open](https://bundler.io/v1.10/bundle_open.html)
+
 #### Gemfileから最新でないgemを探す
 - [bundle outdated](https://bundler.io/man/bundle-outdated.1.html)
 
