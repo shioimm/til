@@ -57,6 +57,16 @@ eval "$(rbenv init -)"
 - [ruby-build](http://ruby.studio-kingdom.com/rbenv/ruby_build/)
 - `rbenv install`コマンドを提供するプラグイン
 
-### RubyGems Environment
-- `$ gem env`コマンドでRuby Gemsの実行環境を確認できる
+## gemコマンド
+### `$ gem env`
+- Ruby Gemsの実行環境を確認できる
   - `GEM PATH`にgemが格納されている
+
+### `$ gem list`
+- インストールしているgemのバージョン一覧
+- `$ gem list xxx`
+  - ローカルにインストールしているgem xxxのバージョン
+- `$ gem list xxx -re`
+  - Rubygemsのgem xxxのバージョン
+- `$ gem list xxx -rea`
+  - Rubygemsのgem xxxのすべてのバージョン一覧
