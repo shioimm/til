@@ -59,6 +59,7 @@ ruby 'x.x.a'
 docker:
   - image: circleci/ruby:x.x.a-node-browsers-legacy
 ```
+- 参照: [言語イメージのバリアント](https://circleci.com/docs/ja/2.0/circleci-images/#%E8%A8%80%E8%AA%9E%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B8%E3%81%AE%E3%83%90%E3%83%AA%E3%82%A2%E3%83%B3%E3%83%88)
 
 ### ⑦GitHubにpush
 - テストが落ちたところを直す
