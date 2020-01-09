@@ -11,8 +11,9 @@
   - npmリポジトリからパッケージを探す
   - `yarn.lock`でバージョンを固定する(`Gemfile.lock`と同じ)
     - npmは`package-lock.json`でバージョンを固定する機能が追加された
+  - npm / yarn自体はOSでバージョン管理を行う(ex. brewで入れた場合はbrewで管理)
 - `/node_modules` -> ダウンロードされたパッケージ本体
-- `package.json` -> ダウンロードされたパッケージのリスト
+- `package.json` -> ダウンロードされたパッケージのリスト(`Gemfile`と同じ)
 - nodebrew、nvm、nbenv -> node.jsバージョン管理システム
 
 #### Babel
