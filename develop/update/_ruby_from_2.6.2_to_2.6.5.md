@@ -36,3 +36,21 @@ $ nodebrew use v12.13.0
 docker:
   - image: circleci/node:12-browsers-legacy
 ```
+
+### Heroku環境とNodeのバージョンが合わない
+```
+$ heroku run bash --app sushi
+$ node -v
+v12.14.1
+```
+
+#### 解決方法
+- ローカルにnode12.13をインストールし、バージョン切り替え(nodebrew)
+```
+$ nodebrew install v12.14.1
+$ nodebrew use v12.14.1
+```
+- .node_versionのversionを書き換え
+```
+12.14.1
+```
