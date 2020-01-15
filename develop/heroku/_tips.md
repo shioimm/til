@@ -1,3 +1,4 @@
+# Tips
 ### app.json
 - Herokuの環境構成ファイル
 - 参照: [Introducing the app.json Application Manifest](https://blog.heroku.com/introducing_the_app_json_application_manifest)
@@ -8,3 +9,8 @@
 - 自分のIPはログを出力した際に表示される`fwd="hoge.fuga.moge.moga"`
 - 使い所
   - rails_adminでの操作時
+
+### Heroku環境でコマンドを打ちたい
+```
+❯❯❯ heroku run bash --app sushi
+```
