@@ -1,4 +1,10 @@
 # Bundler
+- プロセス単位でライブラリが混ざらないようにアイソレートするライブラリ
+  - rubygemsでできないことをできるようにするためのラッパーツール(1/16 2020 銀座Rails)
+    - rubygemsと統合していく予定(リポジトリもrubygems.orgに移行した)
+    - rubygemsとBundlerでDependency Resolverのバージョンが違う
+      - `gem install`したときとGemfileを使用した時で依存関係が変わる可能性がある
+
 #### gemの内部実装を確認したい
 - [bundle open](https://bundler.io/v1.10/bundle_open.html)
 
