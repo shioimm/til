@@ -1,3 +1,4 @@
+# Header
 ### Feature-Policy
 - 参照: [https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy)
 - 参照: [機能ポリシーの使用](https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy/Using_Feature_Policy)
@@ -44,3 +45,12 @@ Vary: Accept-Encoding, Accept-Language
 - from Webを支える技術 山本陽平・著
 - リクエストヘッダに含まれる
 - 部分的GETでリソースの一部を取得する際、バイト単位で示される取得の範囲
+
+### Cookie
+- 参照: [Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cookie)
+- 参照: [サードパーティクッキーって何だっけ？ 今さら聞けないHTTP Cookieのキホン](https://webtan.impress.co.jp/e/2017/10/03/27016)
+- HTTPにおける状態管理の仕組み
+  - ファーストパーティCookie -> 表示中のHTMLと同じサーバーから送信されたCookie
+  - サードパーティCookie -> 表示中のHTMLとは別のサーバーから送信されたCookie
+- ブラウザの状態を継続的に管理するための情報を保存するためのストレージ
+- Cookieはリソースが送信されたサーバー(origin)と紐づく
