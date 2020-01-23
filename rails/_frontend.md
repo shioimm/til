@@ -27,12 +27,13 @@
 ### Webpacker 4.2.0
 - 仮想DOMの世界
 - RailsアプリケーションにWebpackを組み込むgem
+  - `yarn`で追加したパッケージを`require`する
 - 事前に設定されたWebpackにビューヘルパーを加えたものを提供することで生成されたアセットを対応付けられるようにする
 - Railsに導入時点で設定ファイルが含まれている
   - 例: `app/javascript/packs/application.js` -> エントリーポイント
   - 例: `<%= javascript_pack_tag 'application' %>`
 - エントリーポイントから生成されたコンパイル済みのJSファイルパスをWebpackerから取得
-- HTMLはJSpackに含まれるものに直接アクセスできない
+- HTMLはpackに含まれるものに直接アクセスできない
 - `app/javascript/packs`以下のファイルを読み込む
   - css
     - `stylesheet_pack_tag`ヘルパーを使用
@@ -40,9 +41,20 @@
     - `javascript_pack_tag`ヘルパーを使用
     - レンダリング前にDOMを操作する目的で使用される(Reactなど)
 
+#### Railsで使用するファイル
+- 参照: Ruby on Rails 6エンジニア養成読本
+- `app/javascript/packs/` -> エントリーファイル用ディレクトリ
+- `app/javascript/` -> エントリーファイルから読み込まれるモジュール用ディレクトリ
+- `config/webpacker.yml` -> Webpackerの設定ファイル
+- `config/webpack/**.js` -> 最終的なwebpackの設定を出力するファイル
+  - `webpacker.yml`で設定できる範囲外の項目の設定に使用する
+- `babel.config.js` -> babel用設定ファイル
+  - `.browserlistrc` -> babelでコンパイル対象となるブラウザ環境を設定するファイル
+
 ### Sprockets 4.0.0
 - DOMの世界
 - Railsに元々入っていたアセットパイプライン
+  - gemをインストールし、`app/assets/application.js`でライブラリを`require`する
 - Rails6(Sprockets4)以降は主にCSSをアセッツとして扱うために使用する
   - `app/assets/config/manifest.js`にCSSへのリンクを記述する
   - `<%= stylesheet_link_tag 'application' %>`
