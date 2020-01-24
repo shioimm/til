@@ -1,5 +1,5 @@
-## Webpacker
-### Webpakcerが追加するファイル一覧
+# Webpacker
+## Webpakcerが追加するファイル一覧
 - `bin/webpack` -> コンパイルを実行するためのバイナリ
 - `bin/webpack-dev-server` -> コード変更時にホットリロードを実行するためのバイナリ
 - `config/webpacker.yml` -> Webpackerの設定を定義するyamlファイル
@@ -9,7 +9,14 @@
 - `app/javascript/packs/application.js` -> デフォルトのエントリーポイント
   - ディレクトリも同時に生成される
 
-### AssetsPathにnode_modulesを追加する
+
+## HowTo
+### 既存のアプリケーションにreactを追加したい
+```sh
+$ /bin/railswebpacker:install:react
+```
+
+### AssetsPathにnode_modulesを追加したい
 ```ruby
 # config/initializers/assets.rb
 Rails.application.config.assets.paths << Rails.root.join('node_modules')
@@ -74,7 +81,7 @@ import fontawesome from '@fortawesome/fontawesome'
 - `app/views`以下で使用する場合
   - `<i>`タグにクラスを与えるだけ
 
-### `chosen_rails`を廃止してnode_modulesに`chosen-js`を追加する
+### `chosen_rails`を廃止してnode_modulesに`chosen-js`を追加したい
 - 参照: [Rails 5: Webpacker公式README — Webpack v4対応版（翻訳](https://techracho.bpsinc.jp/hachi8833/2018_05_24/56977)
 
 1. `yarn add chosen``yarn add chosen-js`を実行
