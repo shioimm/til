@@ -21,6 +21,11 @@ RSpec.configure do |config|
 $ rspec --only-failures
 ```
 
+### 一回でもテストケースが失敗した時点で終了する
+```sh
+$ rspec --fail-fast
+```
+
 ### 指定したスペックだけ実行する
 ```sh
 $ rspec --example '実行したいexample / edescribe名(一部)'
