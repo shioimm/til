@@ -1,5 +1,5 @@
 # Active Storage
-- 参照: Ruby on Rails 6エンジニア養成読本
+- 参照: Ruby on Rails 6エンジニア養成読本 押さえておきたい！Rails 6で改善された機能一覧
 - Railsが標準で提供する画像アップロード機能
 
 ```sh

@@ -42,7 +42,7 @@
     - レンダリング前にDOMを操作する目的で使用される(Reactなど)
 
 #### Railsで使用するファイル
-- 参照: Ruby on Rails 6エンジニア養成読本
+- 参照: Ruby on Rails 6エンジニア養成読本 Rails 6からのイマドキフロントエンド開発
 - `app/javascript/packs/` -> エントリーファイル用ディレクトリ
 - `app/javascript/` -> エントリーファイルから読み込まれるモジュール用ディレクトリ
 - `config/webpacker.yml` -> Webpackerの設定ファイル

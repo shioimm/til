@@ -1,5 +1,5 @@
 # rails-ujs
-- 参照: Ruby on Rails 6エンジニア養成読本
+- 参照: Ruby on Rails 6エンジニア養成読本 Rails 6からのイマドキフロントエンド開発
 - JSを利用した画面制御を行うRails標準ライブラリ
 
 ## 用途
