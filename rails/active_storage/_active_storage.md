@@ -35,3 +35,12 @@ config.active_storage.service = :development
 = @record.image.variant(resize_to_limit: [100, 100])
 ```
 
+### ダイレクトアップロード
+- アプリケーションサーバーを経由せずファイルを直接クラウドストレージにアップロードすること
+```js
+// ダイレクトアップロード用のライブラリを読み込み
+require ("@rails/activestorage").start()
+```
+```haml
+= f.file_field :画像カラム, direct_upload: true
+```
