@@ -1,5 +1,5 @@
 # Active Storage
-- 参照: Ruby on Rails 6エンジニア養成読本
+- 参照: Ruby on Rails 6エンジニア養成読本 押さえておきたい！Rails 6で改善された機能一覧
 - Railsが標準で提供する画像アップロード機能
 
 ```sh
@@ -35,3 +35,12 @@ config.active_storage.service = :development
 = @record.image.variant(resize_to_limit: [100, 100])
 ```
 
+### ダイレクトアップロード
+- アプリケーションサーバーを経由せずファイルを直接クラウドストレージにアップロードすること
+```js
+// ダイレクトアップロード用のライブラリを読み込み
+require ("@rails/activestorage").start()
+```
+```haml
+= f.file_field :画像カラム, direct_upload: true
+```
