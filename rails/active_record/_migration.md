@@ -112,6 +112,14 @@ class Book < ApplicationRecord
   }
 ```
 
+## コマンド
+### `$ rails db:migrate:reset`
+- DBをdropした後にcreateし、マイグレーションファイルを元にマイグレーションを実行する
+
+### `$ rails db:reset` / `$ rails db:drop db:setup`
+- DBをdropし後に現在のスキーマを読み込みcreateする
+- マイグレーションを実行しない
+
 ## トラブルシューティング
 ### `No migration with version number`
 - 参照: [railsのマイグレーションステータス'NO FILE'を削除する](https://qiita.com/yukofeb/items/ce39c7aabbfdc16205ea)
