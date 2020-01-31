@@ -2,6 +2,30 @@
 ## マイグレーションファイル
 - 参照: [Active Record マイグレーション](https://railsguides.jp/active_record_migrations.html)
 
+### add_column
+- 既存のテーブルに新しいカラムを追加する
+- down時はup時と逆の処理を行う
+  - down時のコードはup時のマイグレーションファイルを元に自動生成される
+```ruby
+def change
+  add_column :users, :name, :string, limit: 30
+end
+```
+
+### change_column
+- 既存のカラムを変更する
+- down時はup時と逆の処理を行わない
+  - down時のコードはup時のマイグレーションファイルに別途記載する必要がある
+```ruby
+def up
+  change_column :users, :name, :string, limit: 30
+end
+
+def down
+  change_column :users, :name, :string
+end
+```
+
 ### remove_column
 - カラムを削除する場合はあらかじめデータを引き抜く
   - 例: Redashでデータをエクスポートする
