@@ -11,48 +11,13 @@ is_expected.to satisfy { |v| v.modulo(5).zero? }
 is_expected.not_to satisfy { |v| v.modulo(3).zero? }
 ```
 
-## 特定のスペックだけ実行する
-### 失敗するスペックだけ実行する
-```ruby
-RSpec.configure do |config|
-  config.example_status_persistence_file_path = 'spec/examples.'
-```
-```sh
-$ rspec --only-failures
-```
+## RSpec固有の概念
+### スタブ / モック
+- 参照: [Rails tips: RSpecのスタブとモックの違い（翻訳）](https://techracho.bpsinc.jp/hachi8833/2018_04_25/55467)
+- スタブ -> 指定のメソッドを呼んだ際、本来のメソッドを実行せず、欲しい値を返させる(`allow`)
+- モック -> 指定のメソッドがテスト中に実行されたかどうかをチェックする(`expect`)
+- スタブを利用してモックをチェックするテストの構造をスパイと呼ぶ
 
-### 一回でもテストケースが失敗した時点で終了する
-```sh
-$ rspec --fail-fast
-```
-
-### 指定したスペックだけ実行する
-```sh
-$ rspec --example '実行したいexample / edescribe名(一部)'
-```
-
-### フォーカス中のスペックだけ実行する
-```ruby
-RSpec.configure do |config|
-  config.filter_run focus: true
-```
-- 実行したいスペックに`f`をつける
-
-#### 実行したくないスペックを除外する
-- 実行したくないスペックに`x`をつける
-
-## 出力の変更
-### テストを実行せずにテスト一覧を出力
-```sh
-$ rspec --dry-run
-```
-
-### 実行に時間がかかったスペックを出力
-```sh
-$ rspec --profile
-```
-
-## shared_context / shared_examples
 ### shared_context
 - 条件を共通化したいときに使う
 
@@ -94,7 +59,7 @@ end
 it_behaves_like 'returns access is successful'
 ```
 
-### `shared_context`をメタデータを使う
+### `shared_context`をメタデータとして使う
 - 参照: [RSpec 3.5 から shared_context の使い方が少し変わっていた](https://masutaka.net/chalow/2017-11-10-2.html)
 
 ```ruby
@@ -124,10 +89,49 @@ context 'with logged in', :signin do
 end
 ```
 
-## メール送信のテスト
-- 参照: [RSpec でキューイングした ActiveJob を同期実行する](https://qiita.com/upinetree/items/41a2a8fe9e1dd7c291ab)
+## Howto
+### 特定のスペックだけ実行する
+- 失敗するスペックだけ実行する
+```ruby
+RSpec.configure do |config|
+  config.example_status_persistence_file_path = 'spec/examples.'
+```
+```sh
+$ rspec --only-failures
+```
 
-### 設定
+- 一回でもテストケースが失敗した時点で終了する
+```sh
+$ rspec --fail-fast
+```
+
+- 指定したスペックだけ実行する
+```sh
+$ rspec --example '実行したいexample / edescribe名(一部)'
+```
+
+- フォーカス中のスペックだけ実行する
+```ruby
+RSpec.configure do |config|
+  config.filter_run focus: true
+
+# 実行したいスペックに`f`をつける
+# 実行したくないスペックを除外する場合は対象のスペックに`x`をつける
+```
+
+### 出力の変更
+- テストを実行せずにテスト一覧を出力
+```sh
+$ rspec --dry-run
+```
+
+- 実行に時間がかかったスペックを出力
+```sh
+$ rspec --profile
+```
+
+### メール送信
+- 参照: [RSpec でキューイングした ActiveJob を同期実行する](https://qiita.com/upinetree/items/41a2a8fe9e1dd7c291ab)
 ```ruby
 # config/environments/test.rb
 Rails.application.configure do
@@ -156,8 +160,6 @@ RSpec.configure do |config|
   config.include ActiveJob::TestHelper
 end
 ```
-
-### 実装
 ```ruby
 RSpec.describe HogeMailer, type: :mailer do
   after do
