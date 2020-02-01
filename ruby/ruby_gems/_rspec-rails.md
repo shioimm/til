@@ -12,6 +12,13 @@ is_expected.not_to satisfy { |v| v.modulo(3).zero? }
 ```
 
 ## RSpec固有の概念
+### System Spec / Feature Spec
+- FeatureからSystemへ移行が必要
+- SystemはFeatureに比較して以下の機能をサポートしている
+  - テスト終了時に自動的にDBをロールバック(database_cleanerが不要)
+  - テスト失敗時のスクリーンショットをデスクトップに保存(capybara-screenshotが不要)
+  - スペックごとのブラウザ切り替えが可能(driven_by)
+
 ### スタブ / モック
 - 参照: [Rails tips: RSpecのスタブとモックの違い（翻訳）](https://techracho.bpsinc.jp/hachi8833/2018_04_25/55467)
 - スタブ -> 指定のメソッドを呼んだ際、本来のメソッドを実行せず、欲しい値を返させる(`allow`)
