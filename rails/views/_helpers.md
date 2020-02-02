@@ -1,4 +1,4 @@
-# ActionView
+# ヘルパー
 ## `form_with(model: nil, scope: nil, url: nil, format: nil, **options, &block)`
 ### フォーム送信後に画面がレンダリングされない
 - レコードの生成失敗時、`render :(テンプレート)`を実行しようとした際に発生

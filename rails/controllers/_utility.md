@@ -1,6 +1,6 @@
-### trailing_slash => true
-
-- URLにtrailing_slashを付与することができる
+# Utility
+### `default_url_options`
+- URLにtrailing_slashを付与する
 ```ruby
 class Application < Rails::Application
   config.action_controller.default_url_options = { :trailing_slash => true }
