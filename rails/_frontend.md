@@ -87,3 +87,20 @@
   - 共通のモジュールをバンドルしたファイル
   - 参照: [なぜoptimization.splitChunksを有効にするのか](https://qiita.com/soarflat/items/1b5aa7163c087a91877d#%E3%81%AA%E3%81%9Coptimizationsplitchunks%E3%82%92%E6%9C%89%E5%8A%B9%E3%81%AB%E3%81%99%E3%82%8B%E3%81%AE%E3%81%8B)
 
+## アセットパイプラインの環境による違い
+- 参照: 現場で使える Ruby on Rails 5速習実践ガイド
+- アセットパイプラインの役割
+  - コンパイル
+  - アセットの連結
+    - マニフェストファイルに基づく
+      - app/assets/javascripts/application.js
+      - app/assets/stylesheets/application.css
+  - アセットの最小化
+  - ダイジェスト付与
+- development
+  - コンパイル・ダイジェスト付与を自動的に行う
+  - アセットの連結・最小化を行わない
+    - アセットの連結を行わないためJSファイルとCSSファイルはファイル数分読み込まれる
+- production
+  - アセットプリコンパイル(手動)によりアセットパイプラインのすべての処理を行う
+    - アセットの連結によりJSファイルとCSSファイルは各一つずつ読み込まれる
