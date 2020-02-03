@@ -1,6 +1,22 @@
-### trailing_slash => true
+# Utility
+### `rescue_from`
+- controller内で発生した例外を補足する
 
-- URLにtrailing_slashを付与することができる
+#### 使い所
+- エラー画面をカスタムする
+- ErrorsControllerを作る
+```ruby
+class ApplicationController < ActionController::Base
+  rescue_from StandardError, with: :render_500_error_page
+
+  def render_500_error_page
+    render 'errors/500', layout: 'application', status: 500
+  end
+end
+```
+
+### `default_url_options`
+- URLにtrailing_slashを付与する
 ```ruby
 class Application < Rails::Application
   config.action_controller.default_url_options = { :trailing_slash => true }

@@ -1,9 +1,10 @@
+# Attribute Methods
 ### `(属性名)_before_type_cast`
 - 参照; [rails/validatesでbefore_type_cast](https://dora.bk.tsukuba.ac.jp/~takeuchi/?%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A7%E3%82%A2%2Frails%2Fvalidates%E3%81%A7before_type_cast)
 - controllerでparamsから取得できるパラメータは文字列 -> ActiveRecordへ代入される際にモデルの各属性のデータ型に変換される
 - 型変換前のデータが欲しい場合、`(属性名)_before_type_cast`を使用すると文字列としてデータを取得できる
 
-#### 使いどころ
+#### 使い所
 - レコードのデータを元に辞書ファイルから曜日を引きたい
 ```yml
 # config/locales/ja.yml
