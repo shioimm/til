@@ -8,6 +8,12 @@
 - ブラウザの状態を継続的に管理するための情報を保存するためのストレージ
 - Cookieはリソースが送信されたサーバー(origin)と紐づく
 
+#### SameSite属性
+- 現在のドメインから別のドメインに対してリクエストを送る際、Cookieを送信するかどうか
+  - none -> Cookieを送信する
+  - strict -> Cookieを設定したドメインに対してのみCookieを送信する
+  - lax -> ドメイン間のサブリクエストと外部サイトのURL(ユーザーがリンクをたどった場合など)に送信する
+
 ### Content-Security-Policy
 - 参照: [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)
 ```
