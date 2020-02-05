@@ -1,4 +1,5 @@
-### バリデーションエラー発生後の挙動(STI)
+# Bugfix
+### [Rails]バリデーションエラー発生後の挙動(STI)
 #### 挙動
 - STIを使用しているモデルに関連するフォームでバリデーションエラーが発生した後、
 もう一度フォームを送信しようとするとストロングパラメータが空になる
@@ -53,7 +54,7 @@ saveに失敗した場合はこの`@instance`がview側に渡されるが、
 = form_with model: @instance.becomes(Parent), url: parent_path, local: true do |f|
 ```
 
-### 二つの似たレコードがページネーションを挟んで存在するとき、片方が表示されない
+### [Rails/PG]二つの似たレコードがページネーションを挟んで存在するとき、片方が表示されない
 #### 挙動
 - `order(:starts_at, :ends_at)`で並び順を指定したレコードがあり、
 その中に同じ`starts_at`と`ends_at`をそれぞれ持つレコードx, yが存在している
@@ -67,3 +68,15 @@ saveに失敗した場合はこの`@instance`がview側に渡されるが、
 ```ruby
 order(:starts_at, :ends_at, :id)
 ```
+
+### [CircleCI]Selenium::WebDriver::Error::SessionNotCreatedError:
+#### 挙動
+- `session not created: This version of ChromeDriver only supports Chrome version 78`でテストが落ちる
+
+#### 原因
+- CircleCIが利用しているChromeのバージョン(Docker Image)が上がったため
+
+#### 対策
+- 開発側のChromeDriverのバージョンを追随させる
+  - Webdriverでバージョンを固定していたため、バージョン固定の行を削除
+  - ローカルでテストを実行できるように自分のPCのChromeのバージョンとChromeDriverのバージョンも上げる
