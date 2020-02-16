@@ -1,8 +1,12 @@
-# Serializationモジュール
+# ActiveModel::Serializers
+- 参照: 現場で使える Ruby on Rails 5速習実践ガイドP426-427
+
+## ::JSON
+- `Object#to_json`の拡張モジュール
+- オブジェクトにシリアライズ機能を追加
 - 参照: [Active Model の基礎 1.8 シリアライズ](https://railsguides.jp/active_model_basics.html#%E3%82%B7%E3%83%AA%E3%82%A2%E3%83%A9%E3%82%A4%E3%82%BA)
 - 参照: [Ruby on Rails 6.0.2.1 RDOC_MAIN.rdoc](https://api.rubyonrails.org/)
 
-- オブジェクトにシリアライズ機能を追加
 ```ruby
 class Article
   include ActiveModel::Serialization
