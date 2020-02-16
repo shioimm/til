@@ -1,4 +1,8 @@
-## Validation
+# ActiveModel::Validations
+- 参照: 現場で使える Ruby on Rails 5速習実践ガイドP426-427
+- バリデーション機能を提供する
+- `errors`メソッドを提供する
+  - DBとの接続が必要なバリデーションはActiveRecordによって提供されている
 
 ### boolean型のカラムに対してpresenceバリデーションをかけたい
 - boolean型のカラムに対して`presence`ヘルパーを使用すると、
