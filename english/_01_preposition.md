@@ -17,3 +17,25 @@
 - I had a part time job during the holiday.
   - during -> ある状況がいつ起こったのか -> ~(いつ)の間
   - for -> ある状況がどのくらいの長さ続いたのか -> ~の長さの間
+
+- He gave a talk about cats.
+  - about -> ~の周りにあるほんわかとしたイメージ
+    - `Keep with your wits about you` -> 気持ちを引き締める
+    - `look about for` -> lookを修飾して周りを見渡す
+  - around / round -> ~の周りにあるくっきりとしたイメージ
+
+- She got over the dessapointment of losing the game.
+  - over -> 上にアーチ -> 超えるイメージ
+
+- There's no point crying over the split milk
+  - ~について
+    - over -> すでに終わったこと
+    - about -> ~にまつわる色々なこと
+    - on -> ~そのものについて
+
+- I don't have enough cash on me.
+  - on -> テーブルの上にボールのイメージ -> 接触のイメージ
+
+## Phrase
+- `spent ages` -> 長い時間をかけた
+- `There's no point ~ing` -> ~しても何にもならない
