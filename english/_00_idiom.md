@@ -3,3 +3,5 @@
 
 - What't up?
 - What can I do?
+- spent ages -> 長い時間をかけた
+- There's no point ~ing -> ~しても何にもならない

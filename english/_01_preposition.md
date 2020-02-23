@@ -35,7 +35,3 @@
 
 - I don't have enough cash on me.
   - on -> テーブルの上にボールのイメージ -> 接触のイメージ
-
-## Phrase
-- `spent ages` -> 長い時間をかけた
-- `There's no point ~ing` -> ~しても何にもならない
