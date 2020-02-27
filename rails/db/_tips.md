@@ -1,4 +1,4 @@
-# Model Case
+# Tips
 ### 既に存在するインデックスに対して一意制約を追加したい
 ```sh
 $ rails g migration change_users_email
