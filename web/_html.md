@@ -32,3 +32,10 @@ value = element.getAttribute('data-x') // => 'x'
 
 - `a`で`PUT` / `DELETE`を使用する場合、`deta-method`属性でメソッドを指定し、JSで操作を行う必要がある
   - Railsの場合はrails-ujsによって実行されている
+
+### `autocomplete`
+- 参照: [フォームの自動補完を無効にするには](https://developer.mozilla.org/ja/docs/Web/Security/Securing_your_site/Turning_off_form_autocompletion)
+- ユーザー管理ページでブラウザの自動補完を無効化したい -> "autocomplete="new-password"
+```haml
+<input type='password' name='password' autocomplete='new-password'>
+```
