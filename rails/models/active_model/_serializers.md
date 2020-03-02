@@ -36,8 +36,8 @@ pry(main)> article.serializable_hash
 
 ### ActiveModel::Serializers::JSONモジュール
 - JSONシリアライズ/デシリアライズを行う
-- ActiveModel::Serializationモジュールを自動でincludeしている
 - `to_json` `as_json`を使用できる
+  - 出力するJSONを噛ま各カスタマイズしたい場合は`serializable_hash`を使用する
 ```
 article = Person.new
 article.serializable_hash   # => {"title"=>nil}
