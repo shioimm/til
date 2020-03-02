@@ -20,3 +20,30 @@ validates :hoge, inclusion: { in: [true, false] }
 validates_uniqueness_of :title, conditions: -> { where.not(status: 'archived') }
 ```
 - 参照: [ActiveRecord::Validations::ClassMethods](https://api.rubyonrails.org/classes/ActiveRecord/Validations/ClassMethods.html#method-i-validates_uniqueness_of)
+
+### 関連するモデルに対してもバリデーションチェックを行いたい
+- 参照: [2.2 validates_associated](https://railsguides.jp/active_record_validations.html#validates-associated)
+- `validates_associated`を使用する
+```ruby
+class Author < ApplicationRecord
+  has_many :books
+  validates_associated :books
+end
+```
+
+#### 事例
+- マスターデータを登録する際、同時に関連データを保存したい
+```
+class MasterData < ApplicationRecord
+  has_many :datas
+  before_create :build_related_datas
+  validates_associated :datass
+
+  def build_related_datas
+    self.datas.build(...)
+  end
+
+  # master_dataをsaveした際、同時に関連するdatasもsaveされる
+  # dataがinvalidである場合、バリデーションエラーが発生する
+end
+```
