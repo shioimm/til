@@ -21,9 +21,14 @@
   - My daughter is still choosing between Harvard, Stanford and Columbia.
 
 ### by
-- 近くのイメージ -> 期限の近く -> いつまでに~する
+- 近く -> 期限の近く -> いつまでに~する
   - I can finish everything by the end of the week.
   - The meeting should be over by 5:30.
+- 近く -> 物理的な近く
+  - A by A -> 近くにあるもの同士の連続性
+  - This is a great photo you are standing by the waterfall.
+  - Our drama group is sponsored by local 3 companies.
+  - Follow the recepe step by step, and it should turn out fine.
 
 ### til
 - 同じ状態が続く -> いつまで~し続ける
@@ -68,3 +73,17 @@
   - Put these flowers on the coffee table.
   - What're those stains on your shirt?
   - On arriving at the theater, I realized I had forgotten the ticket.
+- テーブルの上にボール -> ステージ -> 活動、物事が起こる舞台
+  - My favourite band is on tour at the moment.
+  - I know how to play 'Happy Birthday' on the guitar.
+  - Strasbourg sits on the border between France & Germany.
+- テーブルの上にボール -> 支える / のしかかる
+  - I think he depends too much on his parents.
+  - Peaple who trapped in the mine survived on just water.
+  - They are putting all the blame on me.
+
+### into
+- 中への動き -> 衝突する、めり込む / 別の状態に入る
+  - Please come into my office early tomorrow morning.
+  - You never believe who I bumped into this morning.
+  - I need to translate all these document into Chinese.
