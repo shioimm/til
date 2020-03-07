@@ -14,6 +14,12 @@
   - strict -> Cookieを設定したドメインに対してのみCookieを送信する
   - lax -> ドメイン間のサブリクエストと外部サイトのURL(ユーザーがリンクをたどった場合など)に送信する
 
+#### Secure属性
+- Secure属性をつけたCookieはHTTPS通信時のみ送信されるようになる
+
+#### HttpOnly属性
+- HttpOnly属性をつけたCookieはJavaScriptから参照できなくなる
+
 ### Content-Security-Policy
 - 参照: [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)
 ```
