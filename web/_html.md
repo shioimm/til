@@ -1,4 +1,16 @@
 # HTML
+### `<object>`要素
+- 参照: [\<object\>](https://developer.mozilla.org/ja/docs/Web/HTML/Element/object)
+- 参照: [\<object\> 文書に外部リソースを埋め込む](http://www.htmq.com/html5/object.shtml)
+- 画像、内部の閲覧コンテキスト、プラグインによって扱われるリソースなど外部リソースを埋め込むための要素
+- `<embed>`がプラグインを必要とするデータを埋め込むのに対して、`<object>`には外部リソース全般を指定する
+
+### `<embed>`要素
+- 参照: [\<embed\>: 埋め込み外部コンテンツ要素](https://developer.mozilla.org/ja/docs/Web/HTML/Element/embed)
+- 外部のコンテンツを文書中の指定された場所に埋め込むための要素
+- コンテンツは外部アプリケーションや、ブラウザーのプラグインなどによって提供される
+- 最近のブラウザはプラグインの対応を非推奨にして削除している傾向にあるため使用しないことが推奨される
+
 ### `data-`属性(カスタムデータ属性)
 - 参照: [data-\*](https://developer.mozilla.org/ja/docs/Web/HTML/Global_attributes/data-*)
 - JSからHTMLを操作する際に利用することができる属性
