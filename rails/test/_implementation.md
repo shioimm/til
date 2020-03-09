@@ -1,4 +1,4 @@
-# 実装アイディア集
+# 実装例
 ## メール送信
 - 参照: [RSpec でキューイングした ActiveJob を同期実行する](https://qiita.com/upinetree/items/41a2a8fe9e1dd7c291ab)
 ```ruby
