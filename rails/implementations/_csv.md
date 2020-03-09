@@ -1,8 +1,7 @@
-# Tips
-### RailsアプリケーションでCSVファイルを取り扱う
+# RailsアプリケーションでCSVファイルを取り扱う
 - 参照: 現場で使える Ruby on Rails 5速習実践ガイドP312-317
 
-#### 基本
+## 基本
 - RubyのCSVを取り扱うために`csv`ライブラリを読み込む
 ```ruby
 # cofig/application.rb
@@ -10,7 +9,7 @@
 require 'csv'
 ```
 
-#### エクスポート
+## エクスポート
 ```ruby
 # CSVファイルを取り扱うmodel
 
@@ -55,7 +54,7 @@ end
 = link_to 'Export', users_path(format: :csv)
 ```
 
-### インポート
+## インポート
 ```ruby
 # CSVファイルを取り扱うmodel
 

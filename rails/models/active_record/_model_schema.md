@@ -1,12 +1,20 @@
-### inheritance_column=
-- STI以外のテーブルでtypeというカラムを使用できるようにする
-  - デフォルトではtypeはSTIを表現するための予約語のため使用できない
-
+# Model scheme
+### `inheritance_column=`
+- 前提: Railsでは`type`属性はSTIのクラス名を格納するための属性名として予約されている
+- 1.STI化時、type以外のカラムにクラス名を格納できるようにする
 ```ruby
-self.inheritance_column = :_type_disabled
+class User < ApplicationRecord
+  self.inheritance_column = :role
+end
+```
+- 2.STIを無効化し`type`を通常の属性値として使用できるようにする
+```ruby
+class User < ApplicationRecord
+  self.inheritance_column = :type
+end
 ```
 
-### ignored_columns=
+### `ignored_columns=`
 - ARに対して隠蔽するカラムを設定する
 
 ```ruby
