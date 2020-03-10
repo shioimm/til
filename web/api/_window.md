@@ -8,7 +8,7 @@
 // key, valueは文字列で渡す
 window.localStorage.setItem('Book', 'Programming Ruby')
 
-let cat = window.localStorage.getItem('Book') // => 'Programming Ruby'
+const book = window.localStorage.getItem('Book') // => 'Programming Ruby'
 
 window.localStorage.removeItem('Book')
 // or
