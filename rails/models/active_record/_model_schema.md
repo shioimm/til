@@ -1,5 +1,5 @@
-# Model scheme
-### `inheritance_column=`
+# ActiveRecord::ModelSchema
+## `inheritance_column=`
 - 前提: Railsでは`type`属性はSTIのクラス名を格納するための属性名として予約されている
 - 1.STI化時、type以外のカラムにクラス名を格納できるようにする
 ```ruby
@@ -14,7 +14,7 @@ class User < ApplicationRecord
 end
 ```
 
-### `ignored_columns=`
+## `ignored_columns=`
 - ARに対して隠蔽するカラムを設定する
 
 ```ruby
