@@ -1,4 +1,4 @@
-# enum
+# ActiveRecord::Enum
 ### enumを使用するカラムにnull制約をつけたい
 - enumの初期値を用意する
 ```ruby

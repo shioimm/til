@@ -1,4 +1,4 @@
-# Association
+# ActiveRecord::Associations
 - 参照: [Active Record の関連付け](https://railsguides.jp/association_basics.html)
 
 ## `inverse_of`
