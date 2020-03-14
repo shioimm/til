@@ -5,3 +5,4 @@
 - What can I do?
 - spent ages -> 長い時間をかけた
 - There's no point ~ing -> ~しても何にもならない
+- head for -> 頭を向ける -> 向かう

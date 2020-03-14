@@ -53,6 +53,15 @@
   - I had so many amazing experiences during my homestay in Australia.
 
 ### for
+- 対象に向かってフォーカスする -> ~に向かって
+  - All these fans are heading for the stadium.
+  - I'll go for pasta tonight.
+  - Napoli is famous for its delicious pizzas.
+- 対象に向かってフォーカスする -> ~に向かって -> ~を求めて
+  - I searched everywhere for my missing files, but no joy.
+  - I'm dying for a nice cup of tea.
+  - Who's for a beer?
+  - Are you for or against the plan?
 - ある状況がどのくらいの長さ続いたのか -> ~の長さの間
   - I was in the hospital for 2 weeks.
 
