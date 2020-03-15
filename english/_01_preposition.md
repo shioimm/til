@@ -1,5 +1,5 @@
 # 前置詞
-- 引用: NHKラジオ英会話2019年4月号
+- 引用: NHKラジオ英会話2019年4月号/5月号
 - 前置詞のイメージは位置関係
 
 ### about
@@ -62,8 +62,11 @@
   - I'm dying for a nice cup of tea.
   - Who's for a beer?
   - Are you for or against the plan?
-- ある状況がどのくらいの長さ続いたのか -> ~の長さの間
-  - I was in the hospital for 2 weeks.
+- 対象に向かってフォーカスする -> 範囲限定
+  - He's small for a smo wresler.
+  - I've not been back to my mometown for quite a while.
+  - Chris is young for his age.
+  - Who is liable for all the damages.
 
 ### in
 - 容器の中 -> 包まれている
@@ -103,6 +106,12 @@
 - 同じ状態が続く -> いつまで~し続ける
   - The match was so boring that many of people didn't stay until the end.
 
+### to
+- (到達点を)指し示す
+  - Infration jump to 2.7% in July.
+  - You need to apply at least 2 coat varnish to the table.
+  - His misucal talent is known to all the the world.
+
 ### Tips
 #### ~について
 - over -> すでに終わったこと
@@ -119,3 +128,7 @@
   - A summer festival begins on Saturday.
 - in -> ~中に -> 時間帯、週、月、年
   - Mom is sleeping in her bed.
+
+#### ~(場所、人)へ
+- to -> 対象に向かって(到達点を含む)
+- for -> 対象に向かって(到達点を含まない)
