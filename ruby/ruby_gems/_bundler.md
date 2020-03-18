@@ -5,20 +5,27 @@
     - rubygemsとBundlerでDependency Resolverのバージョンが違う
       - `gem install`したときとGemfileを使用した時で依存関係が変わる可能性がある
 
+#### 使っていないgemを片付けたい
+- [bundle clean](https://bundler.io/man/bundle-clean.1.html)
+  - bundlerディレクトリにある未使用のgemをすべて削除する
+  - システムレベルのgemを使用していて、複数のRubyプロジェクトで同じgemが使われている場合、
+    現在のプロジェクトで使用されていないグローバルなgemが削除される
+    - 参照: [Spring Cleaning: Tidying up your codebase](https://boringrails.com/articles/spring-cleaning/)
+
 #### gemの内部実装を確認したい
 - [bundle open](https://bundler.io/v1.10/bundle_open.html)
 
-#### Gemfileから最新でないgemを探す
+#### 最新バージョンでないgemを探したい
 - [bundle outdated](https://bundler.io/man/bundle-outdated.1.html)
 
-#### gemを最新にupdateする
+#### gemを最新にupdateしたい
 - [bundle update](https://bundler.io/v2.0/man/bundle-update.1.html)
 - `-g`オプションで特定のグループのみupdateできる
 ```
 bundle update -g development -g test
 ```
 
-#### gemの依存関係をビジュアライズする
+#### gemの依存関係をビジュアライズしたい
 - [bundler viz](https://bundler.io/v2.0/man/bundle-viz.1.html)
 
 ## `.bundle`
