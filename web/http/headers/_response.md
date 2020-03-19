@@ -1,5 +1,10 @@
 # Response
-## Cookie
+### Referer
+- 参照: [Referer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referer)
+- リンク元のURLを示す
+- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
+
+### Cookie
 - 参照: [Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cookie)
 - 参照: [サードパーティクッキーって何だっけ？ 今さら聞けないHTTP Cookieのキホン](https://webtan.impress.co.jp/e/2017/10/03/27016)
 - HTTPにおける状態管理の仕組み
