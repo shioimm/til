@@ -63,7 +63,7 @@
   - Who's for a beer?
   - Are you for or against the plan?
 - 対象に向かってフォーカスする -> 範囲限定
-  - He's small for a smo wresler.
+  - He's small for a sumo wresler.
   - I've not been back to my mometown for quite a while.
   - Chris is young for his age.
   - Who is liable for all the damages.
@@ -111,8 +111,14 @@
   - Infration jump to 2.7% in July.
   - You need to apply at least 2 coat varnish to the table.
   - His misucal talent is known to all the the world.
+- (到達点を)指し示す -> これから~する
+  - My brother has promised to give me a hand with the BBQ.
+  - I tryed to change my flight, but it was impossible.
+  - You'd be better to take an umbllera as it's likely to rain.
+  - (~ing -> 具体的 -> したこと)
+    - I remember meeting her at the party.
 
-### Tips
+### 意味の近い単語たち
 #### ~について
 - over -> すでに終わったこと
   - The class was so interesting that many students stayed even after it was over.
@@ -131,4 +137,9 @@
 
 #### ~(場所、人)へ
 - to -> 対象に向かって(到達点を含む)
+  - 対象に向かって -> 単なる到達点(give)
+    - She told the happy news to everyone she met.
 - for -> 対象に向かって(到達点を含まない)
+  - 対象に向かって -> 受益の意味を含む(make, buy, choose)
+    - Don't worry. I'll find a good electrician for you. He'll fix everything.
+    - I bought a silver neckless for my girlfriend.
