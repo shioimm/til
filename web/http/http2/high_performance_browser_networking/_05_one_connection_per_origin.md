@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## One Connection Per Origin
+- 引用: [One Connection Per Origin](https://hpbn.co/http2/#one-connection-per-origin)
 - HTTP/1.xでは並列多重化のために複数のTCP接続が必要とされていた
 - HTTP/2ではフレーム管轄によって並列多重化を行うことができるため、
   一つの永続的なTCP接続を使いまわすことができる

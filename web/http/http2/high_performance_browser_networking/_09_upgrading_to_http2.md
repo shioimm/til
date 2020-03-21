@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## Upgrading to HTTP/2
+- 引用: [Upgrading to HTTP/2](https://hpbn.co/http2/#upgrading-to-http2)
 - 最近のブラウザはすべてHTTP/2のサポートに取り組んでいる
 - ただしHTTP/1.xは現在も使用されているため、
   ほとんどのサーバーとクライアントはHTTP/1.xとHTTP/2の両方をサポートする必要がある

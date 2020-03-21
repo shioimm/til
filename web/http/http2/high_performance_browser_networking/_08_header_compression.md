@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## Header Compression
+- 引用: [Header Compression](https://hpbn.co/http2/#header-compression)
 - ヘッダ -> 転送されるリソースとそのプロパティ
   - HTTP/1.xにおいては500~800byteのテキストデータ
   - HTTP/2においてはHPACK圧縮フォーマットを利用してヘッダを圧縮し、パフォーマンスを向上させる

@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## Brief Introduction to Binary Framing
+- 引用: [Brief Introduction to Binary Framing](https://hpbn.co/http2/#brief-introduction-to-binary-framing)
 - HTTP/2の中核は、バイナリーによるlength-prefixed framing層
 - HTTP/2接続が確立されると、クライアントとサーバーはフレームを交換して通信を行う
   - フレームはプロトコル内の通信の最小単位として機能する
