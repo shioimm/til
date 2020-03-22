@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## Flow Control
+- 引用：[Flow Control](https://hpbn.co/http2/#flow-control)
 - フロー制御 -> 受信側が処理したくない・処理できないデータを送信側から押しつけないようにするためのメカニズム
   - 受信側がビジー状態になっている場合
   - 受信側に負荷がかかっている場合

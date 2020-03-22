@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## Server Push
+- 引用: [Server Push](https://hpbn.co/http2/#server-push)
 - サーバーはリクエストに対するレスポンス以外に追加のリソースをクライアントへ送信できる(サーバープッシュ)
   - サーバープッシュはプロトコルに対して、長期的に重要な意味合いをもたらし得る
 

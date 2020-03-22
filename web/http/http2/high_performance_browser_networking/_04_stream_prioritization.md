@@ -2,6 +2,7 @@
 - 引用: [HTTP/2](https://hpbn.co/http2/)
 
 ## Stream Prioritization
+- 引用: [Stream Prioritization](https://hpbn.co/http2/#stream-prioritization)
 - フレームの多重化に伴い、クライアントとサーバーが
   フレームをインターリーブして配信する順序がパフォーマンス上の重要な考慮事項になる
 
