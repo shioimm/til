@@ -1,4 +1,8 @@
 # HTML
+- 参照: よくわかるHTTP/2の教科書P12
+- メタ情報(head) + 内容・構造(body)
+- ブラウザはメタ情報を参考にしてWebページやタイトルを表示する
+
 ### `<object>`要素
 - 参照: [\<object\>](https://developer.mozilla.org/ja/docs/Web/HTML/Element/object)
 - 参照: [\<object\> 文書に外部リソースを埋め込む](http://www.htmq.com/html5/object.shtml)
