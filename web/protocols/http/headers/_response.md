@@ -1,10 +1,11 @@
 # Response
-### Referer
-- 参照: [Referer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referer)
-- リンク元のURLを示す
-- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
+- 参照: よくわかるHTTP/2の教科書P32
 
-### Cookie
+## Cache-Control
+- 参照: [Cache-Control](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cache-Control)
+- リソースをどのようにキャッシュするか
+
+## Cookie
 - 参照: [Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cookie)
 - 参照: [サードパーティクッキーって何だっけ？ 今さら聞けないHTTP Cookieのキホン](https://webtan.impress.co.jp/e/2017/10/03/27016)
 - HTTPにおける状態管理の仕組み
@@ -25,7 +26,7 @@
 ### HttpOnly属性
 - HttpOnly属性をつけたCookieはJavaScriptから参照できなくなる
 
-### Content-Security-Policy
+## Content-Security-Policy
 - 参照: [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)
 ```
 Content-Security-Policy: 指定したいポリシー
@@ -35,17 +36,38 @@ Content-Security-Policy: 指定したいポリシー
   - `script-src`ディレクティブに`nonce-ランダムな文字列`を指定することによって、
   同じnonce属性を持つscriptタグのみを実行するようになる
 
+## Content-Length
+- 参照: [Content-Length](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Length)
+- コンテンツのデータ長
+
+## Content-Type
+- 参照: [Content-Type](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Type)
+- コンテンツのMIMEタイプ
+
+## Content-Encoding
+- 参照: [Content-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Encoding)
+- コンテンツのエンコーディングタイプ
+
 ## Content-Security-Policy-Report-Only
 - [Content-Security-Policy-Report-Only](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Security-Policy-Report-Only)
 - ポリシーの適用を行わず、指定したポリシーに反する内容を指定したURLに送信する
 - `report-uri` -> 報告先のURIを指定する
 
+## Date
+- 参照: [Date](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Date)
+- リソースが生成された日時
+
 ## ETag
 - 引用: Webを支える技術 山本陽平・著
 - 参照: [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag)
-- リソースが更新された場合、新しい値を生成して返す
-- 条件付きリクエストで条件を確認するために使用される
+- リソースのバージョンを識別する
+  - リソースが更新された場合、新しい値を生成して返す
+  - 条件付きリクエストで条件を確認するために使用される
 - 頭文字のW\は弱いETag値(バイト単位で同じリソースであることを保証しない)を示す
+
+## Expires
+- 参照: [Expires](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Expires)
+- リソースの有効期限
 
 ## Feature-Policy
 - 参照: [https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy)
@@ -55,10 +77,22 @@ Content-Security-Policy: 指定したいポリシー
 - Railsではconfig/initializers/feature_policy.rbに設定を置く(6.1以降)
   - controllerで機能ごとに設定を上書きすることもできる
 
+## Last-Modified
+- 参照: [Last-Modified](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Last-Modified)
+- リソースが最後に更新された日時
+
 ## Referer
 - 参照: [Referer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referer)
 - リンク元のURLを示す
-- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりう
+- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
+
+## Server
+- 参照: [Server](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Server)
+- サーバーのソフトウェア(文字列)
+
+## Set-Cookie
+- 参照: [Set-Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Set-Cookie)
+- クライアントにCookieを設定する
 
 ## Strict-Transport-Security
 - 参照: [Strict-Transport-Security](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Strict-Transport-Security)
