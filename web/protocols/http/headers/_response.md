@@ -1,5 +1,5 @@
 # Response
-- 参照: よくわかるHTTP/2の教科書P32/38-39
+- 参照: よくわかるHTTP/2の教科書P32/38-39/41
 
 ## Cache-Control
 - 参照: [Cache-Control](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cache-Control)
@@ -11,6 +11,10 @@
 - private -> リソースを受け取った本人だけがキャッシュできる
 - public -> 複数のユーザーがリソースを再利用できる(キャッシュサーバーなどへの指示)
 - max-age -> 有効期限(秒)だけキャッシュできる
+
+## Connection
+- 参照: [Connection](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Connection)
+- トランザクション完了後もネットワーク接続を開いたままにするかどうかを制御
 
 ## Content-Security-Policy
 - 参照: [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)

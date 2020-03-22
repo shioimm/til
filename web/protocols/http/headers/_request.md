@@ -1,5 +1,5 @@
 # Request
-- 参照: よくわかるHTTP/2の教科書P29/38-39
+- 参照: よくわかるHTTP/2の教科書P29/38-39/41
 
 ## Accept
 - 参照: [Accept](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept)
@@ -16,6 +16,10 @@
 ## Authorization
 - 参照: [Authorization](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Authorization)
 - 認証が要求されるページに送信される認証情報
+
+## Connection
+- 参照: [Connection](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Connection)
+- トランザクション完了後もネットワーク接続を開いたままにするかどうかを制御
 
 ## Content-Length
 - 参照: [Content-Length](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Length)
