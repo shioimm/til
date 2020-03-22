@@ -1,31 +1,22 @@
 # Response
-### Referer
-- 参照: [Referer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referer)
-- リンク元のURLを示す
-- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
+- 参照: よくわかるHTTP/2の教科書P32/38-39/41
 
-### Cookie
-- 参照: [Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cookie)
-- 参照: [サードパーティクッキーって何だっけ？ 今さら聞けないHTTP Cookieのキホン](https://webtan.impress.co.jp/e/2017/10/03/27016)
-- HTTPにおける状態管理の仕組み
-  - ファーストパーティCookie -> 表示中のHTMLと同じサーバーから送信されたCookie
-  - サードパーティCookie -> 表示中のHTMLとは別のサーバーから送信されたCookie
-- ブラウザの状態を継続的に管理するための情報を保存するためのストレージ
-- Cookieはリソースが送信されたサーバー(origin)と紐づく
+## Cache-Control
+- 参照: [Cache-Control](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cache-Control)
+- クライアントがどのようにリソースをキャッシュするかを指定する
 
-### SameSite属性
-- 現在のドメインから別のドメインに対してリクエストを送る際、Cookieを送信するかどうか
-  - none -> Cookieを送信する
-  - strict -> Cookieを設定したドメインに対してのみCookieを送信する
-  - lax -> ドメイン間のサブリクエストと外部サイトのURL(ユーザーがリンクをたどった場合など)に送信する
+### ディレクティブ
+- no-store -> リソースを保存してはいけない
+- no-cache -> サーバーへの確認なしにリソースを保存してはいけない
+- private -> リソースを受け取った本人だけがキャッシュできる
+- public -> 複数のユーザーがリソースを再利用できる(キャッシュサーバーなどへの指示)
+- max-age -> 有効期限(秒)だけキャッシュできる
 
-### Secure属性
-- Secure属性をつけたCookieはHTTPS通信時のみ送信されるようになる
+## Connection
+- 参照: [Connection](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Connection)
+- トランザクション完了後もネットワーク接続を開いたままにするかどうかを制御
 
-### HttpOnly属性
-- HttpOnly属性をつけたCookieはJavaScriptから参照できなくなる
-
-### Content-Security-Policy
+## Content-Security-Policy
 - 参照: [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)
 ```
 Content-Security-Policy: 指定したいポリシー
@@ -35,17 +26,38 @@ Content-Security-Policy: 指定したいポリシー
   - `script-src`ディレクティブに`nonce-ランダムな文字列`を指定することによって、
   同じnonce属性を持つscriptタグのみを実行するようになる
 
+## Content-Length
+- 参照: [Content-Length](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Length)
+- コンテンツのデータ長
+
+## Content-Type
+- 参照: [Content-Type](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Type)
+- コンテンツのMIMEタイプ
+
+## Content-Encoding
+- 参照: [Content-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Encoding)
+- コンテンツのエンコーディングタイプ
+
 ## Content-Security-Policy-Report-Only
 - [Content-Security-Policy-Report-Only](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Security-Policy-Report-Only)
 - ポリシーの適用を行わず、指定したポリシーに反する内容を指定したURLに送信する
 - `report-uri` -> 報告先のURIを指定する
 
+## Date
+- 参照: [Date](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Date)
+- リソースが生成された日時
+
 ## ETag
 - 引用: Webを支える技術 山本陽平・著
 - 参照: [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag)
-- リソースが更新された場合、新しい値を生成して返す
-- 条件付きリクエストで条件を確認するために使用される
+- リソースのバージョンを識別する
+  - リソースが更新された場合、新しい値を生成して返す
+  - 条件付きリクエストで条件を確認するために使用される
 - 頭文字のW\は弱いETag値(バイト単位で同じリソースであることを保証しない)を示す
+
+## Expires
+- 参照: [Expires](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Expires)
+- リソースの有効期限
 
 ## Feature-Policy
 - 参照: [https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/Feature_Policy)
@@ -55,10 +67,46 @@ Content-Security-Policy: 指定したいポリシー
 - Railsではconfig/initializers/feature_policy.rbに設定を置く(6.1以降)
   - controllerで機能ごとに設定を上書きすることもできる
 
+## Last-Modified
+- 参照: [Last-Modified](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Last-Modified)
+- リソースが最後に更新された日時
+
 ## Referer
 - 参照: [Referer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referer)
 - リンク元のURLを示す
-- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりう
+- URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
+
+## Server
+- 参照: [Server](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Server)
+- サーバーのソフトウェア(文字列)
+
+## Set-Cookie
+- 参照: [Set-Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Set-Cookie)
+- クライアントにCookieを設定する
+
+### Domain属性
+- Cookieを送信するドメイン対象を指定する
+
+### Expire属性
+- Cookieの有効期限(日付)
+
+### Path属性
+- Cookieを送信するURLのパス対象を指定する
+
+### Max-Age属性
+- Cookieの有効期限(秒)
+
+### SameSite属性
+- 現在のドメインから別のドメインに対してリクエストを送る際、Cookieを送信するかどうか
+  - none -> Cookieを送信する
+  - strict -> Cookieを設定したドメインに対してのみCookieを送信する
+  - lax -> ドメイン間のサブリクエストと外部サイトのURL(ユーザーがリンクをたどった場合など)に送信する
+
+### Secure属性
+- https通信時のみ送信する
+
+### HttpOnly属性
+- JavaScriptから参照できないようにする
 
 ## Strict-Transport-Security
 - 参照: [Strict-Transport-Security](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Strict-Transport-Security)
