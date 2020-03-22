@@ -1,9 +1,16 @@
 # Response
-- 参照: よくわかるHTTP/2の教科書P32
+- 参照: よくわかるHTTP/2の教科書P32/38-39
 
 ## Cache-Control
 - 参照: [Cache-Control](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cache-Control)
-- リソースをどのようにキャッシュするか
+- クライアントがどのようにリソースをキャッシュするかを指定する
+
+### ディレクティブ
+- no-store -> リソースを保存してはいけない
+- no-cache -> サーバーへの確認なしにリソースを保存してはいけない
+- private -> リソースを受け取った本人だけがキャッシュできる
+- public -> 複数のユーザーがリソースを再利用できる(キャッシュサーバーなどへの指示)
+- max-age -> 有効期限(秒)だけキャッシュできる
 
 ## Content-Security-Policy
 - 参照: [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)

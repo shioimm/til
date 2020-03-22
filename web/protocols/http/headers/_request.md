@@ -1,5 +1,5 @@
 # Request
-- 参照: よくわかるHTTP/2の教科書P29
+- 参照: よくわかるHTTP/2の教科書P29/38-39
 
 ## Accept
 - 参照: [Accept](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept)
@@ -28,6 +28,16 @@
 ## Host
 - 参照: [Host](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Host)
 - リクエスト先のホスト・ポート番号
+
+## If-Modified-Since
+- 参照: [If-Modified-Since](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-Modified-Since)
+- 条件付リクエストに使用する
+- 最後に取得した時刻以降に更新がある場合、リソースを再要求する
+
+## If-None-Match
+- 参照: [If-None-Match](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-None-Match)
+- 条件付リクエストに使用する
+- 指定したETagのバージョン以降に更新がある場合、リソースを再要求する
 
 ## Range
 - 引用: Webを支える技術 山本陽平・著
