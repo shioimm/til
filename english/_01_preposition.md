@@ -82,6 +82,18 @@
   - You never believe who I bumped into this morning.
   - I need to translate all these document into Chinese.
 
+### of
+- 名詞で説明
+  - This is a painting of mine.
+  - It's a question of when to put the house on the market.
+  - Million of the people are died of preventable diseases every year.
+  - Chris is afraid of fish's eyes.
+  - It's so generous of you to give up so much of your time.
+  - This contract is of importance to the future of our company.
+  - Be careful of who you share this information with.
+  - It was very thoughtful of them to visit me in the hospital.
+  - x 所有格(抱きしめる感じ)
+
 ### on
 - テーブルの上にボール -> 接触
   - Put these flowers on the coffee table.
