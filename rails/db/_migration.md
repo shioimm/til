@@ -148,7 +148,7 @@ class Book < ApplicationRecord
 - DBをdropし後に現在のスキーマを読み込みcreateする
 - マイグレーションを実行しない
 
-## トラブルシューティング
+## 事例
 ### `No migration with version number`
 - 参照: [railsのマイグレーションステータス'NO FILE'を削除する](https://qiita.com/yukofeb/items/ce39c7aabbfdc16205ea)
 1. `rails db:migarte:status`で`********** NO FILE **********`が表示されているバージョン番号を確認
@@ -161,3 +161,12 @@ end
 ```
 3. `rails db:migrate:down VERSION=バージョン番号`
 4. `rm db/migrate/バージョン番号_tmp.rb`
+
+### CONFLICT (content): Merge conflict in db/schema.rb
+- masterブランチrebase時、scheme.rbがコンフリクト
+- 参照: [コンフリクトしたschema.rbをきれいにマージする手順](https://qiita.com/jnchito/items/494a0499b808f109e0a8)
+1. `$ git reset HEAD db/schema.rb`でschema.rbのステージングを解除
+2. `$ git checkout db/schema.rb`でschema.rbの変更をリセット
+3. `$ rails db:migrate`(マイグレーションファイルは追加されているためマイグレーション可能)
+4. `$ git add db/schema.rb`
+5. `$ git rebase --continue`
