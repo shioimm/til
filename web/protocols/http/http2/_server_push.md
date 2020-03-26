@@ -6,7 +6,7 @@
 - 参照: [HTTP/2 Server Pushとは？(CDN サーバープッシュでWeb高速化）](https://blog.redbox.ne.jp/http2-server-push-cdn.html)
 - 参照: [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
 - 参照: [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
-- 参照: よくわかるHTTP/2の教科書P76-126
+- 参照: よくわかるHTTP/2の教科書P117-120
 
 ## 機能概要
 - リクエストを受信するより前にサーバーからHTTPレスポンスを送信する機能
