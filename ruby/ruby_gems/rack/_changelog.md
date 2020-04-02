@@ -59,7 +59,7 @@
 ## 0.9.1(2009-01-09)
 - Rack::FileとRack::Directoryに対するディレクトリトラバーサルの悪用を修正
 
-## 1.0(2009-04-25)
+## 1.0.0(2009-04-25)
 - SPEC change
   - Rack::VERSION[1,0]
   - ヘッダの値を文字列に指定
@@ -79,3 +79,76 @@
 - Rack::ResponseでCookieのHttpOnlyをサポート
 - Rakefileの書き換え
 - その他バグ修正、改善
+
+## 1.0.1(2009-10-18)
+- `rack.version`が変更されていなかった箇所を修正
+- ピュアRubyのFCGI実装をサポート
+- フォーム名に"="を含む場合の修正
+  - 最初に分割してからコンポーネントをエスケープしないように変更
+- 名前にセミコロンを含むfilenameパラメータの取り扱いを修正
+- 正規表現を解析するネストしたパラメータにアンカーを追加
+  - Stack Overflowを防ぐため
+- `<<`よりも互換性のあるgzip write API を使うように変更
+- `$ ruby -e`でReloaderを実行しても壊れないように修正
+- WEBrickの:Hostオプションをサポート
+- Ruby 1.9関連の修正
+
+## 1.1.0(2010-01-03)
+- Auth::OpenIDをrack-contribに移動
+- SPEC change
+  - 必要な型のサブクラスを許可するためにLintを緩和
+  - `rack.input`がバイナリモードに変更
+- SPEC define
+  - `rack.logger`の仕様を定義
+- ファイルサーバがX-Cascadeヘッダをサポート
+- ミドルウェアの導入
+  - Configミドルウェア
+  - ETagミドルウェア
+  - Runtimeミドルウェア
+  - Sendfileミドルウェア
+- ミドルウェアの追加
+  - NullLoggerミドルウェア
+- ロガーの追加
+- `.ogv`と`.manifest`にMIMEタイプを追加
+- PATH_INFOのスラッシュを絞らないように変更
+- Content-Typeを使用してPOSTパラメータをパースするように変更
+- Rack::Utils::HTTP_STATUS_CODESハッシュのupdate
+- ステータスコード検索ユーティリティの追加
+- レスポンスメッセージ構築時、ステータスコードに対して#to_iを呼び出すように変更
+- Rack::Request#user_agentを追加
+- Rack::Request#hostで転送されたホストを把握できるように変更
+- HTTP_HOSTとSERVER_NAMEの両方が欠落している場合、Request#hostに対して空の文字列を返すように変更
+- MockRequestがハッシュパラメータを受け付けることを許可するように変更
+- HeaderHashの最適化
+- rackupをRack::Serverにリファクタリング
+- Utils.build_nested_queryを追加
+  - Utils.parse_nested_queryを補完するため
+- Utils::Multipart.build_multipart を追加
+  - Utils::Multipart.parse_multipartを補完するため
+- Cookieヘルパーの設定と削除をUtilsに抽出
+  - Rack::Responseの外で使用できるようにするため
+- Rack::Requestのparse_queryとparse_multipartを抽出します
+  - サブクラスが動作を変更できるようにするため
+- RewindableInputでバイナリエンコーディングを強制するように変更
+- RewindableInputを使用しないハンドラのために正しいexternal_encodingを設定
+
+## 1.2.0(2010-06-13)
+- Campingアダプタを削除
+  - Camping 2.0はrackをそのままサポート
+- 引用符で囲まれた値の解析を削除
+- メソッドの追加
+  - Request.trace?
+  - Request.options?
+- .webmと.htcのmime-typeを追加
+- HTTP_X_FORWARDED_FORを修正
+- その他multipartの修正
+- テストをbaconに変更
+
+## 1.2.1(2010-06-15)
+- CGIハンドラを巻き戻せるように変更
+- `spec/`を`test/`にrename
+
+## 1.2.2/1.1.2(2011-03-13)
+- セキュリティ修正
+  - Rack::Auth::Digest::MD5
+    - 認証がnilを返すと空のパスワードに対して権限が付与されてしまう問題を修正
