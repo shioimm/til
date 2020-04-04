@@ -10,6 +10,16 @@
   - I spent ages looking about for the place to park.
     - `look about for` -> lookを修飾して周りを見渡す
 
+### after
+- 後ろからついていく
+  - Please look after my son while we're away. -> 対処しようと後ろをついていく
+  - Some of Van Goch's painting are after the style of Japanese prints.
+  - He takes after his father. -> 後ろからついていって特徴を手に取る -> 似ている
+- 後ろからついていく -> 順序関係
+  - Sibuya comes after Harajuku.
+  - ❌ See you after 30 minutes -> ⭕️ See you in 30 minutes(順序関係を表さないため)
+  - The Taisho era comes after the Meiji era, right?
+
 ### among
 - 一つ一つの要素を意識しない雑多なものの集合
   - She's very popular among the students.
@@ -114,6 +124,14 @@
   - The theif climbed over the school wall.
   - Oh no, the soup is boiling over.
 
+### though
+- トンネル通過
+  - We talked though an interpriter.
+  - I'm through with my boyfriend. -> 交際を通り抜ける
+  - We pass through lots of tunnels on this train ride.
+  - The robbers escape through the window.
+  - We'll open on Monday through Saturday.
+
 ### til
 - 同じ状態が続く -> いつまで~し続ける
   - The match was so boring that many of people didn't stay until the end.
@@ -129,6 +147,18 @@
   - You'd be better to take an umbllera as it's likely to rain.
   - (~ing -> 具体的 -> したこと)
     - I remember meeting her at the party.
+
+### with
+- つながり、一緒
+  - I don't have a phone with me.
+  - Do you like guys with beard?
+  - For once, I agree with you.
+  - I'm not familiar with the rules of this game.
+- つながり、一緒 -> 時間のつながり、同時
+  - The weather changes with the seasons. -> 変化が同時に起こる
+  - The job would get easier with time.
+  - She waves goodbye to her parents with tears in her eyes.
+  - You make better decision with experience.
 
 ### 意味の近い単語たち
 #### ~について
