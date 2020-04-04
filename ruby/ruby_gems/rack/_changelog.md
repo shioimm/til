@@ -132,6 +132,14 @@
 - RewindableInputでバイナリエンコーディングを強制するように変更
 - RewindableInputを使用しないハンドラのために正しいexternal_encodingを設定
 
+## 1.1.2(2011-03-13)
+- セキュリティ修正
+  - Rack::Auth::Digest::MD5
+    - 認証がnilを返すと空のパスワードに対して権限が付与されてしまう問題を修正
+
+## 1.1.3(2011-12-28)
+- セキュリティ修正
+
 ## 1.2.0(2010-06-13)
 - Campingアダプタを削除
   - Camping 2.0はrackをそのままサポート
@@ -148,7 +156,69 @@
 - CGIハンドラを巻き戻せるように変更
 - `spec/`を`test/`にrename
 
-## 1.2.2/1.1.2(2011-03-13)
+## 1.2.2(2011-03-13)
 - セキュリティ修正
   - Rack::Auth::Digest::MD5
     - 認証がnilを返すと空のパスワードに対して権限が付与されてしまう問題を修正
+
+## 1.2.3(2011-05-22)
+- バグ修正
+- Ruby1.8.6対応
+
+## 1.2.4(2011-09-16)
+- XSS攻撃の防止
+  - Ruby1.8の正規表現エンジンのバグによって有効になったもの
+
+## 1.3.0(2011-05-22)
+- パフォーマンス最適化
+- multipartの修正
+- multipartリファクタ
+- multipartの無限ループ修正
+- Rack::Serverのテストカバレッジ向上
+- `..`を持つファイルを許可し、`..`のパスコンポーネントを許可しない
+- rackupがコマンドラインでハンドラ固有のオプションを受け付けるように変更
+- Request#paramはPOSTをGETにマージしないように変更(同じものを返す)
+- エスケープにURI.encode_www_form_component・コアメソッドを使用するように変更
+- 設定ファイルで複数行のコメントを許可
+- クエリパラメータのエスケープを解除
+- Rack::Responseは適切な場合にContent-Lengthを削除するように変更
+- Rack::Deflaterがストリーミングをサポート
+- Rack::Handler の読み込みと検索を改善
+- PATCHメソッドのサポート
+- `env['rack.session.options']`にセッションオプションが含まれるように変更
+- Cookieの互換性を保って更新
+- セッションミドルウェアでSecureRandom.hexを使用するように変更
+
+## 1.3.1(2011-07-13)
+- Ruby1.9.1をサポート
+- JRubyをサポート
+- Rack::Utils.escapeで$KCODEを適切に処理するように変更
+- method_missing/respond_toの動作を統一
+  - Rack::Lock
+  - Rack::Auth::Digest::Request
+  - Rack::Multipart::UploadedFile
+- セッションミドルウェアへの rack.session の受け渡しを有効化
+- Rack::CommonLoggerがストリーミング応答を正しく処理するように変更
+- Rack::MockResponseがbodyオブジェクトのcloseを呼び出すように変更
+- DOS vectorの修正(MRI stdlib backportから)
+
+## 1.3.2(2011-07-16)
+- Railsとrack-test、Rack::Utils#escapeが#to__sを呼び出すように修正
+
+## 1.3.3(2011-09-16)
+- バグ修正
+  - Rack::ShowExceptionsのクエリパラメータが壊れていたバグ
+- Rack::Request#cookiesはが壊れた入力に対して例外を投げないように変更
+- XSS攻撃の防止
+  - Ruby1.8の正規表現エンジンのバグによって有効になったもの
+- Rack::ConditionalGetが壊れたIf-Modified-Sinceヘルパーを扱うように変更
+
+## 1.3.4(2011-10-01)
+- URIにおけるラウンドトリップ問題の修正
+  - Ruby1.9.3バックポートによるセキュリティ修正
+- ドキュメントの更新
+- BodyProxyが無限に再帰を引き起こす可能性があった不具合を修正
+- travis-ciのサポートファイルを追加
+
+## 1.3.5(2011-10-17)
+- Rack1.3.4のバックポートによる警告を修正
