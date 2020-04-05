@@ -1,4 +1,4 @@
-# CHANGELOGS
+# CHANGELOG 0.1.0 -> 2.0.0.rc
 - 引用: [CHANGELOG](https://github.com/rack/rack/blob/master/CHANGELOG.md)
 
 ## 2007
