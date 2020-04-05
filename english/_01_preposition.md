@@ -9,6 +9,8 @@
     - `Keep with your wits about you` -> 気持ちを引き締める
   - I spent ages looking about for the place to park.
     - `look about for` -> lookを修飾して周りを見渡す
+- ~の周りにあるほんわかとした-> ~にまつわる色々なことについて
+  - Chroe gave a faschinating talk about the history and culture of Italy.
 
 ### after
 - 後ろからついていく
@@ -38,6 +40,17 @@
   - He's not a genius at all.
   - I have experienced driving at over 200 km per hour, on a circuit, of course.
   - Look at Jenny's drawing about our cat. Isn't it cute?
+- 点 -> 時間幅のない点 -> 時刻
+  - The train leaves at just 18:30. So don't be late.
+
+### before
+- ~の前(順序関係)
+  - Shibuya comes before Ebisu.
+  - I put my family before my job.
+  - You need to hurry to get to the bank before it closes.
+- ~の前(場所・詩的な表現)
+  - People are dying before our very eyes.
+  - You are luckey becouse your whole life lies before you.
 
 ### between
 - 一つ一つの要素を意識したはっきりしたものの集合
@@ -72,6 +85,9 @@
   - I'm dying for a nice cup of tea.
   - Who's for a beer?
   - Are you for or against the plan?
+- 対象に向かってフォーカスする -> ~に向かって -> 受益(make, buy, choose)
+  - Don't worry. I'll find a good electrician for you. He'll fix everything.
+  - I bought a silver neckless for my girlfriend.
 - 対象に向かってフォーカスする -> 範囲限定
   - He's small for a sumo wresler.
   - I've not been back to my mometown for quite a while.
@@ -85,6 +101,13 @@
   - Have you ever seen Chiris in a suit?
   - The most important thing is to believe in yourself.
   - Their product vary greatly in quality.
+- 容器の中 -> ~中に -> 時間帯、週、月、年
+  - Mom is sleeping in her bed.
+
+### in front of
+- ~の前(場所) <-> behind
+  - Meet me in front of the library at 4 o'clock.
+  - I waited for her in front of the movie theater, but she didn't show up.
 
 ### into
 - 中への動き -> 衝突する、めり込む / 別の状態に入る
@@ -113,6 +136,10 @@
   - My favourite band is on tour at the moment.
   - I know how to play 'Happy Birthday' on the guitar.
   - Strasbourg sits on the border between France & Germany.
+- テーブルの上にボール -> ステージ -> 活動、物事が起こる舞台 -> ~そのものについて
+  - Professor Higgins gave an absorbing talk on space exploration.
+- テーブルの上にボール -> ステージ -> ステージ上の時間幅の上 -> 日
+  - A summer festival begins on Saturday.
 - テーブルの上にボール -> 支える / のしかかる
   - I think he depends too much on his parents.
   - Peaple who trapped in the mine survived on just water.
@@ -123,6 +150,8 @@
   - The roof over their heads protected them from the rain.
   - The theif climbed over the school wall.
   - Oh no, the soup is boiling over.
+- 上にアーチ -> すでに終わったことについて
+  - The class was so interesting that many students stayed even after it was over.
 
 ### though
 - トンネル通過
@@ -141,12 +170,23 @@
   - Infration jump to 2.7% in July.
   - You need to apply at least 2 coat varnish to the table.
   - His misucal talent is known to all the the world.
+- (到達点を)指し示す -> 単なる到達点(give)
+  - She told the happy news to everyone she met.
 - (到達点を)指し示す -> これから~する
   - My brother has promised to give me a hand with the BBQ.
   - I tryed to change my flight, but it was impossible.
   - You'd be better to take an umbllera as it's likely to rain.
   - (~ing -> 具体的 -> したこと)
     - I remember meeting her at the party.
+
+### under
+- ~の下 -> 未完成・進行中
+  - There was a new wing under construction.
+  - The elevator is under repair in all morning.
+- ~の下 -> 監督下
+  - She claimed she committed the crime under the influence of her husband.
+  - My kind co-worker took me under the wing and showed me the ropes.
+  - My son is making great progress under the influence of his new teacher.
 
 ### with
 - つながり、一緒
@@ -159,29 +199,3 @@
   - The job would get easier with time.
   - She waves goodbye to her parents with tears in her eyes.
   - You make better decision with experience.
-
-### 意味の近い単語たち
-#### ~について
-- over -> すでに終わったこと
-  - The class was so interesting that many students stayed even after it was over.
-- about -> ~にまつわる色々なこと
-  - Chroe gave a faschinating talk about the history and culture of Italy.
-- on -> ~そのものについて
-  - Professor Higgins gave an absorbing talk on space exploration.
-
-#### ~(時間、場所)に、~(時間、場所)で
-- at -> 時間幅のない点 -> 時刻
-  - The train leaves at just 18:30. So don't be late.
-- on -> ステージ上の時間幅の上 -> 日
-  - A summer festival begins on Saturday.
-- in -> ~中に -> 時間帯、週、月、年
-  - Mom is sleeping in her bed.
-
-#### ~(場所、人)へ
-- to -> 対象に向かって(到達点を含む)
-  - 対象に向かって -> 単なる到達点(give)
-    - She told the happy news to everyone she met.
-- for -> 対象に向かって(到達点を含まない)
-  - 対象に向かって -> 受益の意味を含む(make, buy, choose)
-    - Don't worry. I'll find a good electrician for you. He'll fix everything.
-    - I bought a silver neckless for my girlfriend.
