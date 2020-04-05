@@ -476,3 +476,76 @@
   - 利用可能時
 - RACK_MULTIPART_LIMITをRACK_MULTIPART_PART_LIMITに変更
   - (RACK_MULTIPART_LIMITは非推奨化し、1.7.0 で削除
+
+### 12-04
+#### 2.0.0.alpha
+- ファーストパーティのSameSite Cookie
+  - ブラウザはサードパーティのリクエストからSameSite Cookieを除外する
+    - CSRF攻撃防止のため
+  - Set-CookieヘッダのSameSite有効化の方法を提供
+    - `response.set_cookie 'foo', value: 'bar', same_site: true`または`same_site: :strict`
+    - `response.set_cookie 'foo', value: 'bar', same_site: :lax`
+  - Sam-site Cookiesの仕様はバージョン7に基づく
+    - https://tools.ietf.org/html/draft-west-first-party-cookies-07
+- ミドルウェアの追加
+  - Rack::Eventミドルウェア
+    - イベントベースのミドルウェアを追加する
+- Rack::Request#authorityの追加
+  - レスポンスが行われている権限を計算
+    - h2プッシュの際に便利
+- Rack::Response::Helpers#cache_controlおよびcache_control=の追加
+  - Responseオブジェクトにキャッシュコントロールヘッダを設定するために使用
+- Rack::Response::Helpers#etagおよびetag=を追加
+  - レスポンスのetag値を設定するために使用
+- Rack::Response::Helpers#add_headerを導入
+  - 複数の値を持つレスポンスヘッダに値を追加
+  - 他のResponse#xxx_headerメソッドの観点から実装されている
+  - Helpers モジュールを含むレスポンスライクなクラスであればどのようなものでも利用可能
+- Rack::Request#add_headerを追加
+- Rack::Session::Abstract::IDが非推奨化
+  - Rack::Session::Abstract::Persistedへの移行が必要
+  - Rack::Session::Abstract::Persistedはenv ハッシュではなくRequestオブジェクトを使用
+- Requestオブジェクト内のENVアクセスをモジュールにpullすることを推奨
+  - ENVベースかつRack::Requestを継承したくないレガシーなRequestオブジェクトのため
+- Rack::RequestのほとんどのメソッドをRack::Request::Helperモジュールへ移動
+  - Requestオブジェクトから値を取得するためにパブリックAPIを使用できるようになった
+    - ユーザーはRack::Request::Helperを自分のオブジェクトに導入することができるようになり、
+      (get|set|fetch|each)_header を自分の好きなように実装することができる(ex. Proxyオブジェクト)
+- ファイルやディレクトリ名に`+`を含むファイルやディレクトリが正しく処理されるように修正
+  - フォームのようにパスをアンエスケープするのではなく、
+    Rack::Utils.unescape_pathを使用しURIパーサーでアンエスケープを行う
+- tempfileはポスト数が多すぎる場合、自動的にクローズされるように変更
+- レスポンスヘッダを操作するためのメソッドを追加
+  - レスポンスlikeなクラスは、次のメソッドを定義していれば
+    Rack::Response::Helpersモジュールを含むことができる
+    - Rack::Response#has_header?
+    - Rack::Response#get_header
+    - Rack::Response#set_header
+    - Rack::Response#delete_header
+- Util.get_byte_rangesを導入
+  - envハッシュに依存せずに渡されたHTTP_RANGE文字列の値を解析する
+- セッションの内部を変更し、セッション情報を調べるためにRequest オブジェクトを使用するように変更
+  - Sessionオブジェクトを扱う際に1 つのRequestオブジェクトを割り当てるだけで済むようになった
+    - Cookieなどを操作する場合、一度の割り当てで済む
+- Rack::Request#initialize_copyを追加
+  - リクエストが複製されたときにenvが複製されるようにする
+- リクエスト固有のデータを操作するためのメソッドを追加
+  - CGIパラメータとして設定されたデータや、
+    ユーザが特定のリクエストに関連付けたい任意のデータが含まれる
+    - Rack::Request#has_header?
+    - Rack::Request#get_header
+    - Rack::Request#fetch_header
+    - Rack::Request#each_header
+    - Rack::Request#set_header
+    - Rack::Request#delete_header
+- "delete" Cookieヘッダを構築するメソッドを追加
+  - lib/rack/utils.rb
+  - ハッシュを変異させる副作用に依存せずにCookieヘッダを構築できるようになった
+- deepパラメータのパースを防止
+  - CVE-2015-3225
+
+## 2016
+### 05-06
+#### 2.0.0.rc1
+- Rack::Session::Abstract::IDが非推奨化
+  - Rack::Session::Abstract::Persistedへの移行が必要
