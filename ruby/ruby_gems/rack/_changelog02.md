@@ -95,7 +95,23 @@
 ## 2020
 ### 01-10
 [Added]
-
+- SameSite=None Cookieをサポート
+- ヘッダの追加
+  - Trailerヘッダ
+- MIMEタイプの追加
+  - 動画ストリーミング用のMIMEタイプ
+  - WASM用のMIMEタイプ
+- ステータスコードの追加
+  - Early Hints(103)を追加
+  - Too Early(425)を追加
+  - Bandwidth Limit Exceeded(509)を追加
+- カスタムip_filterのためのメソッドを追加
+- rackupにブートタイムプロファイリング機能を追加
+- X-Accel-Mappingsヘッダにマルチマッピング対応を追加
+- Rack::Deflaterに`sync:false`オプションを追加
+- Builder#freeze_appを追加
+  - アプリケーションとすべてのミドルウェアインスタンスをfreezeするためのもの
+- Rack::MockResponseからCookieを抽出するAPIの追加
 
 [Changed]
 - ミドルウェアからnil値を伝播させないように変更
