@@ -91,3 +91,46 @@
 [Security]
 - [CVE-2019-16782]セッションIDのルックアップを狙ったタイミング攻撃を防止
   - BREAKING CHANGE: セッションIDがStringではなくSessionIdインスタンスに変更
+
+## 2020
+### 01-10
+[Added]
+
+
+[Changed]
+- ミドルウェアからnil値を伝播させないように変更
+- レスポンスボディを遅延的に初期化し、必要に応じてバッファリング
+- 空のボディにおけるdeflater zlibのバッファエラーを修正
+- X-Accel-Redirectをパーセントエンコードされたパスに設定
+- multipartをパースする際に不要なバッファを削除
+- 初期化時にRack::Staticのルートパスを展開するように変更
+- ShowExceptionsをバイナリデータで動作させるよう変更
+- multipartリクエストを解析する際にバッファ文字列を使用するよう変更
+- config.ruでオプションのUTF-8Byte Order Mark(BOM)をサポート
+- オプションのポートでX-Forwarded-Forを扱うように変更
+- ExpiresにTime#httpdate形式を使用
+  - RFC 7231より
+- ステータスシンボルが無効な場合、500エラーではなくUtils.status_codeが例外を送出するように変更
+- Request::SCHEME_WHITELISTをRequest::ALLOWED_SCHEMESにrename
+- Multipart::Parser.get_filenameが名前に+を含むファイルを受け付けるように変更
+- デフォルトのハンドラのフォールバックにFalconを追加
+- 文字列のmutationを避けるためにコードベースを更新
+  - frozen_string_literalsに備えた措置
+- MockRequest#env_forを変更
+  - 入力がオプションで#lengthではなく#sizeに応答するようになった
+- Rack::FileをRack::Filesにrenameし、非推奨の通知を追加
+- Base64のCokieがBase64の“strict encoding”を優先するように変更
+
+[Removed]
+- Rack::Responseから#to_aryを削除
+- Rack::Session::Memcacheをdalli gemからRack::Session::Dalliに変更することを推奨化
+
+[Fixed]
+- Ruby 2.7の警告を削除
+
+[Documentation]
+- Session::Abstract::IDのexampleを修正
+- Rackを実装しているフレームワークのリストにPadrinoを追加
+- ヘルプに出力される推奨サーバーオプションからMongrelを削除
+- HISTORY.mdとNEWS.mdをCHANGELOG.mdに移動
+- CHANGELOGの更新
