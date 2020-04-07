@@ -170,10 +170,53 @@
 ### 02-08
 #### 2.2.0
 [SPEC Changes]
+- rack.sessionリクエスト環境エントリはto_hashに対応し、freezeされていないHashを返す必要がある
+- リクエスト環境はfreezeできない
+- リクエスト環境でASCII以外の文字を持つCGIの値はASCII-8BITエンコーディングを使用しなければならない
+- SERVER_NAME、SERVER_PORT、HTTP_HOSTに関するSPEC/lintを改善
 
 [Added]
+- rackupが複数の`-r`オプションをサポート
+  - 利用時はすべての引数を必要とする
+- サーバーが:requireオプションでrequireするパスの配列をサポート
+- ファイルはmultipart Rangeリクエストに対応
+- Multipart::UploadedFileは、:filename と:io オプションを使用したIOライクなオブジェクトをサポート
+  - ファイルシステムを使用する代わり
+- Multipart::UploadedFileが位置引数に加えてキーワード引数:path,:content_type,:binaryをサポート
+- Staticがアプリを呼び出すための:cascade オプションをサポート
+  - 一致するファイルがない場合
+- Session::Abstract::SessionHash#digの追加
+- スResponse.[]とMockResponse.[]の追加
+  - ステータス、ヘッダ、ボディを使ってインスタンスを作成するためのメソッド
+- Rack::Responseの便利なキャッシュとcontent-typeメソッドを追加
 
 [Changed]
+- Request#paramsでEOF Errorをrescueしないように変更
+- ディレクトリがストリーミングアプローチを使用するように変更
+  - 大規模なディレクトリのファーストバイトまでの時間を大幅に改善
+- ディレクトリがルートディレクトリインデックスに親ディレクトリリンクを含まないように変更
+- QueryParser#parse_nested_queryが新しいクラスで例外を再発行する際、元のバックトレースを使用するよう変更
+- ConditionalGetについて、If-None-MatchヘッダとIf-Modified-Sinceヘッダの両方が提供されている場合
+  RFC 7232の優先順位に従うよう変更
+- `.ru`ファイルが、frozen_stringリテラルマジックのコメントに対応するよう変更
+- 定数をロードする際、内部ファイルの代わりにautoloadに依存するように変更
+  また'rack/...' だけでなく'rack'を必要とするように変更
+- レスポンスがキャッシュされていない場合もETagは送信し続けるよう変更
+- Request#host_with_portが欠けているポートや空のポートに対するコロンを含まないように変更
+- すべてのハンドラがオプションのハッシュ引数の代わりにキーワード引数を使用するように変更
+- Rangeリクエストを扱うファイルがto_pathをサポートするボディを返さないように変更
+  - Rangeリクエストが正しく処理されるようにするため
+- Multipart::Generatorについて、
+  パスを持つファイルの場合はContent-Length、
+  UploadedFileインスタンスがある場合はContent-Dispositionファイル名のみを含むよう変更
+- Request#ssl?はwssスキーム(secure websockets)においてtrueになるよう変更
+- Rack::HeaderHashがデフォルトでメモ化されるよう変更
+- Rack::Directoryでルートディレクトリ内のディレクトリ移動を許可するように変更
+- サーバーの設定によりでエンコーディングをソートするよう変更
+- Rack::Requestのhost/hostname/authorityの実装をリワーク
+  #hostと#host_with_portは角括弧でフォーマットされた IPv6 アドレスを正しく返すように変更
+    - RFC 3986にて定義
+- Rack::Builderでの構文解析オプションの最初の#\ 行が非推奨化
 
 [Removed]
 - Directory#pathを削除
