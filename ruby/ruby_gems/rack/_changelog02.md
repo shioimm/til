@@ -94,6 +94,7 @@
 
 ## 2020
 ### 01-10
+#### 01-10
 [Added]
 - SameSite=None Cookieをサポート
 - ヘッダの追加
@@ -150,3 +151,122 @@
 - ヘルプに出力される推奨サーバーオプションからMongrelを削除
 - HISTORY.mdとNEWS.mdをCHANGELOG.mdに移動
 - CHANGELOGの更新
+
+### 01-12
+#### 2.1.1
+- Rack::ServerのデフォルトミドルウェアからRack::Chunkedを削除
+- SessionId#to_sに依存するコードのサポートをrestore
+
+### 01-27
+#### 2.1.2
+- 複数のファイルのマルチパートパーサーを修正
+  - サービス拒否を防ぐため
+- Rack::Builder#useのキーワード引数を修正
+- Content-Lengthが0の場合、Rack::Deflaterでデフレーターをスキップするように変更
+- SessionHash#transform_keysを削除
+- HashクラスとSessionクラスをラップするto_hashメソッドを追加
+- 要求されたセッションIDキーが見つからない場合の処理を追加
+
+### 02-08
+#### 2.2.0
+[SPEC Changes]
+- rack.sessionリクエスト環境エントリはto_hashに対応し、freezeされていないHashを返す必要がある
+- リクエスト環境はfreezeできない
+- リクエスト環境でASCII以外の文字を持つCGIの値はASCII-8BITエンコーディングを使用しなければならない
+- SERVER_NAME、SERVER_PORT、HTTP_HOSTに関するSPEC/lintを改善
+
+[Added]
+- rackupが複数の`-r`オプションをサポート
+  - 利用時はすべての引数を必要とする
+- サーバーが:requireオプションでrequireするパスの配列をサポート
+- ファイルはmultipart Rangeリクエストに対応
+- Multipart::UploadedFileは、:filename と:io オプションを使用したIOライクなオブジェクトをサポート
+  - ファイルシステムを使用する代わり
+- Multipart::UploadedFileが位置引数に加えてキーワード引数:path,:content_type,:binaryをサポート
+- Staticがアプリを呼び出すための:cascade オプションをサポート
+  - 一致するファイルがない場合
+- Session::Abstract::SessionHash#digの追加
+- スResponse.[]とMockResponse.[]の追加
+  - ステータス、ヘッダ、ボディを使ってインスタンスを作成するためのメソッド
+- Rack::Responseの便利なキャッシュとcontent-typeメソッドを追加
+
+[Changed]
+- Request#paramsでEOF Errorをrescueしないように変更
+- ディレクトリがストリーミングアプローチを使用するように変更
+  - 大規模なディレクトリのファーストバイトまでの時間を大幅に改善
+- ディレクトリがルートディレクトリインデックスに親ディレクトリリンクを含まないように変更
+- QueryParser#parse_nested_queryが新しいクラスで例外を再発行する際、元のバックトレースを使用するよう変更
+- ConditionalGetについて、If-None-MatchヘッダとIf-Modified-Sinceヘッダの両方が提供されている場合
+  RFC 7232の優先順位に従うよう変更
+- `.ru`ファイルが、frozen_stringリテラルマジックのコメントに対応するよう変更
+- 定数をロードする際、内部ファイルの代わりにautoloadに依存するように変更
+  また'rack/...' だけでなく'rack'を必要とするように変更
+- レスポンスがキャッシュされていない場合もETagは送信し続けるよう変更
+- Request#host_with_portが欠けているポートや空のポートに対するコロンを含まないように変更
+- すべてのハンドラがオプションのハッシュ引数の代わりにキーワード引数を使用するように変更
+- Rangeリクエストを扱うファイルがto_pathをサポートするボディを返さないように変更
+  - Rangeリクエストが正しく処理されるようにするため
+- Multipart::Generatorについて、
+  パスを持つファイルの場合はContent-Length、
+  UploadedFileインスタンスがある場合はContent-Dispositionファイル名のみを含むよう変更
+- Request#ssl?はwssスキーム(secure websockets)においてtrueになるよう変更
+- Rack::HeaderHashがデフォルトでメモ化されるよう変更
+- Rack::Directoryでルートディレクトリ内のディレクトリ移動を許可するように変更
+- サーバーの設定によりでエンコーディングをソートするよう変更
+- Rack::Requestのhost/hostname/authorityの実装をリワーク
+  #hostと#host_with_portは角括弧でフォーマットされた IPv6 アドレスを正しく返すように変更
+    - RFC 3986にて定義
+- Rack::Builderでの構文解析オプションの最初の#\ 行が非推奨化
+
+[Removed]
+- Directory#pathを削除
+  - 常にnilを返しており使用されていなかったため
+- BodyProxy#eachを削除
+  - Ruby 1.9.3のバグを回避するためだけに使用されていたため
+- URLMap::INFINITYとURLMap::NEGATIVE_INFINITYを削除
+  - 代わりにFloat::INFINITYを使用
+- Rack::Fileの非推奨化
+- Ruby 2.2のサポートを解除
+  - EOLを過ぎているため
+- Rack::Files#response_bodyを削除
+  - 実装が壊れていたため
+- SERVER_ADDRを削除
+  - 元々SPECに含まれていなかった
+
+[Fixed]
+- ディレクトリがglobメタ文字を含むルートパスを正しく処理するように修正
+- Cascadeが呼び出しごとに新しいレスポンスオブジェクトを使用するよう変更
+  - アプリがない状態で初期化された場合
+- Ruby 2.7+において、BodyProxyがキーワード引数をBodyオブジェクトに正しく委譲するように修正
+- BodyProxy#methodがBodyオブジェクトに委譲されたメソッドを正しく処理するように修正
+- Request#hostとRequest#host_with_portがIPv6 アドレスを正しく処理するように修正
+- レスポンスハイジャックの際、rack.hijackがvalidなオブジェクトで呼び出されているかどうかを
+  Lintでチェックするよう修正
+- Response#writeがContent-Lengthを正しく更新するよう修正
+  -レスポンスボディで初期化された場合
+- CommonLoggerがロギング時にSCRIPT_NAMEを含むよう修正
+- Utils.parse_nested_queryが空のクエリを正しく処理するように修正
+  - ハッシュの代わりにparamsクラスの空のインスタンスを使用する
+- ディレクトリがリンクのパスを正しくエスケープするように修正
+- Request#delete_cookieと、それに関連するUtilsメソッドが
+  同じ呼び出しで:domainオプション・:pathオプションを処理するように修正
+- Request#delete_cookieと、それに関連するUtilsメソッドが
+  :domainオプション・:pathオプションに完全一致するように修正
+- gzippedされたファイルのリクエストが304のレスポンスを持っている場合、
+  Staticがヘッダを追加しないように修正
+- ContentLengthhがto_aryに応答していないボディに対しても
+  Content-Lengthレスポンスヘッダを設定するように修正
+- ThinハンドラがThin::Controller::Controllerに直接渡されるオプションをサポート
+- WEBrickハンドラが:BindAddress オプションを無視しないように修正
+- ShowExceptionsが無効なPOSTデータを処理するよう修正
+- Basic認証において、パスワードが空の場合でもパスワードが要求されるように修正
+- LintがSPECごとに、レスポンスが3要素から成る配列であることをチェックするように修正
+- WEBrickハンドラを使用する際に:SSLEnableオプションを使用できるように修正
+- バッファリング時、バッファリングしてからレスポンスボディを閉じるよう修正
+- Cookieを解析するときに区切り文字として`;`を受け入れるよう修正
+- Utils::HeaderHash#clearは名前のマッピングもクリアするよう修正
+- nilを渡す`Rack::Files.new`によってRailsの現在のActiveStorage::FileServerの実装が修正された
+
+[Documentation]
+- CHANGELOGを更新
+- CONTRIBUTINGを追加
