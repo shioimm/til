@@ -33,12 +33,14 @@ end
 - 参照: [6 コールバックの停止](https://railsguides.jp/active_record_callbacks.html#%E3%82%B3%E3%83%BC%E3%83%AB%E3%83%90%E3%83%83%E3%82%AF%E3%81%AE%E5%81%9C%E6%AD%A2)
 - コールバックに`throw :abort`を記述することで操作を停止し、ロールバックを行うことができる
 ```ruby
-before_destroy
-  if self.associated_records.present?
+before_destroy :bitten_biscuit?
+
+def bitten_biscuit?
+  if self.biscuit.bitten?
     throw :abort
   end
 end
 
 # 使い所
-# レコードが関連レコードを持っていない場合のみ削除を許容する
+# 不可逆的な処理を行った後のレコードを削除したくない場合など
 ```

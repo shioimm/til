@@ -270,3 +270,25 @@
 [Documentation]
 - CHANGELOGを更新
 - CONTRIBUTINGを追加
+
+### 02-09
+#### 2.2.1
+[Fixed]
+- Rack::Request#ipをリワーク
+  - 空の forwarded_for を扱うため
+
+### 02-11
+#### 2.2.2
+[Fixed]
+- Rack::Request#hostの値が間違っていたため修正
+- Rack::Handler::Thinの実装を元に戻すよう修正
+- "unused variable"の警告を防ぐために二重代入を再び適用
+- セッションプールにおけるsame_siteオプションの扱いを修正
+
+### Unreleased
+#### 2.3.0
+[Changed]
+- Rack::Request#hostおよびRack::Request#hostname周辺の検証を緩和
+
+[Fixed]
+- 最初に委譲を必要とせずにRack::Session::Cookieにアクセスした場合のNoMethodErrorを回避
