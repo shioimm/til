@@ -10,3 +10,8 @@
 ## `Rack::Builder#call`
 - このビルダのインスタンスで生成されたRackアプリケーションが呼ばれる
   - Rackアプリケーションは再構築されるたびにウォームアップコード (ある場合) を実行する
+```ruby
+    def call(env)
+      to_app.call(env)
+    end
+```

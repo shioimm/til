@@ -13,6 +13,29 @@
 - 各アプリケーションを順番に呼び出す
 - カスケードを必要とするステータスを使用している場合、次のアプリケーションを試行する
 - すべてのレスポンスがカスケードを必要とする場合は最後のアプリからのレスポンスを返す
+```ruby
+    def call(env)
+      return [404, { CONTENT_TYPE => "text/plain" }, []] if @apps.empty?
+      result = nil
+      last_body = nil
+
+      @apps.each do |app|
+        # The SPEC says that the body must be closed after it has been iterated
+        # by the server, or if it is replaced by a middleware action. Cascade
+        # replaces the body each time a cascade happens. It is assumed that nil
+        # does not respond to close, otherwise the previous application body
+        # will be closed. The final application body will not be closed, as it
+        # will be passed to the server as a result.
+        last_body.close if last_body.respond_to? :close
+
+        result = app.call(env)
+        return result unless @cascade_for.include?(result[0].to_i)
+        last_body = result[2]
+      end
+
+      result
+    end
+```
 
 ### 参考
 #### X-Cascade header
