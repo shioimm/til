@@ -112,6 +112,14 @@ Content-Security-Policy: 指定したいポリシー
 - 参照: [Strict-Transport-Security](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Strict-Transport-Security)
 - サイトからブラウザに対してHTTPではなくHTTPSを用いて通信を行うよう指示する
 
+## Trailer
+- 参照: [Trailer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Trailer)
+- メッセージボディの送信中に動的に生成される可能性のあるメタデータを提供するため、
+  チャンク化されたメッセージの最後に追加のフィールドを含めることを送信者に対して許可する
+```
+Trailer: header-names
+```
+
 ## Vary
 - 引用: Webを支える技術 山本陽平・著
 - サーバーがコンテントネゴシエーションを行えるヘッダを示す

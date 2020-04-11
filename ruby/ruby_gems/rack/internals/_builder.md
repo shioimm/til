@@ -7,6 +7,11 @@
   - +run+ -> アプリケーションにディスパッチする
   - +map+ -> Rack::URLMapを便利に構築する
 
-## 詳細
-- `Rack::Builder#call`によって、このビルダのインスタンスで生成されたRackアプリケーションが呼ばれる
+## `Rack::Builder#call`
+- このビルダのインスタンスで生成されたRackアプリケーションが呼ばれる
   - Rackアプリケーションは再構築されるたびにウォームアップコード (ある場合) を実行する
+```ruby
+    def call(env)
+      to_app.call(env)
+    end
+```
