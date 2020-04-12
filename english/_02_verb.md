@@ -13,11 +13,11 @@
   - Sorry, nothing comes to mind at the moment.
 
 ### go
-- 元の場所から出て行き進んでいく
+- 元の場所から出て行く
   - Come on kids, it's time for us to go.
   - The pain will go soon.
   - It looks like it's about to go. -> 壊れる
-- 元の場所から出て行き進んでいく -> (何かが)進んでいく
+- 元の場所から出て行く -> 進んでいく
   - How is your new job going?
 
 ### turn
