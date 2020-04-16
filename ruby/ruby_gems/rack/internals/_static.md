@@ -8,7 +8,7 @@
   Rack::Files オブジェクトを使用して提供するミドルウェア
   - これによりRackスタックは動的ファイルおよび静的ファイルの両方を提供することができる
 
-## `Rack::Static`
+## `Rack::Static#call`
 ```ruby
     def call(env)
       path = env[PATH_INFO]

@@ -6,7 +6,7 @@
 - 空のレスポンスをキャッチし、エラーページに置き換えるミドルウェア
   - 追加の詳細は`rack.showstatus.detail`にてHTMLで表示できる
 
-## `Rack::ShowStatus`
+## `Rack::ShowStatus#call`
 ```ruby
     def call(env)
       status, headers, body = @app.call(env)
