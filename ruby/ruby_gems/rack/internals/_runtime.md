@@ -1,6 +1,7 @@
 # Rack::Runtime
 - 引用: [rack/lib/rack/runtime.rb](https://github.com/rack/rack/blob/master/lib/rack/runtime.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
 - リクエストの処理にかかった時間を示す"X-Runtime"ヘッダをレスポンスに設定するためのミドルウェア

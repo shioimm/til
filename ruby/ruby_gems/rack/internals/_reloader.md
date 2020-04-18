@@ -1,6 +1,7 @@
 # Rack::Reloader
 - 引用: [rack/lib/rack/reloader.rb](https://github.com/rack/rack/blob/master/lib/rack/reloader.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
 - ファイルが変更されたとき、ファイルをリロードするためのミドルウェア

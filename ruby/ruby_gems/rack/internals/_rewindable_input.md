@@ -1,6 +1,7 @@
 # Rack::RewindableInput
 - 引用: [rack/lib/rack/rewindable_input.rb](https://github.com/rack/rack/blob/master/lib/rack/rewindable_input.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
 - テンポラリファイルバッファを使用して任意のIOオブジェクトを巻き戻し可能にするヘルパー

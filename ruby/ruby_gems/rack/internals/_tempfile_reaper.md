@@ -1,6 +1,7 @@
 # Rack::TempfileReaper
 - 引用: [rack/lib/rack/tempfile_reaper.rb](https://github.com/rack/rack/blob/master/lib/rack/tempfile_reaper.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
 - リクエスト中に作成された一時ファイルを追跡して削除するミドルウェア
