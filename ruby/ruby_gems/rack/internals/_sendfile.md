@@ -1,6 +1,7 @@
 # Rack::Sendfile
 - 引用: [rack/lib/rack/sendfile.rb](https://github.com/rack/rack/blob/master/lib/rack/sendfile.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
 - ファイルシステムのパスに合わせて最適化されたファイル提供を行うWebサーバーを操作するミドルウェア

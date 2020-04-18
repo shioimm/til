@@ -1,5 +1,6 @@
 # CHANGELOG 2.0.0.rc -> 2.3.0
 - 引用: [CHANGELOG](https://github.com/rack/rack/blob/master/CHANGELOG.md)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 2016
 ### 06-30
