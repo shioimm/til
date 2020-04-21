@@ -1,4 +1,10 @@
 # Utility
+### コントローラーからViewHelperを呼びたい
+- `view_context`を使用する
+```ruby
+view_context.time_ago_in_words(updated_at)
+```
+
 ### `rescue_from`
 - controller内で発生した例外を補足する
 
