@@ -1,6 +1,12 @@
 # 動詞
 - 引用: NHKラジオ英会話2019年6月号
 
+### arrived
+- 目的地に足を踏み入れ到達する
+  - Most of the guests have already arrived.
+  - We should arrived at the hotel by 6:30.
+  - We finally arrived at the destination. Exhausted and famished.
+
 ### bring
 - 持って来る、やってくる(<- come)
   - He has brought lots of happiness into my life.
@@ -28,6 +34,22 @@
   - Her dream of becoming a pro golfer has finally come true.
   - When do the cherry tries come into blossom.
 
+### creep
+- 抜き足差し足忍び足
+  - I hate it when you to creep up on me.
+  - He crept up to his little sister, and frighten her to death.
+
+### drive
+- 力を加えて動かす
+  - My boyfriend is driving me crazy.
+  - You need good hammer to drive the stakes into the ground.
+  - Driven by passion for fashion, she launched own clothing company.
+
+### finish
+- 完了・完遂
+  - Have you finished the report?
+  - The Yoga class begins at 10:30, and finishes at 12:00.
+
 ### go
 - 元の場所から出て行く
   - Come on kids, it's time for us to go.
@@ -39,6 +61,21 @@
   - Everything went wrong.
   - She is quitting the job? Has she gone crazy?
 
+### get
+- 手に入れる -> 動いて手にいれる
+  - I get lunch.
+  - I'll get some milk and eggs on the way home.
+
+### give up
+- 上(up)に放り投げる -> 失う寂しさ
+  - I wanted to do a 100 pushups, but I gave up after 10.
+
+### have
+- 近くにある
+  - I already had lunch.
+  - This hotel has 200 guestrooms.
+  - I had an important meeting with some japanese client this afternoon.
+
 ### leave
 - 離れていく -> (離れていくもの視点)去る・出発する・出ていく・辞める
   - Why did you leave your job?
@@ -47,6 +84,23 @@
   - You left your key on the table.
   - I left you the shopping list on the kitchen table.
   - I told you to leave the cat alone.
+
+### make
+- つくる
+  - I made lunch.
+
+### quite
+- やめて自由になる
+  - I quit my job.
+
+### reach
+- 手を伸ばして対象物に触れる
+  - We failed to reach the agreement.
+- 手を伸ばして対象物に触れる -> 到着する
+  - We should reach the hotel by 6:30.
+  - It took a 6 hour to reach the top of Mt.Fuji.
+- 手を伸ばして対象物に触れる -> 連絡する
+  - Where can I reach you?
 
 ### run
 - 走る
@@ -60,10 +114,29 @@
   - We've run out of ideas.
   - Hurry up. We're running out of time.
 
+### sneak
+- こっそり、こそこそ
+  - I managed to sneak out.
+- こっそり、こそこそ -> 見られないように行動する
+  - I sneaked one of my mom's brownies out of the kitchen.
+  - I sneaked into the private party, and nobody notice me at all.
+
+### stalk
+- そっと近づく、つきまとう
+  - The cat stalked the bird.
+  - The police arrested the guy who stalking my sister.
+
+### stop
+- それまで続けていた活動を継続しない -> やめる、止まる
+  - Everyone stopped chatting when the author arrived.
+  - Luckily, the rain stapped. And we were able to have our picnik.
+
 ### take
 - 手に取って持っていく(<- go)
   - I'll take you to the airport.
   - Don't forget to take your passport.
+- 手に取って選ぶ
+  - I think I'll take the pink sweater.
 
 ### turn
 - くるっと向きを変える
