@@ -10,7 +10,7 @@ loop do
       # 受信したデータを処理し、次の接続を試行する
       data.conn.read_nonblock(4096)
       process(data)
-    rescue Errno::EAGAIN
+    rescue Errno::EAGAIN # リソースが一時的に利用不可
     end
   end
 end
