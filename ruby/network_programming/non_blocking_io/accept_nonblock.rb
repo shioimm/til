@@ -8,7 +8,7 @@ server = TCPServer.new(4481)
 loop do
   begin
     connection.server.accept_nonblock
-  rescue Errno::EAGAIN
+  rescue Errno::EAGAIN # リソースが一時的に利用不可
     retry
   end
 end
