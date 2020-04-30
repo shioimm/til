@@ -1,12 +1,14 @@
 # Rack::Static
 - 引用: [rack/lib/rack/static.rb](https://github.com/rack/rack/blob/master/lib/rack/static.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 引用: [RackReferenceJa](https://route477.net/w/RackReferenceJa.html)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
+- 指定したディレクトリだけ静的ファイルを表示させるミドルウェア
 - オプションで渡されるURLプレフィックスやルートマッピングに基づき、
   静的ファイル(javascriptファイル、画像、スタイルシートなど) へのリクエストを遮断し、
-  Rack::Files オブジェクトを使用して提供するミドルウェア
+  Rack::Files オブジェクトを使用して提供する
   - これによりRackスタックは動的ファイルおよび静的ファイルの両方を提供することができる
 
 ## `Rack::Static#call`

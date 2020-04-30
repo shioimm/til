@@ -1,9 +1,11 @@
 # Rack::ShowExceptions
 - 引用: [rack/lib/rack/show_exceptions.rb](https://github.com/rack/rack/blob/master/lib/rack/show_exceptions.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 引用: [RackReferenceJa](https://route477.net/w/RackReferenceJa.html)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
+- アプリケーションで例外が起きたときに詳細なエラーページを表示する(開発用)
 - Rackがラップしたアプリケーションから発生したすべての例外を捕捉する
 - ソースファイルやクリック可能なコンテキスト、Rack環境全体、リクエストデータなど
   有用なバックトレースを表示する
