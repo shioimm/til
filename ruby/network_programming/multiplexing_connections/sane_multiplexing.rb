@@ -1,7 +1,7 @@
 # 引用: Working with TCP Sockets (Jesse Storimer)
 # Multiplexing Connections
 
-for_reading, for_writing = [[], []]
+for_reading, for_writing = [[<TCPSocket>, <TCPSocket>, <TCPSocket>], [<TCPSocket>, <TCPSocket>, <TCPSocket>]]
 timeout = 10
 
 loop do
