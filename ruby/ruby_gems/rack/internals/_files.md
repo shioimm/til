@@ -1,10 +1,11 @@
 # Rack::Files
 - 引用: [rack/lib/rack/file.rb](https://github.com/rack/rack/blob/master/lib/rack/file.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 引用: [RackReferenceJa](https://route477.net/w/RackReferenceJa.html)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
-- 静的ファイルを提供するミドルウェア
+- 静的ファイルを表示させるミドルウェア
 - Rackリクエストのパスに応じて、与えられた+root+ディレクトリ以下のファイルを提供する
 ```
 例:

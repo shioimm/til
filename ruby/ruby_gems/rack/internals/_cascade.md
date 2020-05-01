@@ -1,13 +1,14 @@
 # Rack::Cascade
 - 引用: [rack/lib/rack/cascade.rb](https://github.com/rack/rack/blob/master/lib/rack/cascade.rb)
 - 引用: [rack/README.rdoc](https://github.com/rack/rack/blob/master/README.rdoc)
+- 引用: [RackReferenceJa](https://route477.net/w/RackReferenceJa.html)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 概要
 - アプリケーションが見つからない場合、またはメソッドがサポートされていないレスポンスを返した場合、
   追加のRackアプリケーションを試行するためのヘルパー
-- 複数のアプリケーションに対してリクエストを試みる
-  - ステータスコードが404や405ではない(または設定されたステータスコードのリストに含まれる)、最初のレスポンスを返す
+- 複数のアプリケーションに対して、ステータスコード に応じて順番にリクエストを試みる
+  - ステータスコードが404や405ではない(または設定されたステータスコードのリストに含まれる)場合、最初のレスポンスを返す
   - 試したすべてのアプリケーションが設定されたステータスコードのいずれかを返した場合、最後のレスポンスを返す
 
 ## `Rack::Cascade#call`
