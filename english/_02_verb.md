@@ -19,6 +19,17 @@
   - Mosquitoes carry malaria.
   - This elevator can carry up to 10 people.
 
+### change
+- 変化
+  - My friend Kumiko has changed a lot.
+  - I wish I could change places with him just for a day.
+- 変化 -> 別のものに変更する
+  - It's amazing how caterpillars change into butterflies.
+
+#### change into
+- 変化 -> なる
+  - Tadpoles change into frogs.
+
 ### come
 - やって来る(話題になっている場所を中心に考える)
   - I'm coming.
@@ -39,11 +50,23 @@
   - I hate it when you to creep up on me.
   - He crept up to his little sister, and frighten her to death.
 
+### develop
+- 時間をかけて(内面から)形作る・現れる
+  - Children develop better with good nutrition.
+  - The discussion developed into a bitter argument.
+  - I'm in chaerge of developping products in a beauty company.
+  - It's difficult to develop close friendships.
+
 ### drive
 - 力を加えて動かす
   - My boyfriend is driving me crazy.
   - You need good hammer to drive the stakes into the ground.
   - Driven by passion for fashion, she launched own clothing company.
+
+### exchange
+- 二つのものの交換
+  - They exchanged greetings.
+  - Is a hotel best place to exchange the money?
 
 ### finish
 - 完了・完遂
@@ -88,6 +111,25 @@
 ### make
 - つくる
   - I made lunch.
+
+### place
+- 正確な場所にちゃんと置く
+  - Place your hand into the mouth slowly.
+  - She placed wad of cash in my hand.
+
+### locate
+- 位置付ける -> 位置に焦点
+  - We're going to locate our new branch right in the city center.
+  - I can't locate the village on this old map.
+  - The police are doing all they can to locate the missing girl.
+
+### put
+- 何かをどこかにポン
+  - Don't put any milk in my tea.
+  - Your idea is good but difficult to put into practice.
+  - We put lots of balloons on the ceiling for Judy's birthday.
+  - To put it blankly, you are not up to the job.
+  - If you don't wear a sheetbelt, you put your life at risk.
 
 ### quite
 - やめて自由になる
