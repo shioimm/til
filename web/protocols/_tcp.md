@@ -33,3 +33,16 @@
 - クライアントがKeepAlive接続を要求する際はConnectionリクエストヘッダをkeep-aliveに設定する
 - サーバーがKeepAlive接続を行う場合はConnectionレスポンスヘッダをkeep-aliveに設定する
   - サーバーがKeepAlive接続を行わない場合はConnectionレスポンスヘッダをcloseに設定する
+
+## TCP FAST OPEN
+- 参照: [TCP FAST OPENとは？](https://blog.redbox.ne.jp/tcp-fast-open-cdn.html)
+- TCPレイヤーにおける高速化の手法のひとつ
+- 通信確立時の1RTTを節約する
+
+### 手法
+- 初回通信開始時、クライアントからSYNにFast Open Cookieを付けてハンドシェイクを行う
+  - サーバーはTCPオプション34番でTFOクッキーを返す
+  - クライアントはTFOクッキーをキャッシュする
+- 初回以降の通信時、クライアントはSYNパケットにTFOクッキーとリクエストデータを含めて送信する
+  - サーバーはクライアントから送られてきたTFOクッキーと自身の生成したTFOクッキーを比較検証
+  - 正しければサーバーはリクエストデータをアプリケーションに渡し、クライアントにはSYN-ACKを返却

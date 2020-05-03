@@ -7,6 +7,7 @@
 - 参照: [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
 - 参照: [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
 - 参照: よくわかるHTTP/2の教科書P76-78
+- 参照: [【招待講演】最速ウェブサーバの作り方　奥 一穂氏](https://www.youtube.com/watch?v=Iu5Uynq7ubo&feature=youtu.be)
 
 ## HTTP/2とは
 - HTTP/1.xのセマンティクスを変更せず、より効率よくHTTPメッセージを送信するためのプロトコル
@@ -16,6 +17,12 @@
 ### SPDY
 - Googleで開発されたHTTP/2の前身的なプロトコル
 
+## 背景
+- HTTP/1.1の課題
+  - リクエストの処理数がTCPの数に依存している
+  - Webページが必要とするリソースの数だけリクエストが必要
+  - ヘッダーのデータサイズの大きさ
+
 ## 目的
 - Webページのリソースの増加(数、サイズ)に伴うパフォーマンス改善
   - リクエストとレスポンスの多重化によるレイテンシの低減
@@ -23,14 +30,11 @@
   - リクエストの優先順位付けとサーバプッシュ機能の追加
 - 「HTTPメッセージのセマンティクスを維持し、パフォーマンスとセキュリティを改善する」
 
-## 主な仕様
-- HTTPメッセージの多重化
-  - バイナリベース
-  - ストリームの導入
-- コネクションの集約
-- フロー制御
-- ヘッダの圧縮(HPACK)
-- サーバプッシュ機能
+## Key feature
+- binary protocol
+- header compression
+- multiplexing
+- prioritization
 
 ## ポートとスキーマ
 - HTTP/1.0との互換性を保ち、使用するデフォルトのポート番号はhttpの場合80番、httpsの場合443番のまま
