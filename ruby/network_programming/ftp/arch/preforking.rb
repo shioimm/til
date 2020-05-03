@@ -42,7 +42,7 @@ module FTP
     def run
       child_pids = []
 
-      # CONCURRENCYの回数分spawn_child メソッドを呼び出す
+      # CONCURRENCYの回数分spawn_childメソッドを呼び出す
       CONCURRENCY.times do
         child_pids << spawn_child # spawn_childは新しいプロセスをforkし、一意のpidを返す
       end

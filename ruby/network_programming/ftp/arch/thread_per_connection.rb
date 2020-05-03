@@ -61,7 +61,7 @@ module FTP
 
         # スレッドを生成
         Thread.new do
-          respond "220 OHAI"
+          conn.respond "220 OHAI"
 
           # スレッドはインスタンスの内部状態を共有するため
           # 各スレッドがそれぞれのConnectionオブジェクトを取得するようにする
