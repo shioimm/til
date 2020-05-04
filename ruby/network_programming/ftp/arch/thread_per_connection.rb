@@ -26,21 +26,27 @@ module FTP
     CRLF = "\r\n"
 
     def gets
+      # 現在のクライアント接続を取得
+      # デリミタを明示的に渡す
       client.gets(CRLF)
     end
 
     def respond(message)
+      # フォーマットしたFTPレスポンスを書き出す
       client.write(message)
+      # メッセージの終了を書き込む
       client.write(CRLF)
     end
 
     def close
+      # 接続を閉じる
       client.close
     end
   end
 
   class ThreadPerConnection
     def initialize(port = 21)
+      # 実際にクライアント接続を受け入れるソケットを開く
       @control_socket = TCPServer.new(port)
       trap(:INT) { exit }
     end
@@ -55,16 +61,18 @@ module FTP
 
         # スレッドを生成
         Thread.new do
-          respond "220 OHAI"
+          conn.respond "220 OHAI"
 
           # スレッドはインスタンスの内部状態を共有するため
           # 各スレッドがそれぞれのConnectionオブジェクトを取得するようにする
           handler = CommandHandler.new(conn)
 
           loop do
+            # クライアントソケットから改行ごとにリクエストメッセージを取得
             request = conn.gets
 
             if request
+              # 受信したリクエストをCommandHandlerオブジェクトに送り、レスポンスメッセージを取得
               conn.respond handler.handle(request)
             else
               conn.close
@@ -84,3 +92,4 @@ server.run
 # スレッドの方がリソースが軽いため、より多くのスレッドを使用できる
 # ロックや共有状態がなく、接続同士を混同することがない
 # アクティブなスレッドの数を制限がないため、スレッド数の増加に伴いシステムに負担がかかる
+# ex. Mongrel, WEBrick
