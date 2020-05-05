@@ -125,7 +125,7 @@ module FTP
             begin
               # ソケットからデータを読み込み、
               # 該当の接続に対してon_dataメソッドを起動
-              data = socket.read_nonblock(CHUNK_SIZE)
+              data = socket.read_nonblock(CHUNK_SIZE) # CHUNK_SIZEまで読み込み、データがなければErrno::EAGAINを送出
               connection.on_data(data)
             rescue Errno::EAGAIN # 読み取りがブロックされた場合、イベントを通過させる
             rescue EOFError # クライアントが切断された場合、@handles Hashからエントリを削除

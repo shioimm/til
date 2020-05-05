@@ -21,8 +21,8 @@ module CloudHash
     end
 
     def handle(connection)
-      request = connection.read # コネクションから読み込み
-      connection.write process(request) # コネクションにprocessハッシュを返す
+      request = connection.read # データ = 接続ソケットから読み込んだリクエストメッセージ
+      connection.write process(request) # データからprocessハッシュを生成し接続ソケットに書き込む
     end
 
     def process(request)

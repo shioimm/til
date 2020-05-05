@@ -24,7 +24,7 @@ def main
   ssl_server = OpenSSL::SSL::SSLServer.new(server, ctx)
   connection = ssl_server.accept
 
-  connection.write('Bah now')
+  connection.write('Bah now') # 接続ソケットにデータを書き込む
   connection.close
 end
 

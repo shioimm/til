@@ -27,9 +27,9 @@ module FTP
     end
 
     def respond(message)
-      # フォーマットしたFTPレスポンスを書き出す
+      # 接続ソケットにフォーマットしたFTPレスポンスを書き込む
       @client.write(message)
-      # メッセージの終了を書き込む
+      # 接続ソケットにメッセージの終了を書き込む
       @client.write(CRLF)
     end
 

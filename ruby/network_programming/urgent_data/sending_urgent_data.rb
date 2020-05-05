@@ -8,7 +8,7 @@ require 'socket'
 
 socket = TCPSocket.new('localhost', 4481)
 
-socket.write('first')
-socket.write('second')
+socket.write('first') # 接続ソケットにデータを書き込む
+socket.write('second') # 接続ソケットにデータを書き込む
 
 socket.send('!', Socket::MSG_OOB) # Process out-of-band data

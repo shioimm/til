@@ -19,5 +19,5 @@ rescue Errno::EINPROGRESS # ソケットがノンブロッキングであり、�
 rescue Errno::EISCONN # ソケットが既に接続されている => 接続が正常に完了
 end
 
-socket.write('ohai')
+socket.write('ohai') # 接続ソケットにデータを書き込む
 socket.close

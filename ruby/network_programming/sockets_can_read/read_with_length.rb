@@ -7,7 +7,7 @@ one_kb = 1024
 
 Socket.tcp_server_loop(4481) do |connection|
   # 読み込むデータの最小長を指定する
-  while data = connection.read(one_kb) do
+  while data = connection.read(one_kb) do # 接続ソケットからEOFあるいはone_kbまで読み込む
     puts data
   end
 

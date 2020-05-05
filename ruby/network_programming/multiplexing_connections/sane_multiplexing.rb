@@ -13,7 +13,7 @@ loop do
   # 読み込みの用意ができたソケットを取得
   readable_connections = ready[0]
   readable_connections.each do |conn|
-    data = conn.readpartial(4096)
+    data = conn.readpartial(4096) # 接続ソケットからEOFか4096byteに至るまで読み込む
     process(data)
   end
 end
