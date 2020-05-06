@@ -6,28 +6,32 @@
 /* 標準入出力を行うためのヘッダーファイルを読み込む */
 #include <stdio.h>
 
-main() {
+int main()
+{
     int x = 10;    /* %d */
     float y = 1.0; /* %f */
     char z = 'a';  /* %c */
 
     printf("x = %d, y = %f, z = %c\n", x, y, z);
+
+    return 0;
 }
 ```
-- 実行時、ソースファイルを実効ファイルに変換する
+- 実行時、ソースファイルsample.cを実効ファイルsampleに変換する
 ```sh
-$ gcc -o sample.c
+$ gcc -o sample sample.c
 ```
 - 実効ファイルを呼び出す
 ```sh
-$ sample.c
+$ ./sample
 ```
 
 ## 条件分岐
 ```c
 #include <stdio.h>
 
-main() {
+int main()
+{
     /* if文 */
     int size = 10;
 
@@ -53,6 +57,8 @@ main() {
             printf("The character is something else.\n");
             break;
     }
+
+    return 0;
 }
 ```
 ```c
@@ -63,21 +69,25 @@ int getBigger(int x, int y) {
   return (x > y) ? x : y;
 }
 
-main() {
+int main()
+{
     int x = 1;
     int y = 2;
 
     int result;
     result = getBigger(x, y);
 
-    printf("%d\n", result)
+    printf("%d\n", result);
+
+    return 0;
 }
 ```
 ## ループ
 ```c
 #include <stdio.h>
 
-main() {
+int main()
+{
     /* while文 */
     int x = 0;
 
@@ -102,6 +112,8 @@ main() {
     }
 
     /* continue -> スキップ / break -> ループを抜ける */
+
+    return 0;
 }
 ```
 
@@ -124,13 +136,16 @@ void printHello(void) {
 }
 
 /* メイン関数(最初に読み込まれる) */
-main() {
+int main()
+{
     int result;
     result = addition(1, 1);
 
     printf("%d\n", result);
 
     printHello();
+
+    return 0; /* 慣習的に0を返す */
 }
 ```
 
@@ -145,10 +160,13 @@ void plusOne(void) {
     printf("x = %d\n", x);
 }
 
-main() {
+int main()
+{
   plusOne; /* -> 1 */
   plusOne; /* -> 2 */
   plusOne; /* -> 3 */
+
+  return 0;
 }
 ```
 
@@ -156,7 +174,8 @@ main() {
 ```c
 #include <stdio.h>
 
-main() {
+int main()
+{
     int x[3]; /* 領域を確保 */
 
     x[0] = 10:
@@ -169,6 +188,8 @@ main() {
     /* 要素数が同じ場合はint y[] = { 10, 20, 30 };でも可 */
 
     printf("%d\n", y[0]); /* -> 10 */
+
+    return 0;
 }
 ```
 
@@ -180,9 +201,56 @@ main() {
 char x[] = { "H", "e", "l", "l", "o", "\0" };
 char y[] = "Hello";
 
-main() {
+int main()
+{
   char z[] = "Hello";
 
   printf("%c\n", z[0]); /* -> H */
+
+  return 0;
 }
 ```
+
+## ポインタ
+- メモリアドレスの値を格納する変数
+```
+#include <stdio.h>
+
+int main()
+{
+    int x; /* アドレスa~a+4に、int型の値を格納する領域を確保 -> xと命名 */
+    x = 1; /* x領域に値1を代入する */
+
+    int *y; /* アドレスb~b+4に、「int型の値が格納された領域」を指しているアドレスを格納する領域を確保 -> yと命名 */
+    y = &x; /* yにxのアドレスを格納 */
+            /* & -> アドレス演算子 */
+
+    printf("%d\n", *y); /* アドレスが示している値を出力 */
+                        /* * -> 間接演算子 */
+
+    return 0;
+}
+```
+
+## 参照渡し
+- 関数の引数にアドレスを渡す -> 参照渡し
+- 関数の引数に直接値を渡す -> 値渡し
+```c
+#include <stdio.h>
+
+void plusOne(int *y) { /* 引数としてアドレスを受け取る */
+    *y = *y + 1;
+    printf("%d", y);
+}
+
+int main()
+{
+    int x = 1;
+    plusOne(&x); /* 引数としてアドレスを渡し、値に対して直接操作を行う */
+                 /* -> 2 */
+
+    return 0;
+}
+```
+- 引数に値ではなくアドレスを渡すことによりメモリを節約することができる
+- アドレスが保有している値を直接操作することにより破壊的操作を行うことができる
