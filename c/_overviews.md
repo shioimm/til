@@ -198,7 +198,7 @@ int main()
 #include <stdio.h>
 
 /* 文字列 = char型の配列 */
-char x[] = { "H", "e", "l", "l", "o", "\0" };
+char x[] = { 'H', 'e', 'l', 'l', 'o', '\0' };
 char y[] = "Hello";
 
 int main()
