@@ -16,7 +16,7 @@ begin
     # 与えられた要素の中から準備ができたソケットを配列の配列として返す
     IO.select(nil, [client])
   end
-rescue Errno::EAGAIN # リソースが一時的に利用不可
+rescue Errno::EAGAIN # ノンブロッキング操作がブロックされた場合
   IO.select(nil, [client])
   retry
 end

@@ -4,7 +4,7 @@
 require 'socket'
 
 Socket.tcp_server_loop(4481) do |connection|
-  # コネクションにデータを書き込む
+  # 接続ソケットにデータを書き込む
   connection.write('Welcome!')
   connection.close
 end

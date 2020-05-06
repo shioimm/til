@@ -9,6 +9,6 @@ Socket.tcp_server_loop(4481) do |connection|
   # 緊急データは通常のデータストリームと順番に結合される
   connection.setsockopt(:SOCKET, :OOBINLINE, true)
 
-  connection.readpartial(1024)
-  connection.readpartial(1024)
+  connection.readpartial(1024) # 接続ソケットからEOFか1024byteに至るまで読み込む
+  connection.readpartial(1024) # 接続ソケットからEOFか1024byteに至るまで読み込む
 end

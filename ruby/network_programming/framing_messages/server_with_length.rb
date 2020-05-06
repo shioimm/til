@@ -25,12 +25,12 @@ module CloudHash
 
     def handle(connection)
       # メッセージサイズを固定幅に詰め込んでunpack
-      packed_msg_length = connection.read(SIZE_OF_INT)
+      packed_msg_length = connection.read(SIZE_OF_INT) # 接続ソケットからEOFかSIZE_OF_INTまで読み込む
       msg_length = packed_msg_length.unpack('i').first
 
       # メッセージの長さを指定してメッセージ全文を取得
-      request = connection.read(msg_length)
-      connection.write process(request)
+      request = connection.read(msg_length) # データ = 接続ソケットからEOFかmsg_lengthまで読み込んだリクエストメッセージ
+      connection.write process(request) # 接続ソケットにデータを書き込む
     end
 
     def process(request)

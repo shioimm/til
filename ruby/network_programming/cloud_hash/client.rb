@@ -19,9 +19,9 @@ module CloudHash
 
     def self.request(string)
       @client = TCPSocket.new(host, port)
-      @client.write(string) # 渡された文字列をソケットに書き込む
+      @client.write(string) # 渡された文字列を接続ソケットに書き込む
       @client.close_write # 書き込み用のIOを閉じる
-      @client.read
+      @client.read # EOFまで読み込み
     end
   end
 end

@@ -53,8 +53,8 @@ module FTP
 
       when 'LIST'
         connection.respond "125 Opening data connection for file list"
-        result = Dir.entries(pwd).join(CRLF) # ディレクトリに含まれるファイルエントリ
-        @data_socket.write(result)
+        result = Dir.entries(pwd).join(CRLF) # データ = ディレクトリに含まれるファイルエントリ
+        @data_socket.write(result) # 接続ソケットにデータを書き込む
         @data_socket.close
         "226 Closing data connection, sent #{result.size} bytes"
 
