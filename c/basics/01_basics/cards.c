@@ -1,6 +1,6 @@
 /*
  * 引用: Head First C
- * 第1章 Cを始める コードマグネット
+ * 第1章 Cを始める
 */
 
 #include <stdio.h>
