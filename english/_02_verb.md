@@ -7,6 +7,11 @@
   - We should arrived at the hotel by 6:30.
   - We finally arrived at the destination. Exhausted and famished.
 
+### belong
+- ぴったりくる場所
+  - I don't belong here.
+  - I just found out that Helen and I belong to the same sport club.
+
 ### bring
 - 持って来る、やってくる(<- come)
   - He has brought lots of happiness into my life.
@@ -44,6 +49,12 @@
   - I hope your prediction comes true.
   - Her dream of becoming a pro golfer has finally come true.
   - When do the cherry tries come into blossom.
+
+### contain
+- リストに含む
+  - It includes a unique hotel near the inland sea.
+  - Today's set lunch includes salad & a drink.
+  - This movie contains scenes of violence.
 
 ### creep
 - 抜き足差し足忍び足
@@ -94,10 +105,30 @@
   - I wanted to do a 100 pushups, but I gave up after 10.
 
 ### have
-- 近くにある
+- 範囲内にある
   - I already had lunch.
   - This hotel has 200 guestrooms.
   - I had an important meeting with some japanese client this afternoon.
+- 範囲内にある -> 所有権の及ぶ範囲内にある
+  - I have a flat in London.
+- 範囲内にある -> 時間や選択が自分の手の及ぶ範囲内にある
+  - I have no time to chat.
+  - I don't want to lay off any wokers, but I don't have a choice.
+  - In Japan, we have a lot of rain in July.
+- 範囲内にある + 目的語 -> (実質の感覚を伴わない)行為
+  - Why don't we have some tea?
+  - You can have my old laptop if you like.
+  - We had a fantastic time on Calibian cruise.
+
+### include
+- 容器の中に入っている
+  - Each tablet contains enough vitamin C for a day.
+
+### involve
+- 強く引きつけ巻き込む
+  - Learning a foreign language necessarily involves making mistakes.
+  - Would you be willing to be involved in the project?
+  - Kids in this neighborhood often be come involved in crimes.
 
 ### leave
 - 離れていく -> (離れていくもの視点)去る・出発する・出ていく・辞める
@@ -112,10 +143,21 @@
 - つくる
   - I made lunch.
 
+### own
+- 所有者である
+  - I own this restaurant.
+  - That guy owns a chane of sushi restaurants. He is mega rich.
+
 ### place
 - 正確な場所にちゃんと置く
   - Place your hand into the mouth slowly.
   - She placed wad of cash in my hand.
+
+### possess
+- (大切なもの、非合法なもの、才能などを)持っている
+  - My father left me everything hee possessed.
+  - He attacked me like a man possessed. -> 悪魔に取り憑かれたように
+  - I'm not sure if she possesses the right qualifications for this job.
 
 ### locate
 - 位置付ける -> 位置に焦点
