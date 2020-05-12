@@ -3,6 +3,15 @@
 - メタ情報(head) + 内容・構造(body)
 - ブラウザはメタ情報を参考にしてWebページやタイトルを表示する
 
+### `<iframe>`要素
+- 参照: [\<iframe\>: インラインフレーム要素](https://developer.mozilla.org/ja/docs/Web/HTML/Element/iframe)
+- 入れ子になった閲覧コンテキストを利用して、現在のHTMLページに他のページを埋め込むための要素
+- `allow`属性
+  - 機能ポリシーの指定
+- `allowfullscreen`属性
+  - `Element.requestFullscreen()`を呼び出して全画面モードにすることができる場合true
+  - allow="fullscreen"と同じ
+
 ### `<object>`要素
 - 参照: [\<object\>](https://developer.mozilla.org/ja/docs/Web/HTML/Element/object)
 - 参照: [\<object\> 文書に外部リソースを埋め込む](http://www.htmq.com/html5/object.shtml)
