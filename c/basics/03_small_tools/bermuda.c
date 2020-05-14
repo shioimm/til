@@ -1,6 +1,6 @@
 /*
  * 引用: head first c
- * 第3章 小さなツールの作成
+ * 第3章 小さなツールの作成 3
 */
 
 #include <stdio.h>
@@ -31,7 +31,11 @@ int main()
 /*
  * 複数のプログラムを組み合わせて実行する
  * (bermudaの出力をパイプでgeo2jsonにつなぐ)
- * (./bermuda | ./geo2json) < gpsdata.csv
+ * (./bermuda | ./geo2json) < gpsdata.csv > output.json
+ *   1) bermudaがgpsdata.csvからデータを取り込む
+ *   2) bermudaが加工したデータをgeo2jsonに送る
+ *   3) geo2jsonがbermudaから送られたデータを取り込む
+ *   4) geo2jsonが加工したデータをoutput.jsonに送る
  * プログラムは同時に動作し、bermudaが出力を作成するとgeo2jsonで出力が使用できるようになる
  *
  * パイプライン

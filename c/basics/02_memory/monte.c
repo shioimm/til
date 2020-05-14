@@ -1,10 +1,13 @@
 /*
  * 引用: Head First C
- * 第2章 メモリとポインタ
+ * 第2章 メモリとポインタ 4
 */
 
 /*
- * 変数宣言に*がついている場合、その変数はポインタとなる
+ * 変数宣言に*がついている場合、その変数はポインタ変数
+ *   char masked_rader[] = "Alive";
+ *   char *jimmy = masked_rader;
+ *   jimmyとmasked_raderは同じメモリアドレスの別名
 */
 
 #include<stdio.h>
