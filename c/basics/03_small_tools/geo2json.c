@@ -1,6 +1,6 @@
 /*
  * 引用: head first c
- * 第3章 小さなツールの作成
+ * 第3章 小さなツールの作成 1
 */
 
 #include <stdio.h>
@@ -22,7 +22,7 @@ int main()
 
   /*
    * 各変数のアドレスに入力データを格納し、入力データ数を返す
-   * (アドレスに直接格納するため&が必要)
+   * scanf()には入力データのポインタを渡す必要がある
   */
   while (scanf("%f, %f, %79[^\n]", &latitude, &longitude, info) == 3) {
     if (started) {
@@ -45,7 +45,7 @@ int main()
 
     /*
      * 変数に格納された値を標準出力データストリームへ出力
-     * (アドレスではなく値を出力するため、&をつける必要はない)
+     * (データのアドレスではなく値を出力するため、&をつける必要はない)
     */
     fprintf(stdout, "{latitude: %f, longitude: %f, info: '%s'}", latitude, longitude, info);
   }
@@ -54,6 +54,12 @@ int main()
 
   return 0;
 }
+/*
+ * fprintf()はデータをデータストリーム(stdout, stderr)に送る
+ *   fprintf(stdout, ...) == printf(...)
+ * fscanf()はデータをデータストリーム(stdin)から取り込む
+ *   fscanf(stdin, ...) == scanf(...)
+*/
 
 /*
  * 入出力先を指定せずに実行

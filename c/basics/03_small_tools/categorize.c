@@ -1,6 +1,6 @@
 /*
  * 引用: head first c
- * 第3章 小さなツールの作成
+ * 第3章 小さなツールの作成 4
 */
 
 #include <stdio.h>
@@ -8,7 +8,7 @@
 #include <string.h>
 
 /*
- * ファイルの実行中に新しいデータストリームを作成する
+ * 新しいデータストリームを作成する
  *   FILE *in_file = fopen("input.txt", "r");   -> 読み込みモード
  *   FILE *out_file = fopen("output.txt", "w"); -> 書き込みモード
  *   ファイルはポインタで表される
@@ -32,6 +32,19 @@ int main(int argc, char *argv[])
     fprintf(stderr, "5つの引数を指定してください\n");
     return 1; /* エラーコード1によって終了 */
   }
+
+  /*
+   * 実行時にコマンドライン引数を渡す
+   *   ./categorize mermaid mermaid.csv Elvis elvis.csv the_rest.csv
+   *   [0]          [1]     [2]         [3]   [4]       [5]
+   *
+   *   argv[0] 実行コマンド
+   *   argv[1] 検索文字列1
+   *   argv[2] 出力先1
+   *   argv[3] 検索文字列2
+   *   argv[4] 出力先2
+   *   argv[5] その他の語の出力先
+  */
 
   FILE *in = fopen("spooky.csv", "r");
   FILE *file1 = fopen(argv[2], "w");
@@ -57,12 +70,4 @@ int main(int argc, char *argv[])
 
 /*
  * 1プロセスが持てるデータストリームは通常最大256個
-*/
-
-/*
- * 実行時にコマンドライン引数を渡す
- *   ./categorize mermaid mermaid.csv Elvis elvis.csv the_rest.csv
- *   コマンド 検索文字列 出力先 検索文字列 出力先 その他の語の出力先
- *   argv[0] argv[1] argv[2] argv[3] argv[4] argv[5]
- *   argv[0]は必ず実行コマンドになる
 */

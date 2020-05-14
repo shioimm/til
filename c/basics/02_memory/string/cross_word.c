@@ -1,6 +1,6 @@
 /*
  * 引用: Head First C
- * 第2.5章 文字列
+ * 第2.5章 文字列 3
 */
 
 #include <stdio.h> /* 標準入出力のためのヘッダファイル */
@@ -8,12 +8,13 @@
 
 void print_reverse(char *s)
 {
+  /* ポインタ演算による出力 */
   size_t len = strlen(s);
-  char *t = s + len - 1;
+  char *t = len + s - 1; /* 文字列の終了位置(reverseの開始位置)を取得 */
 
-  while (t >= s) {
+  while (t >= s) { /* ポインタの位置が文字列の開始位置に到達したら終了 */
     printf("%c", *t);
-    t = t - 1;
+    t = t - 1; /* ポインタを減算していく */
   }
 
   puts("");
