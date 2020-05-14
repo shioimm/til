@@ -18,8 +18,9 @@ void happy_birthday(turtle *t) /* 構造体へのポインタを引数に渡す 
          (*t).name, (*t).age);
 
   /*
-   * tがturtle構造体へのポインタの場合、(*t).ageはt.ageの値 *(t.age)
-   * tがturtle構造体へのポインタの場合、*t.ageはt.ageが示すメモリ位置(誤った式)
+   * (*t).ageはポインタ*tが持つageの値を示す
+   * *t.ageとすると、t.ageが示すメモリ位置の内容を示す(= *(t.age))
+   *   -> t.ageはメモリ位置ではないためこの式は誤っている
   */
 
   /*
