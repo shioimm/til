@@ -1,14 +1,22 @@
 /*
  * 引用: head first c
- * 第4章 複数のソースファイルの使用
+ * 第4章 複数のソースファイルの使用 3
 */
 
-#include "encrypt.h"
+#include "encrypt.h" /* encrypt()関数のヘッダをインクルード */
 
-void encrypt(char *message)
+void encrypt(char *message) /* 配列へのポインタを渡す */
 {
   while(*message) {
-    *message = *message ^ 31;
+    *message = *message ^ 31; /* 一文字ずつ数値31のXORを取り暗号化する */
     message++;
   }
 }
+
+/*
+ * gccによるコンパイルの手順
+ *   1) プリプロセッシング: ヘッダファイルによるソースの調整
+ *   2) コンパイル: アセンブリ言語記号への変換
+ *   3) アセンブリ: 個々のオブジェクトコード(実際にコンピュータが実行するバイナリコード)の生成
+ *   4) リンク: 実行可能プログラムへの組み立て
+*/
