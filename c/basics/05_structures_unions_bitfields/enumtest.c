@@ -7,6 +7,7 @@
  * enum変数
  *   シンボルを格納する
  *   enum colors { RED, GREEN, PUSE };
+ *     enum colorsで定義した変数にはリスト内のキーワードしか使用できない
  *     ◯ enum colors favorite = PUSE;
  *     × enum colors favorite = PUCE;
 */
