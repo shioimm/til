@@ -5,8 +5,10 @@
 
 /*
  * struct
+ *   構造体データ型
  *   一連の他のデータ型から作成したデータ型
  *   固定長
+ *   構造体の中のデータには名前がついている
  *   structフィールドはコードの順序と同じ順番でメモリに格納される
 */
 #include <stdio.h>
@@ -34,7 +36,7 @@ struct fish {
   struct preferences care;  /* 構造体内の構造体(ネスティング) */
 };
 
-void catalog(struct fish f) /* 構造体を渡す */
+void catalog(struct fish f) /* 引数に構造体を渡す */
 {
   printf("%sは%sであり、歯は%i本あります。年齢は%i歳です。\n",
          f.name, f.species, f.teeth, f.age);
@@ -44,7 +46,7 @@ void catalog(struct fish f) /* 構造体を渡す */
          f.name, f.care.exercise.duration);
 }
 
-void label(struct fish f) /* 構造体を渡す */
+void label(struct fish f) /* 引数に構造体を渡す */
 {
   printf("名前: %s\n種類: %s\n%i本の歯、%i歳\n",
          f.name, f.species, f.teeth, f.age);
@@ -54,13 +56,20 @@ void label(struct fish f) /* 構造体を渡す */
 
 int main()
 {
+  /*
+   * structの定義時点ではメモリは確保されず、
+   * 新しい変数を定義した時点で
+   * structインスタンスのためのメモリ空間が確保される
+   * (構造体全てのフィールドを収納できるサイズ)
+  */
   struct fish snappy = { "スナッピー", "ピラニア", 69, 4, { { "肉", 0.1 }, { "ジャクジーでの泳ぎ", 7.5 } } };
 
   catalog(snappy);
   label(snappy);
 
   /*
-   * 構造体の新しいコピー
+   * struct変数を別の変数に代入すると、
+   * 構造体の新しいコピーが別のメモリ空間に作成される
    * snappyと同じサイズのメモリ領域が割り当てられる
    * nameとspeciesは同じメモリを共有している
   */

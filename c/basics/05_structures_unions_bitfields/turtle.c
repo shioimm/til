@@ -11,7 +11,7 @@ typedef struct {
   int age;
 } turtle;
 
-void happy_birthday(turtle *t) /* 構造体へのポインタを引数に渡す */
+void happy_birthday(turtle *t) /* tへのポインタを引数に受け取る */
 {
   (*t).age = (*t).age + 1; /* ポインタではなく値にアクセスする */
   printf("誕生日おめでとう、%s!これで%i歳ですね！\n",
@@ -25,7 +25,7 @@ void happy_birthday(turtle *t) /* 構造体へのポインタを引数に渡す 
 
   /*
    * (*t).ageはt->ageに置き換えられる
-   * t->ageはtが指すstructのageフィールドを表す
+   * t->ageはtが指すstructのageフィールドの値を表す
    *   t->age = t->age + 1;
    *   printf("誕生日おめでとう、%s!これで%i歳ですね！\n",
    *          t->name, t->age);
@@ -36,7 +36,7 @@ int main()
 {
   turtle myrtle = { "マートル", "オサガメ", 99 };
 
-  happy_birthday(&myrtle); /* 構造体のポインタを引数として渡す */
+  happy_birthday(&myrtle); /* myrtleのポインタを引数として渡す */
   printf("%sの年齢は%i歳です\n",
          myrtle.name, myrtle.age);
 
