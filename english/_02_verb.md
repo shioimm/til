@@ -7,6 +7,18 @@
   - We should arrived at the hotel by 6:30.
   - We finally arrived at the destination. Exhausted and famished.
 
+### be動詞
+- 主語 = 説明語句
+  - I can't talk because I'm on the train.
+  - Mom is making us pancakes. I can’t wait.
+  - Make sure the grapes are washed.
+  - The point is that you should have informed us of the price increasing.
+- 主語 = 説明語句 <-> 明示的に過去を示す
+  - I was happy.
+- 主語 (=) 説明語句
+  - Is everything OK? -> Everything OK?
+  - Are you guys ready to go? -> You guys ready to go?
+
 ### belong
 - ぴったりくる場所
   - I don't belong here.
@@ -130,6 +142,19 @@
   - Would you be willing to be involved in the project?
   - Kids in this neighborhood often be come involved in crimes.
 
+### keep
+- そのままの状態を保つ、保管する
+  - You always keep me waiting.
+  - Where do you keep your tools?
+  - You need to keep warm, or you'll catch a cold.
+  - If you keep trying, you'll be successful in the end.
+  - I like keep my dest tidy.
+- そのままの状態を保つ、保管する -> しっかりと面倒を見る、注意を払って努力する
+  - My dad keeps a dog.
+  - Chris can't keep a secret.
+  - Hey, what's keeping you?
+  - Hey, keep some pizzas for me, OK?
+
 ### leave
 - 離れていく -> (離れていくもの視点)去る・出発する・出ていく・辞める
   - Why did you leave your job?
@@ -140,8 +165,14 @@
   - I told you to leave the cat alone.
 
 ### make
-- つくる
-  - I made lunch.
+- 努力して作り上げる
+  - I'll make you some ham & cheese sandwitches.
+  - Thank you for making time for us today.
+  - We made it in time for the kick-off. -> 達成した
+  - I'm sure you made the right decision.
+  - I made friends with Ken.
+  - There's no ways the bank manager will see you if you haven't made an appointment.
+  - I'm really sorry I didn't make it to your presentation.
 
 ### own
 - 所有者である
@@ -186,6 +217,13 @@
 - 手を伸ばして対象物に触れる -> 連絡する
   - Where can I reach you?
 
+### remain
+- ある場所にとどまる(フォーマル)
+- ある状態にとどまる(フォーマル)
+  - Bill remained at home because he was ill.
+  - Please remain silent until the judges have left the room.
+  - Everything remained the same.
+
 ### run
 - 走る
   - Express trains run for London to Edinburgh every half and hour.
@@ -209,6 +247,12 @@
 - そっと近づく、つきまとう
   - The cat stalked the bird.
   - The police arrested the guy who stalking my sister.
+
+### stay
+- ある場所にとどまる
+  - How many nights will you be staying, Madame.
+  - The unemployement rate stayed below 3%.
+  - The most importaint thing is to stay calm, OK?
 
 ### stop
 - それまで続けていた活動を継続しない -> やめる、止まる
