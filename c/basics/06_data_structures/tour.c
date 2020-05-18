@@ -61,7 +61,7 @@ void display(island *start)
    * 次の島がnext値を持たなくなるまでループを続ける
    * ループの最後に次の島へ移る
    */
-  for(; i != NULL; i = i->next) {
+  for (; i != NULL; i = i->next) {
     printf("名前: %s 営業時間: %s-%s\n", i->name, i->opens, i->closes);
   }
 }
