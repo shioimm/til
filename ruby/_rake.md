@@ -29,3 +29,18 @@ $ rake namespace:taskname\[args\]
 
 $ rake 'namespace:taskname[args]'
 ```
+
+### 引数に配列を受け取りたい
+- `args.extras`で可変個の引数を受け取ることができる
+```ruby
+namespace :namespace do
+  desc 'description'
+  task :task_name, [:user_id] => :environment do |_task, args|
+    user_ids = [args.user_id, args.extras].flatten
+    # 固定引数id + 可変長引数extrasを配列にまとめる
+  end
+end
+```
+```
+$ be rake namespace:task_name\[1,2\] // => user_ids = ["1", "2"]
+```
