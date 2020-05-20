@@ -23,7 +23,7 @@ int main()
       continue;
     }
 
-    puts("Input number twice");
+    puts("Enter number twice");
     printf("a = ");
     scanf("%i", &n_1);
     printf("b = ");
