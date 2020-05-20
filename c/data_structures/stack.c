@@ -1,4 +1,4 @@
-/* 配列 */
+/* スタック */
 
 #include <stdio.h>
 
@@ -10,6 +10,7 @@ void display(int data[], int size)
     printf("%i\n", data[i]);
   }
 }
+
 int main()
 {
   int data[10];
@@ -17,21 +18,23 @@ int main()
   data[0] = 0;
   data[1] = 1;
   data[2] = 2;
+
   display(data, 3); /* 0 -> 1 -> 2 */
 
   puts("----");
 
-  /* 挿入 */
-  data[3] = data[2];
-  data[2] = 3;
-  display(data, 4); /* 0 -> 1 -> 3 -> 2 */
+  /* 追加 */
+  data[3] = 3;
+  display(data, 4); /* 0 -> 1 -> 2 -> 3 */
 
   puts("----");
 
   /* 削除 */
+  data[0] = data[1];
+  data[1] = data[2];
   data[2] = data[3];
   data[3] = data[4];
-  display(data, 4); /* 0 -> 1 -> 2 -> 0 */
+  display(data, 4); /* 1 -> 2 -> 3 -> 0*/
 
   return 0;
 }

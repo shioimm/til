@@ -75,3 +75,41 @@ class Relationsip
              foreign_key: 'follower_id'
 end
 ```
+
+## 拡張
+- 参照: [4.6関連付けの拡張](https://railsguides.jp/association_basics.html#%E9%96%A2%E9%80%A3%E4%BB%98%E3%81%91%E3%81%AE%E6%8B%A1%E5%BC%B5)
+- 関連付けのプロキシオブジェクトをカスタマイズする
+```ruby
+class Book < ApplicationRecord
+  has_many :chapters do
+    def find_by_number_of_pages(number)
+      find_by(number_of_pages: number)
+    end
+  end
+end
+```
+- `Bookオブジェクト.chapters`で全てのchaptersを取得
+- `Bookオブジェクト.chapters.find_by_number_of_pages(10)`で条件を満たすchaptersを取得
+
+### 関連付けプロキシの内部参照
+- `proxy_association.owner` -> Bookオブジェクトを返す
+- `proxy_association.target` -> Bookオブジェクトに関連するchaptersのコレクションを返す
+- `proxy_association.reflection` -> 関連付けを記述するリフレクションオブジェクトを返す
+```ruby
+pry(#<Chapter::ActiveRecord_Associations_CollectionProxy>)> proxy_association.reflection
+=> #<ActiveRecord::Reflection::HasManyReflection:0x00007fd4d70e1290
+ @active_record=Book(id: integer, title: string),
+ @active_record_primary_key="id",
+ @association_scope_cache=#<Concurrent::Map:0x00007fd4d70e1010 entries=0 default_proc=nil>,
+ @class_name="Chapter",
+ @constructable=true,
+ @foreign_key="book_id",
+ @foreign_type=nil,
+ @inverse_name=nil,
+ @klass=Chapter(id: integer, book_id: integer, number_of_pages: integer),
+ @name=:chapters,
+ @options={:extend=>[Book::ChaptersAssociationExtension], :autosave=>true},
+ @plural_name="chapters",
+ @scope=#<Proc:0x00007fd4d70e12e0@/xxxx/vendor/bundle/ruby/2.6.0/gems/activerecord-6.0.3/lib/active_record/associations/builder/association.rb:52>,
+ @type=nil>
+```
