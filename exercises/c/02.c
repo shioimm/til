@@ -23,7 +23,7 @@ int main()
 {
   int correct, count, answer;
 
-  printf("Input number of answer -> ");
+  printf("Enter number of answer -> ");
   scanf("%i", &correct);
 
 
