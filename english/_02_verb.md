@@ -24,11 +24,26 @@
   - I don't belong here.
   - I just found out that Helen and I belong to the same sport club.
 
+### break
+- 破壊
+  - Oh, no! I've broken my neibor's window.
+  - I've never broken a law in my life.
+  - I dropped my phone and broke the screen.
+- 線が切れる
+  - Have a break.
+  - I broke up with my girlfriend last night.
+
 ### bring
 - 持って来る、やってくる(<- come)
   - He has brought lots of happiness into my life.
   - What shall I bring to the party? - Just bring yourself.
   - Is it OK to bring my dog to the restaurant?
+
+### build
+- 部品を組み立てる
+  - I have to build a new dog kennel.
+  - The most up-to-date ideas are built into the strategy of this company.
+  - We are determine to build a better future for our children.
 
 ### carry
 - 支える + 移動 -> 運搬する
@@ -62,6 +77,11 @@
   - Her dream of becoming a pro golfer has finally come true.
   - When do the cherry tries come into blossom.
 
+### construct
+- 細かな部品を堅牢に組み立てる
+  - They are constructing a new air port terminal.
+  - Many students don't know how to construct a solid argument.
+
 ### contain
 - リストに含む
   - It includes a unique hotel near the inland sea.
@@ -79,6 +99,11 @@
   - The discussion developed into a bitter argument.
   - I'm in chaerge of developping products in a beauty company.
   - It's difficult to develop close friendships.
+
+### destroy
+- 破壊(取り返しがつかない)
+  - This scandal has destroyed the famous actor's reputation.
+  - Airstrikes has destroyed entire areas of the city.
 
 ### drive
 - 力を加えて動かす
@@ -131,6 +156,11 @@
   - Why don't we have some tea?
   - You can have my old laptop if you like.
   - We had a fantastic time on Calibian cruise.
+- 範囲内にある -> (自然な流れで)そうする・そうさせる
+ - I will have my assistant fax it to you right away.
+ - I had a doctor look at my knee.
+ - Don't worry. I will have the whole house clean by lunch time.
+ - I had my purse stolen during my trip to France.
 
 ### include
 - 容器の中に入っている
@@ -165,7 +195,7 @@
   - I told you to leave the cat alone.
 
 ### make
-- 努力して作り上げる
+- 力を入れて作り上げる
   - I'll make you some ham & cheese sandwitches.
   - Thank you for making time for us today.
   - We made it in time for the kick-off. -> 達成した
@@ -173,6 +203,11 @@
   - I made friends with Ken.
   - There's no ways the bank manager will see you if you haven't made an appointment.
   - I'm really sorry I didn't make it to your presentation.
+- 力を入れて作り上げる -> 強制的な力が働く
+  - She made me do lots of extra work.
+  - You can't make someone love you.
+  - What I want most is to make my parents proud of me.
+  - It was difficult to make myself understood in English.
 
 ### own
 - 所有者である
@@ -195,6 +230,13 @@
   - We're going to locate our new branch right in the city center.
   - I can't locate the village on this old map.
   - The police are doing all they can to locate the missing girl.
+
+### produce
+- 前に出す
+  - Chris produced his dliver's license from his pocket.
+- 前に出す -> 生産する
+  - Brazil produces some of the world's best coffee.
+  - Our apple trees have produced more fruits than ever last year.
 
 ### put
 - 何かをどこかにポン
@@ -219,10 +261,15 @@
 
 ### remain
 - ある場所にとどまる(フォーマル)
-- ある状態にとどまる(フォーマル)
   - Bill remained at home because he was ill.
   - Please remain silent until the judges have left the room.
   - Everything remained the same.
+
+### ruin
+- 素晴らしかったものをだめにする
+  - It ruined the whole trip.
+  - You ruined my day.
+  - Be careful if you don't want to ruin your chances at the promotion.
 
 ### run
 - 走る
