@@ -9,7 +9,7 @@
 /*
  * 可変長引数のためのマクロ
  *   va_list  関数に渡した可変個の引数を格納する
- *   va_start 可変個の変数がどこから始まるか示す
+ *   va_start 可変個の変数が始まる位置を設定する
  *   va_arg   va_listに格納された可変個の引数を読み取る
  *   va_end   リストを終了させる
  *
@@ -18,15 +18,15 @@
 
 void print_int(int args, ...) /* ...は引数の省略を意味する */
 {
-  va_list ap; /* 追加の引数をapに格納する */
-  va_start(ap, args); /* 追加の変数apが固定変数のargsの後から始まることを示す */
+  va_list ap; /* 追加の引数を変数apに格納する */
+  va_start(ap, args); /* 変数apに格納された追加の引数は、固定引数argsの後から始まる */
   int i;
 
   for (i = 0; i < args; i++) {
-    printf("引数%i\n", va_arg(ap, int)); /* va_argはva_listと次の引数の型を引数に取る */
+    printf("引数%i\n", va_arg(ap, int)); /* 変数apに格納された追加の引数と次の引数の型を読み取る */
   }
 
-  va_end(ap);
+  va_end(ap); /* 引数の読み取りが完了したことを示す */
 }
 
 enum drink { MUDSLIDE, FUZZY_NAVEL, MONKEY_GLAND, ZOMBIE };
@@ -59,6 +59,7 @@ double total(int args, ...)
   }
 
   va_end(ap);
+
   return total;
 }
 

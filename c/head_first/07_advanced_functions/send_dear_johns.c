@@ -48,16 +48,24 @@ int main()
   void (*replies[])(response) = { dump, second_chance, marriage };
   /*
    * 関数ポインタの配列を生成
-   *   void         関数の戻り値の型...この配列内の関数はvoid関数)
-   *   (*replies[]) ポインタ変数...関数ポインタ全体の配列)
-   *   (response)   引数...response型
+   *   -> 関数の戻り値の型 | ポインタ変数 | 引数 = { 関数ポインタ配列 }
+   *      void         配列内の各関数の返り値がvoidであることを宣言
+   *      (*replies[]) 関数ポインタ全体の配列を宣言
+   *      (response)   response型の引数を定義
   */
 
   for (i = 0; i < 4; i++) {
     (replies[r[i].type])(r[i]);
     /*
-     * replies[r[i].type] -> enumの数値をreplies配列のインデックスとして使用
-     * r[i] -> response型の引数を渡す
+     * r[i]
+     *   -> r配列の各要素(response構造体)
+     *
+     * replies[r[i].type](r[i])↲
+     *   -> enumの値をreplies配列のインデックスとして使用
+     *      replies[DUMP]          -> dump()関数
+     *      replies[SECOND_CHANCE] -> second_chance()関数
+     *      replies[MARRIAGE]      -> marriage()関数
+     *      各関数には引数としてresponse構造体r[i]を渡す
     */
   }
 
