@@ -55,7 +55,7 @@ int main()
 
 void display(island *start)
 {
-  island *i = start;
+  island *i = start; /* スタート地点のアドレスからループを開始 */
 
   /*
    * 次の島がnext値を持たなくなるまでループを続ける
