@@ -16,12 +16,17 @@
  *   不要になったメモリを解放せずに、さらにメモリを要求するとメモリリークを起こす
  *     <-> スタック領域は関数から戻るたびにローカル記憶領域を解放する
  *
- *   malloc()関数(memory allocation)
+ *   <stdlib.h> malloc()関数(memory allocation)
  *     必要なメモリ量を渡すと、その大きさのメモリを確保するようOSへ依頼する
- *     確保したヒープ領域へのポインタを返す
+ *     確保したヒープ領域へのvoid*型(汎用型)のポインタを返す
  *
- *   free()関数
+ *   <stdlib.h> free()関数
  *     malloc()関数で確保したメモリを解放する
+ *
+ *   <string.h> strdup()関数
+ *     文字列の長さを求め、malloc()関数を呼び出してヒープに正しい数の文字を割り当てる
+ *     それぞれの文字はヒープの新しい空間にコピーされる
+ *     コピーされた文字列へのポインタを返す
 */
 
 /* malloc()関数は確保したメモリの開始アドレスを含むポインタ(void*型の汎用ポインタ)を返す*/
@@ -46,8 +51,9 @@ void display(island *start)
   }
 }
 
-/* 島を作成する関数を定義 */
-island* create(char *name) /* island.nameをポインタとして渡す */
+/* island構造体のテンプレートを作成する関数を定義 */
+/* この関数においてはisland構造体用のメモリとname文字列用のメモリをそれぞれ確保する必要がある */
+island* create(char *name) /* 引数 -> name文字列のポインタ / 返り値 -> island構造体のポインタ*/
 {
   island *i = malloc(sizeof(island));
   /* island *i =    -> 確保したメモリのアドレスを変数iに格納 */
@@ -56,14 +62,12 @@ island* create(char *name) /* island.nameをポインタとして渡す */
 
   /* 新しい構造体のフィールドを設定 */
   i->name = strdup(name);
-    /*
-     * <string.h> strdup()関数
-     *   文字列の長さを求め、malloc()関数を呼び出してヒープに正しい数の文字を割り当てる
-     *   それぞれの文字はヒープの新しい空間にコピーされる
-    */
+    /* 渡された文字列をコピーしてヒープへ新たにメモリ空間を確保し、ポインタを保持する */
 
   i->opens = "9:00";
   i->closes = "17:00";
+  /* 文字列リテラルは定数であるためstrdup()関数でのメモリ確保は不要 */
+
   i->next = NULL;
 
   return i; /* 新しい構造体のアドレスを返す */
@@ -72,13 +76,13 @@ island* create(char *name) /* island.nameをポインタとして渡す */
 /* メモリを解放する関数を定義 */
 void release(island *start)
 {
-  island *i = start;   /* 開始地点のポインタを取得 */
+  island *i = start;   /* 開始地点に設定された構造体のポインタを取得 */
   island *next = NULL; /* 次の島のポインタ */
 
   for (; i != NULL; i = next) {
-    next = i->next;
-    free(i->name); /* strdup()関数で作成したname文字列を解放 */
-    free(i);       /* island構造体を解放(nameより先に解放するとnameにアクセスできなくなる) */
+    next = i->next; /* nextに次の島の構造体のポインタを格納 */
+    free(i->name);  /* strdup()関数で作成したname文字列を解放 */
+    free(i);        /* island構造体を解放(nameより先に解放するとnameにアクセスできなくなる) */
   }
 }
 
@@ -87,10 +91,14 @@ int main()
   island *start = NULL; /* 開始地点のポインタ */
   island *i = NULL;     /* 各島のポインタ */
   island *next = NULL;  /* 次の島のポインタ */
-  char name[80];
+  char name[80]; /* 島の名前の文字列配列を格納するメモリを確保 */
 
   for (; fgets(name, 80, stdin) != NULL; i = next) {
     next = create(name); /* 次の島を作成 */
+    /*
+     * このとき、何回create()関数を呼び出しても引数には
+     * 同じnameメモリ空間のポインタが渡されている
+    */
 
     if (start == NULL) {
       start = next;      /* 最初の島を設定 */
