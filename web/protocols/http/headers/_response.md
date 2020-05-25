@@ -120,6 +120,19 @@ Content-Security-Policy: 指定したいポリシー
 Trailer: header-names
 ```
 
+## Transfer-Encoding
+- 参照: [Transfer-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Transfer-Encoding)
+- ペイロード本文をユーザーに転送するために使われる符号化方式を指定する
+- 複数の方式を同時に採用することも可能
+  - chunked
+  - compress
+  - deflate
+  - gzip
+  - identity
+```
+Transfer-Encoding: gzip, chunked
+```
+
 ## Vary
 - 引用: Webを支える技術 山本陽平・著
 - サーバーがコンテントネゴシエーションを行えるヘッダを示す
