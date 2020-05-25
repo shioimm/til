@@ -23,3 +23,13 @@
 
 ### manifest.jsonを確認したい
 - ブラウザから`/packs/manifest.json`にアクセスする
+
+### View以外の場所からViewHelperを呼びたい
+- `ApplicationController.helpers`を使用する
+```ruby
+ApplicationController.helpers.time_ago_in_words(updated_at)
+```
+- [controllerのみ]`view_context`を使用する
+```ruby
+view_context.time_ago_in_words(updated_at)
+```
