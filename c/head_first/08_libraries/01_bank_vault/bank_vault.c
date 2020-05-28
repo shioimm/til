@@ -29,20 +29,28 @@ int main()
 }
 
 /*
- * 自作の.hヘッダファイルを共有する場合
+ * .hヘッダファイルの共有
  *   - 標準ディレクトリにファイルを置く
  *       #include <encrypt.h>
  *   - include文に絶対パスを指定する
- *       #include "/path/to/encrypt.h"
- *   - コンパイラに絶対パスを指定する
- *       $ gcc -I /path/to/test_code.c /path/to/encrypt.o -o test_code
- *       ヘッダファイルをヘッダファイルディレクトリ、
- *       オブジェクトファイルをオブジェクトファイルディレクトリに格納しておく
+ *       #include "/header_files/encrypt.h"
+ *   - gcc -Iオプションを使用する
+ *       $ gcc -I/header_files bank_vault.c -o bank_vault
+ *       標準ディレクトリに加え、指定したパス以下のディレクトリ内のヘッダファイルも検索する
+*/
+
+/*
+ * .oオブジェクトファイルの共有
+ *   - gcc実行時に絶対パスを指定する
+ *       $ gcc -I/header_files bank_vault.c /object_files/encrypt.o -o bank_vault
+ *       オブジェクトファイルを共有のオブジェクトファイル用ディレクトリに格納しておく
+ *
+ *       オブジェクトファイルが複数である場合、
  *       一連のオブジェクトファイルを一つにまとめたアーカイブファイルを指定することも可能
 */
 
 /*
- * アーカイブファイル.aの作成
+ * .aアーカイブファイルの生成
  *   $ ar -rcs libhfsecurity.a encrypt.o checksum.o
  *     -r                   -> .aファイルがすでに存在する場合は置き換える
  *     -c                   -> フィードバックなしにアーカイブを作成する
@@ -64,11 +72,11 @@ int main()
 */
 
 /*
- * プログラムをコンパイル
- *   アーカイブファイルをライブラリディレクトリに格納した場合
- *     $ gcc test_code.c -lhfsecurity -o test_code
- *       -hfsecurity -> libhfsecurity.aの探索を指示
+ * アーカイブファイルを利用してプログラムをコンパイル
+ *   $ gcc test_code.c -lhfsecurity -o test_code
+ *     -lhfsecurity -> libhfsecurityと名前が一致するアーカイブファイルの探索を指示
  *
- *   アーカイブファイルを他のディレクトリに格納した場合
+ *   標準ディレクトリ以外のディレクトリ内にあるアーカイブファイルを探索する場合
+ *     -L/オプションで絶対パスを指定
  *     $ gcc test_code.c -L/my_lib -lhfsecurity -o test_code
 */
