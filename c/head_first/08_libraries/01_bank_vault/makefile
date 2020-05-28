@@ -16,5 +16,6 @@ libhfsecurity.a: encrypt.o checksum.o
 # bank_vault.c libhfsecurity.aから実行ファイルbank_vaultを生成し、実行
 bank_vault: bank_vault.c libhfsecurity.a
 	gcc bank_vault.c -I. -L. -lhfsecurity -o bank_vault
-# ヘッダファイルはカレントディレクトリにあるため -I.
-# アーカイブはカレントディレクトリにあるため -L.
+# -I.          -> カレントディレクトリ内のヘッダファイルの探索を指示
+# -L.          -> カレントディレクトリ内のアーカイブファイルの探索を指示
+# -lhfsecurity -> hfsecurityと名前が一致するアーカイブファイルの探索を指示
