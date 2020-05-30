@@ -51,6 +51,13 @@
   - Mosquitoes carry malaria.
   - This elevator can carry up to 10 people.
 
+### catch
+- 動いているものを捕まえる
+  - You never catch me.
+  - The police caught the thief.
+  - Sorry, I didn't catch your name.
+  - I could catch only about 50% what the american student said.
+
 ### change
 - 変化
   - My friend Kumiko has changed a lot.
@@ -61,6 +68,12 @@
 #### change into
 - 変化 -> なる
   - Tadpoles change into frogs.
+
+### collect
+- 色々な場所から集める
+  - We have to collect all the garbage by 4 o'clock.
+  - We're collecting donations.
+  - Surprisingly, lots of people are still passionates about collecting stamps.
 
 ### come
 - やって来る(話題になっている場所を中心に考える)
@@ -116,6 +129,17 @@
   - They exchanged greetings.
   - Is a hotel best place to exchange the money?
 
+### expand
+- 全方面に広げる
+  - Our aim is to expand our chain of restaurants across Japan.
+  - We're expanding our business to oversea's market.
+
+### extend
+- 長さを延ばす
+  - Would you like to extend your stay?
+  - I'd like to thank you for the generous hospitality extended to me during my visit to Tokyo. -> 歓待が及ぶ
+  - What do I need to do in order to extend my tourist visa.
+
 ### finish
 - 完了・完遂
   - Have you finished the report?
@@ -131,6 +155,12 @@
 - 元の場所から出て行く -> 好ましくない変化
   - Everything went wrong.
   - She is quitting the job? Has she gone crazy?
+
+### grab
+- 急いで手早く掴む
+  - How about grabbing a bite to eat?
+  - You should grab any chance to speak English.
+  - Rosa and I are going to grab a drink. Care to join us?
 
 ### get
 - 手に入れる -> 動いて手にいれる
@@ -290,6 +320,11 @@
   - I sneaked one of my mom's brownies out of the kitchen.
   - I sneaked into the private party, and nobody notice me at all.
 
+### spread
+- まんべんなく覆う
+  - She is always spreading rumors.
+  - News spreads really fast through social media.
+
 ### stalk
 - そっと近づく、つきまとう
   - The cat stalked the bird.
@@ -307,11 +342,27 @@
   - Luckily, the rain stapped. And we were able to have our picnik.
 
 ### take
-- 手に取って持っていく(<- go)
+- 手に取る
+  - Let's take a photo togather.
+  - The docter took my temperture.
+- 手に取る -> ~から奪う
+  - It takes only 7 minutes from here to the station.
+  - I can fix the leak easily. It will only take me 5 minutes.
+- 手に取る -> 受け取る・受け入れる
+  - You need to take this issue more seriously.
+  - The elevator can take a maximum of 10 people.
+  - She never takes my advice.
+  - We can take up to 500 guests.
+- 手に取って持っていく(<-> go)
   - I'll take you to the airport.
   - Don't forget to take your passport.
+  - Our leader likes to take all the credit for our team's achievement.
+  - I took my wife to a fancy restaurant for her birthday.
 - 手に取って選ぶ
   - I think I'll take the pink sweater.
+  - Which road shall we take?
+  - It's much quickker if you take the Yamamnote line.
+  - Their team took a hard stance during the negotiation.
 
 ### turn
 - くるっと向きを変える
