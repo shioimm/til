@@ -1,3 +1,5 @@
+/* RNA Transcription from https://exercism.io */
+
 #include "rna_transcription.h"
 #include <string.h>
 #include <stdlib.h>

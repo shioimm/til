@@ -1,3 +1,5 @@
+/* Gigasecond from https://exercism.io */
+
 #include "gigasecond.h"
 #include <math.h>
 
