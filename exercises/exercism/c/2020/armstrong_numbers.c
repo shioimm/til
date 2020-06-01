@@ -1,3 +1,5 @@
+/* Armstrong Numbers from https://exercism.io */
+
 #include "armstrong_numbers.h"
 #include <math.h>
 

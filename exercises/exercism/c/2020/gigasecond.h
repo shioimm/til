@@ -1,3 +1,5 @@
+/* Gigasecond from https://exercism.io */
+
 #ifndef GIGASECOND_H
 #define GIGASECOND_H
 
