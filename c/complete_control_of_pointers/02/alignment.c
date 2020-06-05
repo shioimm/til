@@ -3,7 +3,6 @@
  * 第2章 実験してみよう cはメモリをどう使うのか 8
 */
 
-
 #include <stdio.h>
 
 typedef struct {
