@@ -163,9 +163,34 @@
   - Rosa and I are going to grab a drink. Care to join us?
 
 ### get
-- 手に入れる -> 動いて手にいれる
-  - I get lunch.
+- (能動的に)手に入れる
   - I'll get some milk and eggs on the way home.
+  - (電話が鳴って)I'll get this.
+  - I got it. -> 考えを手に入れた = 理解した
+  - Why do I get the feeling the boss doesn't like me.
+  - I'll take a taxi.(選択) <-> I'll get a taxi.(入手)
+  - I got to school late this morning due to a train delay. -> 物理的な移動
+  - I want to get to know you better. -> 抽象的な移動(変化)
+  - I finnaly got to meet my biological mother. -> got to 希望が叶って
+
+#### get受動態
+- 突然、予期せず~される (<-> 普遍的に~される(be動詞受動態))
+  - I got badly sunburned.
+  - I got asked for my autograph and a photo at Narita airport recently.
+  - He got angry.
+  - I'm so happy to hear you got promoted.
+  - My bicycle got stolen yesterday.
+
+#### get目的語説明型
+- 目的語に働きかけることにより、目的語を対象に対して押す
+  - I'll get Vince to do it for me.
+  - Let's get all the luggages into the car.
+  - Get your stuff ready to go.
+  - Get your homework done.
+  - Get me a cloth!
+  - I'm trying to get my parents to allow me to pierce my nose.
+  - I have to get all the soccer jerseys washed before the next match.
+  - My sister got me a nice souvenir from her trip to Turkey.
 
 ### give up
 - 上(up)に放り投げる -> 失う寂しさ
