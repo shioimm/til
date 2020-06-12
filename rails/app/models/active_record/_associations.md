@@ -10,8 +10,16 @@
 ### 使い所
 - `foreign_key` `order`などのオプションを使用している場合
 ```ruby
-class CustomerUser < User
-  has_one :customer_information, foreign_key: :user_id, inverse_of: :user, dependent: :destroy
+class Customer < User
+  has_many :valid_addresses,
+           -> { where(validity: true) },
+           inverse_of: :customer, class_name: 'Address', foreign_key: 'customer_id',
+           dependent: :destroy
+end
+```
+```ruby
+class Address < ApplicationRecord
+  belongs_to :customer, inverse_of: :valid_addresses, class_name: 'Customer'
 end
 ```
 
