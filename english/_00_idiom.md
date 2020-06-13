@@ -8,3 +8,4 @@
 - head for -> 頭を向ける -> 向かう
 - wave goodbye -> 手を振ってさようならを告げる
 - show xx the ropes -> コツを教える
+- a rainy day -> もしもの時
