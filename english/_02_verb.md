@@ -217,6 +217,13 @@
  - Don't worry. I will have the whole house clean by lunch time.
  - I had my purse stolen during my trip to France.
 
+### help
+- 状況を改善する・手を添えて援助する
+  - She helped me with my homework.
+  - Can you help me find my car key?
+  - Please help yourself to tea or coffee.
+  - I can't help thinking it was a mistake to sell those shares. -> 状況を改善できない
+
 ### include
 - 容器の中に入っている
   - Each tablet contains enough vitamin C for a day.
@@ -248,6 +255,15 @@
   - You left your key on the table.
   - I left you the shopping list on the kitchen table.
   - I told you to leave the cat alone.
+
+### look
+- 目を向ける
+  - Let's look at the catalogue togather.(at -> 点)
+  - I'm looking for a replacement battery for my cell phone.(for -> 求めて)
+  - The hotel manager promised to look into our complaints.(into -> の中)
+- 目を向ける -> 注意を向ける
+  - Look, I'm sorry I upset you. I didn't meant to.
+  - Look what you've done to me.
 
 ### make
 - 力を入れて作り上げる
@@ -337,6 +353,12 @@
 - 走る -> 線状 -> 流れ出る
   - We've run out of ideas.
   - Hurry up. We're running out of time.
+
+### save
+- (そのままでは失われてしまうものを)救う
+  - I jumped into river and saved her.
+  - I'm saving money for a rainy day.
+  - We all need to save electoricity in order to slow grobal warming.
 
 ### sneak
 - こっそり、こそこそ
