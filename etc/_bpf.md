@@ -1,5 +1,5 @@
 # Berkeley Packet Filter(BPF)
-- 参照・引用: [Berkeley Packet Filter（BPF）入門（1）](https://www.atmarkit.co.jp/ait/series/11804/)
+- 参照・引用: [Berkeley Packet Filter（BPF）入門（1）](https://www.atmarkit.co.jp/ait/articles/1811/21/news010.html)
 
 ## TL;DR
 - ユーザーランドで作成したコードをカーネル内で安全に実行する枠組み
