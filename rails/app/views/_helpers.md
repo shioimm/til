@@ -1,11 +1,11 @@
 # ヘルパー
 - 参照: [Ruby on Rails master@49baf09 RDOC_MAIN.rdoc](https://edgeapi.rubyonrails.org/)
 
-## `content_tag(name, content_or_options_with_block = nil, options = nil, escape = true, &block)`
+## `tag.<tag name>(name = nil, options = nil, open = false, escape = true)`
 ### `<i>`要素を生成したい
-- 表示するcontentがないため、第二引数に`''`を使用する
+- 表示するcontentがないため、第一引数に`''`を使用する
 ```ruby
-h.content_tag(:i, '', class: 'fas.fa-pencil-alt.fa-2x')
+h.tag.i('', class: 'fas.fa-pencil-alt.fa-2x')
 ```
 - 参照: [Rails tips: ビューの`content_tag`のあまり知られていないオプション（翻訳）](https://techracho.bpsinc.jp/hachi8833/2018_04_10/54701)
 
