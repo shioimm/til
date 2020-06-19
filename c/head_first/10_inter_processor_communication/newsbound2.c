@@ -4,6 +4,8 @@
 */
 
 /*
+ * 各プロセスは独立したディスクリプタテーブルを持つ
+ *
  * fileno() 指定したファイルのディスクリプタを返す
  * dup2()   データストリームを複製し、上書きされたディスクリプタを返す
 */
@@ -21,7 +23,7 @@ void error(char *msg)
 int main(int argc, char *argv[])
 {
   char *phrase = argv[1];
-  char *vars[] = { "RSS_FEED=http://www.cnn.com/rss/celebs.xml", NULL };
+  char *vars[] = { "rss_feed=http://www.cnn.com/rss/celebs.xml", null };
   FILE *f      = fopen("stories.txt", "w");
 
   if (!f) {
@@ -41,7 +43,7 @@ int main(int argc, char *argv[])
       error("標準出力をリダイレクトできません");
     }
 
-    if (execle("/usr/bin/python", "/usr/bin/python", "./rssgossip.py", phrase, NULL, vars) == 1) {
+    if (execle("/usr/bin/python", "/usr/bin/python", "./rssgossip.py", phrase, NULL, vars) == -1) {
       error("スクリプトを実行できません");
     }
   }
