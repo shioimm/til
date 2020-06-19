@@ -4,6 +4,7 @@
 - 参照: [コンテナーとは？ Kubernetesとは？ 導入や運用、ユースケースを解説](https://codezine.jp/article/detail/11336)
 - 参照: [サーバレスとコンテナ：同じところと違うところ](https://sumologic.digitalstacks.net/blog/serverless-vs-containers/)
 - 引用: [What is Kubernetes?](https://kubernetes.io/docs/concepts/overview/what-is-kubernetes/)
+- 参照: [What is a Container?](https://www.docker.com/resources/what-container)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## TL;DR
@@ -32,6 +33,17 @@
     -> 複数のコンテナを組み合わせて一つのアプリケーションを構成するアーキテクチャとの親和性が高い
     -> マイクロサービスアーキテクチャ
 
+## 仮想マシンとの比較
+### コンテナ
+- アプリケーション層を抽象化したもの
+  - コードと依存関係を一緒にパッケージ化する
+  - 複数のコンテナを同じマシン上で実行する場合、他のコンテナとOSカーネルを共有する
+
+### 仮想マシン
+- 物理的なハードウェアを抽象化したもの
+  - 単体のサーバーを多数のサーバーに変換する
+  - 各仮想マシンにOS、アプリケーション、必要なバイナリ、ライブラリのコピーが含まれる
+
 ## サーバーレスとの比較
 - 参照・引用: [サーバレスとコンテナ：同じところと違うところ](https://sumologic.digitalstacks.net/blog/serverless-vs-containers/)
 
@@ -40,6 +52,7 @@
 - 仮想マシンよりも効率的
 - アプリケーションはホスト環境から隔離されている
 - 効果的にスケールするためにオーケストレーションツールが必要
+- 主要なオープンソースのサーバーレスフレームワークはDockerコンテナ技術を利用している
 
 ### 違い
 - ホスト環境
