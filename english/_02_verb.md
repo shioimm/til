@@ -140,27 +140,20 @@
   - I'd like to thank you for the generous hospitality extended to me during my visit to Tokyo. -> 歓待が及ぶ
   - What do I need to do in order to extend my tourist visa.
 
+### eye
+- じっとりと探るように見る
+  - Stop eyeing those cakes.
+  - I noticed her eyeing my chocolate.
+
 ### finish
 - 完了・完遂
   - Have you finished the report?
   - The Yoga class begins at 10:30, and finishes at 12:00.
 
-### go
-- 元の場所から出て行く
-  - Come on kids, it's time for us to go.
-  - The pain will go soon.
-  - It looks like it's about to go. -> 壊れる
-- 元の場所から出て行く -> 進んでいく
-  - How is your new job going?
-- 元の場所から出て行く -> 好ましくない変化
-  - Everything went wrong.
-  - She is quitting the job? Has she gone crazy?
-
-### grab
-- 急いで手早く掴む
-  - How about grabbing a bite to eat?
-  - You should grab any chance to speak English.
-  - Rosa and I are going to grab a drink. Care to join us?
+### gaze
+- (素敵なものを)じっと見る
+  - She gazed at him thinking this is the man for me.
+  - I spent hours gazing at the beautiful night sky.
 
 ### get
 - (能動的に)手に入れる
@@ -195,6 +188,32 @@
 ### give up
 - 上(up)に放り投げる -> 失う寂しさ
   - I wanted to do a 100 pushups, but I gave up after 10.
+
+### glance
+- チラッと見る(時間の短さを強調)
+  - She only glanced at the cheat sheet. But teacher caught her.
+  - I glanced in the rear view mirror and saw that was the car following me.
+
+### glimpsed
+- チラッと見る(よく見ていないことを強調)
+  - I only glimpsed at him, but I'm sure that it was that famous Chris McVay!
+
+### go
+- 元の場所から出て行く
+  - Come on kids, it's time for us to go.
+  - The pain will go soon.
+  - It looks like it's about to go. -> 壊れる
+- 元の場所から出て行く -> 進んでいく
+  - How is your new job going?
+- 元の場所から出て行く -> 好ましくない変化
+  - Everything went wrong.
+  - She is quitting the job? Has she gone crazy?
+
+### grab
+- 急いで手早く掴む
+  - How about grabbing a bite to eat?
+  - You should grab any chance to speak English.
+  - Rosa and I are going to grab a drink. Care to join us?
 
 ### have
 - 範囲内にある
@@ -360,6 +379,28 @@
   - I'm saving money for a rainy day.
   - We all need to save electoricity in order to slow grobal warming.
 
+### see
+- 見える
+  - I can't see anything in this fog.
+  - I can see much better with these new lenses.
+- 見える -> 会う・付き合う
+  - I'll get to see my old friends at the wedding.
+  - Are you seeing anyone at the moment?
+  - I think you should see a doctor about that cough.
+- 見える -> 対象が頭に入ってくる
+  - I saw her. / I looked at her.
+- 見える -> 対象が頭に入ってくる -> 検討・判断
+  - I'll see if there are any in the store room.
+  - Let me see if the manager is in her office.
+- 見える -> 対象が頭に入ってくる -> 検討・判断 -> 適切に取り計らう
+  - You don't need to worry. Mary will see to everything.
+  - Please see that your seetbelts are securely fastened.
+  - See that your grandma takes her medicine 3 times a day.
+- 見える -> 対象が頭に入ってくる -> 検討・判断 -> 理解する
+  - I see your point.
+  - Can't you see I'm busy?
+  - You can see now why we need to upgrade our computers.
+
 ### sneak
 - こっそり、こそこそ
   - I managed to sneak out.
@@ -376,6 +417,10 @@
 - そっと近づく、つきまとう
   - The cat stalked the bird.
   - The police arrested the guy who stalking my sister.
+
+### stare
+- (カッと目を見開いて)じっと見る
+  - You shouldn't stare at people. It's bad manners.
 
 ### stay
 - ある場所にとどまる
@@ -420,3 +465,11 @@
 - くるっと向きを変える -> スイッチを回す
   - He certainly knows how to turn the charm.
   - OK, you can turn the power on now.
+
+### watch
+- 集中して見る
+  - Look at that guy over there. He's been watching us since we arrived.
+  - The doctor says I need to watch my diet.
+- (動きのあるものを)集中して見る
+  - Watch me. / Look at me.
+  - We're watching the orangutans swinging from tree to tree.
