@@ -170,3 +170,19 @@ end
 3. `$ rails db:migrate`(マイグレーションファイルは追加されているためマイグレーション可能)
 4. `$ git add db/schema.rb`
 5. `$ git rebase --continue`
+
+### `ArgumentError: Index name 'index_users_on_xxxx' on table 'users' is too long; the limit is 63 characters`
+- `name`オプションでエイリアスをつけて回避する
+```ruby
+add_index :users, %i[hoge fuga moge], unique: true, name: 'original_uniqueness_index'
+```
+
+### 特定の条件のみユニーク制約をかけたい(PostgreSQL / SQLite)
+- 部分インデックスを使用する
+- `where`オプションで条件を指定する
+```ruby
+# enum status: { active: 0, inactive: 1 }
+# statusがactiveなユーザーのみemailにユニーク制約をかけたい
+
+add_index :users, %i[email status], unique: true, where: 'status = 0'
+```
