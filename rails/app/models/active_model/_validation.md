@@ -21,6 +21,11 @@ validates_uniqueness_of :title, conditions: -> { where.not(status: 'archived') }
 ```
 - 参照: [ActiveRecord::Validations::ClassMethods](https://api.rubyonrails.org/classes/ActiveRecord/Validations/ClassMethods.html#method-i-validates_uniqueness_of)
 
+### uniquenessバリデーションを複数のscopeに対してつけたい
+```ruby
+validates_uniqueness_of :title, scope: %i[status price] }
+```
+
 ### 関連するモデルに対してもバリデーションチェックを行いたい
 - 参照: [2.2 validates_associated](https://railsguides.jp/active_record_validations.html#validates-associated)
 - `validates_associated`を使用する
