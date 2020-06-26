@@ -115,3 +115,9 @@ describe Api::V1::UpdatedPricesController, type: :request do
   end
 end
 ```
+
+### datetime型のテスト(誤差によって落ちる場合)
+- `Time#round`で小数点以下を丸める
+```ruby
+let(:book) { create(:book, published_at: Time.current.round) }
+```
