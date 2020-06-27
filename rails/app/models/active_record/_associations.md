@@ -107,6 +107,20 @@ end
 - `build_association`を使用すると発生する
 - 代わりに`new`や`find_or_initialize_by`を使用する
 
+### `destroy`: `ActiveRecord::RecordNotDestroyed`の原因を知りたい
+- `destroy`をオーバーライドする
+```ruby
+class XxxModel < ApplicationRecord
+  def destroy
+    begin
+      super
+    rescue ActiveRecord::RecordNotDestroyed => e
+      puts e.record.errors
+    end
+  end
+end
+```
+
 ## 拡張
 - 参照: [4.6関連付けの拡張](https://railsguides.jp/association_basics.html#%E9%96%A2%E9%80%A3%E4%BB%98%E3%81%91%E3%81%AE%E6%8B%A1%E5%BC%B5)
 - 関連付けのプロキシオブジェクトをカスタマイズする
