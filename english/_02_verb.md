@@ -145,6 +145,13 @@
   - Stop eyeing those cakes.
   - I noticed her eyeing my chocolate.
 
+### feel
+- 感じがする(向こうからやってくる)
+  - I feel we need to do something about this problem.
+  - I felt the excitement building up to the audience.
+- 感じる(自発的に行為を行う)
+  - Feel this cashmere sweater. It's so soft.
+
 ### finish
 - 完了・完遂
   - Have you finished the report?
@@ -236,6 +243,16 @@
  - Don't worry. I will have the whole house clean by lunch time.
  - I had my purse stolen during my trip to France.
 
+### hear
+- 聞こえる、音が向こうからやってくる
+  - Sorry, I can't hear you well.
+  - I heard Ken play the piano.
+  - I heard that Ken plays the piano.
+  - Can't you hear the phone ringing?
+- 聞こえる、音が向こうからやってくる -> 知っている
+  - I've never heard of anyone by that name.
+  - Have you heard about Jeff? He's going to get married.
+
 ### help
 - 状況を改善する・手を添えて援助する
   - She helped me with my homework.
@@ -274,6 +291,15 @@
   - You left your key on the table.
   - I left you the shopping list on the kitchen table.
   - I told you to leave the cat alone.
+
+### listen
+- 音に耳を傾ける
+  - Listen to me. This is a bad idea.
+  - You were listening in on our conversation, weren't you? -> 会話の中に耳を傾ける
+  - I was listening for my name to be called. -> 名前を求めて耳を傾ける
+  - Make sure you listen for a postman. I'm expected an important delivery today.
+- 抽象的なものに耳を傾ける
+  - My son never listens to me.
 
 ### look
 - 目を向ける
@@ -401,12 +427,26 @@
   - Can't you see I'm busy?
   - You can see now why we need to upgrade our computers.
 
+### smell
+- 匂いがする(向こうからやってくる)
+  - This is a non-smoking restaurant. But I can smell smoke.
+  - I think I can smell gas.
+- 嗅ぐ(自発的に行為を行う)
+  - Smell the milk first to see if it's still OK to drink.
+
 ### sneak
 - こっそり、こそこそ
   - I managed to sneak out.
 - こっそり、こそこそ -> 見られないように行動する
   - I sneaked one of my mom's brownies out of the kitchen.
   - I sneaked into the private party, and nobody notice me at all.
+
+### speak
+- 口から音声を出す
+  - I hate to speak in front of people.
+  - I don't want to speak about it right now. -> 口にしたくない
+  - Many youg people spoke about the climate change at the rally in NY.
+  - I didn't catch what you said. So can you speak more slowly please?
 
 ### spread
 - まんべんなく覆う
@@ -455,6 +495,19 @@
   - Which road shall we take?
   - It's much quickker if you take the Yamamnote line.
   - Their team took a hard stance during the negotiation.
+
+### talk
+- 言葉によるコミュニケーションを行う
+  - You can come to me anytime you want to talk.
+  - I don't want to talk about it right now. -> 話し合いたくない
+  - You often hear peple talking to each other in spanish in many US cities.
+
+### taste
+- 味がする(向こうからやってくる)
+  - Can you taste anything strange in this stew?
+  - I've never tated anything like this before. It's delicious.
+- 味をみる(自発的に行為を行う)
+  - Taste the sauce for the salt.
 
 ### turn
 - くるっと向きを変える
