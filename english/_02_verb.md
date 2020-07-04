@@ -1,11 +1,29 @@
 # 動詞
 - 引用: NHKラジオ英会話2019年6月号
+- 引用: NHKラジオ英会話2019年7月号
+- 引用: NHKラジオ英会話2019年8月号
+- 引用: NHKラジオ英会話2019年9月号
+
+### argue
+- 白黒つける -> 論争する
+  - We weren't chatting. We were arguing!
+  - The two brothers often argue about the most ridiculous thing.
 
 ### arrived
 - 目的地に足を踏み入れ到達する
   - Most of the guests have already arrived.
   - We should arrived at the hotel by 6:30.
   - We finally arrived at the destination. Exhausted and famished.
+
+### ask
+- 求める・お願いする -> 力添えを求める -> 頼む
+  - Let's ask David to organize the party.
+  - She asked me for more money.
+  - Ask the server some cheeze.
+- 求める・お願いする -> 情報を求める -> 訊ねる
+  - He asked me where I live.
+  - I asked her if she was OK.
+  - I ask about her summer vacation.
 
 ### be動詞
 - 主語 = 説明語句
@@ -69,6 +87,10 @@
 - 変化 -> なる
   - Tadpoles change into frogs.
 
+### chat
+- おしゃべりする
+  - We weren't chatting. We were arguing!
+
 ### collect
 - 色々な場所から集める
   - We have to collect all the garbage by 4 o'clock.
@@ -117,6 +139,11 @@
 - 破壊(取り返しがつかない)
   - This scandal has destroyed the famous actor's reputation.
   - Airstrikes has destroyed entire areas of the city.
+
+### discuss
+- 話題にアタックする -> 議論する
+  - I need to discuss this matter with my family.
+  - Today we need to discuss arrangement for the upcoming conference.
 
 ### drive
 - 力を加えて動かす
@@ -325,6 +352,11 @@
   - What I want most is to make my parents proud of me.
   - It was difficult to make myself understood in English.
 
+### negotiate
+- 合意に向けて綱引きする -> 交渉する
+  - We are now negotiating very hard for better working conditions.
+  - My boss always remains calm when she negotiates.
+
 ### own
 - 所有者である
   - I own this restaurant.
@@ -404,6 +436,13 @@
   - I jumped into river and saved her.
   - I'm saving money for a rainy day.
   - We all need to save electoricity in order to slow grobal warming.
+
+### say
+- 言葉を言う
+  - Say thank you.
+  - Some claim that climate change doesn't exist, but the facts say otherwise(他の方向).
+  - Let's say you put asite 20000 yen in a month. You're enough to buy new laptop by next year. -> 仮に(提案)
+  - Why don't you come around my place, say, at 8:30? -> 例えば(提案)
 
 ### see
 - 見える
@@ -508,6 +547,19 @@
   - I've never tated anything like this before. It's delicious.
 - 味をみる(自発的に行為を行う)
   - Taste the sauce for the salt.
+
+### tell
+- メッセージを相手に伝える
+  - My teacher told my parents that I needed to pay more attention in the class.
+  - Have you told your parents the good news about your promotion yet?
+  - Don't tell anyone your password.
+  - We told you to have the car check before buying it.
+- メッセージを相手に伝える -> (can + tell)伝えることができる -> わかる
+  - Can't you tell that they are just using you?
+  - How can you tell organic foods from non-organic.
+- メッセージを相手に伝える -> (tell A from B)見分ける
+  - Sometimes it's difficult to tell the good guys from the bad.
+  - How can you tell organic foods from non-organic.
 
 ### turn
 - くるっと向きを変える
