@@ -2,6 +2,7 @@
 - 参照: [mruby/mruby](https://github.com/mruby/mruby)
 - 参照: [オープンソースの言語／mrubyとは](https://www.ossnews.jp/oss_info/mruby)
 - 参照: [ここまで来た開発言語　mruby・mruby/cの最新情報　“本当に使える”IoTプラットフォーム](https://www.slideshare.net/shimane-itoc/mrubymrubyciot)
+- 参照: [mrubyをとりあえず動かしてみただけ](https://dojineko.hateblo.jp/entry/2016/02/11/204349)
 
 ## TL;DR
 - 組み込みシステム向けの軽量なRuby言語処理系
@@ -17,10 +18,37 @@
 - インクリメンタルガベージコレクション
 - 省メモリ
 
-## 提供ツール
-- mruby -> インタプリタプログラム
-- mirb -> 対話型mrubyシェル
-- mrbc -> mrubyコンパイラ
+## Usage
+- `$ git clone`後、`$ ruby ./minirake`を実行することで`bin/`以下に次のバイナリが生成される
+  - mirb
+  - mruby
+  - mrbc
+
+### mirb
+- 対話型mrubyシェル(`$ irb`に相当)
+```sh
+$ bin/mirb
+mirb - Embeddable Interactive Ruby Shell
+
+> 'Hello.'
+ => "Hello."
+```
+
+### mruby
+- インタプリタ(`$ ruby`に相当)
+```sh
+$ echo 'p Hello.' > sample.rb
+$ bin/mruby sample.rb # sample.rbを実行
+Hello
+```
+
+### mrbc
+- バイトコードコンパイラ
+```ruby
+$ bin/mrbc sample.rb # バイトコードへ変換
+$ bin/mruby -b sample.mrb # バイトコードとしてsample.mrbを実行(-bオプション必須)
+Hello
+```
 
 ## 関連プロジェクト
 - [Related Projects](https://github.com/mruby/mruby/wiki/Related-Projects)
