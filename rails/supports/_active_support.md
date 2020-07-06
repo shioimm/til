@@ -1,4 +1,7 @@
-### Module::Concerning
+# ActiveSupport
+- 参照: [RDOC_MAIN.rdoc](https://api.rubyonrails.org/)
+
+## Module::Concerning
 - 参照: [Module::Concerning](https://api.rubyonrails.org/v4.1.0/classes/Module/Concerning.html#method-i-concerning)
 - models/concernsディレクトリ内にファイルを作成せず、モデルクラス内で関心事の分離を行う
 - `Module::Concerning#concerning` -> 新しいconcernを定義し、Mixinする
@@ -18,12 +21,32 @@ class Chapter < ApplicationRecord
 end
 ```
 
-### Object#presence_in(another_object)
-- 参照: [Ruby on Rails 6.0.0 RDOC_MAIN.rdoc](https://api.rubyonrails.org/)
+## Enumerable
+### #index_with(default = INDEX_WITH_DEFAULT)
+- 配列の要素をkey、ブロック内の返り値をvalueとしてハッシュに変換する
+- `#each_with_object({})`に代用できる
+```ruby
+# Before
+book = Book.new(title: 'Programming Ruby', author: 'Dave Thomas')
+
+%i[title author].each_with_object({}) do |attr, hash|
+  hash[attr] = post.public_send(attr)
+end
+# => { title: 'Programming Ruby', author: 'Dave Thomas' }
+
+# After
+book = Book.new(title: 'Programming Ruby', author: 'Dave Thomas')
+
+%i[title author].index_with { |attr| post.public_send(attr) }
+# => { title: 'Programming Ruby', author: 'Dave Thomas' }
+```
+
+## Object
+### #presence_in(another_object)
 - レシーバがanother_objectに含まれている場合はレシーバを返し、含まれていない場合は`nil`を返す
 - `another_object.respond_to?(:include?)`が`false`の場合、`ArgumentError`が発生する
 
-### ActiveSupport::CurrentAttributes
+## ActiveSupport::CurrentAttributes
 - コントローラー以外で`Current.user`(`current_user`)を扱う
 ```ruby
 # app/models/current.rb
