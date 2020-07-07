@@ -33,3 +33,15 @@ ApplicationController.helpers.time_ago_in_words(updated_at)
 ```ruby
 view_context.time_ago_in_words(updated_at)
 ```
+
+### `length` `count` `size`の違い
+- 参照: [ActiveRecord: size vs count vs length](https://blazarblogs.wordpress.com/2019/07/27/activerecord-size-vs-count-vs-length/)
+- `length`
+  - メモリにロードされた要素の数を返す
+  - `Hoge.all`などで既に要素がメモリにロードされている場合、COUNTクエリの発行を避けるために使用する
+  - 既にロードされている要素に対して、更新を実行しない
+- `count`
+  - COUNTクエリを発行する
+  - カウンタキャッシュを使用している場合、countは新しいクエリを実行せずにキャッシュされた値を返す
+- `size`
+  - 要素がまだロードされていない場合は`count`、ロードされている場合は`length`を実行する
