@@ -1,5 +1,5 @@
 // 引用: ふつうのLinuxプログラミング
-// 第7章 headコマンドを作る
+// 第7章 headコマンドを作る 1
 
 #define _GNU_SOURCE // getopt_long()のプロトタイプ宣言を読み込むために必要
 #define DEFAULT_N_LINES 10
