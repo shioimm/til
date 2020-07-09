@@ -1,28 +1,46 @@
 // 引用: ふつうのLinuxプログラミング
-// 第7章 headコマンドを作る
+// 第7章 headコマンドを作る 1
+
+#define _GNU_SOURCE // getopt_long()のプロトタイプ宣言を読み込むために必要
+#define DEFAULT_N_LINES 10
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 
 static void do_head(FILE *f, long nlines);
 
+static struct option longopts[] = {           // option構造体の配列を宣言し、代入
+  { "lines", required_argument, NULL, 'n' },  // 必ずパラメータをとる--lines(-n)オプションを定義
+  { "help",  no_argument,       NULL, 'h' },  // パラメータをとらない--help(-h)オプションを定義
+  { 0, 0, 0, 0 }                              // 配列の末尾を示す
+};
+
 int main(int argc, char *argv[])
 {
+  int opt;
   long nlines;
 
-  if (argc != 2) {
-    fprintf(stderr, "Usage: %s n\n", argv[0]);
-    exit(0);
+  while ((opt = getopt_long(argc, argv, "n:", longopts, NULL)) != -1) { // "n:"解析が必要なショートオプション
+    switch (opt) {
+      case 'n':
+        nlines = atol(optarg); // atol() 整数表現を含む文字列から対応する整数型を取得する
+        break;
+      case 'h':
+        fprintf(stdout, "Usage: %s [-n LINES] [FILE ...]\n", argv[0]);
+        exit(0);
+      case '?':
+        fprintf(stderr, "Usage: %s [-n LINES] [FILE ...]\n", argv[0]);
+        exit(1);
+    }
   }
 
-  nlines = atol(argv[1]); // atol() 整数表現を含む文字列から対応する整数型を取得する
-
-  if (argc == 2) {
+  if (optind == argc) { // optind 現在処理中のオプションのargvでのインデックス
     do_head(stdin, nlines);
   } else {
     int i;
 
-    for (i = 2; i < argc; i++) {
+    for (i = optind; i < argc; i++) {
       FILE *f;
       f = fopen(argv[i], "r");
 
@@ -93,4 +111,4 @@ static void do_head(FILE *f, long nlines) // *f 読み込むストリーム / nl
 //   int optind   現在処理中のオプションのargvでのインデックス
 //   int optopt   現在処理中のオプション文字
 //
-//   ロングオプションはgetlong_opt()(#include <getopt.h>)で扱う
+//   ロングオプションはgetopt_long()(#include <getopt.h>)で扱う
