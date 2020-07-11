@@ -1,5 +1,5 @@
 // 引用: ふつうのLinuxプログラミング
-// 第8章 grepコマンドを作る
+// 第8章 grepコマンドを作る 1
 
 // while (バッファに一行読み込む) {
 //   if (バッファの中身が正規表現に適合する) {
@@ -64,9 +64,9 @@ int main(int argc, char *argv[])
   if (argc == 2) {
     do_grep(&pat, stdin);
   } else {
-    for (i = 2; i< argc; i++) { // 入力用ストリームを用意
-      FILE *f;
-      f = fopen(argv[i], "r");
+    for (i = 2; i < argc; i++) {
+      FILE *f; // 入力ストリームを用意
+      f = fopen(argv[i], "r"); // ファイルを開き、入力ストリームに関連付ける
 
       if (!f) {
         perror(argv[i]);
@@ -82,10 +82,11 @@ int main(int argc, char *argv[])
   exit(0);
 }
 
-static void do_grep(regex_t *pat, FILE *src)
+static void do_grep(regex_t *pat, FILE *src) // 正規表現パターンと入力ストリームを受け取る
 {
   char buf[4096];
 
+  // 入力ストリームから一行読み込み、正規表現パターンに合致する場合は出力
   while (fgets(buf, sizeof buf, src)) {
     if (regexec(pat, buf, 0, NULL, 0) == 0) {
       fputs(buf, stdout);
