@@ -128,6 +128,10 @@
   - I hate it when you to creep up on me.
   - He crept up to his little sister, and frighten her to death.
 
+### demonstrate
+- 見せながら説明し、周りの人が説明を注意深く見守っている
+  - The salesman demonstrated how to use the grater.
+
 ### develop
 - 時間をかけて(内面から)形作る・現れる
   - Children develop better with good nutrition.
@@ -151,6 +155,12 @@
   - You need good hammer to drive the stakes into the ground.
   - Driven by passion for fashion, she launched own clothing company.
 
+### educate
+- (teachよりも広く深い範囲の物事を)教育する
+  - An educated person.
+  - Chris was educated at Oxford University.
+  - We need educate our children about the danger of drugs.
+
 ### exchange
 - 二つのものの交換
   - They exchanged greetings.
@@ -160,6 +170,11 @@
 - 全方面に広げる
   - Our aim is to expand our chain of restaurants across Japan.
   - We're expanding our business to oversea's market.
+
+### explain
+- 平らにして見渡せるようにする -> 説明する
+  - I can explain everything.
+  - It's difficult to explain how I feel.
 
 ### extend
 - 長さを延ばす
@@ -183,6 +198,11 @@
 - 完了・完遂
   - Have you finished the report?
   - The Yoga class begins at 10:30, and finishes at 12:00.
+
+### force
+- 力づくで行動を起こさせる
+  - You don't have to accept. Nobody forcing you.
+  - My parents forced me to apologize.
 
 ### gaze
 - (素敵なものを)じっと見る
@@ -287,9 +307,19 @@
   - Please help yourself to tea or coffee.
   - I can't help thinking it was a mistake to sell those shares. -> 状況を改善できない
 
+### illustrate
+- 図表を使って説明する
+  - These slides will illustrate our company structure.
+  - You should give much clearer examples to illustrate each point.
+
 ### include
 - 容器の中に入っている
   - Each tablet contains enough vitamin C for a day.
+
+### instruct
+- やり方を指示する
+  - I have instructed the Head of Quality control to look into the matter.
+  - He instructed us how to setup the computers.
 
 ### involve
 - 強く引きつけ巻き込む
@@ -357,6 +387,10 @@
   - We are now negotiating very hard for better working conditions.
   - My boss always remains calm when she negotiates.
 
+### order
+- 命じることにより行動を起こさせる
+  - My boss has stopped ordering me work late.
+
 ### own
 - 所有者である
   - I own this restaurant.
@@ -379,12 +413,24 @@
   - I can't locate the village on this old map.
   - The police are doing all they can to locate the missing girl.
 
+### persuade
+- 説得して行動を起こさせる
+  - Do you think you persuaded them to accept our conditions? -> persuaded 説得に成功した
+  - Don't let him persuade you into lending him money.
+    - I wan't going go to the party, but Akane talk to me into it.
+  - You never persuade your parents to agree to that.
+
 ### produce
 - 前に出す
   - Chris produced his dliver's license from his pocket.
 - 前に出す -> 生産する
   - Brazil produces some of the world's best coffee.
   - Our apple trees have produced more fruits than ever last year.
+
+### propose
+- (事前によく練られた案を)勧める
+  - I propose a radical downsizing of the company.
+  - I propose that we lent rather than buy the apartment.
 
 ### put
 - 何かをどこかにポン
@@ -406,6 +452,12 @@
   - It took a 6 hour to reach the top of Mt.Fuji.
 - 手を伸ばして対象物に触れる -> 連絡する
   - Where can I reach you?
+
+### recommend
+- (何かを手で持ち上げながら)勧める
+  - What do you recommend?
+  - The school principal recommended that my daughter apply to Oxbridge.
+  - I highly recommend the new Italian restaurant. The pizza is amazing.
 
 ### remain
 - ある場所にとどまる(フォーマル)
@@ -466,6 +518,11 @@
   - Can't you see I'm busy?
   - You can see now why we need to upgrade our computers.
 
+### show
+- 見せながら説明する
+  - I don't know how to use this printer. - Don't worry. I'll show you that.
+  - Let me show you the latest photos of my cat.
+
 ### smell
 - 匂いがする(向こうからやってくる)
   - This is a non-smoking restaurant. But I can smell smoke.
@@ -512,6 +569,11 @@
   - Everyone stopped chatting when the author arrived.
   - Luckily, the rain stapped. And we were able to have our picnik.
 
+### suggest
+- 気軽な提案を差し出す -> 勧める
+  - I suggest you phone her and say sorry.
+  - I suggest taking taxi for the sake of convinience.
+
 ### take
 - 手に取る
   - Let's take a photo togather.
@@ -547,6 +609,12 @@
   - I've never tated anything like this before. It's delicious.
 - 味をみる(自発的に行為を行う)
   - Taste the sauce for the salt.
+
+### teach
+- 複雑な内容を時間をかけて教える
+  - She teaches physics at a university in Stockholm.
+  - Many songs teach us a lot about social issues.
+  - My older brother taught me how to drive.
 
 ### tell
 - メッセージを相手に伝える
