@@ -64,6 +64,9 @@ RSpec.describe HogeMailer, type: :mailer do
   end
 end
 ```
+- `ActiveJob::TestHelper#perform_enqueued_jobs`
+  - ブロックの中でエンキューされたジョブを実行
+
 
 ## モデルに依存しないテスト
 - Structを使う
