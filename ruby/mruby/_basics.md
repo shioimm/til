@@ -44,11 +44,42 @@ Hello
 
 ### mrbc
 - バイトコードコンパイラ
+  - Cコード -> オブジェクトファイルにビルド
+    Rubyスクリプト -> Cへ変換 -> まとめてオブジェクトファイルにビルド
+    - Rubyスクリプトは他のソースコードから読み込めるよう、一旦Cのデータの配列として変換している
 ```ruby
-$ bin/mrbc sample.rb # バイトコードへ変換
-$ bin/mruby -b sample.mrb # バイトコードとしてsample.mrbを実行(-bオプション必須)
+$ bin/mrbc sample.rb # Rubyスクリプトをバイトコードへ変換
+$ bin/mruby -b sample.mrb # バイトコードであるsample.mrbを実行(-bオプション必須)
+
 Hello
 ```
+
+### `build_config.rb`
+- mrubyをビルドするための設定ファイル
+- 依存mgemを宣言すると、
+  mgem内部のプログラムをすべて読み込んだmrubyをビルドすることができる
+  - `require`なしでmgemを利用できる
+```ruby
+MRuby::Build.new do |conf| # confはMRuby::Buildのインスタンス
+  toolchain:          # どのツールチェインでビルドするか
+  conf.gem:           # 依存mgemの記述 :core/:mgem/:github
+  conf.gembox         # まとまったmgemグループを一括で読み込み
+  enable_debug        # デバッグビルドを有効にする
+  conf.enable_test    # テストを有効にする
+  conf.enable_bintest # bintest(バイナリを実行するテスト)を有効にする
+  conf.cc             # コンパイラに特殊なオプションを渡す
+  conf.linker         # リンカーに特殊なオプションを渡す
+  conf.archiver       # アーカイバーに特殊なオプションを渡す
+end
+```
+
+#### ビルドパイプライン
+1. `$rake` -> `Rakefile` `build_config.rb`読み込み
+2. 依存mgemをダウンロード
+3. mrubyコアとmrbcのビルド -> バイトコード化
+4. 依存mgemのビルド -> バイトコード化
+5. CとRubyからそれぞれ生成されたオブジェクトファイルを結合(アーカイブ) -> libmruby.a
+6. libmruby.aをリンクしたバイナリの生成
 
 ## 関連プロジェクト
 - [Related Projects](https://github.com/mruby/mruby/wiki/Related-Projects)
