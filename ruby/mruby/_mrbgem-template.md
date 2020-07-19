@@ -1,4 +1,6 @@
 # mrbgem-template
+- 参照: [mruby-mrbgem-template](https://github.com/matsumotory/mruby-mrbgem-template)
+
 ## TL;DR
 - mgemの雛形を生成するコマンド
 
@@ -9,8 +11,15 @@ $ brew tap mrbgems/mrbgem-template
 $ brew install mrbgem-template
 
 # 雛形の生成
-$ mrbgem-template -m 2.1.1-rc2 mruby-first_gem
-$ cd ./mruby-first_gem
+$ mrbgem-template -m 2.1.1-rc2 mgemの名前
+
+# バイナリも一緒に生成する場合
+$ mrbgem-template -m 2.1.1 --bin-name バイナリの名前 mgemの名前
+
+# mgemディレクトリへ移動
+$ cd ./mgemの名前
+
+# ビルド時は逐次rakeを実行
 $ rake
 ```
 
