@@ -4,6 +4,13 @@
 - 引用: NHKラジオ英会話2019年8月号
 - 引用: NHKラジオ英会話2019年9月号
 
+### allow
+- 受け入れる・許容する -> 許す
+  - Allow me to get this.
+  - My mother allow me 3000 yen a month. -> 許し与える
+  - The facts allow no other explanation.
+  - In my class, I don't allow students to speak Japanese.
+
 ### argue
 - 白黒つける -> 論争する
   - We weren't chatting. We were arguing!
@@ -14,6 +21,11 @@
   - Most of the guests have already arrived.
   - We should arrived at the hotel by 6:30.
   - We finally arrived at the destination. Exhausted and famished.
+
+### assert
+- 臆せず明瞭にしっかりと意見を言う -> 主張する
+  - The leadership camp taught me to assert myself more.
+  - It's encouraging so many women asserting their rights.
 
 ### ask
 - 求める・お願いする -> 力添えを求める -> 頼む
@@ -91,6 +103,13 @@
 - おしゃべりする
   - We weren't chatting. We were arguing!
 
+### claim
+- 正当性を叫ぶ -> (権利を)主張する
+  - She claimed that she was innocent.
+  - You should be able to claim expenses for entertaining your foreign clients.
+  - Passengers on flight 203 from Instanbul may claim their baggege to carousel No.4.
+  - The woman claimed that she have been robbed.
+
 ### collect
 - 色々な場所から集める
   - We have to collect all the garbage by 4 o'clock.
@@ -127,6 +146,12 @@
 - 抜き足差し足忍び足
   - I hate it when you to creep up on me.
   - He crept up to his little sister, and frighten her to death.
+
+### demand
+- (机をバンバン叩いて)要求する
+  - The woman demanded that she be reimbursed.
+  - The demanding job. -> きつい仕事
+  - I demand a explanation right now.
 
 ### demonstrate
 - 見せながら説明し、周りの人が説明を注意深く見守っている
@@ -316,6 +341,11 @@
 - 容器の中に入っている
   - Each tablet contains enough vitamin C for a day.
 
+### insist
+- 上に立って動かない -> (頑固な強い意志で)主張する
+  - I insisted that it was the right thing to do.
+  - She insisted on going Dutch.
+
 ### instruct
 - やり方を指示する
   - I have instructed the Head of Quality control to look into the matter.
@@ -348,6 +378,16 @@
   - You left your key on the table.
   - I left you the shopping list on the kitchen table.
   - I told you to leave the cat alone.
+
+### let
+- (軽いタッチで)許す
+  - Let me ask you quick question.
+  - Let me know when you've finished.
+  - I won't let my daughter marry such a guy.
+  - Let the dogs alone. They may bite you.
+- (ある状況が展開するのを)許す
+  - Harry let the cat out of the bag, so now everyone knows about our engagement.
+    - let the cat out of the bag -> うっかり~してしまう
 
 ### listen
 - 音に耳を傾ける
@@ -413,6 +453,12 @@
   - I can't locate the village on this old map.
   - The police are doing all they can to locate the missing girl.
 
+### permit
+- (堅いタッチで)許す・許可する
+  - You ar not permitted enter this goverment building.
+  - Students are not permitted to eat in a library.
+  - The row does not permitted to sell the alcohols to minors.
+
 ### persuade
 - 説得して行動を起こさせる
   - Do you think you persuaded them to accept our conditions? -> persuaded 説得に成功した
@@ -464,6 +510,14 @@
   - Bill remained at home because he was ill.
   - Please remain silent until the judges have left the room.
   - Everything remained the same.
+
+### require
+- 必要とする -> 要求する
+  - His job requires that he take an international English test.
+  - Learning a foreign langwage requires a long-term motivation.
+  - My vintage car requires a lot of TLC.
+  - The old house requires a new roof.
+  - The school requires that all students should wear a uniform.
 
 ### ruin
 - 素晴らしかったものをだめにする
