@@ -54,6 +54,7 @@ $ ldd /usr/lib/apache2/modules/mod_mruby.so # ビルドがうまくいってい�
   mrubyHandlerMiddle /var/lib/mruby/hello.rb
 </Location>
 ```
+- [ディレクティブ](https://github.com/matsumotory/mod_mruby/wiki/Directives#directive)
 
 #### (3) Apacheを再起動
 ```
