@@ -3,6 +3,7 @@
 - 引用: NHKラジオ英会話2019年7月号
 - 引用: NHKラジオ英会話2019年8月号
 - 引用: NHKラジオ英会話2019年9月号
+- 引用: NHKラジオ英会話2019年10月号
 
 ### allow
 - 受け入れる・許容する -> 許す
@@ -332,6 +333,11 @@
   - Please help yourself to tea or coffee.
   - I can't help thinking it was a mistake to sell those shares. -> 状況を改善できない
 
+### hope
+- 現実的な願い
+  - I hope you enjoy the show.
+  - I hope you have a wonderful time in Swizerland.
+
 ### illustrate
 - 図表を使って説明する
   - These slides will illustrate our company structure.
@@ -369,6 +375,28 @@
   - Chris can't keep a secret.
   - Hey, what's keeping you?
   - Hey, keep some pizzas for me, OK?
+
+### know
+- 事実を知っている
+  - I don't know this area.
+  - We know you can do it.
+  - I know I won't pass the test.
+  - I know you do a fantastic job.
+- 事実を知っている -> できる
+  - I can't understand this english manual. - Ask Ken. He knows English.
+  - Laura is a great addition to our team. She really knows her stuff when it comes to corporate law.
+  - I know a great deal about Web design. So I'm sure I can be an asset to your company.
+- 事実を知っている -> わかる
+  - I knew it was Carol as soon as I heard her voice.
+  - Would you know the thief if you saw him again?
+  - You should talk to Brian. He knows Sydney.
+  - Look at this photo. Do you know this guy?
+- 事実を知っている -> 見聞きした、経験した、理解した
+  - I've never known her to say a bad word about anyone.
+  - I've known about high tempertures, but nothing like today's 40℃. It's unbearable!
+  - Do you know what I mean?
+  - Have you ever known such a kalismatic leader?
+  - Do you know what this symbol means?
 
 ### leave
 - 離れていく -> (離れていくもの視点)去る・出発する・出ていく・辞める
@@ -700,3 +728,26 @@
 - (動きのあるものを)集中して見る
   - Watch me. / Look at me.
   - We're watching the orangutans swinging from tree to tree.
+
+### wish
+- 現実感のないドリーミーな願望(仮定法)
+  - I wish I had more free time.
+  - I with I were as talented as you.
+- 現実感のないドリーミーな願望 -> 控えめな欲求
+  - If you wish to ask a question, please wait until the end of the lecture.
+  - <-> If you want to ask a question, please wait until the end of the lecture.
+  - My dad wishes my sister to marry a lawyer.
+  - We all wish your swift recovery.
+
+### want
+- 欠けているものを求める強い生々しい欲求
+  - I want an icecream.
+  - Do you want me to go shopping with you?
+  - <-> would like 生々しさを排除した欲求
+    - I'd like the Caesar salad, but without the bacon if possible.
+    - I would like to thank you all for coming today.
+  - <-> would love
+    - Do you want tograb a coffee? - I would love to.
+- 欠けているものを求める強い生々しい欲求 -> 欠けているものを必要とする
+  - You want to study harder if you hope to pass the exam.
+  - I think your hair wants cutting.
