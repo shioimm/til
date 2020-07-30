@@ -1,5 +1,6 @@
 # perf
 - 参照: [perf: Linux profiling with performance counters](https://perf.wiki.kernel.org/index.php/Main_Page)
+- 参照: []()
 
 ## TL;DR
 - Linuxの`perf`コマンド(`tools/perf`に含まれる)
@@ -16,6 +17,12 @@
   - 実行中のカーネルにおけるブレークポイント
 - Uprobes(dynamic tracing)
   - ユーザ空間のアプリケーションにおけるブレークポイント
+
+## Get Started
+- カーネルのバージョンを含むパッケージを指定してインストールする必要がある
+```
+$ sudo apt install linux-tools-common linux-tools-$(uname -r)
+```
 
 ## インターフェース
 - `perf stat`
