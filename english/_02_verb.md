@@ -5,6 +5,15 @@
 - 引用: NHKラジオ英会話2019年9月号
 - 引用: NHKラジオ英会話2019年10月号
 
+### notice
+- 心のアンテナに引っかかる -> 気づく
+  - Oh. I just noticed your earrings. They're beautiful.
+  - My girlfriend got to upset. Because I didn't notice her hair style.
+
+### acomperehend
+- com(完全に) + prehend(つかむ) -> 理解する
+  - Sociologists still don't fully comprehend the causes of delinquency.
+
 ### allow
 - 受け入れる・許容する -> 許す
   - Allow me to get this.
@@ -121,7 +130,7 @@
 - やって来る(話題になっている場所を中心に考える)
   - I'm coming.
   - The rainy season is coming.
-  - Is Kate coming to the restraunt with us?
+  - Is Kate coming to the restaurant with us?
 - やって来る -> 手に入る
   - This laptop comes with a lather case.
   - Apaartments in this area don't come cheap.
@@ -169,6 +178,10 @@
 - 破壊(取り返しがつかない)
   - This scandal has destroyed the famous actor's reputation.
   - Airstrikes has destroyed entire areas of the city.
+
+### discover
+- カバーを外す -> 発見する
+  - I've finally discovered how to please my boss.
 
 ### discuss
 - 話題にアタックする -> 議論する
@@ -220,10 +233,26 @@
 - 感じる(自発的に行為を行う)
   - Feel this cashmere sweater. It's so soft.
 
+### find
+- 頭にクリック音が鳴る -> 見つける
+  - I'll find some time to talk to your father.
+  - I found you a great T-shirt.
+- 頭にクリック音が鳴る -> 気づく
+  - I arrived only to find that the meeting had been cancelled.
+  - Welcome back. How did you find in Venice?
+- 頭にクリック音が鳴る -> わかる
+  - You'll find Ken's report interesting.
+  - You've better stop to telling a lie, or you'll find yourself in deep trouble.
+
 ### finish
 - 完了・完遂
   - Have you finished the report?
   - The Yoga class begins at 10:30, and finishes at 12:00.
+
+### follow
+- ついていく -> 理解する
+  - Sorry I can't quite follo what you're saying.
+  - The lecturer used very difficult vocabulary, so I couldn't follow what he was saying.
 
 ### force
 - 力づくで行動を起こさせる
@@ -244,7 +273,7 @@
   - I'll take a taxi.(選択) <-> I'll get a taxi.(入手)
   - I got to school late this morning due to a train delay. -> 物理的な移動
   - I want to get to know you better. -> 抽象的な移動(変化)
-  - I finnaly got to meet my biological mother. -> got to 希望が叶って
+  - I finally got to meet my biological mother. -> got to 希望が叶って
 
 #### get受動態
 - 突然、予期せず~される (<-> 普遍的に~される(be動詞受動態))
@@ -294,6 +323,11 @@
   - How about grabbing a bite to eat?
   - You should grab any chance to speak English.
   - Rosa and I are going to grab a drink. Care to join us?
+
+### grapse
+- つかむ -> 理解する
+  - His idea is too difficult for me to grapse.
+  - It's important to grapse the way of native speaker's thinking.
 
 ### have
 - 範囲内にある
@@ -527,6 +561,20 @@
 - 手を伸ばして対象物に触れる -> 連絡する
   - Where can I reach you?
 
+### realize
+- ぼんやりとした何かをくっきりとした現実にする -> わかる
+  - I realize how important friendship is.
+  - I don't think he realized how tough to job was going to be.
+- ぼんやりとした何かをくっきりとした現実にする -> 実現する
+  - I was finally able to realize my vision.
+
+### recognize
+- re(再び) + cognize(知る) -> わかる
+  - I recognized her voice at once.
+  - I recognized the song. But I can't remember the singer.
+- re(再び) + cognize(知る) -> 認める・認知する
+  - Van Goch was not recognized as a genious during his lifetime.
+
 ### recommend
 - (何かを手で持ち上げながら)勧める
   - What do you recommend?
@@ -711,6 +759,20 @@
   - Sometimes it's difficult to tell the good guys from the bad.
   - How can you tell organic foods from non-organic.
 
+### think
+- 頭を使う -> 考える
+  - Can I have some time to think about it?
+  - I'm thinking of checkking out the new Indian restaurant on Saturday.
+- 思考が浮かぶ -> 思う
+  - I think she likes me.
+  - I think that George is doing outstanding job.
+- 予期する
+  - I've never thought I'd live to see the day.
+  - Just think how wonderful it would be to have a world free of war and proverty.
+- みなす
+  - I thought him a good guy.
+  - Most classical music lovers think Beethoven a genious.
+
 ### turn
 - くるっと向きを変える
   - Turn left at the bank.
@@ -720,6 +782,13 @@
 - くるっと向きを変える -> スイッチを回す
   - He certainly knows how to turn the charm.
   - OK, you can turn the power on now.
+
+### understand
+- 理解する
+  - It's hard to understand how big universe is.
+  - If there's anything you don't understand, I'll be happy to explain in more details.
+- 理解する -> 共感を寄せる
+  - Don't worry. I exactly understand how you feel.
 
 ### watch
 - 集中して見る
