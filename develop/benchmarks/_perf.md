@@ -39,7 +39,46 @@ $ sudo apt install linux-tools-common linux-tools-$(uname -r)
   - 異なるカーネルのマイクロベンチマークを実行する
 
 ## Usage
-### Apache HTTPサーバーのCPUを計測する
+### `perf stat`
+- `perf stat`の実行
+```
+$ sudo perf stat 計測したいプログラム
+```
+
+- `perf stat`の実行(詳細なカウンタの値を表示する)
+```
+$ sudo perf stat -d 計測したいプログラム
+```
+
+- 実行中のプロセスにアタッチする
+```
+$ sudo perf stat -p プロセスID
+```
+
+- ホスト全体の計測
+```
+$ sudo perf stat -a
+$ sudo perf stat -a sleep 10 # 所定の時間の間計測する
+```
+
+### `perf top`
+- 実行しているプログラムの統計情報を動的に表示する
+```
+$ sudo perf top 計測したいプログラム --stdio
+```
+
+### `perf record`
+- 実行しているプログラムの統計情報の詳細をperf.dataに蓄積する
+```
+$ sudo perf record ruby json.rb
+```
+
+- perf.dataを表示する
+```
+$ sudo perf report --stdio
+```
+
+### [事例]Apache HTTPサーバーのCPUを計測する
 1. 計測するサーバーのワーカープロセスのpidを確認(`$ ps aux | grep apache`)
 2. `perf`で計測を開始する(`$ sudo perf stat -p 対象のpid`)
 3. Apache Benchでワークロードを発生させる(`$ ab -n 20000 -c 10 対象のホスト名`)
