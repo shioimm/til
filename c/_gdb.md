@@ -1,5 +1,6 @@
 # gdb
 - 参照: [GDB: The GNU Project Debugger](https://www.gnu.org/software/gdb/)
+- 参照: []()
 
 ## gdbでできること
 - プログラムの動作に影響を与える可能性のあるコードを指定してプログラムを起動する
@@ -10,12 +11,17 @@
 ## Usage
 ### 起動
 ```sh
-$ gdb デバッグする対象のバイナリ
+$ gdb /usr/bin/ruby # デバッグする対象のバイナリをフルパスで指定
+```
+
+### ブレークポイントを設定
+```
+(gdb) break rb_inspect # ブレークポイントを設定したい関数
 ```
 
 ### 実行
 ```sh
-(gdb) run -e 'puts C.from_mruby' # mrubyからCのコードを実行
+(gdb) run -e 'p C.from_mruby' # コードを実行
 
 (gdb) run -n 5 # 対象のバイナリの行番号を指定して実行
 ```
@@ -38,4 +44,15 @@ $ gdb デバッグする対象のバイナリ
 ### 終了
 ```
 (gdb) quit
+```
+
+### ステップ実行
+```
+(gdb) next
+(gdb) step # 別の関数に入った場合はその関数でもステップ実行
+```
+
+### 実行中のプロセスにアタッチ
+```
+$ gdb -p デバッグするプロセスID
 ```
