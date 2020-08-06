@@ -6,8 +6,10 @@
 - 引用: [What is Kubernetes?](https://kubernetes.io/docs/concepts/overview/what-is-kubernetes/)
 - 参照: [What is a Container?](https://www.docker.com/resources/what-container)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
+- 参照: [「コンテナって何？　どう使える？」――ソフトウェア開発の課題を解決するコンテナ技術 (3/3)](https://www.atmarkit.co.jp/ait/articles/1901/29/news005_3.html)
 
 ## TL;DR
+- 実行環境を他のプロセスから隔離し、その中でアプリを動作させる技術
 - 軽量の仮想化アーキテクチャ
   - Docker -> コンテナ型の仮想環境を作成、配布、実行するためのプラットフォーム
     - 引用: [Docker入門（第一回）～Dockerとは何か、何が良いのか～](https://knowledge.sakura.ad.jp/13265/)
