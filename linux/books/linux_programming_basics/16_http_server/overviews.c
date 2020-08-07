@@ -78,7 +78,7 @@ static char* lookup_header_field_value(struct HTTPRequest *req, char *name);
 // FileInfo構造体を作成する
 static struct FileInfo* get_fileinfo(char *docroot, char *path);
 
-// ドキュメントルートとURLのパスからファイルシステム状のパスを生成
+// ドキュメントルートとURLのパスからファイルシステム上のパスを生成
 static char* build_fspath(char *docroot, char *path);
 
 // FileInfo構造体のために使用したメモリ領域を解放する
@@ -106,8 +106,9 @@ static void not_found(struct HTTPRequest *req, FILE *out);
 
 // メモリ管理 --------------------------------------------
 
-// malloc()を使用する
+// メモリの確保
 static void* xmalloc(size_t sz);
+// malloc()を使用する
 
 // エラーハンドリングとログ出力 -------------------------
 
