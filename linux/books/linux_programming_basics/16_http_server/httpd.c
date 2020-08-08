@@ -1,6 +1,14 @@
 // 引用: ふつうのLinuxプログラミング
-// 第15章 HTTPサーバを作る 2
+// 第16章 HTTPサーバを作る 2
 // https://github.com/aamine/stdlinux2-source/blob/master/httpd.c
+
+/*
+    httpd.c
+    Copyright (c) 2004,2005,2017 Minero Aoki
+    This program is free software.
+    Redistribution and use in source and binary forms,
+    with or without modification, are permitted.
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +20,7 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
-#include <stdarg.h> // 可変長引数
+#include <stdarg.h>
 #include <ctype.h>
 #include <signal.h>
 
@@ -72,7 +80,7 @@ static void log_exit(char *fmt, ...);
 int main(int argc, char *argv[])
 {
   if (argc != 2) {
-    fprintf(stderr, "Usage: %s <docroot>\n",, argv[0]);
+    fprintf(stderr, "Usage: %s <docroot>\n", argv[0]);
     exit(1);
   }
 
@@ -99,11 +107,9 @@ static struct HTTPRequest* read_request(FILE *in)
   struct HTTPHeaderField *h;
 
   req = xmalloc(sizeof(struct HTTPRequest));
-
   read_request_line(req, in); // リクエストラインの読み込み
-
   req->header = NULL;
-  while (h = read_header_field(in)) { // リクエストヘッダの読み込み
+  while (h = (read_header_field(in))) { // リクエストヘッダの読み込み
     h->next = req->header;
     req->header = h;
   }
@@ -178,7 +184,7 @@ static struct HTTPHeaderField* read_header_field(FILE *in)
 
   p = strchr(buf, ':');
   if (!p) {
-    log_exit("parse error on request header field: %s", buf)
+    log_exit("parse error on request header field: %s", buf);
   }
   *p++ = '\0';
   h = xmalloc(sizeof(struct HTTPHeaderField));
@@ -224,7 +230,7 @@ static char* lookup_header_field_value(struct HTTPRequest *req, char *name)
 }
 
 // 小文字を大文字に変換
-static void upcase(shar *str)
+static void upcase(char *str)
 {
   char *p;
 
@@ -361,7 +367,7 @@ static void output_common_header_fields(struct HTTPRequest *req, FILE *out, char
   char buf[TIME_BUF_SIZE];
 
   t = time(NULL);
-  tm = gmtime(&:t);
+  tm = gmtime(&t);
   if (!tm) {
     log_exit("gmtime() failed: %s", strerror(errno));
   }
@@ -370,6 +376,52 @@ static void output_common_header_fields(struct HTTPRequest *req, FILE *out, char
   fprintf(out, "Date: %s\r\n", buf);
   fprintf(out, "Server: %s/%s\r\n", SERVER_NAME, SERVER_VERSION);
   fprintf(out, "Connection: close\r\n");
+}
+
+static void method_not_allowed(struct HTTPRequest *req, FILE *out)
+{
+  output_common_header_fields(req, out, "405 Method Not Allowed");
+  fprintf(out, "Content-Type: text/html\r\n");
+  fprintf(out, "\r\n");
+  fprintf(out, "<html>\r\n");
+  fprintf(out, "<header>\r\n");
+  fprintf(out, "<title>405 Method Not Allowed</title>\r\n");
+  fprintf(out, "<header>\r\n");
+  fprintf(out, "<body>\r\n");
+  fprintf(out, "<p>The request method %s is not allowed</p>\r\n", req->method);
+  fprintf(out, "</body>\r\n");
+  fprintf(out, "</html>\r\n");
+  fflush(out);
+}
+
+static void not_implemented(struct HTTPRequest *req, FILE *out)
+{
+  output_common_header_fields(req, out, "501 Not Implemented");
+  fprintf(out, "Content-Type: text/html\r\n");
+  fprintf(out, "\r\n");
+  fprintf(out, "<html>\r\n");
+  fprintf(out, "<header>\r\n");
+  fprintf(out, "<title>501 Not Implemented</title>\r\n");
+  fprintf(out, "<header>\r\n");
+  fprintf(out, "<body>\r\n");
+  fprintf(out, "<p>The request method %s is not implemented</p>\r\n", req->method);
+  fprintf(out, "</body>\r\n");
+  fprintf(out, "</html>\r\n");
+  fflush(out);
+}
+
+static void not_found(struct HTTPRequest *req, FILE *out)
+{
+  output_common_header_fields(req, out, "404 Not Found");
+  fprintf(out, "Content-Type: text/html\r\n");
+  fprintf(out, "\r\n");
+  if (strcmp(req->method, "HEAD") != 0) {
+    fprintf(out, "<html>\r\n");
+    fprintf(out, "<header><title>Not Found</title><header>\r\n");
+    fprintf(out, "<body><p>File not found</p></body>\r\n");
+    fprintf(out, "</html>\r\n");
+  }
+  fflush(out);
 }
 
 // FileInfo構造体のメモリ領域を解放
@@ -394,13 +446,13 @@ static void trap_signal(int sig, sighandler_t handler)
   act.sa_flags = SA_RESTART;
 
   if (sigaction(sig, &act, NULL) < 0) {
-    log_exit("sigaction() failed: %s", strerror(errno))
+    log_exit("sigaction() failed: %s", strerror(errno));
   }
 }
 
 static void signal_exit(int sig)
 {
-  log_exit("exit by signal %d", dig);
+  log_exit("exit by signal %d", sig);
 }
 
 // メモリの確保
