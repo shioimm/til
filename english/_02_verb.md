@@ -5,11 +5,6 @@
 - 引用: NHKラジオ英会話2019年9月号
 - 引用: NHKラジオ英会話2019年10月号
 
-### notice
-- 心のアンテナに引っかかる -> 気づく
-  - Oh. I just noticed your earrings. They're beautiful.
-  - My girlfriend got to upset. Because I didn't notice her hair style.
-
 ### acomperehend
 - com(完全に) + prehend(つかむ) -> 理解する
   - Sociologists still don't fully comprehend the causes of delinquency.
@@ -47,6 +42,13 @@
   - I asked her if she was OK.
   - I ask about her summer vacation.
 
+### assume
+- 受け入れる -> 仮定する
+  - We can safely assume that Sheila will be elected CEO.
+  - Let's assume thet we can raise enough money for our startup.
+  - I assume responsibility for any decision I make.
+  - It is reasonable to assume that the devorce rate will continue to rise.
+
 ### be動詞
 - 主語 = 説明語句
   - I can't talk because I'm on the train.
@@ -58,6 +60,14 @@
 - 主語 (=) 説明語句
   - Is everything OK? -> Everything OK?
   - Are you guys ready to go? -> You guys ready to go?
+
+### believe
+- 深く心の中に根ざす -> 信じる
+  - Never say you think we can meet the deadline; say you believe we can meet the deadline.
+  - I believe Tom. / I believe in Tom. -> believeがTomの内部深くまで至る
+  - I believe that everyone should exercize their right to vote.
+  - Don't believe Tom. He's a lier.
+  - I believe in free education.
 
 ### belong
 - ぴったりくる場所
@@ -141,6 +151,14 @@
   - Her dream of becoming a pro golfer has finally come true.
   - When do the cherry tries come into blossom.
 
+### consider
+- 頭をしっかり回して考える
+  - Take time to consider your options.
+  - Of course I've considered the impact moving house have our children.
+- 頭をしっかり回して考える -> 色々考えた結果そうみなす
+  - I don't consider salary to be the top priority when it comes to choosing a job.
+  - I consider this movie unsuitable for my kids.
+
 ### construct
 - 細かな部品を堅牢に組み立てる
   - They are constructing a new air port terminal.
@@ -209,6 +227,16 @@
 - 全方面に広げる
   - Our aim is to expand our chain of restaurants across Japan.
   - We're expanding our business to oversea's market.
+
+### expect
+- ex(外を) + pect(見る) -> 予期・期待する
+  - I didn't expect rain.
+  - We expect increase our profits by around 5% this year.
+  - I expect your oppornent will play very aggresively.
+  - Do you expect me to agree with you everything you say?
+- ex(外を) + pect(見る) -> 予期・期待する -> 圧力をかける
+  - I expect you all to participate actively in class.
+  - All members are expected to obey the dress code.
 
 ### explain
 - 平らにして見渡せるようにする -> 説明する
@@ -329,6 +357,15 @@
   - His idea is too difficult for me to grapse.
   - It's important to grapse the way of native speaker's thinking.
 
+### guess
+- 確信はないが推測する
+  - He has no idea who the next captain will be. He's just guessing.
+  - John is coming I guess.
+  - I guess she tide up with work.
+- 「どちらの手に飴が入っていると思う？」 -> 確信はないが推測する
+  - Guess what!
+  - Guess who I bumped into at the bookstore yesterday.
+
 ### have
 - 範囲内にある
   - I already had lunch.
@@ -376,6 +413,12 @@
 - 図表を使って説明する
   - These slides will illustrate our company structure.
   - You should give much clearer examples to illustrate each point.
+
+### imagine
+- 思い描く -> 想像する
+  - I can't imagine living without you.
+  - I imagine you must really miss your family.
+  - I can't imagine why the boss want to talk with me.
 
 ### include
 - 容器の中に入っている
@@ -488,6 +531,11 @@
 - 合意に向けて綱引きする -> 交渉する
   - We are now negotiating very hard for better working conditions.
   - My boss always remains calm when she negotiates.
+
+### notice
+- 心のアンテナに引っかかる -> 気づく
+  - Oh. I just noticed your earrings. They're beautiful.
+  - My girlfriend got to upset. Because I didn't notice her hair style.
 
 ### order
 - 命じることにより行動を起こさせる
@@ -703,6 +751,13 @@
 - 気軽な提案を差し出す -> 勧める
   - I suggest you phone her and say sorry.
   - I suggest taking taxi for the sake of convinience.
+
+### suppose
+- 下に置く -> 判断の土台がある
+  - He'll be coming later, I suppose.
+  - Aren't you supposed to be in class right now?
+- 下に置く -> 判断の土台がある -> 仮定する
+  - Suppose she left you, what would you do?
 
 ### take
 - 手に取る

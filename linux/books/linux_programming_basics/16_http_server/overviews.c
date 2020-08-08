@@ -1,5 +1,5 @@
 // 引用: ふつうのLinuxプログラミング
-// 第15章 HTTPサーバを作る 1
+// 第16章 HTTPサーバを作る 1
 // https://github.com/aamine/stdlinux2-source/blob/master/httpd.c
 
 // HTTPとファイルシステムの比較
@@ -33,70 +33,38 @@
 #include <ctype.h>
 #include <signal.h>
 
-// シグナル処理 -------------------------------------------
-typedef void (*sighandler_t)(int);
-
-// 全てのシグナルを管理する
-static void install_signal_handlers(void);
-
-// シグナルをハンドラに登録する
-static void trap_signal(int sig, sighandler_t handler);
-
-// ログを出力してexit()するハンド
-static void signal_exit(int sig);
-
 // サービス -----------------------------------------------
-
-// リクエストを読み込み、レスポンスを出力する
-static void service(FILE *in, FILE *out, char *docroot);
+static void service(FILE *in, FILE *out, char *docroot); // リクエストを読み込み、レスポンスを出力する
+// --------------------------------------------------------
 
 // リクエスト処理 -----------------------------------------
+static struct HTTPRequest* read_request(FILE *in); // リクエストを読み込む・HTTPRequest構造体を作る
 
-// リクエストを読み込み、HTTPRequest構造体を作る
-static struct HTTPRequest* read_request(FILE *in);
+static void read_request_line(struct HTTPRequest *req, FILE *in); // リクエストラインを解析してHTTPRequestに適用する
 
-// HTTPリクエストラインを解析してreqに書き込む
-static void read_request_line(struct HTTPRequest *req, FILE *in);
+static struct HTTPHeaderField* read_header_field(FILE *in); // ヘッダを解析してHTTPHeaderFieldに適用する
 
-// ヘッダフィールドを解析してreqに書き込む
-static struct HTTPHeaderField* read_header_field(FILE *in);
+static void free_request(struct HTTPRequest *req); // HTTPRequest構造体のために使用したメモリ領域を解放する
 
-// HTTPRequest構造体のために使用したメモリ領域を解放する
-static void free_request(struct HTTPRequest *req);
+//// ヘルパー ---------------------------------------------
+static void upcase(char *str); // HTTPRequest構造体methodメンバの値を大文字に変換
 
-// HTTPRequest構造体methodメンバの値を大文字に変換
-static void upcase(char *str);
+static long content_length(struct HTTPRequest *req); // リクエストのエンティティボディの長さを得る
 
-// リクエストのエンティティボディの長さを得る
-static long content_length(struct HTTPRequest *req);
-
-// ヘッダフィールドを名前で検索する
-static char* lookup_header_field_value(struct HTTPRequest *req, char *name);
+static char* lookup_header_field_value(struct HTTPRequest *req, char *name); // ヘッダの値を返す
+// --------------------------------------------------------
 
 // レスポンス処理 -----------------------------------------
+static struct FileInfo* get_fileinfo(char *docroot, char *path); // FileInfo構造体を作成する
 
-// FileInfo構造体を作成する
-static struct FileInfo* get_fileinfo(char *docroot, char *path);
+static char* build_fspath(char *docroot, char *path); // ドキュメントルートとパスからファイルシステム上のパスを生成
 
-// ドキュメントルートとURLのパスからファイルシステム上のパスを生成
-static char* build_fspath(char *docroot, char *path);
+static void free_fileinfo(struct FileInfo *info); // FileInfo構造体のために使用したメモリ領域を解放する
 
-// FileInfo構造体のために使用したメモリ領域を解放する
-static void free_fileinfo(struct FileInfo *info);
+static void respond_to(struct HTTPRequest *req, FILE *out, char *docroot); // reqに対するレスポンスをoutに書き込む
 
-// reqに対するレスポンスをoutに書き込む
-static void respond_to(struct HTTPRequest *req, FILE *out, char *docroot);
-
-// GET/HEADリクエストに対する処理
-static void do_file_response(struct HTTPRequest *req, FILE *out, char *docroot);
-
-// 全てのレスポンスで共通のヘッダを出力
-static void output_common_header_fields(struct HTTPRequest *req, FILE *out, char *status);
-
-// 常に'text/plain'を返す
-static char* guess_content_type(struct FileInfo *info);
-
-// -------------------------------------------------------
+//// サーバー処理 -----------------------------------------
+static void do_file_response(struct HTTPRequest *req, FILE *out, char *docroot); // GET/HEADリクエストに対する処理
 
 static void method_not_allowed(struct HTTPRequest *req, FILE *out);
 
@@ -104,16 +72,28 @@ static void not_implemented(struct HTTPRequest *req, FILE *out);
 
 static void not_found(struct HTTPRequest *req, FILE *out);
 
-// メモリ管理 --------------------------------------------
+//// ヘルパー ---------------------------------------------
+static void output_common_header_fields(struct HTTPRequest *req, FILE *out, char *status); // 共通のヘッダを出力
 
-// メモリの確保
-static void* xmalloc(size_t sz);
-// malloc()を使用する
+static char* guess_content_type(struct FileInfo *info); // 常に'text/plain'を返す
+// -------------------------------------------------------
 
-// エラーハンドリングとログ出力 -------------------------
+// シグナル処理 -------------------------------------------
+typedef void (*sighandler_t)(int);
 
-// 可変長引数を受け付け、フォーマットしてstderrに出力する
-static void log_exit(char *fmt, ...);
+static void install_signal_handlers(void); // 全てのシグナルハンドリング設定を読み込む
+
+static void trap_signal(int sig, sighandler_t handler); // シグナルをハンドラに登録する
+
+static void signal_exit(int sig); // ハンドラ: ログを出力してexit()する
+// --------------------------------------------------------
+
+//// メモリ管理 ------------------------------------------
+static void* xmalloc(size_t sz);// メモリの確保
+// -------------------------------------------------------
+
+//// エラーハンドリングとログ出力 ------------------------
+static void log_exit(char *fmt, ...); // 可変長引数を受け付け、フォーマットしてstderrに出力する
 // 可変長引数の利用
 //   va_list ap;
 //   va_start(ap, 可変長引数の一つ前の引数);
