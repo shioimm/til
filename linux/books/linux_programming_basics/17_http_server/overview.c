@@ -1,6 +1,6 @@
 // 引用: ふつうのLinuxプログラミング
 // 第17章 HTTPサーバを本格化する 1
-// https://github.com/aamine/stdlinux2-source/blob/master/httpd.c
+// https://github.com/aamine/stdlinux2-source/blob/master/httpd2.c
 
 // 必要な機能:
 //   サービス
