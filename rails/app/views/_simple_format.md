@@ -1,4 +1,14 @@
-# simple_format内で特定のURLのエスケープを回避する
+# `simple_format`
+### オプション
+- `:sanitize`(bool) -> テキストをサニタイズする(デフォルトはtrue)
+- `:wrapper_tag`(string/symbol) -> テキストをラップするHTMLタグを指定する(デフォルトは\<p\>)
+
+### タグを変更する
+```ruby
+= simple_format @memo, {}, wrapper_tag: 'div'
+```
+
+### simple_format内で特定のURLのエスケープを回避する
 ```haml
 = simple_format note.body_with_nonescaped_link
 ```
@@ -22,7 +32,7 @@ class Note
 end
 ```
 
-## リンク押下時に新しいウィンドウを開く
+#### リンク押下時に新しいウィンドウを開く
 ```haml
 = simple_format user.user_note.decorate.body_with_hangouts_meet_link, {}, sanitize: false
 ```
