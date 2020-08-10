@@ -1,25 +1,27 @@
-# exceptions_appの実装
+# ErrorsController
+- 参照: [exceptions_appによる例外捕捉](https://qiita.com/upinetree/items/273ae574f1c021d24c37#exceptions_app%E3%81%AB%E3%82%88%E3%82%8B%E4%BE%8B%E5%A4%96%E6%8D%95%E6%8D%89)
 - `Rails.configuration.exceptions_app`を利用して例外をハンドリングするErrorsControllerを実装する
 
-### 概要
+## 概要
 ```
-どこかのControllerで例外が発生する
- => exception_appが起動してErrorsControllerのshowアクションを呼ぶ
- => showアクションが投げた例外をrescue_fromが捕捉
- => エラーに応じて適切なメソッドが呼ばれる
- => ログにエラーを出力し、テンプレートをrender
+XxxController内で例外が発生
+ -> exception_appが起動しErrorsControllerのshowアクションをcall
+ -> ErrorsController#showで発生した例外をrescue_fromが捕捉
+ -> rescue_fromが捕捉した例外の種類に応じて適切なメソッドが呼ばれる
+ -> ログにエラーを出力し、テンプレートをrender
 ```
 
-### 具体的な実装内容
-1. 例外発生時にErrorsController#showを呼ぶようにmiddlewareを指定
+## 実装
+### `exceptions_app`
+- 例外発生時にErrorsController#showを呼ぶようにmiddlewareを指定
 ```ruby
 # config/initializers/exceptions_app.rb
 
 Rails.configuration.exceptions_app = ->(env) { ErrorsController.action(:show).call(env) }
 ```
-2. ErrorsControllerを実装
+### `ErrorsController`
 ```ruby
-# errors_controller.rb
+# app/controllers/errors_controller.rb
 
 class ErrorsController < ActionController::Base
   rescue_from StandardError,                  with: :render_500
@@ -41,28 +43,30 @@ class ErrorsController < ActionController::Base
   end
 end
 ```
-3. `app/views/`直下に`errors/`ディレクトリを作り、`500.html.haml` `400.html.haml`テンプレートを追加
 
-# exceptions_appのテスト
-- ↑で実装したErrorsControllerに関して、RSpecで次を確認したい
+### テンプレート追加
+- `app/views/errors/500.html.haml`
+- `app/views/errors/400.html.haml`
+
+## テスト実装
+- ErrorsControllerのテストを追加し下記を検証する
   - 例外が発生した際、適切なhttpステータスコードを返している
   - 例外が発生した際、適切なテンプレートを表示している
 
-## 課題
-- RSpecのAnonymous Controller機能を使って、最初に例外が発生するControllerを表現したい
-- Anonymous Controller機能を使用できるのはcontroller spec
-- しかしcontroller specではmiddlewareをloadできないので、例外が起こった後の処理を追うことができない
+### AnonymousControllerに関する課題
+- AnonymousController機能はcontroller specでのみ使用可能
+- controller specはRackミドルウェアをロードできないため、例外が起こった後の処理を追うことができない
 
-## 解決策
-- controller specが使えないため、request specでテストする。
-- equest specにはAnonymous Controller機能がないため、最初に例外が発生するControllerを自作する必要がある。
+### 解決策
+- request specでテストする
+- equest specにはAnonymousController機能がないため、例外が発生するcontrollerを自作する必要がある
 
 ```ruby
 # errors_controller_spec.rb
 
 require 'rails_helper'
 RSpec.describe ErrorsController, type: :request do
-  # Controllerの自作
+  # controllerの自作
   class TestController < ::ApplicationController
     # 例外を発生させるためのアクションを作成
 
