@@ -82,7 +82,7 @@
     - デフォルトではHTMLパース、JSのダウンロード、パースを順次実行する
     - JSのダウンロードが非同期に行われるため表示速度が速い
   - ここでは`javascript_include_tag` `javascript_pack_tag`両方に`defer`がついており、
-  JSの実行順が担保されない
+    JSの実行順が担保されない
 - `common`
   - 共通のモジュールをバンドルしたファイル
   - 参照: [なぜoptimization.splitChunksを有効にするのか](https://qiita.com/soarflat/items/1b5aa7163c087a91877d#%E3%81%AA%E3%81%9Coptimizationsplitchunks%E3%82%92%E6%9C%89%E5%8A%B9%E3%81%AB%E3%81%99%E3%82%8B%E3%81%AE%E3%81%8B)
