@@ -1,19 +1,7 @@
-# Webpacker
-## Webpakcerが追加するファイル一覧
-- `bin/webpack` -> コンパイルを実行するためのバイナリ
-- `bin/webpack-dev-server` -> コード変更時にホットリロードを実行するためのバイナリ
-- `config/webpacker.yml` -> Webpackerの設定を定義するyamlファイル
-- `node_modules/` -> node.jsのモジュール群
-- `package.json` -> node.jsの依存関係を記したJSONファイル
-- `config/webpack/environment.js` -> プラグインなどの設定ファイル
-- `app/javascript/packs/application.js` -> デフォルトのエントリーポイント
-  - ディレクトリも同時に生成される
-
-
-## HowTo
-### 既存のアプリケーションにreactを追加したい
+# 実装
+## 既存のアプリケーションにreactを追加したい
 ```sh
-$ /bin/railswebpacker:install:react
+$ /bin/rails webpacker:install:react
 ```
 
 ### AssetsPathにnode_modulesを追加したい
@@ -22,7 +10,7 @@ $ /bin/railswebpacker:install:react
 Rails.application.config.assets.paths << Rails.root.join('node_modules')
 ```
 
-### WebpackerでFontAwesomeを使いたい
+## WebpackerでFontAwesomeを使いたい
 - 参照: [Rails 5.2 + webpacker で FontAwesome 5 を利用する](https://qiita.com/fukmaru/items/427b43bd02a0b812212c)
 
 1. yarnにFontAwesomeを追加
@@ -81,7 +69,7 @@ import fontawesome from '@fortawesome/fontawesome'
 - `app/views`以下で使用する場合
   - `<i>`タグにクラスを与えるだけ
 
-### `chosen_rails`を廃止してnode_modulesに`chosen-js`を追加したい
+## `chosen_rails`を廃止してnode_modulesに`chosen-js`を追加したい
 - 参照: [Rails 5: Webpacker公式README — Webpack v4対応版（翻訳](https://techracho.bpsinc.jp/hachi8833/2018_05_24/56977)
 
 1. `yarn add chosen``yarn add chosen-js`を実行
