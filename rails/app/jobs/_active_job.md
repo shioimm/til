@@ -1,6 +1,6 @@
 # ActiveJob
 - 参照: [Active Job の基礎](https://railsguides.jp/active_job_basics.html)
-- 参照: パーフェクトRuby on Rails[増補改訂版] P216-
+- 参照: パーフェクトRuby on Rails[増補改訂版] P216-224
 
 ## TL;DR
 - Railsにおけるジョブ管理を包括するジョブ管理インフラ
