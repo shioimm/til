@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
   int c;
   char path[1024];
 
-  while ((opt = getopt_long(argc, argv, "s:", longopts, NULL)) != -1) {
+  while ((opt = getopt_long(argc, argv, "s:h", longopts, NULL)) != -1) {
     switch (opt) {
       case 's':
         strcpy(path, optarg);
