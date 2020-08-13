@@ -3,7 +3,7 @@
 - 参照: [Gentoo Linux](https://ja.wikipedia.org/wiki/Gentoo_Linux)
 
 ## TL;DR
-- LinuxをベースとしたOS
+- Gentoo系Linuxディストリビューション
 - パッケージ管理システムにPortageを利用しており、
   あらゆるアプリケーションやニーズに応じて自動的に最適化、カスタマイズすることができる
 - 自分でソフトウェアをコンパイルする点が特徴的

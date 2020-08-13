@@ -3,7 +3,7 @@
 - 参照: [Ubuntu](https://ja.wikipedia.org/wiki/Ubuntu)
 
 ## TL;DR
-- Debian GNU/Linuxをベースとし、コミュニティにより開発されているOS
+- Debian GNU/LinuxをベースとしたLinuxディストリビューション
 - デスクトップLinuxディストリビューションとしてトップシェアを誇る
 - 「誰にでも使いやすい最新かつ安定したOS」を提供することを開発目標とする
 
