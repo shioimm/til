@@ -1,6 +1,7 @@
 # Ansible
 - 参照: [Ansible Documentation](https://docs.ansible.com/ansible/latest/index.html)
 - 参照: [Ansible (ソフトウェア)](https://ja.wikipedia.org/wiki/Ansible_(%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A7%E3%82%A2)
+- 参照: [AnsibleとChefを比較](https://www.ossnews.jp/compare/Ansible/Chef)
 
 ## TL;DR
 - RedHatが開発する構成管理/オーケストレーション/デプロイメントツール
