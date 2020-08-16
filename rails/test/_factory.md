@@ -1,4 +1,26 @@
 # FactoryBot
+### `aliases`
+- モデルに別名をつける
+  - 引用: [Aliases](https://github.com/thoughtbot/factory_bot/blob/master/GETTING_STARTED.md#aliases)
+```ruby
+factory :user, aliases: [:author, :commenter] do
+  first_name { "John" }
+  last_name { "Doe" }
+  date_of_birth { 18.years.ago }
+end
+
+factory :post do
+  author
+  title { "How to read a book effectively" }
+  body { "There are five steps involved." }
+end
+
+factory :comment do
+  commenter
+  body { "Great article!" }
+end
+```
+
 ### `transient`
 - 変数のように一時的な値を柔軟に取り扱うことができる機能
 ```ruby
