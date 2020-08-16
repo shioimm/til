@@ -1,9 +1,14 @@
 # ActiveStorage
 - 参照: Ruby on Rails 6エンジニア養成読本 押さえておきたい！Rails 6で改善された機能一覧
-- 参照: パーフェクトRuby on Rails[増補改訂版] P225-234
+- 参照: パーフェクトRuby on Rails[増補改訂版] P225-234 / 384 / 386
 
 ## TL;DR
 - Railsが標準で提供する画像アップロード機能
+
+### サポートしている画像変換用プロセッサ
+- ImageMagick
+- GraphicsMagick
+- lipvips
 
 ### 関連モデル
 #### `ActiveStorage::Blob`モデル
@@ -25,6 +30,10 @@ class Xxx < ApplicationRecord
   # has_many_acctached :画像用カラム でもOK
 end
 ```
+- `dependent: false` - 削除時、関連する`ActiveStorage::Attachment`のみ削除される
+  1. `ActiveStorage::Attachment`削除
+  2. `ActiveStorage::PurgeJob`(非同期処理)実行
+  3. 非同期処理の中で`ActiveStorage::Blob`や画像を削除
 
 ## Usage
 ```
