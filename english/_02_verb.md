@@ -5,9 +5,10 @@
 - 引用: NHKラジオ英会話2019年9月号
 - 引用: NHKラジオ英会話2019年10月号
 
-### acomperehend
-- com(完全に) + prehend(つかむ) -> 理解する
-  - Sociologists still don't fully comprehend the causes of delinquency.
+### adore
+- 大好き + 誇らしく思う
+  - She adores her husband.
+  - Oh, I adore your new hairstyle.
 
 ### allow
 - 受け入れる・許容する -> 許す
@@ -151,6 +152,10 @@
   - Her dream of becoming a pro golfer has finally come true.
   - When do the cherry tries come into blossom.
 
+### comprehend
+- com(完全に) + prehend(つかむ) -> 理解する
+  - Sociologists still don't fully comprehend the causes of delinquency.
+
 ### consider
 - 頭をしっかり回して考える
   - Take time to consider your options.
@@ -205,6 +210,12 @@
 - 話題にアタックする -> 議論する
   - I need to discuss this matter with my family.
   - Today we need to discuss arrangement for the upcoming conference.
+
+### doubt
+- そうじゃないと思う
+  - I doubt it.
+  - I doubt we'll see him again.
+  - I doubt we'll ever get to know what really happened.
 
 ### drive
 - 力を加えて動かす
@@ -366,6 +377,11 @@
   - Guess what!
   - Guess who I bumped into at the bookstore yesterday.
 
+### hate
+- 嫌い
+  - Everybody hates the new boss.
+  - I hate my ex.
+
 ### have
 - 範囲内にある
   - I already had lunch.
@@ -512,6 +528,12 @@
   - Look, I'm sorry I upset you. I didn't meant to.
   - Look what you've done to me.
 
+### love
+- 大好き
+  - I love you more than words can say.
+  - I love cheesecake.
+  - I love travelling to different countries.
+
 ### make
 - 力を入れて作り上げる
   - I'll make you some ham & cheese sandwitches.
@@ -643,6 +665,15 @@
   - The old house requires a new roof.
   - The school requires that all students should wear a uniform.
 
+### respect
+- 例え意見が違っていてもその価値を認め、素晴らしいものだと尊重する
+  - We need to respect each other's opinion.
+  - Mr. Jones is not a popular teacher, but most students respect him.
+  - Even if we don't share the same views, we should still respect each other.
+  - I respect people who stand up for their beliefs.
+  - We should respect the environment.
+  - Respecting others is in essential ingredients in effective communication.
+
 ### ruin
 - 素晴らしかったものをだめにする
   - It ruined the whole trip.
@@ -752,12 +783,25 @@
   - I suggest you phone her and say sorry.
   - I suggest taking taxi for the sake of convinience.
 
+### speculate
+- 確たる証拠はなく推測、憶測する
+  - It would be irresponsible to speculate on the cause of the accident.
+  - The police chief refused to speculate on the kidnapper's motives.
+
 ### suppose
 - 下に置く -> 判断の土台がある
   - He'll be coming later, I suppose.
   - Aren't you supposed to be in class right now?
 - 下に置く -> 判断の土台がある -> 仮定する
   - Suppose she left you, what would you do?
+
+### suspect
+- すぐには結論づけることのできない内容を、
+  複雑な論理の筋道を追いながら、もしかしてこうなのではないかと疑う
+  - I'll suspect you'll never hear from her again.
+  - I was just misunderstanding, I suspect.
+  - suspect - 容疑者
+  - I suspect she's covering up her husband.
 
 ### take
 - 手に取る
@@ -853,16 +897,6 @@
   - Watch me. / Look at me.
   - We're watching the orangutans swinging from tree to tree.
 
-### wish
-- 現実感のないドリーミーな願望(仮定法)
-  - I wish I had more free time.
-  - I with I were as talented as you.
-- 現実感のないドリーミーな願望 -> 控えめな欲求
-  - If you wish to ask a question, please wait until the end of the lecture.
-  - <-> If you want to ask a question, please wait until the end of the lecture.
-  - My dad wishes my sister to marry a lawyer.
-  - We all wish your swift recovery.
-
 ### want
 - 欠けているものを求める強い生々しい欲求
   - I want an icecream.
@@ -875,3 +909,28 @@
 - 欠けているものを求める強い生々しい欲求 -> 欠けているものを必要とする
   - You want to study harder if you hope to pass the exam.
   - I think your hair wants cutting.
+
+### wish
+- 現実感のないドリーミーな願望(仮定法)
+  - I wish I had more free time.
+  - I with I were as talented as you.
+- 現実感のないドリーミーな願望 -> 控えめな欲求
+  - If you wish to ask a question, please wait until the end of the lecture.
+  - <-> If you want to ask a question, please wait until the end of the lecture.
+  - My dad wishes my sister to marry a lawyer.
+  - We all wish your swift recovery.
+
+### wonder
+- 大きなクエスチョンマーク -> ~かな？(独り言)
+  - I wonder if she still thinks about me.
+  - What are they going to do now, I wonder.
+  - I often wonder why my girlfriend loves me.
+  - I wonder how Pam is getting on after her operation.
+- 大きなクエスチョンマーク -> ~かな？(独り言) -> 依頼表現
+  - I wonder if you can help me.
+  - I was wondering if you could check this report.
+  - I was wondering if you could give me arrived to the airport next Saturday.
+
+### worship
+- 無条件に愛情、賞賛を持つ
+  - He worships his grandfather.
