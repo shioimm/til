@@ -16,15 +16,15 @@ int main(int argc, char *argv[])
   char str[1024];
   int c;
 
-  f = fopen("exercises/c/files/read/lorem_ipsum.txt", "r");
+  f = fopen("exercises/c/files/lorem_ipsum.txt", "r");
 
   if (f == NULL) {
-    error("exercises/c/files/read/lorem_ipsum.txt");
+    error("exercises/c/files/lorem_ipsum.txt");
   }
 
   while ((c = fgetc(f)) != EOF) {
     if (fputc(c, stdout) < 0) {
-      error("exercises/c/files/read/lorem_ipsum.txt");
+      error("exercises/c/files/lorem_ipsum.txt");
     }
   }
 
