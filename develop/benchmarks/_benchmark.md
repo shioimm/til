@@ -47,3 +47,11 @@ end
 - stime  -> System CPU time
 - total  -> 合計時間(utime + stime + cutime + cstime)
 - utime  -> User CPU time
+
+# ActiveSupport::Benchmarkable.#benchmark
+- Railsに実装されているベンチマークツール
+```ruby
+benchmark "Benchmarking" do
+  # ベンチマークしたい処理
+end
+```
