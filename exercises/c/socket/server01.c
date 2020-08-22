@@ -67,9 +67,10 @@
 int main()
 {
   const char *host = "localhost";
+  const char *port = "30000";
 
   struct addrinfo hints, *res;
-  int    sock;
+  int    listen_d;
   int    errcode;
 
   memset(&hints, 0, sizeof(hints));
@@ -77,31 +78,52 @@ int main()
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if ((errcode = getaddrinfo(host, NULL, &hints, &res)) < 0) {
+  if ((errcode = getaddrinfo(host, port, &hints, &res)) < 0) {
     exit(1);
   }
 
-  if ((sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0) {
+  if ((listen_d = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0) {
     fprintf(stderr, "getaddrinfo():%s\n", gai_strerror(errcode));
     freeaddrinfo(res);
     exit(1);
   }
 
-  if (bind(sock, res->ai_addr, res->ai_addrlen) < 0) {
+  printf("Socket is %d.\n", listen_d);
+
+  if (bind(listen_d, res->ai_addr, res->ai_addrlen) < 0) {
     perror("bind");
-    close(sock);
+    close(listen_d);
     freeaddrinfo(res);
     exit(1);
   }
 
-  if (listen(sock, 5) < 0) {
+  puts("Socket is bound.");
+
+  if (listen(listen_d, 5) < 0) {
     perror("listen");
-    close(sock);
+    close(listen_d);
     freeaddrinfo(res);
     exit(1);
   }
 
-  send(sock, "Hello\n", (size_t)7, 0);
+  puts("Listening...");
+
+  int connect_d;
+  struct sockaddr_storage ca;
+  socklen_t calen;
+
+  calen = (socklen_t)sizeof(ca);
+
+  if ((connect_d = accept(listen_d, (struct sockaddr *)&ca, &calen)) < 0) {
+    perror("accept");
+  }
+
+  send(connect_d, "Hello\n", 7, 0);
+
+  close(connect_d);
+  close(listen_d);
+
+  puts("Closed socket.");
 
   freeaddrinfo(res);
   exit(0);
