@@ -29,3 +29,20 @@
 - prefork型
 - worker型
 - event型
+
+## ドキュメントルート
+- Apacheをインストールした時点でドキュメントルートが作成される
+  - デフォルトで`/var/www/html/`
+- ドキュメントルートは`/etc`以下の設定ファイルに記述される
+  - RedHat系OS - `/etc/httpd/conf/httpd.conf`
+  - Debian系OS - `/etc/apache2/apache2.conf`
+```
+# /etc/httpd/conf/httpd.conf (CentOS)
+
+#
+# DocumentRoot: The directory out of which you will serve your
+# documents. By default, all requests are taken from this directory, but
+# symbolic links and aliases may be used to point to other locations.
+#
+DocumentRoot "/var/www/html"
+```
