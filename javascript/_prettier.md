@@ -9,6 +9,10 @@
 - Prettierはコードの品質を保つために使われるべき
 - ESLint/TSLintはバグの原因となる記述を検出するために使われるべき
 
+### ESLintとの共存
+- [ESLint と Prettier の共存設定とその根拠について](https://blog.ojisan.io/eslint-prettier)
+- ESLintのスタイル設定を全部OFFにしESLintの中からPrettierを実行」
+
 ## Get Started
 - [Install](https://prettier.io/docs/en/install.html)
 
