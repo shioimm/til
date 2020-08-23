@@ -11,5 +11,11 @@
 ### ホストマシンからsshログインしたい
 - Vagrantのssh-configをホストマシンの`.ssh/config`に追加する
 ```
-$ vagrant ssh-config --host 192.168.33.10 >> ~/.ssh/config
+$ vagrant ssh-config --host ゲストマシンのIPアドレス >> ~/.ssh/config
+```
+
+### ホストマシンからゲストマシンへscpでファイルを転送したい
+- `.ssh/config`を利用する
+```
+$ scp -F ~/.ssh/config /path/to/転送元のファイル ゲストマシンのIPアドレス:/path/to/転送先のディレクトリ
 ```
