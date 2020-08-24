@@ -49,24 +49,24 @@ DocumentRoot "/var/www/html"
 
 ## 設定ファイル
 ### RedHat系OS - `/etc/httpd`以下
-- conf           - 主となる設定ファイル`http.cong`を含むファイル群
-- conf.d         - 追加の設定ファイル群
-- conf.modules.d - モジュール関連の設定ファイル群
-- logs           - `/var/log/httpd`へのシンボリックリンク
-- modules        - `/usr/lib64/httpd/modules`へのシンボリックリンク
-- run            - `run/httpd`へのシンボリックリンク
+- `conf`           - 主となる設定ファイル`http.cong`を含むファイル群
+- `conf.d`         - 追加の設定ファイル群
+- `conf.modules.d` - モジュール関連の設定ファイル群
+- `logs`           - `/var/log/httpd`へのシンボリックリンク
+- `modules`        - `/usr/lib64/httpd/modules`へのシンボリックリンク
+- `run`            - `run/httpd`へのシンボリックリンク
 
 ### Debian系OS - `/etc/apache2/`以下
-- apache2.conf    - 主となる設定ファイル
-- conf-available  - 文字コードやセキュリティに関する設定ファイル群
-- conf-enabled    - `conf-available/`内の各設定ファイルへのシンボリックリンク(有効化)
-- mods-available  - モジュール関連の設定ファイル群
-- mods-enabled    - `mods-available/`内の各設定ファイルへのシンボリックリンク(有効化)
-- sites-available - サイト公開に関する設定ファイル群
-- sites-enabled   - `/sites-available`内の各設定ファイルへのシンボリックリンク(有効化)
-- ports.conf      - ポートに関する設定ファイル
-- envvars         - 環境変数
-- magic
+- `apache2.conf`    - 主となる設定ファイル
+- `conf-available`  - 文字コードやセキュリティに関する設定ファイル群
+- `conf-enabled`    - `conf-available/`内の各設定ファイルへのシンボリックリンク(有効化)
+- `mods-available`  - モジュール関連の設定ファイル群
+- `mods-enabled`    - `mods-available/`内の各設定ファイルへのシンボリックリンク(有効化)
+- `sites-available` - サイト公開に関する設定ファイル群
+- `sites-enabled`   - `/sites-available`内の各設定ファイルへのシンボリックリンク(有効化)
+- `ports.conf`      - ポートに関する設定ファイル
+- `envvars`         - 環境変数
+- `magic`
 
 ### 設定ファイルの書き方
 ```
