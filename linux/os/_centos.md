@@ -21,3 +21,23 @@ $ sudo firewall-cmd --zone=public --remove-service=http --permanent
 # ファイアウォールの設定をリロード
 $ sudo firewall-cmd --reload
 ```
+
+## 事例
+### CentOSにrubygemをインストールしたい
+```
+$ sudo yum install git
+$ git clone https://github.com/sstephenson/rbenv.git ~/.rbenv
+$ echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bash_profile
+$ echo 'eval "$(rbenv init -)"' >> ~/.bash_profile
+$ source ~/.bash_profile
+$ git clone git://github.com/sstephenson/ruby-build.git
+$ sudo ~/.rbenv/plugins/ruby-build
+$ sudo ~/.rbenv/plugins/ruby-build/install.sh
+$ sudo yum install gcc
+$ rbenv install x.x.x
+$ rbenv rehash
+$ remove global x.x.x
+$ sudo yum install ruby-devel rubygem-bundler
+$ sudo yum -y install gcc-c++
+$ gem install xxxxxxx # 不足している環境があった場合は適宜インストールする
+```
