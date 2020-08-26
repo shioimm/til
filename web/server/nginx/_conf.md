@@ -53,8 +53,11 @@ server {
   error_log /var/log/nginx/error.log;
 
   location / { # パス名に対応するコンテキスト
-      root /www/dir;    # ドキュメントルート
-      index index.html; # ディレクトリにアクセスした際にレスポンスとして使用されるファイル名
+    root /www/dir;    # ドキュメントルート
+    index index.html; # ディレクトリにアクセスした際にレスポンスとして使用されるファイル名
+    limit_exept GET POST { # GET/POST以外のHTTPメソッドにアクセス制限をかける
+      deny all;
+    }
   }
 }
 ```
