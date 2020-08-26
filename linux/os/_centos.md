@@ -23,21 +23,37 @@ $ sudo firewall-cmd --reload
 ```
 
 ## 事例
-### CentOSにrubygemをインストールしたい
+### systemにRubyをインストールしたい
+- 参照: [CentOS7にRubyをインストール](https://qiita.com/jjjjjj/items/75a946fe84ca40b5d9a9)
 ```
-$ sudo yum install git
-$ git clone https://github.com/sstephenson/rbenv.git ~/.rbenv
-$ echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bash_profile
-$ echo 'eval "$(rbenv init -)"' >> ~/.bash_profile
-$ source ~/.bash_profile
-$ git clone git://github.com/sstephenson/ruby-build.git
-$ sudo ~/.rbenv/plugins/ruby-build
-$ sudo ~/.rbenv/plugins/ruby-build/install.sh
-$ sudo yum install gcc
-$ rbenv install x.x.x
-$ rbenv rehash
-$ remove global x.x.x
-$ sudo yum install ruby-devel rubygem-bundler
-$ sudo yum -y install gcc-c++
-$ gem install xxxxxxx # 不足している環境があった場合は適宜インストールする
+$ sudo yum -y install git bzip2 gcc gcc-c++ openssl-devel readline-devel zlib-devel
+$ sudo git clone https://github.com/rbenv/rbenv.git /usr/local/rbenv
+$ sudo git clone https://github.com/rbenv/ruby-build.git /usr/local/rbenv/plugins/ruby-build
+$ sudo su
+# vim /etc/profile.d/rbenv.sh↲
+```
+
+```
+export RBENV_ROOT="/usr/local/rbenv"
+export PATH="${RBENV_ROOT}/bin:${PATH}"
+eval "$(rbenv init --no-rehash -)"
+```
+
+```
+# source /etc/profile.d/rbenv.sh
+# visudo
+```
+
+```
+Defaults env_keep += "RBENV_ROOT"
+Defaults secure_path = /sbin:/bin:/usr/sbin:/usr/bin:/usr/local/rbenv/bin:/usr/local/rbenv/shims
+```
+
+```
+$ sudo rbenv install x.x.x
+$ sudo rbenv global x.x.x
+$ sudo rbenv rehash
+$ sudo ruby -v     # ruby x.x.x
+$ sudo which ruby  # /usr/local/rbenv/shims/ruby
+$ sudo which rbenv # /usr/local/rbenv/bin/rbenv
 ```
