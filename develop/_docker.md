@@ -1,21 +1,38 @@
 # Docker
 - 参照: [Docker](https://www.docker.com/)
+- 参照: [Docker 概要](https://docs.docker.jp/get-started/overview.html)
 - 参照: [Docker入門（第一回）～Dockerとは何か、何が良いのか～](https://knowledge.sakura.ad.jp/13265/)
 - 参照: [Docker入門（第二回）～Dockerセットアップ、コンテナ起動～](https://knowledge.sakura.ad.jp/13795/)
 - 参照: [Docker入門（第四回）～Dockerfileについて～](https://knowledge.sakura.ad.jp/15253/)
 - 参照: [Dockerイメージの理解とコンテナのライフサイクル](https://www.slideshare.net/zembutsu/docker-images-containers-and-lifecycle)
 
 ## TL;DR
-- コンテナ型の仮想環境でアプリケーションを開発・移動・実行するためのプラットフォーム
-- コンテナ化されたアプリケーションは実行環境に関わらず常に同じように実行される
+- コンテナのライフサイクルを管理するツールとプラットフォーム
+  - コンテナ - ホストマシン上で他のプロセスから隔離された環境
+
+### アプリケーション開発におけるコンテナ
+- コンテナを利用してアプリケーションおよび関連のコンポーネントを開発する
+- コンテナをアプリケーションの配布とテストを行う１つの単位として利用する
+- コンテナ単位あるいはオーケストレーション単位でアプリケーションをデプロイする
 
 ### 構成要素
-- Dockerコンテナ - コンテナ
-- Docker Engine  - Dockerコンテナを移動・実行するために必要なプログラム(デーモン)
-- Dockerイメージ - コンテナの実行に必要なファイルシステム
-  - Dockerfileを使って自動構築する
-  - コンテナの内容を手動でコミットし新しいイメージを作成する
-  - Docker Hubから公開されているイメージを取得する
+- Dockerイメージ
+  - Dockerコンテナを作成する命令が入った読み込み専用のテンプレート
+    - Dockerfileを使って自作する
+    - コンテナの内容を手動でコミットし新しいイメージを作成する
+    - Docker Hubから公開されているイメージを取得する
+
+- Dockerコンテナ
+  - イメージが実行状態となったインスタンス
+  - イメージによって定義され、削除時に永続的なストレージに保存されていないものは消失する
+
+- Docker Engine
+  - Dockerコンテナを移動・実行するためのクライアント-サーバー型アプリケーション
+  - DockerクライアントがDockerデーモンに処理を依頼
+    -> DockerデーモンがDockerコンテナの構築、実行、配布を行う
+    - Dockerクライアント - `docker`コマンド / Dockerデーモンの制御を行う
+    - Dockerデーモン     - `dockerd`コマンド / Dockerオブジェクトを作成、管理する
+      - Dockerオブジェクト - イメージ、コンテナ、ネットワーク、データ・ボリューム
 
 #### ツール
 - Docker Hub         - [コンテナイメージ共有リポジトリ](https://www.docker.com/products/docker-hub)
