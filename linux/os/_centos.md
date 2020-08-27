@@ -57,3 +57,20 @@ $ sudo ruby -v     # ruby x.x.x
 $ sudo which ruby  # /usr/local/rbenv/shims/ruby
 $ sudo which rbenv # /usr/local/rbenv/bin/rbenv
 ```
+
+## サーバー証明書発行
+```
+# 秘密鍵生成
+$ cd /etc/pki/tls/certs
+$ sudo make xxx-server.key # 任意のパスフレーズを2回入力
+
+# CSR作成
+$ sudo make xxx-server.csr # パスフレーズを入力
+
+# 作成したCSRの確認
+$ sudo openssl req -utf8 -in xxx-server.csr -text
+
+# パスフレーズの削除
+$ sudo openssl rsa -in xxx-server.key -out xxx-server.nopass.key
+$ sudo chmod 400 xxx-server.nopass.key
+```
