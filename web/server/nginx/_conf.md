@@ -101,6 +101,7 @@ http {
   }
 }
 ```
+
 ```
 # 転送先が一つの場合、直接IPアドレスとポート番号を指定できる
 
@@ -113,6 +114,7 @@ http {
   }
 }
 ```
+
 ```
 # proxy_passの引数のURLにパス名を含めない場合
 #   クライアントから受信したパスがupstreamのアプリケーションサーバーに送信される
@@ -141,6 +143,7 @@ server {
   add_header YYY $yyy;
 }
 ```
+
 ```
 # 接続先がupstreamのアプリケーションサーバーである場合
 # 追加・変更・削除されるもの以外はクライアントから受信したヘッダがそのまま送信される
@@ -167,6 +170,7 @@ server {
   keepalive_timeout 60;
 }
 ```
+
 ```
 # 接続先がupstreamのアプリケーションサーバーである場合
 
@@ -204,6 +208,103 @@ server {
 
     proxy_cookie_path   /ccc/ /aaa/; # 変換対象の文字列 変換後の文字列
     proxy_cookie_domain app1 $server_name;
+  }
+}
+```
+
+### 負荷分散
+```
+# 重み付け
+upstream app {
+  server xxx.xxx.x.xx:80 weight=3;
+  server yyy.yyy.y.yy:80 weight=2;
+  server zzz.zzz.z.zz:80;
+}
+```
+
+```
+#upstreamのアプリケーションサーバーのうち一台をバックアップにする
+
+upstream app {
+  server xxx.xxx.x.xx:80;        # 稼働系
+  server zzz.zzz.z.zz:80 backup; # 待機系
+}
+```
+
+```
+# upstreamのアプリケーションサーバーのうち接続数が最も少ないものにアクセスする
+
+upstream app {
+  least_conn;
+  server xxx.xxx.x.xx:80;
+  server zzz.zzz.z.zz:80;
+}
+```
+
+```
+# 同じクライアントIPからのアクセスを同じupstreamに接続する
+
+upstream app {
+  ip_hash;
+  server xxx.xxx.x.xx:80;
+  server zzz.zzz.z.zz:80;
+}
+```
+
+### タイムアウト
+```
+# ダウン条件の判定
+
+server {
+  location /aaa/ {
+    proxy_pass            http://app/bbb/;
+    proxy_connect_timeout 60s; # 接続時タイムアウト
+    proxy_read_timeout    60s; # 受信時タイムアウト
+    proxy_send_timeout    60s; # 送信時タイムアウト
+  }
+}
+
+upstream app {
+  server xxx.xxx.x.xx max_fails=1 fail_timeout=10s;
+  # max_fails    - 失敗したアクセスの回数
+  # fail_timeout - 失敗判定する時間 / 失敗判定後アクセスを控える時間
+}
+```
+
+### キャッシュ
+```
+http {
+  proxy_cache_path /var/cache/nginx/rproxy # キャッシュディレクトリ
+                   levels=1:2              # キャッシュディレクトリ構造(0-9:00-99)
+                   keys_zone=zone:10m      # ゾーン(workerの共有メモリ領域)名:サイズ
+                   inactive=1d;            # キャッシュが破棄されるまでの時間
+
+  upstream app {
+    server xxx.xxx.x.xx:80;
+  }
+
+  server {
+    location / {
+      proxy_cache zone # ゾーン名
+      proxy_pass  http://app;
+
+      proxy_cache_bypass $http_authorization $http_cookie; # キャッシュからレスポンスを返さない
+      proxy_no_cache     $http_authorization $http_cookie; # コンテンツをキャッシュしない
+    }
+  }
+}
+```
+
+### バッファリング
+```
+server {
+  location / {
+    proxy_buffering            on;    # バッファリングするかどうか
+    proxy_buffer_size          4k;    # レスポンスの先頭部分に使われるメモリ上のバッファサイズ
+    proxy_buffers              8 4k;  # proxy_buffer_sizeの次に使われるメモリ上のバッファ数・サイズ
+    proxy_max_temp_file_size   1024m; # tempファイルに保存されるバッファサイズ
+    proxy_temp_file_write_size 8k;    # tempファイルのバッファに書き出されるデータサイズ
+    proxy_busy_buffer_size     8k;    # レスポンス送信中の状態にできるバッファサイズ
   }
 }
 ```
