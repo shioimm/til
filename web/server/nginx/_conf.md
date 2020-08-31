@@ -331,3 +331,35 @@ http {
   }
 }
 ```
+
+### クライアントIPの同時接続数を制限
+```
+http {
+  limit_conn_zone $binary_remote_addr zone=addr:10m; # 接続数を数えるキー名・ゾーン名・ゾーンサイズ
+
+  server {
+    limit_conn addr 10; # ゾーン名・最大接続数
+  }
+}
+```
+
+### クライアントIPのリクエスト数のスループットを制限
+```
+http {
+  limit_conn_zone $binary_remote_addr zone=addr:10m; # 接続数を数えるキー名・ゾーン名・ゾーンサイズ
+
+  server {
+    limit_req zone=addr burst=10; # ゾーン名・10アクセスまでは毎秒1リクエストとしてスループットさせる
+  }
+}
+```
+
+### リクエスト毎の帯域を制限
+```
+http {
+  server {
+    limit_rate        50k;  # 秒毎に許可するバイト数
+    liimit_rate_after 500k; # 帯域制限をかけないバイト数
+  }
+}
+```
