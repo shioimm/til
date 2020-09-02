@@ -1,4 +1,5 @@
-### PATHについて
+# シェル
+## PATHについて
 - 参照: [PATHを通すとは？ (Mac OS X)](https://qiita.com/soarflat/items/09be6ab9cd91d366bf71)
 - 参照: [PATHを通すために環境変数の設定を理解する (Mac OS X)](https://qiita.com/soarflat/items/d5015bec37f8a8254380)
 - PATH = コマンド検索パス
@@ -6,7 +7,7 @@
   - PATHを通す -> コマンド探索パスを追加する
 - コマンド探索パスは`$PATH`環境変数に設定されている
 ```
-❯❯❯ echo $PATH
+$ echo $PATH
 /usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
 ```
 - :区切りで複数のパスが登録されている
@@ -21,14 +22,14 @@
 ```
 # touchコマンドの場合
 # binディレクトリにtouchコマンド実行ファイル格納されている
-❯❯❯ which touch
+$ which touch
 /usr/bin/touch
 ```
 
 ```
 # rubyコマンドの場合
 # .rbenv/shims以下のパスにシンボリックリンクが作られる
-❯❯❯ which ruby
+$ which ruby
 /.rbenv/shims/ruby
 
 # rbenvは、shimをコマンド検索パスの先頭に挿入する
@@ -41,17 +42,18 @@
 echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 ```
 
-### `bin`がつくコマンドとつかないコマンドの違い
+## `bin`がつくコマンドとつかないコマンドの違い
 ```
-❯❯❯ which bin/yarn
+$ which bin/yarn
 bin/yarn
-❯❯❯ which yarn
+
+$ which yarn
 /usr/local/bin/yarn
 ```
 - `bin`をつけると今のディレクトリ内のコマンドが呼ばれる
 - `bin`をつけないとグローバルなコマンドが呼ばれる
 
-#### `bin`
+### `bin`
 - 参照: [「/bin」「/usr/bin」「/usr/local/bin」ディレクトリの使い分け](https://linuc.org/study/knowledge/544/)
 - 実行可能なプログラムの格納場所(sbinはシステム管理用のプログラムの格納場所)
 - `/bin`
