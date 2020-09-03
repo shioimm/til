@@ -38,9 +38,35 @@ $ ping ドメイン名 or IPアドレス
 $ traceroute ドメイン名 or IPアドレス
 ```
 
-### IPアドレス確認
+### DNS要求を行う
 ```
 $ nslookup ドメイン名
+$ nslookup IPアドレス
+
+$ host ホスト名
+$ host ドメイン名
+$ hots IPアドレス
+
+$ dig ホスト名
+$ dig ドメイン名
+$ dig IPアドレス
+```
+
+### Whois情報を調べる
+```
+$ whois ドメイン名
+$ whois IPアドレス
+```
+
+### 任意のドメインのサーバーを調べる
+```
+$ dig ドメイン名 a +short
+$ whois IPアドレス
+```
+
+### ネームサーバーを調べる
+```
+$ dig ドメイン名 ns +short
 ```
 
 ## プロセス
