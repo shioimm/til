@@ -20,6 +20,47 @@ $ docker build [ -t ｛イメージ名｝ [ :{タグ名} ] ] {Dockerfileのあ�
 ### Dockerコンテナを起動
 ```
 $ docker run [オプション] [--name {コンテナー名}] {イメージ名}[:{タグ名}] [コンテナーで実行するコマンド] [引数]
+
+# ホストマシンからDockerコンテナにVolumeをマウント
+$ docker run --volumes マウント元パス(ホスト):マウント先パス コンテナ
+
+# Dockerコンテナの環境変数を設定する
+$ docker run -d --env KEY=VALUE コンテナ
+```
+- `--detach` - バックグラウンドで起動
+
+### Dockerコンテナを停止
+```
+$ docker stop [オプション] コンテナ [コンテナ...]
+```
+
+### 起動中のDockerコンテナプロセス一覧を表示
+```
+$ docker ps
+
+# 停止中のコンテナプロセスも表示
+$ docker ps -a
+```
+
+### Dockerコンテナのログを表示
+```
+$ docker logs [オプション] コンテナ
+```
+
+### Dockerコンテナのメタ情報を表示
+```
+$ docker inspect [オプション] コンテナ|イメージ|タスク [コンテナ|イメージ|タスク...]
+```
+
+### 実行中のDockerコンテナの中に入る
+```
+$ docker exec [オプション] コンテナ コマンド [引数...]
+$ docker exec -it コンテナ bash # bashで入り操作を標準入出力で表示する
+```
+
+### 停止中のDockerコンテナを削除
+```
+$ docker rm [オプション] コンテナ [コンテナ...]
 ```
 
 ### docker-composeを立ち上げる
