@@ -74,3 +74,7 @@
 3. Certification Authority(認証局)にCSRを提出
 4. CAによる審査・証明書の発行
 5. Webサーバーに証明書を設置
+
+### CAA(Certification Authority Authorization)レコード
+- 運営者以外の第三者がSSL証明書を勝手に発行することを防止するための仕組み
+- 該当のドメインの証明書を発行できる認証局を事前に設定しておく
