@@ -1,6 +1,78 @@
 # 形容詞
 - 引用: NHKラジオ英会話2019年11月号
 
+## よくわからない
+### mysterious
+- わからない、知りたい
+  - There's something mysterious about him.
+  - He was capsvated by her mysterious beauty.
+  - I got a mysterious love letter. Must be from my secret fan.
+
+### ambiguous
+- ambi(両方) - どちらにも取れる
+  - He's being deliberately ambiguous to annoy us.
+  - I asked Melanie for a date. But her reply was ambiguous.
+
+### vague
+- ぼやけて漠然とした
+  - I have a vague memory of meeting her at a conference.
+  - This report is terribly vague. It needs to be rewriten.
+  - I couldn't complete the task, because the instructions were too vague.
+
+## 明らかな
+### obvious
+- わかりきっている
+  - The answer is obvious, isn't it?
+  - It's obvious that we're not welcomed.
+  - There are obvious advantages being bilingue.
+
+### clear
+- 明らかな
+  - Your instructions are perfectly clear.
+  - It's not clear to me why we're having this meeting.
+  - The student failed to give me a clear explanation for missing the class.
+
+### evident
+- サインが見えている・結論が明確な
+  - It's evident that she's lying.
+  - It was evident to all except Mike that Sally was not interested in him.
+
+## 同じ
+### same
+- 同じ・同じ仲間
+  - She hardly ever makes same mistake twice.
+  - He wears the same suit everyday.
+  - What a coincidence! We are wearing the same dress.
+  - I'll have the same as you're having.
+
+### similar
+- 大体同じ
+  - My wife and I have a similar tastes in literature.
+  - Is it true that humans and chimpanzees share a similar genetic makeup?
+
+### identical
+- どこから見てもまるっきり同じ
+  - The two signetures are identical.
+  - Even I sometimes have trouble telling my identical twins apart.
+
+## 違う
+### different
+- A-B間に距離がある -> 違う
+  - Many things are different here.
+  - Yours is a bit different from mine.
+  - I love meeting people from different cultures.
+
+### unique
+- 他のあらゆるものと違っている
+  - Each fingerprint is unique.
+  - This is a unique oppotunity. Grab it.
+  - Don't miss this unique oppotunity to hear Chris' special lecture.
+
+### distinct
+- 明確に違う
+  - Spanish and French may have the same origin, but they're two distinct languages.
+  - I've noticed that distinct change in your atitude recently. What's up?
+
 ## かたさ
 ### hard
 - カキンとかたい
