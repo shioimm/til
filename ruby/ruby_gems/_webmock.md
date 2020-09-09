@@ -35,7 +35,7 @@ describe Api::V1::XxxController, type: :request do
                        body: { 'id' => 1 })
     end
 
-    it 'returns ok' do
+    it 'returns 1' do
       expect(JSON.parse(response.body)['id']).to eq 1
     end
   end
