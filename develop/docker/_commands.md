@@ -12,7 +12,7 @@ $ docker pull [オプション] [サービス...]
 $ docker history [オプション] イメージ
 ```
 
-### Dockerイメージをビルド
+### Dockerfileから新しいDockerイメージを構築
 ```
 $ docker build [ -t ｛イメージ名｝ [ :{タグ名} ] ] {Dockerfileのあるディレクトリ}
 ```
@@ -61,6 +61,16 @@ $ docker exec -it コンテナ bash # bashで入り操作を標準入出力で�
 ### 停止中のDockerコンテナを削除
 ```
 $ docker rm [オプション] コンテナ [コンテナ...]
+```
+
+### Dockerコンテナを元に新しいDockerイメージを生成
+```
+$ docker commit [オプション] コンテナ [リポジトリ[:タグ]]
+```
+
+### 取得済みのDockerイメージ一覧
+```
+$ docker images [オプション] [リポジトリ[:タグ]]
 ```
 
 ### docker-composeを立ち上げる
