@@ -1,9 +1,10 @@
 # コマンド
 - [コマンドライン・リファレンス](https://docs.docker.jp/compose/reference/toc.html)
 
-### DockerイメージをDockerレジストリからダウンロード
+### DockerHubからDockerイメージをダウンロード
 ```
-$ docker login # username / password
+$ docker login
+
 $ docker pull [オプション] [サービス...]
 ```
 
@@ -58,19 +59,47 @@ $ docker exec [オプション] コンテナ コマンド [引数...]
 $ docker exec -it コンテナ bash # bashで入り操作を標準入出力で表示する
 ```
 
-### 停止中のDockerコンテナを削除
-```
-$ docker rm [オプション] コンテナ [コンテナ...]
-```
-
 ### Dockerコンテナを元に新しいDockerイメージを生成
 ```
 $ docker commit [オプション] コンテナ [リポジトリ[:タグ]]
 ```
 
+### 生成したDockerイメージをDockerHubに保存
+```
+# 生成したDockerイメージにタグ付け
+$ docker tag ユーザー名/リポジトリ名(イメージ名)
+
+# ログイン
+$ docker login
+
+# DockerイメージをDockerHubに送信
+$ docker push [オプション] 名前[:タグ]
+```
+
 ### 取得済みのDockerイメージ一覧
 ```
 $ docker images [オプション] [リポジトリ[:タグ]]
+```
+
+### Dockerコンテナ・Dockerイメージの削除
+```
+# 停止中のコンテナと無名のイメージを削除
+$ docker system prune
+
+# コンテナを削除
+$ docker rm [オプション] コンテナ [コンテナ...]
+
+# 停止中の全コンテナを削除
+$ docker rm $(docker ps -a -q)
+
+# 起動中のコンテナを含む全コンテナを削除
+$ docker rm -vf $(docker ps -a -q)
+
+# イメージを削除
+$ docker rmi [オプション] イメージ [イメージ...]
+
+# 起動中のコンテナを含む全イメージを削除
+$ docker rmi -f $(docker ps -a -q)
 ```
 
 ### docker-composeを立ち上げる
