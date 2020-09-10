@@ -1,16 +1,19 @@
 # SSL/TLS
 - 参照: [How is data secure over https?](https://blog.joshsoftware.com/2019/08/23/how-is-data-secure-over-https/)
 - 参照: よくわかるHTTP/2の教科書P18-20/124-125
+- 参照: SSLをはじめよう ～「なんとなく」から「ちゃんとわかる！」へ～
 
-#### SSL (Secure socket layer)
+## TL;DR
+### SSL (Secure socket layer)
 - クライアント-サーバー間で間で機密情報を送信するため、インターネット接続を安全に行う技術
 
-#### TLS (Transport layer security)
+### TLS (Transport layer security)
 - より安全なSSLの上位互換バージョン
 
-#### HTTPS (Hyper text transfer Protocol SECURE)
+### HTTPS (Hyper text transfer Protocol SECURE)
 - SSL/TLSで保護されたデータの転送に使用されるHTTPプロトコル(HTTP + SSL/TLS)
-## SSL/TLSによる通信の特性
+
+### SSL/TLSによる通信の特性
 - 機密性 -> データを第三者に見られない(暗号化)
 - 完全性 -> データが改ざんされない(改ざんの検知)
 - 真正性 -> 通信相手が正しい相手である(証明書)
@@ -49,7 +52,7 @@
 3. ハンドシェクの終了
   - クライアント -> サーバーへFinishedメッセージ、アプリケーションデータ
 
-## HTTP/2で使用する場合の仕様
+## HTTP/2における仕様
 - TLS1.2以上
 - TLS SNIのサポート
 - 圧縮機能無効化 -> HTTP/2自身が圧縮を行う
@@ -64,16 +67,31 @@
     暗号スイートの条件が一致しない場合がある
 
 ## サーバー証明書
+### 種類
 - DV証明書 - ドメインの所有確認
 - OV証明書 - ドメインの所有確認、発行先の組織の存在を示す
 - EV証明書 - ドメインの所有確認、発行先の組織の存在をガイドラインに従って厳格に示す
 
 ### 証明書発行手順
-1. 秘密鍵の生成
-2. Certificate Signing Request(証明書署名要求)の作成
-3. Certification Authority(認証局)にCSRを提出
+1. OpenSSLで秘密鍵を生成
+```
+$ openssl genrsa -out ./xxx.key 2048`
+$ chmod 600 ./xxx.key
+```
+
+2. 秘密鍵からCSR(証明書署名リクエスト)を作成
+```
+$ openssl req -new -key xxx.key -out xxx.csr
+```
+3. 認証局にCSRを提出しSSL証明書の発行を依頼
 4. CAによる審査・証明書の発行
-5. Webサーバーに証明書を設置
+5. TXTレコードを作りDNS認証
+6. SSL証明書・中間CA証明書が届く
+    - SSL証明書
+    - 中間CA証明書
+    - SSL証明書 + 中間CA証明書
+7. WebサーバーにSSL証明書・中間CA証明書を設置
+7. Webサーバー上にHTTPSのバーチャルホストを作成
 
 ### CAA(Certification Authority Authorization)レコード
 - 運営者以外の第三者がSSL証明書を勝手に発行することを防止するための仕組み
