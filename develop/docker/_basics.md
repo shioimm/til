@@ -5,7 +5,6 @@
 - 参照: [Docker入門（第二回）～Dockerセットアップ、コンテナ起動～](https://knowledge.sakura.ad.jp/13795/)
 - 参照: [Docker入門（第四回）～Dockerfileについて～](https://knowledge.sakura.ad.jp/15253/)
 - 参照: [Dockerイメージの理解とコンテナのライフサイクル](https://www.slideshare.net/zembutsu/docker-images-containers-and-lifecycle)
-- 参照[米シリコンバレーDevOpsエンジニア監修！超Docker完全入門(2020)](https://www.udemy.com/course/linux-docker-compose-dockerfile-kanzennyumon/)
 
 ## TL;DR
 - コンテナのライフサイクルを管理するツールとプラットフォーム
@@ -20,13 +19,13 @@
   - コンテナ単位あるいはオーケストレーション単位でアプリケーションをデプロイする
 
 ### 構成要素
-- Dockerイメージ(たい焼き器)
+- Dockerイメージ
   - Dockerコンテナを作成する命令が入った読み込み専用のテンプレート
     - Dockerfileを使って自作する
     - コンテナの内容を手動でコミットし新しいイメージを作成する
     - Docker Hubから公開されているイメージを取得する
 
-- Dockerコンテナ(たい焼き)
+- Dockerコンテナ
   - イメージが実行状態となったインスタンス
   - イメージによって定義され、削除時に永続的なストレージに保存されていないものは消失する
 
