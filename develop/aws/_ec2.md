@@ -87,3 +87,24 @@
     - `.ssh/`の権限を制御
 3. `.ssh/xxx`にホストで作成した公開鍵をペースト
     - `.ssh/xxx`の権限を制御
+
+### EC2上にRailsアプリケーションの本番環境を構築する
+1. EC2: 環境の設定
+    - Git
+    - Development Tools(`$ yum -y groupinstall "Development Tools"`)
+    - rbenv / ruby-build / Ruby / Bundler
+    - PostgresSQL(DB / roleの作成)
+    - nginx
+    - `fog-aws`他画像関連 / `capistrano`他デプロイ関連
+2. EC2: 公開鍵秘密鍵のペアを作成
+3. EC2: ドキュメントルートを作成(`/var/www`)
+4. ホスト: Capfileを作成
+    - `$ bundle exec cap install`
+5. ホスト: `/config/deploy/production.rb`の編集
+6. EC2: `/etc/nginx/conf.d/xxxx.conf`の作成
+    - `upstream` / `server`の設定を追加
+7. ホスト: デプロイチェック
+    - `$ bundle exec cap production deploy:check`
+8. EC2: 環境変数の設定
+9. ホスト: デプロイ
+    - `$ bundle exec cap production deploy`
