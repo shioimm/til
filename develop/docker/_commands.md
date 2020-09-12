@@ -102,6 +102,10 @@ $ docker rmi [オプション] イメージ [イメージ...]
 $ docker rmi -f $(docker ps -a -q)
 ```
 
+## docker-compose
+- Dockerコンテナ起動時の設定をyamlファイルに記述
+- 複数のDockerコンテナを同時に立ち上げることができる
+
 ### docker-composeを立ち上げる
 - `-d`オプションでデーモン化
 ```
@@ -113,7 +117,12 @@ $ docker-compose up [オプション] [サービス...]
 $ docker-compose run [-f=<引数>...] [オプション] [コマンド] [引数...]
 ```
 
-### docker-composeで立ち上げた環境を(DBに保存されたデータごと)捨てる
+### docker-composeで立ち上げた環境を(DBに保存されたデータごと)削除
 ```
 $ docker-compose down [オプション]
+```
+
+### docker-composeのログを出力
+```
+$ docker-compose logs [オプション] [サービス...]
 ```
