@@ -27,13 +27,17 @@ $ sudo firewall-cmd --reload
 - 参照: [CentOS7にRubyをインストール](https://qiita.com/jjjjjj/items/75a946fe84ca40b5d9a9)
 ```
 $ sudo yum -y install git bzip2 gcc gcc-c++ openssl-devel readline-devel zlib-devel
+
+# どのユーザーでも使用できるように/usr/local以下にインストールする
 $ sudo git clone https://github.com/rbenv/rbenv.git /usr/local/rbenv
 $ sudo git clone https://github.com/rbenv/ruby-build.git /usr/local/rbenv/plugins/ruby-build
+
 $ sudo su
 # vim /etc/profile.d/rbenv.sh↲
 ```
 
 ```
+# /usr/local配下のrbenvにパスを通す
 export RBENV_ROOT="/usr/local/rbenv"
 export PATH="${RBENV_ROOT}/bin:${PATH}"
 eval "$(rbenv init --no-rehash -)"
