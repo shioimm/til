@@ -1,5 +1,13 @@
 # シェル
-## PATHについて
+- 参照: 例解UNIX/Linuxプログラミング教室 システムコールを使いこなすための12講 P11
+
+## シェルコマンド
+- 内部コマンド - シェル自身が処理する(ex: `cd` `alias` `exit`)
+- 外部コマンド - 実行可能ファイルをシェルが起動する
+  - 機械語プログラム(ex: `gcc` `date` `a.out`)
+  - スクリプトファイル(ex: シェルスクリプト、Rubyスクリプト)
+
+## コマンド探索パス
 - 参照: [PATHを通すとは？ (Mac OS X)](https://qiita.com/soarflat/items/09be6ab9cd91d366bf71)
 - 参照: [PATHを通すために環境変数の設定を理解する (Mac OS X)](https://qiita.com/soarflat/items/d5015bec37f8a8254380)
 - PATH = コマンド検索パス
@@ -11,19 +19,22 @@ $ echo $PATH
 /usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
 ```
 - :区切りで複数のパスが登録されている
-  - /usr/local/bin
-  - /usr/local/sbin
-  - /usr/bin
-  - /bin
-  - /usr/sbin
-  - /sbin
+  - `/usr/local/bin`
+  - `/usr/local/sbin`
+  - `/usr/bin`
+  - `/bin`
+  - `/usr/sbin`
+  - `/sbin`
 - パスは左から右に向かって優先的に探索される
 
 ```
-# touchコマンドの場合
-# binディレクトリにtouchコマンド実行ファイル格納されている
-$ which touch
-/usr/bin/touch
+# /usr/bin/ディレクトリに実行ファイルが格納されている
+$ type gcc
+gcc is an alias for nocorrect gcc
+gcc is /usr/bin/gcc
+
+# 外部コマンド/usr/bin/gccを実行する
+$ gcc xxx.c -o xxx
 ```
 
 ```
@@ -37,9 +48,22 @@ $ which ruby
 ```
 
 ```
-# 次のコマンドでは、元のコマンド探索パス($PATH)に
-# /usr/local/bin(※コマンド実行ファイルのインストール先)を追加している
+# コマンド探索パスに/usr/local/bin(※コマンド実行ファイルのインストール先)を追加
 echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
+```
+
+## shebang
+- ファイル中にインタプリタのパス名を記述することによって
+  スクリプトファイルを外部コマンドとして実行できるようになる
+```
+# ./xxx.sh
+
+#!/bin/bash
+
+echo 'Hello'
+
+# 実行許可を与える - $ chmod +x xxx
+# 外部コマンドとして実行できるようになる - $ ./xxx -> Hello
 ```
 
 ## `bin`がつくコマンドとつかないコマンドの違い
