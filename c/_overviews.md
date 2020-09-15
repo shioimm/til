@@ -254,3 +254,69 @@ int main()
 ```
 - 引数に値ではなくアドレスを渡すことによりメモリを節約することができる
 - アドレスが保有している値を直接操作することにより破壊的操作を行うことができる
+
+## ポインタ操作
+- 参照: 例解UNIX/Linuxプログラミング教室P69-76
+- アドレス演算(`&`)
+- ポインタ変数宣言(`*`)
+  - `int *p` - int型のデータを格納するメモリ領域の先頭アドレスを格納する変数p
+- 関節演算(`*`)
+
+### ポインタの間違い
+#### 未初期化ポインタ変数の関節演算
+```c
+int *p;
+*p = 999;
+
+// 初期化時にポインタ変数*pに参照先のアドレスが割り当てられていない
+// 代入時にポインタ変数*pが指すアドレス領域が空のままであるためエラー
+```
+
+#### 未初期化ポインタ変数を引数に渡す
+```c
+#include <time.h> // time_t time(time_t *t);
+
+time_t *t;
+time(t);
+
+// 初期化時にポインタ変数*tに参照先のアドレスが割り当てられていない
+// 変数tはどこも指していないためエラー
+// time(&t);またはで変数tへのアドレスを渡す
+```
+
+#### ローカル変数へのポインタを返り値にする
+```c
+int *foo()
+{
+  int x;
+  return &x;
+}
+
+// return時にローカル変数は消えるため
+// 存在しない領域を指すポインタを返すことになりエラー
+```
+
+#### ポインタが指す先が未初期化
+```c
+#include <sys/types.h>
+#include <socket.h> // int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
+
+int sock = socket(AF_INET, SOCK_STREAM, 0);
+struct sockaddr_storage client_addr;
+unsigned int address_size;
+
+accept(sock, (struct sockaddr *)&client_addr, &address_size);
+
+// 変数address_sizeが実際に指し示す先がないためエラー
+// unsigned int address_size = sizeof(client_addr);
+```
+
+## メモリ関連のバグ
+- メモリリーク
+  - `free()`し忘れ
+  - メモリを浪費する
+- ぶらぶらポインタ
+  - 存在しない領域を指す不正なポインタ
+  - `free()`後に書き込みを行うなど
+- バッファオーバーラン
+  - 確保した領域の大きさを超えたデータの書き込み
