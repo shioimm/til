@@ -56,6 +56,18 @@ eval "$(rbenv init -)"
 #### ruby-build
 - [ruby-build](http://ruby.studio-kingdom.com/rbenv/ruby_build/)
 - `rbenv install`コマンドを提供するプラグイン
+```
+# Installation
+$ brew install ruby-build
+
+# Homebrewではなく直接/pluginsディレクトリ以下にソースコードをpullする
+$ mkdir -p "$(rbenv root)"/plugins
+$ cd "$(rbenv root)/plugins"; git clone https://github.com/rbenv/ruby-build.git
+
+# Upgrading
+$ brew update && brew upgrade ruby-build
+$ git -C "$(rbenv root)"/plugins/ruby-build pull
+```
 
 ## gemコマンド
 ### `$ gem env`
