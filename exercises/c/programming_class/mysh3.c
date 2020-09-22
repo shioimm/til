@@ -1,0 +1,82 @@
+// 参照: 例解UNIX/Linuxプログラミング教室P213
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h> // wait, WIFEXITED, WEXITSTATUS
+#include <unistd.h>
+#include "mysub.h"
+#include "myvec.h"
+
+enum {
+  MAXARGV = 100
+};
+
+int main()
+{
+  char cmd[1024];
+  char *av[MAXARGV];
+  int ac, status, bg;
+  pid_t cpid, zpid;
+
+  for (;;) {
+    while ((zpid = waitpid(-1, &status, WNOHANG)) > 0) {
+      fprintf(stderr, "process: %d salvaged\n", zpid);
+    }
+    if (zpid == -1 && errno != ECHILD) {
+      perror("waitpid(2)");
+      exit(1);
+    }
+
+    getstr("@ ", cmd, sizeof(cmd));
+
+    if (feof(stdin)) {
+      exit(0);
+    } else if (ferror(stdin)) {
+      perror("getstr");
+      exit(1);
+    }
+
+    if ((ac = strtovec(cmd, av, MAXARGV)) > MAXARGV) {
+      fputs("too many arguments\n", stderr);
+      continue;
+    }
+    ac--;
+
+    if (ac == 0) {
+      continue;
+    }
+
+    if (!strcmp(av[ac - 1], "&")) {
+      av[ac - 1] = NULL;
+      ac--;
+      bg = 1;
+      if (ac == 0) {
+        fputs("invalid null command\n", stderr);
+        continue;
+      }
+    } else {
+      bg = 0;
+    }
+
+    if ((cpid = fork()) == -1) {
+      perror("fork");
+      exit(1);
+    } else if (cpid == 0){
+      execvp(av[0], av);
+      perror(av[0]);
+      exit(1);
+    }
+
+    if (!bg) {
+      if (waitpid(cpid, &status, 0) == (pid_t) - 1) {
+        perror("waitpid");
+        exit(1);
+      }
+      fprintf(stderr, "proccess %d finished\n", cpid);
+    }
+  }
+  exit(0);
+}

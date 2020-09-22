@@ -1,4 +1,4 @@
-// 参照: 例解UNIX/Linuxプログラミング教室P1205
+// 参照: 例解UNIX/Linuxプログラミング教室P205
 
 #include <stdio.h>
 #include <stdlib.h>
