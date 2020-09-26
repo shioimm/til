@@ -1,6 +1,48 @@
 # 副詞
 - 引用: NHKラジオ英会話2019年12月号
 
+### already
+- 完了
+  - I've finished most of it already.
+  - I've already seen that movie 10 times.
+
+### down
+- 下に -> 減少
+  - The number of road fatalities went down.
+  - The birth rate is continueing to go down.
+  - Could you turn the music down, please?
+- 下に -> 意識の不活発さ
+  - She's feeling down after the boss told her she needed to be more efficient.
+  - I feel some of my colleagues look down on me.
+  - Everyone has emotional ups and downs.
+
+### off
+- 離れて
+  - I'm off this morning.
+  - Tom yam kun is off today, I'm afraid.
+  - I feel a bit off this morning. It must be the curry I ate.
+  - The curry she made me was off. Don't you think that's a bit off?
+  - I saw them getting off the 9 o'clock train.
+  - We had to put off going to Hawaii, because my father fell ill.
+  - Carol loves to show off her soccer skills.
+- (物理的に)離れて
+  - Take off your jacket.
+  - We are about 5 km off the coast.
+
+### out
+- 外に
+  - Let's eat out tonight.
+  - I found out where they were hiding.
+  - They carried out the plan successfully.
+  - Truth will out.
+  - My kids are great, but sometimes they get out of control.
+- 外に -> 逸脱
+  - Miniskirt are out this year.
+  - We can't rules out the possibility.
+  - The candidates are all strong, but two stood out in turns of  charisma.
+- 外に -> 出す
+  - My friend helped me out when I was in deep trouble.
+
 ### pretty
 - かなり
   - I guess things must be pretty hectic at your store.
@@ -33,10 +75,20 @@
   - Sorry but I'm too busy to talk right now.
   - He was too proud to admit he was wrong.
 
-### already
-- 完了
-  - I've finished most of it already.
-  - I've already seen that movie 10 times.
+### up
+- 上に -> 完全に
+  - I need to fill up the car with gas.
+  - Hey, just shut up, will you?
+  - Let's finish up quickly, then we can go for a drink.
+- 上に -> 増加
+  - The number of road fatalities went up.
+  - Food prices seems to be go up everyday.
+  - Could you speak up a bit, please?
+- に上 -> 意識の活発さ
+  - I woke up late today.
+  - Your letter really cheered me up.
+  - Let me just fresh up before we go out OK?
+  - I look up my father
 
 ### yet
 - 未完 -> まだ
