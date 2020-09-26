@@ -65,8 +65,7 @@ $ mkdir -p "$(rbenv root)"/plugins
 $ cd "$(rbenv root)/plugins"; git clone https://github.com/rbenv/ruby-build.git
 
 # Upgrading
-$ brew update && brew upgrade ruby-build
-$ git -C "$(rbenv root)"/plugins/ruby-build pull
+$ git pull --rebase
 ```
 
 ## gemコマンド
