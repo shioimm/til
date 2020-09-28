@@ -49,12 +49,14 @@
 - ソケット固有の名前のデータを保存する構造体
 - サーバーソケット・クライアントソケットで同じ型の構造体を使用する
 ```
-// sockaddr_in構造体 - TCPを使用する際に使用するsockaddr構造体
+// sockaddr_in構造体 - TCP(IPv4)を使用する際に使用するsockaddr構造体
 struct sockaddr_in {
   sa_family_t    sin_family;  // アドレスファミリ(AF_INET)
   in_port_t      sin_port;    // ポート番号
   struct in_addr sin_addr;    // IPアドレス(INADDR_ANY)
 };
+// INET6領域のアドレスファミリを使用する場合はsockaddr_in6構造体
+// UNIX領域のアドレスファミリを使用する場合はsockaddr_un構造体を使用する
 
 // in_addr構造体 - IPアドレスを記述する構造体
 struct in_addr {
@@ -162,4 +164,18 @@ struct  hostent {
 // NO_DATA        適切なIPアドレスが見つからない
 // NO_RECOVERY    検索中のエラー
 // TRY_AGAIN      要再試行
+```
+
+## プロトコル独立
+- 特定のプロトコル(アドレスファミリ)に依存しない実装
+- `getaddrinfo(3)` - アドレスの情報を格納する`addrinfo`構造体型のリストを得る
+```c
+// addrinfo構造体
+
+struct addrinfo {
+  int             ai_family;     // アドレスファミリ(AF_UNSPEC)
+  int             ai_socktype;   // ソケットの型
+  struct sockaddr *ai_addr;      // sockaddr構造体(ソケットアドレス)へのポインタ
+  struct addrinfo *ai_next;      // アドレスリンクリストの次の要素
+};
 ```
