@@ -144,3 +144,22 @@ struct in_addr {
     - `FD_SET`   - `fd_set`にディスクリプタを追加する
     - `FD_CLR`   - `fd_set`からディスクリプタを削除する
     - `FD_ISSET` - `fd_set`にディスクリプタが含まれていれば0以外、含まれていなければ0を返す
+
+## ホスト名からIPアドレスへの変換
+- `gethostbyname(3)` - 指定したホスト名をIPアドレスに変換し`hostent`構造体へのポインタを返す
+```c
+// hostent構造体
+struct  hostent {
+  char *h_name;       // ホストの正式名
+  char **h_aliases;   // ホストの別名の配列
+  int  h_addrtype;    // アドレスファミリ(AF_INET)
+  int  h_length;      // アドレスのバイト数(4)
+  char **h_addr_list; // IPアドレスの配列
+};
+
+// エラーコード
+// HOST_NOT_FOUND ホストが存在しない
+// NO_DATA        適切なIPアドレスが見つからない
+// NO_RECOVERY    検索中のエラー
+// TRY_AGAIN      要再試行
+```
