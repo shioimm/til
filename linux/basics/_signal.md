@@ -51,6 +51,13 @@ struct sigaction {
 // int sigaddset(sigset_t *set, int signo);         // シグナル集合に任意のシグナルを加える
 // int sigdelset(sigset_t *set, int signo);         // シグナル集合から任意のシグナルを削除
 // int sigismember(const sigset_t *set, int signo); // シグナル集合に任意のシグナルが含まれるか確認
+
+// sigactionの設定
+// struct sigaction xxx;
+// act.sa_hander = シグナルハンドラ
+// act.sa_flags  = シグナルハンドラ実行中の動作を設定
+// sigemptyset(&xxx.sa_mask);
+// sigaction(シグナル, &xxx, NULL);
 ```
 
 ## シグナル待機
