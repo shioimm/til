@@ -35,12 +35,12 @@
 - `circleci-cli`のインストール
 - `config.yml`の作成
 
-### `config.yml`
+## `config.yml`
 - 引用・参照: [設定の概要](https://circleci.com/docs/ja/2.0/config-intro/)
 ```yml
 # 基本
 version: 2.0                     # version     CircleCIのバージョン
-jobs:                            # jobs        ジョブの定義(実行環境、ステップ)
+jobs:                            # jobs        ジョブ群の定義
   build:                         # buildジョブ 実行環境の設定
     docker:
       - image: circleci/node:12  # image       ビルドに使用するDockerイメージ
@@ -69,7 +69,7 @@ jobs:
   build:
     working_directory: ~/.repo
     docker:
-        - image: circleci/node:8.11.3
+        - image: circleci/node:12
     steps:
       - checkout
       - run: yarn install
@@ -87,7 +87,13 @@ jobs:
           at: ~/repo          # at                  ファイル共有先のディレクトリ
 ```
 
-#### ステップの種類
+### 主要なキー
+#### Jobs
+- [jobs](https://circleci.com/docs/ja/2.0/configuration-reference/#jobs)
+  - 一つ以上のジョブの定義(ジョブ名: 内容)
+    - `build` - 実行環境のビルド
+    - `steps` - 実行したい処理
+- ステップの種類
 - `run`
 - `checkout`
 - `setup_remote_docker`
@@ -97,8 +103,70 @@ jobs:
 - `deploy`
 - `persist_to_workspace` / `attach_workspace`
 - `add_ssh_keys`
+- ステップ内で使用できるキー
+  - `when` / `unless`
+  - `pre_steps` / `post_step`s
 
-#### 使用できるオプションキー
+#### Commands
+- [commands](https://circleci.com/docs/ja/2.0/configuration-reference/#commandsversion21-%E3%81%8C%E5%BF%85%E9%A0%88)
+  - 複数のジョブ間で再利用可能なコマンド
+    - `steps` - 必須
+    - `parameters`
+    - `description`
+```yml
+commands:
+  hello:
+    description: あいさつ
+    parameters:
+      to:
+        type: string
+        default: World
+    steps:
+      - run: echo Hello << parameters.to >>
+
+jobs:
+  steps:
+    - hello:
+      to: 'How are you?'
+```
+
+#### Executors
+- [executors](https://circleci.com/docs/ja/2.0/configuration-reference/#executorsversion21-%E3%81%8C%E5%BF%85%E9%A0%88)
+- 複数のジョブ間で再利用可能なジョブの実行環境の定義
+```
+executors:
+  xxx_executor:
+    docker:
+      - image: circleci/node:12
+jobs:
+  build:
+    executor: xxx_executor
+```
+
+#### Orbs
+- [Orbs とは](https://circleci.com/docs/ja/2.0/orb-intro/)
+> ジョブ、コマンド、Executorのような設定要素をまとめた共有可能なパッケージ
+
+#### Workflows
+- [workflows](https://circleci.com/docs/ja/2.0/configuration-reference/#workflows)
+  - 一連のジョブとその実行順序を定義するルール
+```yml
+jobs:
+  build:
+    docker:
+      - image: circleci/node:12
+  test:
+    docker:
+      - image: circleci/node:12
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build
+      - test
+```
+
+### 使用できるオプションキー
 - ジョブのオプション
   - `steps`で使用するシェル
   - `steps`で使用するワーキングディレクトリ
@@ -109,25 +177,3 @@ jobs:
 - `run`ステップのオプション
   - シェルが実行できるコマンド
   - ステップのタイトルの設定
-
-#### Job
-- [jobs](https://circleci.com/docs/ja/2.0/configuration-reference/#jobs)
-> 実行処理は 1 つ以上の名前の付いたジョブで構成され、それらのジョブの指定は jobs マップで行う
-> Workflows を利用する際は、.circleci/config.yml ファイル内でユニークなジョブ名を設定
-> Workflows を 使わない 場合は、jobs マップ内に build という名前のジョブを用意
-
-#### Command
-- [commands](https://circleci.com/docs/ja/2.0/configuration-reference/#commandsversion21-%E3%81%8C%E5%BF%85%E9%A0%88)
-> ジョブ内で実行するステップシーケンスをマップとして定義
-
-#### Executor
-- [executors](https://circleci.com/docs/ja/2.0/configuration-reference/#executorsversion21-%E3%81%8C%E5%BF%85%E9%A0%88)
-> ジョブステップの実行環境を定義
-
-#### Orbs
-- [Orbs とは](https://circleci.com/docs/ja/2.0/orb-intro/)
-> ジョブ、コマンド、Executorのような設定要素をまとめた共有可能なパッケージ
-
-#### Workflows
-- [workflows](https://circleci.com/docs/ja/2.0/configuration-reference/#workflows)
-> あらゆるジョブの自動化に用いる
