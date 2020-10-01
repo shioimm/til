@@ -36,21 +36,13 @@
 ```c
 // sigaction構造体
 struct sigaction {
-  sigset_t sa_mask;  // シグナルハンドラ実行中にブロックするシグナルの設定
+  sigset_t sa_mask;  // シグナルマスク(シグナルハンドラ実行中にブロックするシグナルの設定)
   int      sa_flags; // オプション設定フラグ
 
   // どちらか一つだけ設定
   void (*sa_handler)(int);                        // 引数が一つのシグナルハンドラ
   void (*sa_sigaction)(int, siginfo_t *, void *); // 引数が三つのシグナルハンドラ
 };
-
-// sa_maskの設定
-// sigset_t - シグナルの集合を表すシステムデータ型
-// int sigemptyset(sigset_t *set);                  // シグナル集合を空にする
-// int sigfillset(sigset_t *set);                   // シグナル集合に全てのシグナルを加える
-// int sigaddset(sigset_t *set, int signo);         // シグナル集合に任意のシグナルを加える
-// int sigdelset(sigset_t *set, int signo);         // シグナル集合から任意のシグナルを削除
-// int sigismember(const sigset_t *set, int signo); // シグナル集合に任意のシグナルが含まれるか確認
 
 // sigactionの設定
 // struct sigaction xxx;
@@ -60,6 +52,36 @@ struct sigaction {
 // sigaction(シグナル, &xxx, NULL);
 ```
 
+### シグナルマスクの設定
+- `sigset_t` - シグナルの集合を表すシステムデータ型
+  - `sigemptyset(3)` - シグナル集合を空にする
+  - `sigfillset(3)`  - シグナル集合に全てのシグナルを加える
+  - `sigaddset(3)`   - シグナル集合に任意のシグナルを加える
+  - `sigdelset(3)`   - シグナル集合から任意のシグナルを削除
+  - `sigismember(3)` - シグナル集合に任意のシグナルが含まれるか確認
+- `sigprocmask(2)` - シグナルマスクの設定と検査
+- `sigpending(2)`  - どのシグナルがブロック中か検査
+- `sigsuspend(2)`   - シグナルのブロック解除から再ブロックまでをatomicに実行
+  - `sigprocmask`(ブロック解除) -> `pause`(待機) -> `sigprocmask`(ブロックを元に戻す)
+
 ## シグナル待機
 - `pause(2)` - シグナルが来るまで以降の操作をブロックする
   - `pause`する前にシグナルが届いた場合、ブロックが永遠に解除されない
+
+## race condition
+- シグナルによる処理は非同期であるためrace conditionを招く場合がある
+  - race condition   - プログラムの実行順やタイミングに依存して意図しない実行結果を招くこと
+  - critical section - race conditionの原因となるプログラム部分
+    - 排他制御・割り込みの禁止などを行いrace conditionを避けるようにする
+  - atomicな処理     - 実行途中の状態を他のプロセス・スレッド・シグナルハンドラから見えないようにした処理
+
+### グローバル変数へのアクセス
+- `volatail`宣言 - `この変数は非同期的に変更されるため、最適化を行わない`とコンパイラに伝える
+  - 最適化 -> レジスタへのキャッシュなど
+  - グローバル変数に対して`volatail`をつける
+- atomicにアクセスできるという保証がなければ、`sigprocmask`で囲んでシグナルをブロックするようにする
+
+## シグナルハンドラ中に呼ぶことができる関数
+- 非同期シグナル安全な関数
+  - 再入可能関数 - ある関数を実行中に、更にその関数を呼び出すことができる関数(非破壊的関数)
+  - シグナルが割り込めない関数
