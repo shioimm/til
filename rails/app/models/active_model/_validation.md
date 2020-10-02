@@ -4,6 +4,10 @@
 - `errors`メソッドを提供する
   - DBとの接続が必要なバリデーションはActiveRecordによって提供されている
 
+### 関連モデルのバリデーション
+- `validate_associated` - 関連モデルのバリデーションを実行
+  - エラーが発生した際は関連元のモデルオブジェクトにエラーが入る
+
 ### boolean型のカラムに対してpresenceバリデーションをかけたい
 - boolean型のカラムに対して`presence`ヘルパーを使用すると、
 値が`false`の場合に`valid? # => false`になる
