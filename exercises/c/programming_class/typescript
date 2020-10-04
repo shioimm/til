@@ -1,0 +1,47 @@
+Script started on Sun Oct  4 11:36:01 2020
+[1m[7m%[27m[1m[0m                                                                                                                                  ]7;file://misakinoMacBook-Pro.local/Users/misakishioi/til/exercises/c/programming_class[0m[27m[24m[J[34m~/t/e/c/programming_class [K[?1h=[0m[27m[24m[J[34m~/t/e/c/programming_class [1m[34m[31m❯[33m❯[32m❯[39m[0m [K[?2004h[32ml[39m[90ms[39m[32ml[32ms[39m[?1l>[?2004l[0m[27m[24m[J[34m~/t/e/c/programming_class [1m[34m[31m❯[33m❯[32m❯[39m[0m [32mls[39m[K
+./			3-3.c			7-1.c			chatserver*		mysh0.c
+../			3-4*			7-2*			chatserver.c		mysh3*
+0920			3-4.c			7-2.c			client*			mysh3.c
+2-1*			3-5*			7-3*			client.c		mysh4*
+2-1.c			3-5.c			7-3.c			client_with_hostname*	mysh4.c
+2-10*			3-6*			7-4*			client_with_hostname.c	mysub.c
+2-10.c			3-6.c			7-4.c			cserver*		mysub.h
+2-11*			3-7*			7-6*			cserver.c		myvec.c
+2-11.c			3-7.c			7-6.c			diary1*			myvec.h
+2-12*			4-1*			7-7*			diary1.c		oredirect*
+2-12.c			4-1.c			7-7.c			empty3-2.file		oredirect.c
+2-13*			4-2*			7-8*			files0*			output3-4.file
+2-13.c			4-2.c			7-8.c			files0.c		output4-2.txt
+2-15*			4-5*			9-1*			foo1			pause*
+2-15.c			4-5.c			9-1.c			foo2			pause.c
+2-16*			4-6*			9-10.c			fsnav0*			phone1.c
+2-16.c			4-6.c			9-11.c			fsnav0.c		phone2*
+2-17*			4-8*			9-12.c			fsnav1*			phone2.c
+2-17.c			4-8.c			9-13*			fsnav1.c		phone2x.dat
+2-18*			5-1*			9-13.c			fsnav2*			pindepclient*
+2-18.c			5-1.c			9-15*			fsnav2.c		pindepclient.c
+2-2*			5-10*			9-15.c			grobal-var2*		pipe-sample1*
+2-2.c			5-10.c			9-19*			grobal-var2.c		pipe-sample1.c
+2-3*			5-12*			9-19.c			grobal-var3*		pipe-sample2*
+2-3.c			5-12.c			9-2*			grobal-var3.c		pipe-sample2.c
+2-4*			5-5*			9-2.c			hello3-3.txt		popen-sample1*
+2-4.c			5-5.c			9-3*			hop3-7.out		popen-sample1.c
+2-5*			5-6*			9-3.c			input3-1.txt		setpgid0*
+2-5.c			5-6.c			9-5*			input3-4.file		setpgid0.c
+2-6*			5-7*			9-5.c			input3-5.file		setpgid1*
+2-6.c			5-7.c			9-6*			input3-6.file		setpgid1.c
+2-7*			5-8*			9-6.c			input4-2.txt		signal1*
+2-7.c			5-8.c			9-7*			iserver1*		signal1.c
+2-8*			6-10*			9-7.c			iserver1.c		stat0*
+2-8.c			6-10.c			9-8*			iserver2*		stat0.c
+2-9*			6-11*			9-8.c			iserver2.c		tinymining*
+2-9.c			6-11.c			9-9*			kill*			tinymining.c
+3-1*			6-5*			9-9.c			kill.c			typescript
+3-1.c			6-5.c			a.out.dSYM/		ls.out			whackamole*
+3-2*			6-6*			acctadd*		myls0*			whackamole.c
+3-2.c			6-6.c			acctadd.c		myls0.c
+3-3*			7-1*			acctbook.txt		mysh0*
+[1m[7m%[27m[1m[0m                                                                                                                                  ]7;file://misakinoMacBook-Pro.local/Users/misakishioi/til/exercises/c/programming_class[0m[27m[24m[J[34m~/t/e/c/programming_class [1m[34m[31m❯[33m❯[32m❯[39m[0m [K[?1h=[0m[27m[24m[J[34m~/t/e/c/programming_class [1m[34m[31m❯[33m❯[32m❯[39m[0m [K[?2004h[1m[31me[0m[39m[90mcho ^V^[[7m abc ^V^[[0m[39m[23D[0m[32me[32mx[39m[90me[90mr[90mc[90mi[90ms[90mm[90m [90md[90mo[90mw[90mn[90ml[90mo[90ma[90md[90m [90m-[90m-[90me[90mx[90me[90mr[90mcise=pangram --track=c[39m[44D[1m[31me[1m[31mx[1m[31mi[0m[39m[39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [39m [43D[0m[32me[0m[32mx[0m[32mi[32mt[39m[?1l>[?2004l[0m[27m[24m[J[34m~/t/e/c/programming_class [1m[34m[31m❯[33m❯[32m❯[39m[0m [32mexit[39m[K
+
+Script done on Sun Oct  4 11:36:14 2020
