@@ -98,6 +98,7 @@ end
 ```
 
 ```js
+# app/javascript/channels/xxx_channel.js
 # サーバーサイドのチャネルを購読するための処理
 
 import consumer from "./consumer"
