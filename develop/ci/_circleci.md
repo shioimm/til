@@ -94,7 +94,7 @@ jobs:
 ### 主要なキー
 #### Jobs
 - [jobs](https://circleci.com/docs/ja/2.0/configuration-reference/#jobs)
-  - 一つ以上のジョブの定義(ジョブ名: 内容)
+  - 個々のジョブの定義(ジョブ名: 内容)
     - `build` - 実行環境のビルド
     - `steps` - 実行したい処理
 - ステップの種類
@@ -153,7 +153,7 @@ jobs:
 
 #### Workflows
 - [workflows](https://circleci.com/docs/ja/2.0/configuration-reference/#workflows)
-  - 一連のジョブとその実行順序を定義するルール
+  - 一連のジョブを組み合わせたワークフローの定義
 ```yml
 jobs:
   build:
