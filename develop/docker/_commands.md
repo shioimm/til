@@ -1,5 +1,6 @@
 # コマンド
 - [コマンドライン・リファレンス](https://docs.docker.jp/compose/reference/toc.html)
+- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
 
 ### DockerHubからDockerイメージをダウンロード
 ```
@@ -20,15 +21,32 @@ $ docker build [ -t ｛イメージ名｝ [ :{タグ名} ] ] {Dockerfileのあ�
 
 ### Dockerコンテナを起動
 ```
-$ docker run [オプション] [--name {コンテナー名}] {イメージ名}[:{タグ名}] [コンテナーで実行するコマンド] [引数]
+$ docker run [オプション] [--name {コンテナ名}] {イメージ名}[:{タグ名}] [コンテナで実行するコマンド] [引数]
 
 # ホストマシンからDockerコンテナにVolumeをマウント
 $ docker run --volumes マウント元パス(ホスト):マウント先パス コンテナ
 
 # Dockerコンテナの環境変数を設定する
 $ docker run -d --env KEY=VALUE コンテナ
+
+# コンテナ内部にログイン
+$ docker run -it --name 作成するコンテナ名 イメージ名:タグ名 /bin/シェル名
+
+#コンテナからネットワークに接続
+$ docker run -p localhostのポート番号:コンテナのポート番号 --name 作成するコンテナ名 イメージ名:タグ名
+
+#コンテナからネットワークに接続(デーモン化)
+$ docker run -d -p localhostのポート番号:コンテナのポート番号 --name 作成するコンテナ名 イメージ名:タグ名
 ```
 - `--detach` - バックグラウンドで起動
+
+### 実行中のDockerコンテナの中にログイン
+```
+$ docker exec [オプション] コンテナ名 コマンド [引数...]
+
+# 指定のシェルで入り標準入出力で表示する
+$ docker exec -it コンテナ名 シェル名
+```
 
 ### Dockerコンテナを停止
 ```
@@ -51,12 +69,6 @@ $ docker logs [オプション] コンテナ
 ### Dockerコンテナのメタ情報を表示
 ```
 $ docker inspect [オプション] コンテナ|イメージ|タスク [コンテナ|イメージ|タスク...]
-```
-
-### 実行中のDockerコンテナの中に入る
-```
-$ docker exec [オプション] コンテナ コマンド [引数...]
-$ docker exec -it コンテナ bash # bashで入り操作を標準入出力で表示する
 ```
 
 ### Dockerコンテナを元に新しいDockerイメージを生成
