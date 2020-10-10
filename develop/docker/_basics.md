@@ -5,6 +5,7 @@
 - 参照: [Docker入門（第二回）～Dockerセットアップ、コンテナ起動～](https://knowledge.sakura.ad.jp/13795/)
 - 参照: [Docker入門（第四回）～Dockerfileについて～](https://knowledge.sakura.ad.jp/15253/)
 - 参照: [Dockerイメージの理解とコンテナのライフサイクル](https://www.slideshare.net/zembutsu/docker-images-containers-and-lifecycle)
+- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
 
 ## TL;DR
 - コンテナのライフサイクルを管理するツールとプラットフォーム
@@ -59,9 +60,14 @@
 - 作成した環境を容易に配布できる
 
 ## ライフサイクル
-1. Dockerイメージを取得
-2. DockerイメージをDocker Engine上でrun
-3. Dockerコンテナが起動
-4. - 略 -
-5. Dockerコンテナを削除
-6. Dockerイメージを削除
+1. DockerHubからコンテナイメージを取得(`$ docker pull`)
+2. コンテナイメージを元にDocker Engine上でコンテナ作成・コンテナ上でプロセス起動($`docker run`)
+    - コンテナは内部で動作しているプロセスが終了すると休止状態になる
+    - コンテナ内部でコマンド実行(`$ docker exec`)
+    - コンテナ内部にログイン(`$ docker exec -it`)
+3. コンテナ・プロセスを停止(`$ docker stop`)
+    - 停止したコンテナを再開(`$ docker start`)
+    - 永続化したいコンテナはイメージ化(`$ docker commit`)
+    - イメージ化したコンテナをDockerHubにpush(`$ docker push`)
+4. Dockerコンテナを削除(`$ docker rm`)
+6. Dockerイメージを削除(`$ docker rmi`)
