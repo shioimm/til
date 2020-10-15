@@ -21,7 +21,7 @@
 - コンテナにネットワーク・インターフェースを持たせない
 - コンテナは内外での通信ができない
 
-## 技術的要素
+## 構成要素
 ### Network namespace
 - カーネルが提供する独立したネットワーク空間
 - コンテナでネットワークを使用する際Network Namespaceが作成される
@@ -37,14 +37,31 @@ LAN <-> eth0(物理NIC) <-> docker0(ブリッジ) <-> veth <-> veth(仮想NIC) <
 - Dockerをインストールした際に作成されるブリッジネットワーク
 - Dockerデーモンがデフォルトでコンテナを接続する
 
-### veth
+### 仮想NICペア
+- 片方の仮想NICはコンテナのNetwork Namespaceでeth0のように動作する
+- もう片方の仮想NICはホストのNetwork Namespaceでdocker0と接続する
+  - vethインターフェースを通してdocker0に接続されるとIPアドレスが配布される
+  - コンテナ同士はNetwork namespaceのIPアドレスを通じて通信を行う
+
+#### veth
 - Linuxが提供する仮想的なネットワークインターフェース
 - vethインターフェースを作成すると、仮想NICのペアが作成される
   この2つの仮想NIC間で通信を行う
-  - 片方の仮想NICはコンテナのNetwork Namespaceでeth0のように動作する
-  - もう片方の仮想NICはホストのNetwork Namespaceでdocker0と接続する
-    - vethインターフェースを通してdocker0に接続されるとIPアドレスが配布される
-    - コンテナ同士はNetwork namespaceのIPアドレスを通じて通信を行う
+
+## ネットワークの作成
+1. Network Namespaceの作成
+    - `$ ip netns add [Network Namespace名]`
+2. ブリッジの作成
+    - `$ ip link add [ブリッジ名] type bridge`
+3. 仮想NICペアの作成
+    - ルーター <-> ブリッジ / ブリッジ <-> Network Namespace内
+    - `$ ip link add name veth [仮想NIC名] type veth peer name [対向の仮想NIC名]`
+4. Network Namespace - Network Namespace側仮想NIC間の接続
+    - `$ ip link set [仮想NIC名] netns [Network Namespace名]`
+5. ブリッジ - ブリッジ側仮想NIC間の接続
+    - `$ ip link set dev [仮想NIC名] master [仮想スイッチ名]`
+6. ブリッジと仮想NICのup
+7. IPアドレスの付与
 
 ## `docker-compose`の場合
 - `docker-compose`で起動されたコンテナはデフォルトのブリッジネットワークを使用せず
