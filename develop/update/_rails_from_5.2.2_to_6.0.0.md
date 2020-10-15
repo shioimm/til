@@ -11,48 +11,49 @@
 
 ## 作業ログ
 1. Rails5.2.3アップデート対応
-  -  Gemfileを更新(`gem 'rails', '~> 5.2.3'`)
-  - `bundle update rails`
-  - テスト・動作確認
+    -  Gemfileを更新(`gem 'rails', '~> 5.2.3'`)
+    - `$ bundle update rails`
+    - テスト・動作確認
 2. dependabotでPRが立っているgemをupdate
-  - マイナーバージョン  -> メジャーバージョン
-  - 【別issue】Sidekiq6.0へのupdateに伴い、RedisToGoから他のアドオンへ移行を検討（Redisのバージョンが対応していなかった）
+    - マイナーバージョン  -> メジャーバージョン
+    - 【別issue】Sidekiq6.0へのupdateに伴い、RedisToGoから他のアドオンへ移行を検討（Redisのバージョンが対応していなかった）
 3. featureブランチで Gemfileを更新(`gem 'rails', '~>  6.0.0'`)
-4. `bundle update rails` -> 失敗
-  - updateが必要なgemがひたすらエラーを吐いてくるので別PRでupdate対応
-  - Rails 6.0.0対応していなかったrescue_unique_constraintを自分のアカウントにフォークして、gemspecを6.0.0に書き換え、Gemfileを更新（公式にPRは出ていたがマージされていなかった）
-5. `bundle update rails` -> 成功
-6. `rails app:update`
-  - 一旦全部上書きしてコミット
-  - diffを見ながら必要な設定を戻してコミット
+4. `$ bundle update rails` -> 失敗
+    - updateが必要なgemがひたすらエラーを吐いてくるので別PRでupdate対応
+    - Rails 6.0.0対応していなかった`rescue_unique_constraint`を自分のアカウントにフォーク
+      gemspecを6.0.0に書き換え、Gemfileを更新（公式にPRは出ていたがマージされていなかった）
+5. `$ bundle update rails` -> 成功
+6. `$ rails app:update`
+    - 一旦全部上書きしてコミット
+    - diffを見ながら必要な設定を戻してコミット
 7. テスト・サーバー起動・動作確認で発生したトラブルに対応
-  - Update autoloader & Change config.active_record.belongs_to_required_by_default to be false
-  - Update rspec-rails to 4.0.0.beta2
-  - Remove chosen-rails & Yarn add chosen-js
-  - Fix specs & routing
+    - `Update autoloader & Change config.active_record.belongs_to_required_by_default to be false`
+    - `Update rspec-rails to 4.0.0.beta2`
+    - `Remove chosen-rails & Yarn add chosen-js`
+    - `Fix specs & routing`
 8. DEPRECATION WARNINGを消す
 
 ## 発生したトラブル
 #### Routing関連
-- ArgumentError: Invalid route name, already in use: 'root'
+- `ArgumentError: Invalid route name, already in use: 'root'`
 - 【原因】routes.rbでroleごとに複数のrootを設定しているため
-- 【解決】1. root to: xx#yy, as: :xx_rootでroleごとにroot名を変える
-- 【解決】2. root 'users/sesions#new'でroot_pathを設定する(これをしないと未ログイン時のリダイレクト先設定)
+- 【解決】1. `root to: xx#yy, as: :xx_root`でroleごとにroot名を変える
+- 【解決】2. `root 'users/sesions#new'`で`root_path`を設定する(未ログイン時のリダイレクト先設定)
 
 #### Devise関連
-- NameError: uninitialized constant CustomFailureApp
-- 【原因】rails app:update時にオートローダーの設定を上書きしていたため
+- `NameError: uninitialized constant CustomFailureApp`
+- 【原因】`$ rails app:update`時にオートローダーの設定を上書きしていたため
 - 【解決】オートローダーの設定を元に戻す
 
 #### Rspec関連
-- ActionView::Template::Error wrong number of arguments (given 2, expected 1)
+- `ActionView::Template::Error wrong number of arguments (given 2, expected 1)`
 - 【原因】rspec-rails3.8がRails6非対応のため
 - 【解決】 `gem 'rspec-rails', '4.0.0.beta2'`にupdate
 
 #### ActiveRecord関連
 - 子レコードが`belongs_to`で参照している親レコードが存在しない場合（idが無い場合）バリデーションがfalseになりテストが落ちる
 - 【原因】`belongs_to`にデフォルトでnilチェックが入るようになったため
-- 【解決】コードの見直しを前提に一時的にconfig.active_record.belongs_to_required_by_default = falseを設定
+- 【解決】コードの見直しを前提に一時的に`config.active_record.belongs_to_required_by_default = false`を設定
 
 #### AssetsPipeline関連
 - `chosen`のアセットパスが消える

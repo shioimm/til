@@ -2,7 +2,7 @@
 ## マイグレーションファイル
 - 参照: [Active Record マイグレーション](https://railsguides.jp/active_record_migrations.html)
 
-### add_column
+### `add_column`
 - 既存のテーブルに新しいカラムを追加する
 - down時はup時と逆の処理を行う
   - down時のコードはup時のマイグレーションファイルを元に自動生成される
@@ -12,7 +12,7 @@ def change
 end
 ```
 
-### change_column
+### `change_column`
 - 既存のカラムを変更する
 - down時はup時と逆の処理を行わない
   - down時のコードはup時のマイグレーションファイルに別途記載する必要がある
@@ -26,7 +26,7 @@ def down
 end
 ```
 
-### remove_column
+### `remove_column`
 - カラムを削除する場合はあらかじめデータを引き抜く
   - 例: Redashでデータをエクスポートする
   - 例: Herokuでバックアップデータをダウンロードする
@@ -34,12 +34,13 @@ end
 ```ruby
   def change
     # rails db:rollbackできるように型を指定する
-    # (カラムオプションがある場合はカラムオプションも指定)
+    # カラムオプションがある場合は
+    # カラムオプションも指定しておかないとrollback時に元に戻らなくなる
     remove_column :user, :birthday, :datetime, null: false
   end
 ```
 
-### drop_table
+### `drop_table`
 - テーブルを削除する際はreversibleにする
 
 - 良い例
@@ -65,7 +66,7 @@ end
 t.datetime :x_date, default: -> { 'NOW()' }
 ```
 
-- CURRENT_TIMESTAMPを使用することができる
+- `CURRENT_TIMESTAMP`を使用することができる
   - DBのタイムゾーンはアプリケーション側と別に設定が必要
 ```console
 ALTER DATABASE "DB_NAME" SET timezone TO 'Asia/Tokyo';
@@ -94,18 +95,18 @@ add_foreign_key :lessons, :users, column: :teacher_id
 ```
 - 参照: [マイグレーションにおいて参照先テーブル名を自動で推定できないカラムを外部キーとして指定する方法](https://qiita.com/kymmt90/items/03cb9366ff87db69f539)
 
-### lock_version
-- テーブルにlock_versionカラムを追加すると、該当するモデルに楽観的ロックを追加できる
+### `lock_version`
+- テーブルに`lock_version`カラムを追加すると、該当するモデルに楽観的ロックを追加できる
 ```ruby
 add_column :books, :lock_version, :integer, default: 0, null: false
 ```
-- lock_versionはレコードのupdate時にカウントアップされる
+- `lock_version`はレコードのupdate時にカウントアップされる
   - フォームからパラメータとして送信する
-- update時にlock_versionが異なると競合が発生し、`ActiveRecord::StaleObjectError`が発生する
+- update時に`lock_version`が異なると競合が発生し、`ActiveRecord::StaleObjectError`が発生する
   - update時に`ActiveRecord::StaleObjectError`のエラーハンドリングを行う
 
 #### フォーム側の実装
-- lock_versionを`hidden_field`に持たせる
+- `lock_version`を`hidden_field`に持たせる
 ```haml
 = f.hidden_field :lock_version
 ```
