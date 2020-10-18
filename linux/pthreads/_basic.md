@@ -108,3 +108,14 @@ printf("%02d:%02d:%02d\n", nowtm.tm_hour, nowtm.tm_min, nowtm.tm_sec);
   - `pthread_key_delete(3)`  - スレッドローカル変数
   - `pthread_setspecific(3)` - スレッドローカル変数の設定
   - `pthread_getspecific(3)` - スレッドローカル変数の読み取り
+
+## 排他制御
+- Mutual Execution(排他実行) - スレッド同士が同じリソースに対して同時に操作を行うことを防止する
+  - スレッドが処理の実行に入る前にミューテックスをONにする
+  - スレッドが処理の実行を終えた後にミューテックスをOFFにする
+  - `pthread_mutex_t`型 - ミューテックス
+  - `pthread_mutex_init(3)`    - ミューテックスの初期化
+  - `pthread_mutex_lock(3)`    - アンロック時 -> ロックして0を返す / ロック時 -> アンロックするまで待つ
+  - `pthread_mutex_trylock(3)` - アンロック時 -> ロックして0を返す / ロック時 -> 0以外を返す
+  - `pthread_mutex_unlock(3)`  - ロック時 -> アンロックする
+  - `pthread_mutex_destroy(3)` - 排他制御完了時にミューテックスを破棄
