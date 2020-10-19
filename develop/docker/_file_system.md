@@ -33,3 +33,39 @@ $ mount -t overlay [一意の識別名] -o lowerdir=[lowerdirに指定するデ�
 - ベースとするDockerイメージが`lowerdir`の最下層レイヤーとなる
 - 最終的に形成される`mergeddir`が起動したDockerコンテナの姿となる
 - Dockerコンテナ(`mergeddir`)内で追加・変更・削除されたファイルは`upperdir`に保存される
+
+## プライベートリポジトリ
+- 任意の環境にプライベートなDockerリポジトリを作成する
+  - Docker Hubと同じ動作を行う
+```
+# プライベートリポジトリregistry:2.7.1をpullし
+# localhost:5000でアクセスできるようにする
+$ docker run -d -p 5000:5000 registry:2.7.1
+
+# localhost:5000のDockerリポジトリに対して
+# ホスト内のDockerイメージxxxxをイメージ名xxxx、タグ1.0.0でタグ付け
+$ docker tag xxxx localhost:5000/xxxx:1.0.0
+
+# プライベートリポジトリへpush
+$ docker push localhost:5000/xxxx
+```
+```
+/var/lib/registry/docker/registry/v2
+  |- repositories             // イメージのメタ情報
+  |   |- xxxx                 // イメージ名
+  |       |- _manifests/tags
+  |           |- 1.0.0        // イメージのタグ名
+  |               |- current
+  |                   |- link // イメージのメタ情報
+  |
+  |- blobs            // 実際のコンテンツをレイヤーごとに格納
+      |- sha256       // sha256でハッシュ化したディレクトリ
+          |- ...      // イメージのメタ情報
+          |   |- data // 圧縮された実データ
+          |- ...
+          |   |- data
+          |- ...
+          |   |- data
+```
+- Dockerfile内で発行された各コマンドで生成されたファイルはレイヤー単位で管理される
+- 同じレイヤーは重複してリポジトリにはアップされず、リポジトリ上で共有される
