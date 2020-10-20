@@ -2,12 +2,19 @@
 - 参照: [クィックスタート: Compose と Rails](https://docs.docker.jp/compose/rails.html)
 
 ## 1. プロジェクトの定義
-- Docker用設定ファイルの追加
-  - Dockerfile         - Dockerイメージ生成のための設定を記述
-  - docker-compose.yml - すべてのサービスの取りまとめを記述
-- Rails用初期化ファイルの追加(`$ rails new`で置き換えられる)
-  - 初期化用Gemfile
-  - 空のGemfile.lock
+- ルート直下にファイルを置く
+
+### Docker用設定ファイル
+- Dockerfile
+- docker-compose.yml
+- .dockerigore
+  - ホストには存在しているがDockerイメージには組み込みたくないファイル群
+  - `.git` / `vendor/bundle` / `log/` / `tmp/`
+
+### Rails用初期化ファイル(`$ rails new`時に置き換えられる)
+- 初期化用Gemfile
+  - `rails` gemのみ記述
+- 空のGemfile.lock
 
 ## 2. プロジェクトのビルド
 ```
