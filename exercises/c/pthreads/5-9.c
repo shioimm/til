@@ -1,10 +1,12 @@
-// Linuxとpthreadsによるマルチスレッドプログラミング入門 P109
+// Linuxとpthreadsによるマルチスレッドプログラミング入門 P161
 
 #include <pthread.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
+#include <errno.h>
 
 #define WIDTH      78
 #define HEIGHT     23
@@ -24,6 +26,8 @@ typedef struct {
 int             stopRequest;
 const char      *birdMarkList = "o@*+.#";
 Bird            birdList[MAX_BIRD];
+pthread_mutex_t drawMutex;
+pthread_cond_t  drawCond;
 
 void mSleep(int msec)
 {
@@ -31,6 +35,21 @@ void mSleep(int msec)
   ts.tv_sec = msec / 1000;
   ts.tv_nsec = (msec % 1000) * 1000000;
   nanosleep(&ts, NULL);
+}
+
+int pthread_cond_timedwait_msec(pthread_cond_t *cond, pthread_mutex_t *mutex, long msec)
+{
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec  += msec / 1000;
+  ts.tv_nsec += (msec % 1000) * 1000000;
+
+  if (ts.tv_nsec >= 1000000000) {
+    ts.tv_sec++;
+    ts.tv_nsec -= 1000000000;
+  }
+
+  return pthread_cond_timedwait(cond, mutex, &ts);
 }
 
 double randDouble(double minValue, double maxValue)
@@ -85,6 +104,9 @@ void BirdMove(Bird *bird)
     bird->angle = -bird->angle;
   }
   pthread_mutex_unlock(&bird->mutex);
+  pthread_mutex_lock(&drawMutex);
+  pthread_cond_signal(&drawCond);
+  pthread_mutex_unlock(&drawMutex);
 }
 
 int BirdIsAt(Bird *bird, int x, int y)
@@ -143,10 +165,21 @@ void drawScreen()
 
 void *doDraw(void *arg)
 {
+  pthread_mutex_lock(&drawMutex);
+
   while (!stopRequest) {
-    drawScreen();
-    mSleep(DRAW_CYCLE);
+    switch (pthread_cond_timedwait_msec(&drawCond, &drawMutex, 1000)) {
+      case 0:
+        drawScreen();
+        break;
+      case ETIMEDOUT:
+        break;
+      default:
+        printf("Fatal error on pthread_cond_timedwait\n");
+        exit(1);
+    }
   }
+  pthread_mutex_unlock(&drawMutex);
   return NULL;
 }
 
@@ -158,6 +191,8 @@ int main()
   char buf[40];
 
   srand((unsigned int)time(NULL));
+  pthread_mutex_init(&drawMutex, NULL);
+  pthread_cond_init(&drawCond,   NULL);
   clearScreen();
 
   for (i = 0; i < MAX_BIRD; i++) {
@@ -179,6 +214,8 @@ int main()
     pthread_join(moveThread[i], NULL);
     BirdDestroy(&birdList[i]);
   }
+  pthread_mutex_destroy(&drawMutex);
+  pthread_cond_destroy(&drawCond);
 
   return 0;
 }
