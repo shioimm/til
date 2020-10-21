@@ -6,11 +6,15 @@
 - 参照: [Docker入門（第四回）～Dockerfileについて～](https://knowledge.sakura.ad.jp/15253/)
 - 参照: [Dockerイメージの理解とコンテナのライフサイクル](https://www.slideshare.net/zembutsu/docker-images-containers-and-lifecycle)
 - 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
+- 参照: [Rails on Docker](https://speakerdeck.com/sinsoku/rails-on-docker)
 
 ## TL;DR
 - コンテナのライフサイクルを管理するツールとプラットフォーム
   - コンテナ - Linuxカーネルのnamespaceによって分離された作業空間
   - namespaceの作成、プロセス空間の分離などコンテナを作成するために必要な操作を行う
+- Dockerfileからイメージを作る(`$ docker build -t イメージ名`)
+  -> イメージからコンテナを起動する(`$ docker run イメージ名`)
+  - コンテナ起動時にポートやボリュームの指定を行うことができる
 
 ### アプリケーション開発におけるコンテナ
 - コードとライブラリをパッケージングしてdockerイメージを作り(コンテナ化)、
