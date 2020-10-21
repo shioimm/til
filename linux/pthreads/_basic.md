@@ -163,8 +163,11 @@ printf("%02d:%02d:%02d\n", nowtm.tm_hour, nowtm.tm_min, nowtm.tm_sec);
   - `pthread_cond_init(3)`      - 条件変数の初期化
   - `pthread_cond_destroy(3)`   - 条件変数の消去
   - `pthread_cond_wait(3)`      - 条件変数を通知待ち状態にする
-  - `pthread_cond_signal(3)`    - 条件変数に通知を行う
   - `pthread_cond_timedwait(3)` - 条件変数を通知待ち状態にし、指定の時刻に通知待ち状態を解除する
+  - `pthread_cond_signal(3)`    - 条件変数に通知を行う
+  - `pthread_cond_broadcast(3)` - その時点で条件待ちになっている全てのスレッドを起こす
+    - スレッドは同時に動作しない
+    - 条件待ちするスレッドは条件変数一つにつき一つだけにする(複数のスレッドで条件待ちさせない)
 
 ### 条件変数
 - 通知待ち状態を保存する
