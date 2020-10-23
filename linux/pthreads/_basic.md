@@ -1,5 +1,5 @@
 # `pthread`ライブラリ
-- 参照: Linuxとpthreadsによるマルチスレッドプログラミング入門 P2 / 39-41
+- 参照: Linuxとpthreadsによるマルチスレッドプログラミング入門 Chapter1-6
 
 ## TL;DR
 - スレッドの管理
