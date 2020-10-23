@@ -132,7 +132,7 @@ vim
 ```
 - `DEBIAN_FRONTEND=noninteractive`
   - [answer on Ask Ubuntu](https://askubuntu.com/questions/972516/debian-frontend-environment-variable/972528#972528)
-- `--no-install-recommends
+- `--no-install-recommends`
   - 推奨パッケージのインストールを省略し容量を節約する
 - `apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && truncate -s 0 /var/log/*log`
   - 取得したパッケージファイルのローカルリポジトリ、インストール中に作成された一時ファイル、ログetcをクリーンアップ
@@ -151,7 +151,10 @@ vim
     - `bin/`なしでコマンドを実行できるようにする
 
 ## docker-compose.yml
-WIP
+- データベース                   - PostgreSQL
+- バックグラウンドジョブアダプタ - Sidekiq
+- 単機能のサービスを定義し、実行したいサービスをピンポイントで立ち上げる
+  - ex. `$ docker-compose up rails`
 ```yml
 version: '3.4'
 
@@ -254,3 +257,51 @@ volumes:
   rails_cache:
   packs:
 ```
+
+#### `app`
+- アプリケーションコンテナの構築に必要な情報を提供する
+- `context` - ワーキングディレクトリのパス(Dockerの`build context`)
+  - Dockerfileへのパスを明示的に指定
+  - `args`でライブラリバージョンを明示的に指定
+- `tmpfs` - `/tmp`ディレクトリに対して`tmpfs`マウント
+  - 速度の向上のため
+  - `tmpfs`マウントされたディレクトリ内のファイルはホストメモリ内にのみ永続化される
+
+#### `backend`
+- Rubyサービスで共有する振る舞いの定義
+- `volumes:`
+  - `.:/app:cached`
+    - プロジェクトのルートディレクトリをコンテナ内の`/app`フォルダにマウント
+    - ソースファイルは`:cached`でマウント
+  - `bundle:/bundle`
+    - ホストマシンの`/bundle`の中身を`bundle`という名前のボリュームに保存
+    - gemのデータを永続化して複数の実行で使えるようにする
+  - `rails_cache:/app/tmp/cache` / `node_modules:/app/node_modules` / `packs:/app/public/packs`
+    - 生成されるファイルをDockerボリュームに配置することによりホストマシンのパフォーマンスを向上
+  - `.dockerdev/.psqlrc:/root/.psqlrc:ro`
+    - コンテナ内部で`$ rails dbconsole`(`$ psql`)する際に必要
+    - 前提: コマンド履歴を`log/.psql_history`に保存することで永続化している
+    - 前提: 履歴ファイルを環境変数経由で指定できるように`.psqlrc`ファイルを使用している
+- `environment:`
+  - `X=${X:-smth}`
+    - コンテナ内の変数Xについて、ホストマシンに環境変数Xの値があればそれを用い、なければ別の値を用いる
+    - `$ docker-compose up`コマンド実行時に別の環境を指定してサービスを実行できるようにしている
+  - `DATABASE_URL` / `REDIS_URL` / `WEBPACKER_DEV_SERVER_HOST`
+    - アプリケーションを別のサービスに接続するために必要
+  - `BOOTSNAP_CACHE_DIR`
+    - コンテナ内で`bootsnap`を使用する際に必要
+  - `HISTFILE=/app/log/.bash_history`
+    - コンテナ内でシェルの操作履歴を残すために必要
+  - `EDITOR=vi`
+    - コンテナ内のエディタがオープンするような操作を行う際に必要
+  - `MALLOC_ARENA_MAX` / `WEB_CONCURRENCY`
+    - Railsのメモリハンドリングをチェックしやすくするために必要
+- `stdin_open:` / `tty:`
+  - サービスをインタラクティブにする
+  - `-it`オプションを付けてDockerコンテナを実行するのと同じ
+
+#### `webpacker`
+WIP
+
+#### `runner`
+WIP
