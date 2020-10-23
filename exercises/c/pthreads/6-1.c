@@ -1,9 +1,12 @@
 // Linuxとpthreadsによるマルチスレッドプログラミング入門 P194
 
 #include "6-1.h"
+#include <pthread.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
+#include <errno.h>
+#include <stdio.h>
 
 typedef struct {
   double x;
@@ -11,10 +14,12 @@ typedef struct {
 } XYQueueItem;
 
 struct XYQueue_ {
-  XYQueueItem *data;
-  size_t      size;
-  size_t      wp;
-  size_t      rp;
+  XYQueueItem     *data;
+  size_t          size;
+  size_t          wp;
+  size_t          rp;
+  pthread_mutex_t mutex;
+  pthread_cond_t  cond;
 };
 
 static void mSleep(int msec)
@@ -46,6 +51,9 @@ XYQueue *XYQueueCreate(size_t sz)
   }
 
   que->wp = que->rp = 0;
+  pthread_mutex_init(&que->mutex, NULL);
+  pthread_cond_init(&que->cond,   NULL);
+
   return que;
 }
 
@@ -56,6 +64,8 @@ void XYQueueDestroy(XYQueue *que)
   }
 
   free(que->data);
+  pthread_mutex_destroy(&que->mutex);
+  pthread_cond_destroy(&que->cond);
   free(que);
 }
 
@@ -74,11 +84,18 @@ size_t XYQueueGetCount(XYQueue *que)
     return 0;
   }
 
+  size_t count;
+  pthread_mutex_lock(&que->mutex);
+
   if (que->wp < que ->rp) {
-    return que->size + que->wp - que->rp;
+    count = que->size + que->wp - que->rp;
   } else {
-    return que->wp - que->rp;
+    count = que->wp - que->rp;
   }
+
+  pthread_mutex_unlock(&que->mutex);
+
+  return count;
 }
 
 size_t XYQueueGetFreeCount(XYQueue *que)
@@ -96,17 +113,23 @@ int XYQueueAdd(XYQueue *que, double x, double y)
     return 0;
   }
 
+  pthread_mutex_lock(&que->mutex);
+
   size_t next_wp = que->wp + 1;
 
   if (next_wp >= que->size) {
     next_wp -= que->size;
   }
   if (next_wp == que->rp) {
+    pthread_mutex_unlock(&que->mutex);
     return 0;
   }
   que->data[que->wp].x = x;
   que->data[que->wp].y = y;
   que->wp = next_wp;
+
+  pthread_cond_signal(&que->cond);
+  pthread_mutex_unlock(&que->mutex);
 
   return 1;
 }
@@ -117,7 +140,10 @@ int XYQueueGet(XYQueue *que, double *x, double *y)
     return 0;
   }
 
+  pthread_mutex_lock(&que->mutex);
+
   if (que->rp == que->wp) {
+    pthread_mutex_unlock(&que->mutex);
     return 0;
   }
 
@@ -133,6 +159,8 @@ int XYQueueGet(XYQueue *que, double *x, double *y)
     que->rp -= que->size;
   }
 
+  pthread_mutex_unlock(&que->mutex);
+
   return 1;
 }
 
@@ -142,17 +170,31 @@ int XYQueueWait(XYQueue *que, long msec)
     return 0;
   }
 
-  while (1) {
-    if (XYQueueGetCount(que) > 0) {
-      break;
-    }
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec  += msec / 1000;
+  ts.tv_nsec += (msec % 1000) * 1000000;
 
-    if (msec <= 0) {
-      return 0;
-    }
-
-    mSleep(1);
-    msec--;
+  if (ts.tv_nsec >= 1000000000) {
+    ts.tv_sec++;
+    ts.tv_nsec -= 1000000000;
   }
-  return 1;
+
+  pthread_mutex_lock(&que->mutex);
+
+  while (que->wp == que->rp) {
+    int err = pthread_cond_timedwait(&que->cond, &que->mutex, &ts);
+
+    if (err == ETIMEDOUT) {
+      break;
+    } else if (err != 0) {
+      fprintf(stderr, "Fatal error on pthread_cond_timedwait\n");
+      exit(1);
+    }
+  }
+
+  int res = (que->wp != que->rp);
+  pthread_mutex_unlock(&que->mutex);
+
+  return res;
 }

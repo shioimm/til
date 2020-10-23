@@ -60,6 +60,8 @@ void *dequeue(void *arg)
       }
     }
   }
+
+  return NULL;
 }
 
 int main()
