@@ -301,7 +301,21 @@ volumes:
   - `-it`オプションを付けてDockerコンテナを実行するのと同じ
 
 #### `webpacker`
-WIP
+- `WEBPACKER_DEV_SERVER_HOST=0.0.0.0`
+  - Webpack dev serverに外部からアクセスできるようにする
 
 #### `runner`
-WIP
+- 【前提】Dockerデーモン起動のための`$ docker-start`スクリプトを用意
+```sh
+#!/bin/sh
+
+if ! $(docker info > /dev/null 2>&1); then
+  echo "Docker for Macを開いています..."
+  open -a /Applications/Docker.app
+  while ! docker system info > /dev/null 2>&1; do sleep 1; done
+  echo "Docker準備OK！"
+else
+  echo "Dockerは実行中です"
+fi
+```
+- コンテナのシェルにログインするために`$ docker-compose run --rm runner`を実行
