@@ -1,7 +1,6 @@
 # CircleCI
 - 参照: [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
-- 参照・引用: WEB+DB PRESS Vol.107 ［Dockerもサポート！］実践CircleCI
-ワークフローで複雑なCI/CDを自動化 P10-40
+- 参照・引用: WEB+DB PRESS Vol.107 ［Dockerもサポート！］実践CircleCI ワークフローで複雑なCI/CDを自動化 P10-40
 
 ## 特徴
 - コマンドによるローカル実行環境を用意している
