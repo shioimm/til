@@ -11,6 +11,10 @@
 - `new(domain, type, protocol = 0) -> Socket`
   - 指定した通信領域、通信形式によるソケットを生成
 
+### `.tcp_server_sockets`
+- `tcp_server_sockets(host, port)` -> [Socket]
+  - 指定したホスト・ポート番号でTCP/IPのリスニングソケットを作成
+
 ## ソケットアドレスの取得
 ### `#pack_sockaddr_in`
 - `sockaddr_in(port, host)` / `pack_sockaddr_in(port, host)` -> String
@@ -60,3 +64,20 @@
 - `close_write` -> nil
   - 書き込み用ストリームの削除
 
+## リスニングループ
+### `.accept_loop`
+- `accept_loop(sockets) { |sock, client_addrinfo| ... }` -> ()
+  - ソケットの配列を受け取り、リッスンさせる
+    - 配列のいずれかの要素でリッスンする
+  - クライアントとの接続が確立すると、接続用ソケットとAddrinfoオブジェクトをブロックに渡し呼び出す
+  - ブロック終了時に接続用ソケットのストリームは閉じないため明示的に`close`する必要がある
+  - ブロックは逐次的に呼び出されるため、
+    複数のクライアントと通信したい場合は別途並列機構を使う必要がある
+
+### `.tcp_server_loop`
+- `tcp_server_loop(host, port) { |sock,addr| ... }` -> ()
+  - 指定したホスト・ポート番号でTCP/IPのソケットを生成し、リッスンさせる
+  - クライアントとの接続が確立すると、接続用ソケットとAddrinfoオブジェクトをブロックに渡し呼び出す
+  - ブロック終了時に接続用ソケットのストリームは閉じないため明示的に`close`する必要がある
+  - ブロックは逐次的に呼び出されるため、
+    複数のクライアントと通信したい場合は別途並列機構を使う必要がある
