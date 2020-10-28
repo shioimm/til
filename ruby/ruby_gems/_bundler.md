@@ -5,6 +5,25 @@
     - rubygemsとBundlerでDependency Resolverのバージョンが違う
       - `gem install`したときとGemfileを使用した時で依存関係が変わる可能性がある
 
+#### 複数のGemfileを用意して使い分けたい
+- [bundle config](https://bundler.io/v2.1/bundle_config.html)
+- 専用のパスを用意し、環境変数`BUNDLE_GEMFILE`に指定する
+```
+$ BUNDLE_GEMFILE=gemfiles/Gemfile-test bundle install
+```
+
+```
+# masterのRailsを部分的に導入する
+# gemfiles/Gemfile.6-0-stable
+# frozen_string_literal: true
+
+gemfile_path = File.expand_path('../Gemfile', __dir__)
+eval File.read(gemfile_path)
+
+dependencies.delete_if { |d| d.name == 'rails' }
+gem 'rails', github: 'rails/rails', branch: '6-0-stable'
+```
+
 #### 使っていないgemを片付けたい
 - [bundle clean](https://bundler.io/man/bundle-clean.1.html)
   - bundlerディレクトリにある未使用のgemをすべて削除する
