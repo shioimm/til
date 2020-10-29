@@ -1,6 +1,25 @@
 # class Socket
 - [class Socket](https://docs.ruby-lang.org/ja/2.7.0/class/Socket.html)
 
+## 継承リスト
+```
+BasicObject
+  |
+Kernel
+  |
+Object
+  |
+File::Constants
+  |
+Enumerable
+  |
+IO
+  |
+BasicSocket
+  |
+Socket
+```
+
 ## ファイルディスクリプタ番号の取得
 ### `IO#fileno`
 - `fileno` -> Integer
@@ -81,3 +100,16 @@
   - ブロック終了時に接続用ソケットのストリームは閉じないため明示的に`close`する必要がある
   - ブロックは逐次的に呼び出されるため、
     複数のクライアントと通信したい場合は別途並列機構を使う必要がある
+
+## `connect(2)`
+### `#connect`
+- `connect(server_sockaddr)` -> 0
+  - 指定のソケットアドレスに対してクライアントして接続
+  - ソケットアドレスは`Socket#pack_sockaddr_in`の返り値のバイナリか`Addrinfo`オブジェクト
+
+## サーバー接続
+### `.tcp`
+- `tcp(host, port, local_host = nil, local_port = nil) {|socket| ... }` -> object
+  - TCP/IPのソケットを生成し、指定したホスト・ポート番号を持つソケットアドレスに対して接続
+  - サーバーとの接続が確立すると、接続したソケットブロックに渡し呼び出す
+  - ブロック終了時にソケットオブジェクトを閉じる

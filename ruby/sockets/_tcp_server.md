@@ -1,6 +1,29 @@
 # class TCPServer
 - [class TCPServer](https://docs.ruby-lang.org/ja/2.7.0/class/TCPServer.html)
 
+## 継承リスト
+```
+BasicObject
+  |
+Kernel
+  |
+Object
+  |
+File::Constants
+  |
+Enumerable
+  |
+IO
+  |
+BasicSocket
+  |
+IPSocket
+  |
+TCPSocket
+  |
+TCPServer
+```
+
 ## サーバー接続を開く
 ### `.new`
 - `new(host = nil, service)` -> TCPServer
