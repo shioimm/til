@@ -1,6 +1,9 @@
 # class TCPSocket
 - [class TCPSocket](https://docs.ruby-lang.org/ja/2.7.0/class/TCPSocket.html)
 
+## TL;DR
+- TCP/IPストリーム型ソケット抽象クラス
+
 ## 継承リスト
 ```
 BasicObject
