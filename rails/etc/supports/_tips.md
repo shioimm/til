@@ -1,3 +1,6 @@
+### Railsのバグレポートテンプレート
+[`rails/guides/bug_report_templates/`](https://github.com/rails/rails/tree/master/guides/bug_report_templates)
+
 ### `Your Disk is Almost Full on macOS`の警告が出る
 - logディレクトリの容量が増えて警告が表示されている場合は`rails log:clear`でlogを抹消できる
   - ただしsidekiq.logを除く
