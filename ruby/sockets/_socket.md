@@ -1,6 +1,9 @@
 # class Socket
 - [class Socket](https://docs.ruby-lang.org/ja/2.7.0/class/Socket.html)
 
+## TL;DR
+- 汎用ソケットクラス
+
 ## 継承リスト
 ```
 BasicObject

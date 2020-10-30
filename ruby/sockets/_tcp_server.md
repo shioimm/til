@@ -1,6 +1,9 @@
 # class TCPServer
 - [class TCPServer](https://docs.ruby-lang.org/ja/2.7.0/class/TCPServer.html)
 
+## TL;DR
+- TCP/IPストリーム型サーバー用ソケットクラス
+
 ## 継承リスト
 ```
 BasicObject
