@@ -23,11 +23,6 @@ BasicSocket
 Socket
 ```
 
-## ファイルディスクリプタ番号の取得
-### `IO#fileno`
-- `fileno` -> Integer
-  - Socketオブジェクトのファイルディスクリプタ番号を返す
-
 ## `socket(2)`
 ### `.new`
 - `new(domain, type, protocol = 0) -> Socket`
@@ -65,6 +60,11 @@ Socket
     - 接続済みソケットはリスニングソケットとは別に新たに生成されるもの
     - `Addrinfo`オブジェクトはクライアントからのリモートアドレスを格納するもの
   - 接続を受け付けるまでの間は処理をブロックする
+
+### `#accept_nonblock`
+- `accept_nonblock` -> Array
+  - ソケットをノンブロッキングモードに設定し、接続を受け付ける
+    - データが送信されていない場合、ブロックせず`Errno::EAGAIN`を返す
 
 ## `close(2)`
 ### `#close`
@@ -107,8 +107,14 @@ Socket
 ## `connect(2)`
 ### `#connect`
 - `connect(server_sockaddr)` -> 0
-  - 指定のソケットアドレスに対してクライアントして接続
+  - 指定のソケットアドレスに対してクライアントとして接続
   - ソケットアドレスは`Socket#pack_sockaddr_in`の返り値のバイナリか`Addrinfo`オブジェクト
+
+### `#connect_nonblock`
+- `connect_nonblock(server_sockaddr)` -> 0
+  - ソケットをノンブロッキングモードに設定し、指定のソケットアドレスに対してクライアントとして接続
+    - 接続がブロックされている場合は`Errno::EINPROGRESS`が返され、バックグラウンドで接続操作を継続させる
+    - 前回の接続がブロックされている場合は`Errno::EALREADY`が返される
 
 ## サーバー接続
 ### `.tcp`

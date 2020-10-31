@@ -46,6 +46,9 @@ BasicSocket
 ## アドレス情報クラス
 - [class Addrinfo](https://docs.ruby-lang.org/ja/2.7.0/class/Addrinfo.html) - ソケットのアドレス情報
 
+# ソケットオプションクラス
+- [class Socket::Option](https://docs.ruby-lang.org/ja/2.7.0/class/Socket=3a=3aOption.html)
+
 ## 定数の定義
 - [module Socket::Constants](https://docs.ruby-lang.org/ja/2.7.0/class/Socket=3a=3aConstants.html) - ソケット操作の指定のための定数
 
