@@ -48,3 +48,9 @@ sock.listen(5)
 - `.accept` -> TCPSocket
   - リスナーキューから接続をpopし、接続を受け付ける
   - 新しい接続に対する新しい接続済みソケットを返す
+
+### `#accept_nonblock`
+- `accept_nonblock` -> TCPSocket
+  - ソケットをノンブロッキングモードに設定し、接続を受け付ける
+    - データが送信されていない場合、ブロックせず`Errno::EAGAIN`を返す
+  - 新しい接続に対する新しい接続済みソケットを返す
