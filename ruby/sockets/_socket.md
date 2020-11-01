@@ -115,6 +115,27 @@ Socket
   - ソケットをノンブロッキングモードに設定し、指定のソケットアドレスに対してクライアントとして接続
     - 接続がブロックされている場合は`Errno::EINPROGRESS`が返され、バックグラウンドで接続操作を継続させる
     - 前回の接続がブロックされている場合は`Errno::EALREADY`が返される
+```ruby
+# 引用: Working with TCP Sockets P97
+# multiplexing_connect.rb
+
+require 'socket'
+
+socket = Socket.new(:INET, :STREAM)
+remote_addr = Socket.pack_sockaddr_in(80, 'google.com')
+
+begin
+  socket.connect_nonblock(remote_addr)
+rescue Errno::EINPROGRESS
+  IO.select(nil, [socket]) # サーバー接続を監視
+
+  begin
+    socket.connect_nonblock(remote_addr) # 書き込み可能になったら再接続
+  rescue Errno::EISCONN # 接続済み(成功)
+  rescue Errno::ECONNREFUSED # サーバーとの接続切れ
+  end
+end
+```
 
 ## サーバー接続
 ### `.tcp`

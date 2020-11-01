@@ -27,6 +27,12 @@
   - `Errno::EAGAIN` / `Errno::EWOULDBLOCK`が発生した場合
     例外オブジェクトに対して`IO::WaitReadable`が`extend`される
 
+### `#gets`
+- `gets(limit, chomp: false)` -> String | nil
+  - 一行読み込む
+    - 読み込みに成功した時には読み込んだ文字列を返す
+    - EOF に到達した時にはnilを返す
+
 ## 書き込み(`write(2)`)
 ### `#write`
 - `write(*str)` -> Integer
@@ -38,13 +44,21 @@
   - 書き込みがブロックされた場合はそれ以上データを書き込まず書き込みサイズを返す
   - 書き込みがブロックされている場合は`Errno::EAGAIN`が返される
 
+### `#puts`
+- `puts(*obj)` -> nil
+  - 各objをストリームに出力し、その後に改行を出力する
+
 ## データ待ち状態(`select(2)`)
 ### `.select`
-- `select(reads, writes = [], excepts = [], timeout = nil)` -> [[IO]] | nil
+- `select(reads, writes = [], excepts = [], timeout = nil)` -> [[IO], [IO], [IO]] | nil
   - ノンブロッキングモードのIOにおいて`Errno::EAGAIN`が発生する場合、
     指定のソケット群を監視し、読み書き可能な状態になるまで処理をブロックする
     - `reads` - 読み込み待ちするソケット群(読み込み可能なデータの到着を待つ)
     - `write` - 書き込み待ちするソケット群(ソケットが書き込み可能になるまで待つ)
+    - `excepts` - 例外待ちするソケット群(ソケットが例外を送出するまで待つ)
+    - `timeout` - 秒単位のタイムアウト値 -> nilを返す
+  - 引数の数だけ返り値の配列の要素を返す
+  - 接続されたソケットと`EOF`は可読ソケットとして返る
 
 ## バッファリング
 - 参照: Working with TCP Sockets Chapter 8 Buffering
