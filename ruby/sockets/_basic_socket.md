@@ -21,6 +21,23 @@ IO
 BasicSocket
 ```
 
+## `send(2)`
+### `#send`
+- `send(mesg, flags, dest_sockaddr = nil)` -> Integer
+  - ソケットを介してデータを送信する
+    - `flags` - メッセージ送信タイプ
+      - `MSG_EOR` - Data completes record
+      - `MSG_OOB` - Process out-of-band data
+
+## `recv(2)`
+### `#recv`
+- `recv(maxlen, flags = 0)` -> String
+  - ソケットを介してデータを文字列として受信する
+    - `flags` - メッセージ送信タイプ
+      - `MSG_PEEK` - Peek at incoming message
+      - `MSG_OOB` - Process out-of-band data
+      - `MSG_WAITALL` - Wait for full request or error
+
 ## `getsockopt(2)`
 ### `#getsockopt`
 - `getsockopt(level, optname)` -> Socket::Option

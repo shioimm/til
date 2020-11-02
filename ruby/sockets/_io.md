@@ -60,6 +60,11 @@
   - 引数の数だけ返り値の配列の要素を返す
   - 接続されたソケットと`EOF`は可読ソケットとして返る
 
+## ストリームのコピー
+### `.copy_stream`
+- `copy_stream(src, dst, copy_length = nil)` -> Integer
+  - 指定したストリームsrcを別のストリームdstへコピー
+
 ## バッファリング
 - 参照: Working with TCP Sockets Chapter 8 Buffering
 - 処理の正常終了-> データをカーネルに渡すことに成功した
