@@ -15,7 +15,6 @@ module FTP
     end
 
     def handle(data)
-      puts data
       cmd     = data[0..3].strip.upcase
       options = data[4..-1].strip
 

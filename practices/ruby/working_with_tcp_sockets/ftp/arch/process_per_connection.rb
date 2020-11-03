@@ -1,10 +1,10 @@
-# 引用: Working with TCP Sockets P137
+# 引用: Working with TCP Sockets P146
 
 require 'socket'
 require_relative '../command_handler'
 
 module FTP
-  class Serial
+  class ProcessPerConnection
     CRLF = "\r\n"
 
     def initialize(port = 21)
@@ -25,23 +25,29 @@ module FTP
     def run
       loop do
         @client = @control_socket.accept
-        respond "220 OHAI"
-        handler = CommandHandler.new(self)
 
-        loop do
-          request = gets
+        pid = fork do
+          respond "220 OHAI"
 
-          if request
-            respond handler.handle(request)
-          else
-            @client.close
-            break
+          handler = CommandHandler.new(self)
+
+          loop do
+            request = gets
+
+            if request
+              respond handler.handle(request)
+            else
+              @client.close
+              break
+            end
           end
         end
+
+        Process.detach(pid)
       end
     end
   end
 end
 
-server = FTP::Serial.new(4481)
+server = FTP::ProcessPerConnection.new(4481)
 server.run
