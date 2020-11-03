@@ -46,8 +46,17 @@ BasicSocket
 ## アドレス情報クラス
 - [class Addrinfo](https://docs.ruby-lang.org/ja/2.7.0/class/Addrinfo.html) - ソケットのアドレス情報
 
-# ソケットオプションクラス
+## ソケットオプションクラス
 - [class Socket::Option](https://docs.ruby-lang.org/ja/2.7.0/class/Socket=3a=3aOption.html)
+
+## 名前解決ライブラリ
+- [library resolv](https://docs.ruby-lang.org/ja/2.7.0/library/resolv.html)
+ - マルチスレッド環境において、DNS検索中にブロックするGVLを解除する
+  - [library resolv-replace](https://docs.ruby-lang.org/ja/2.7.0/library/resolv=2dreplace.html)
+    - 名前解決に`resolv`を使用するためのライブラリ
+
+## OpenSSLライブラリ
+- [library openssl](https://docs.ruby-lang.org/ja/2.7.0/library/openssl.html)
 
 ## 定数の定義
 - [module Socket::Constants](https://docs.ruby-lang.org/ja/2.7.0/class/Socket=3a=3aConstants.html) - ソケット操作の指定のための定数
