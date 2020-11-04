@@ -115,3 +115,15 @@
 
 ### 事例
 - [eventmachine/eventmachine](https://github.com/eventmachine/eventmachine)
+
+## ハイブリッドモデル
+### 事例
+- [nginx](https://nginx.org/)
+  - prefork型マルチプロセスモデルを使用し、
+    `fork`されたプロセスの内部でイベント駆動モデルを使用する
+- [puma/puma](https://github.com/puma/puma)
+  - スレッドプール型マルチスレッドモデルを使用し、
+    Reactorの機構を利用してリクエストをプールへキューアップする
+- [eventmachine/eventmachine](https://github.com/eventmachine/eventmachine)
+  - イベント駆動モデルを使用していると同時にスレッドプールも用意しており、
+    Reactorの速度を低下させるようなIOブロッキング操作を延期する
