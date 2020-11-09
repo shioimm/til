@@ -349,3 +349,30 @@ echo 'Hello'
 # 実行許可を与える - $ chmod +x xxx
 # 外部コマンドとして実行できるようになる - $ ./xxx -> Hello
 ```
+
+## プロセスの実行記録
+- プロセスが終了すると`/var/log/account/pacct`に保存される
+- `acct(2)` - プロセスの実行記録をON/OFF
+```c
+// <sys/acct.h>
+struct acct {
+    char      ac_flag;     // 実行中の事象を記録するフラグ
+    u_int16_t ac_uid;      // 実ユーザーID
+    u_int16_t ac_gid;      // 実グループID
+    u_int16_t ac_tty;      // 制御端末
+    u_int32_t ac_btime;    // 開始時間
+    comp_t    ac_utime;    // ユーザーCPU時間
+    comp_t    ac_stime;    // システムCPU時間
+    comp_t    ac_etime;    // 経過時間
+    comp_t    ac_mem;      // 平均使用メモリ量
+    comp_t    ac_io;       // 読み書きによる転送バイト数
+    comp_t    ac_rw;       // 読み書きしたブロック数
+    char      ac_comm[17]; // 17文字
+};
+
+// ac_flag
+//   AFORK - forkされたプロセスがexecを呼んでいない
+//   ASU   - SU特権を使ったプロセス
+//   ACORE - コアダンプしたプロセス
+//   AXSIG - シグナルでkillされたプロセス
+```
