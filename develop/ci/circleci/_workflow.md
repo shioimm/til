@@ -28,5 +28,87 @@
 - `ON HOLD`
 - `NEEDS SETUP`
 
-## ジョブの分割
-WIP
+## ジョブの再利用
+### `executors`
+- 実行環境を保存するExecutor機能を設定するキー
+```yml
+version: 2.1
+
+# Executorを設定
+executors:
+  myexecutor:
+    docker:
+      - image: cimg/ruby:2.7.1-node
+    environment:
+      BUNDLE_PATH: vendor/bundle
+
+# Executorを利用
+jobs:
+  build:
+    executor: myexecutor
+    environment: #ジョブ内で上書きも可能
+      RAILS_ENV: production
+    steps:
+      - run: echo 'Hello'
+```
+
+```yml
+# OrbのExecutorを使用
+version: 2.1
+
+# Orbのインポート
+orbs:
+  win: circleci/windows@2.4.0
+
+# Orb内で定義されているExecutorを利用
+jobs:
+  build:
+    executor: win/defailt
+    steps:
+      - run: echo 'Hello'
+```
+
+### `commands`
+- ステップを切り取るキー
+```yml
+version: 2.1
+
+# commandsを定義
+commands:
+  echohello:
+    steps:
+      - run echo 'Hello'
+
+# commandsを利用
+jobs:
+  build:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - echohello
+```
+
+```yml
+version: 2.1
+
+# 引数を使用するcommandsを定義
+commands:
+  echohello:
+    description: "Echo Hello"
+    parameters:
+      to:
+        type: string
+        default: "World"
+    steps:
+      - run echo Hello << parameters.to >>
+
+# commandsに引数を渡す
+jobs:
+  build:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - echohello
+        to: John
+```
+

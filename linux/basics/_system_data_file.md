@@ -141,7 +141,16 @@ struct tm {
   int tm_year;  // 年 1900からの経過年数
   int tm_wday;  // 曜日 0-6
   int tm_yday;  // 通し日数 0-365
-  int tm_isdst; // 夏時間フラグ 0/1 */
+  int tm_isdst; // 夏時間フラグ 0/1
+};
+```
+#### `tms`構造体
+```c
+struct tms  {
+  clock_t tms_utime;  // ユーザーCPU時間
+  clock_t tms_stime;  // システムCPU時間
+  clock_t tms_cutime; // 終了した子のユーザーCPU時間
+  clock_t tms_cstime; // 終了した子のシステムCPU時間
 };
 ```
 #### `timespec`構造体

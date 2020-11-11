@@ -75,7 +75,9 @@ Socket
 ## `shutdown(2)`
 ### `BasicSocket#shutdown`
 - `shutdown(how = Socket::SHUT_RDWR)` -> 0
-  - ストリームの削除
+  - 指定したストリームの削除
+    - クライアントが書き出しを`shutdown`した場合: サーバーは受信バッファを読み出し後、EOFを受信
+    - クライアントが読み出しを`shutdown`した場合: クライアントは受信バッファ読み出し後、EOFを受信
   - 同じファイルディスクリプタを持つ他のストリームに対しても削除を実行する
 
 ### `IO#close_read`
