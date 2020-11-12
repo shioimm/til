@@ -19,3 +19,11 @@ $ git push -f origin/dependabot/bundler/xxxx
 #### 発生状況
 - dependabotのつくったブランチの中で作業を行なった後、他のブランチに移動して`$ bundle install`を実行
 - 再度元のブランチに戻った際に発生
+
+### ホームに`.gitignore`を追加したい
+```
+# ~/.gitconfig
+
+[core]
+  excludesfile = ~/.gitignore
+```
