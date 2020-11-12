@@ -151,3 +151,69 @@ workflows:
 - attach_workspace:
   at: /tmp/dir # ダウンロードするファイルの指定
 ```
+
+## フィルタリング
+### `filters`
+- ワークフローを実行したいコミットタグ・ブランチを正規表現で指定できる
+```yml
+workflows:
+  versions: 2
+  build_workflow:
+    jobs:
+      - deploy:
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore: /.*/
+```
+
+## スケジュール
+### `cron`
+- cronを用いてワークフローの定期実行を行う
+- どのコミットに対してワークフローを実行するか`filters`キーで指定する
+```yml
+workflows:
+  versions: 2
+  build_workflow:
+    triggers:
+      - schedule:
+        cron: "0 0 * * *" # 毎日00:00(UTC)に実行
+        filters:
+          branches:
+            only:
+              - master
+    jobs:
+      - build_job
+```
+
+## 承認ジョブ
+### `type: approval`
+- ジョブ実行に手動承認を要求する
+```yml
+version 2.1
+jobs:
+  build:
+    docker:
+      - image: busybox
+    steps:
+      - run: echo "build"
+  deploy:
+    docker:
+      - image: busybox
+    steps:
+      - run: echo "deploy"
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build
+      - hold: # 待機用ジョブ
+        type: approval
+        requires:
+          - build
+      - deploy:
+        requires:
+          - hold
+```
