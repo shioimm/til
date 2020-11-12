@@ -231,3 +231,12 @@ workflows:
   - ワークフロー - ジョブの実行順序の制御
   - ジョブ - ステップの集まり
   - ステップ - コマンドを実行する最小単位
+
+## 環境変数
+- [定義済み環境変数](https://circleci.com/docs/ja/2.0/env-vahttps://circleci.com/docs/ja/2.0/env-vars/#%E5%AE%9A%E7%BE%A9%E6%B8%88%E3%81%BF%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0rs/#%E5%AE%9A%E7%BE%A9%E6%B8%88%E3%81%BF%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0)
+- インライン環境変数
+  - `config.yml`に`environment`キーを定義する
+```yml
+environment:
+  XXX: xxx
+```
