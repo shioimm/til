@@ -111,4 +111,43 @@ jobs:
       - echohello
         to: John
 ```
+## 複数ジョブの同時実行
+### `requires`
+```yml
+# procces_common実行後にprocess_a/process_bを並行に実行
+workflows:
+  version: 2.1
+  workflows:
+    jobs:
+      - procces_common # 先に実行する処理
+      - process_a
+        - requires:
+          - procces_common # procces_common実行後に開始
+      - process_b
+        - requires:
+          - procces_common # procces_common実行後に開始
+```
 
+## ジョブ間のファイル共有
+- ワークスペース - ジョブが共有できるファイルのストレージ
+  - 同一ワークフローの上流ジョブから下流ジョブへデータを渡す
+  - 上流ジョブは下流ワークスペースを継承できない
+  - 同名ファイルを上書きした場合、下流ジョブのファイルが使用される
+  - 同時実行ジョブで同名ファイルを永続化した場合、ワークスペースの展開ができない
+
+### `persist_to_workspace`
+- ワークスペースに永続化するファイルの宣言
+```yml
+- persist_to_workspace:
+  root: /tmp/dir # ルートディレクトリ
+  paths: # 永続化したいファイル・ディレクトリ
+    - foo/bar
+    - baz/*
+```
+
+### `attach_workspace`
+- ジョブからワークスペースにアクセスし、ジョブのコンテナ内にダウンロードを行う
+```yml
+- attach_workspace:
+  at: /tmp/dir # ダウンロードするファイルの指定
+```
