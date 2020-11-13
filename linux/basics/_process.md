@@ -350,6 +350,56 @@ struct rlimit {
   カーネルは孤児プロセスグループへ`SIGHUP`と`SIGCONT`を送信する
 - バックグラウンドプロセスはそのまま動作を続ける
 
+### `session`構造体
+- 各セッションごとに割り付けられる
+```c
+struct session {
+  int          s_count  // プロセスグループの個数 / 0になると構造体を解放
+  struct proc *s_leader // セッションリーダー構造体procへのポインタ
+  struct vnode *s_ttyvp  // 制御端末構造体vnodeへのポインタ
+  struct tty   *s_ttyp   // 制御端末構造体ttyへのポインタ
+  pid_t         s_sid    // セッションID
+};
+```
+
+### `tty`構造体
+```c
+struct tty {
+  struct session *t_session; // この端末を制御端末とするsession構造体
+  struct pgrp    *t_pgrp;    // フォアグラウンドプロセスグループのpgrp構造体
+  struct termios  t_termios; // 当該端末に関する情報を集めたtermios構造体
+  struct winsize  t_winsize; // 端末ウィンドウサイズを収めたwinsize構造体
+};
+```
+
+### `pgrp`構造体
+```c
+struct pgrp {
+  pid_t              pg_id;      // プロセスグループID
+  struct session    *pg_session; // プロセスグループが属するセッションのsession構造体
+  LIST_HEAD(, proc)  pg_members; // 当該プロセスグループのメンバに対するproc構造体のリストへのポインタ
+};
+```
+
+### `proc`構造体
+```c
+struct proc {
+  pid_t             p_pid;    // プロセスID
+  struct proc      *p_pptr;   // 親プロセスのproc構造体へのポインタ
+  struct pgrp      *p_pgrp;   // 当該プロセスが属するプロセスグループのpgrp構造体へのポインタ
+  LIST_ENTRY(proc)  p_pglist; // プロセスグループの前後のプロセスへのポインタを収めたproc構造体
+};
+```
+
+### `vnode`構造体
+- 端末制御装置をオープンすると割り付けられる
+- プロセスでの`/dev/tty`への参照は`vnode`構造体を介して行われる
+```c
+struct vnode {
+  void *v_data;
+};
+```
+
 ## 解釈実行ファイル(shebang)
 - `#!`から始まるテキストファイル
   - 引数として渡したファイルを実行する
