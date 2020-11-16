@@ -45,11 +45,11 @@ server = WEBrick::HTTPServer.new({ :DocumentRoot => './', :BindAddress => '127.0
 
 server.mount('/view.cgi', WEBrick::HTTPServlet::CGIHandler, 'view.rb')
 
-# 1. サーバーのパス'/view.cgi'とFileHandlerサーブレットがマウントされる
+# 1. サーバーのパス'/view.cgi'とCGIHandlerサーブレットがマウントされる
 # 2. サーバーのパス'/view.cgi'にリクエストが発生する
-# 3. サーバーserverはオプション'view.rb'を引数としてFileHandlerオブジェクトを生成
+# 3. サーバーserverはオプション'view.rb'を引数としてCGIHandlerオブジェクトを生成
 # 4. サーバーはリクエストオブジェクトを引数としてCGIHandler#serviceを呼ぶ
-# 5. FileHandlerオブジェクトは'view.rb'をCGIスクリプトとして実行
+# 5. CGIHandlerオブジェクトは'view.rb'をCGIスクリプトとして実行
 ```
 
 ### `AbstractServlet#service`
