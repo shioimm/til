@@ -17,11 +17,11 @@
 
 ### シグナルの生起条件
 - 端末生起シグナル
-  - Ex. SIGINT
+  - Ex. `SIGINT`
 - ハードウェア例外
-  - Ex. SIGSEGV
+  - Ex. `SIGSEGV`
 - ソフトウェア条件
-  - Ex. SIGURG / SIGPIPE / SIGALRM
+  - Ex. `SIGURG` / `SIGPIPE` / `SIGALRM`
 - `kill(1)` / `kill(2)`
   - `kill(2)`  - 指定のプロセスに対して任意のシグナルを送信する
   - `raise(3)` - 自プロセスに対して任意のシグナルを送信する
