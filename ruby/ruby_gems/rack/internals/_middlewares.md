@@ -9,7 +9,7 @@
 - `Trailer`レスポンスヘッダをサポート
   - チャンク化されたエンコーディングで末尾のヘッダを使用することができる
 
-## Rack::CommonLogger↲
+## Rack::CommonLogger
 - [rack/lib/rack/common_logger.rb](https://github.com/rack/rack/blob/master/lib/rack/common_logger.rb)
 - Apache-styleなログファイルを作成するミドルウェア
 - 与えられたappへのすべてのリクエストを転送し、設定されたロガーに記録する

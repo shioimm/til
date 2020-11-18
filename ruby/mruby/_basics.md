@@ -7,6 +7,7 @@
 ## TL;DR
 - 組み込みシステム向けの軽量なRuby言語処理系
 - モジュール化されており、他のアプリケーション内にリンクして組み込むことが可能な設計となっている
+- ソースコード・mgemを含めてワンバイナリとしてビルドすることができる
 
 ## 特徴
 - コンパイラ言語
@@ -19,12 +20,8 @@
 - 省メモリ
 
 ## Usage
-- `$ git clone`後、`$ ruby ./minirake`を実行することで`bin/`以下に次のバイナリが生成される
-  - mirb
-  - mruby
-  - mrbc
-
-### mirb
+### バイナリ
+#### `bin/mirb`
 - 対話型mrubyシェル(`$ irb`に相当)
 ```sh
 $ bin/mirb
@@ -34,7 +31,7 @@ mirb - Embeddable Interactive Ruby Shell
  => "Hello."
 ```
 
-### mruby
+#### `bin/mruby`
 - インタプリタ(`$ ruby`に相当)
 ```sh
 $ echo 'p Hello.' > sample.rb
@@ -42,7 +39,7 @@ $ bin/mruby sample.rb # sample.rbを実行
 Hello
 ```
 
-### mrbc
+#### `bin/mrbc`
 - バイトコードコンパイラ
   - Cコード -> オブジェクトファイルにビルド
     Rubyスクリプト -> Cへ変換 -> まとめてオブジェクトファイルにビルド
@@ -54,10 +51,10 @@ $ bin/mruby -b sample.mrb # バイトコードであるsample.mrbを実行(-bオ
 Hello
 ```
 
-### `build_config.rb`
+### 設定ファイル
+#### `build_config.rb`
 - mrubyをビルドするための設定ファイル
-- 依存mgemを宣言すると、
-  mgem内部のプログラムをすべて読み込んだmrubyをビルドすることができる
+- 依存mgemを宣言すると、mgem内部のプログラムをすべて読み込んだmrubyをビルドすることができる
   - `require`なしでmgemを利用できる
 ```ruby
 MRuby::Build.new do |conf| # confはMRuby::Buildのインスタンス
