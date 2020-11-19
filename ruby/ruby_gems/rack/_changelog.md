@@ -471,7 +471,7 @@
 - Rack::Lint
   - HijackWrapper`#check_hijack`がSPECの他の部分に準拠
 - Rack::Session
-  - 互換性のためAbstract::ID::SessionHashにハッシュライクなメソッドを追加
+  - 互換性のためAbstract::ID::SessionHashにHashライクなメソッドを追加
 - 各種ドキュメントの修正
 
 ## 2013-02-07
@@ -805,7 +805,7 @@
   freezeされていないHashを返す必要がある
 - リクエスト環境はfreezeできない
 - リクエスト環境でASCII以外の文字を持つCGIの値はASCII-8BITエンコーディングを使用しなければならない
-- `SERVER_NAME` / `SERVER_PORT` / `HTTP_HOSTに関するSPEC/lintを改善
+- `SERVER_NAME` / `SERVER_PORT` / `HTTP_HOST`に関するSPEC/lintを改善
 
 #### [Added]
 - rackup

@@ -92,7 +92,7 @@
   - 割り当てられるIOを返す
   - `rack.hijack_io`を使う前に少なくとも一度は呼び出す必要がある
   - Rack環境に設定するだけでなく、必要に応じて`#call`が`rack.hijack_io`を返すことが推奨される
-- `rack.hijack?`がfalseの場合、設定されるべきではない
+- `rack.hijack?`が`false`の場合、設定されるべきではない
 
 #### `rack.hijack_io`
 - `rack.hijack?`が`true`かつ`rack.hijack`が`#call`を受信した場合
@@ -101,18 +101,18 @@
     / `#close` / `#close_read` / `#close_write` / `#closed?`に応答する
     - いずれのメソッドもIOオブジェクトまたはSocketオブジェクトのセマンティクスに一致する必要がある
   - サポートされている場合はIO::WaitReadableとIO::WaitWritable APIによって提供されることが推奨
-- `rack.hijack?`がfalseの場合、設定されるべきではない
+- `rack.hijack?`が`false`の場合、設定されるべきではない
 
 ### オプショナルなRack固有の変数
 #### `rack.session`
-- リクエストセッションデータを保存するためのハッシュライクなインターフェース
+- リクエストセッションデータを保存するためのHashライクなインターフェース
 
 #### `rack.logger`
 - メッセージをロギングするための共通のオブジェクトインターフェース
 
 #### `rack.multipart.buffer_size`
-- Integer
 - 読み出しと書き込みに使用するチャンクサイズを指定するためのヒント
+  - Integer型
 
 #### `rack.multipart.tempfile_factory`
 - `#call`に応答するオブジェクト
@@ -121,8 +121,8 @@
   - `#<<と`オプションで`#rewind`に応答するIOライクなオブジェクトを返す
   - multipartフォームのファイルアップロードフィールド用のtempfileインスタンスを作成するために使用される
 
-### rack.hijackに関する規約
-- ミドルウェアはレスポンス全体を処理している場合を除き、rack.hijackを使用すべきではない
+### `rack.hijack`に関する規約
+- ミドルウェアはレスポンス全体を処理している場合を除き、`rack.hijack`を使用すべきではない
 - ミドルウェアはレスポンスパターンのIOオブジェクトをラップしても良い
 - ミドルウェアはリクエストパターンのIOオブジェクトをラップすべきではない
   - リクエストパターンはハイジャッカーに生のtcpを提供することを目的としている
