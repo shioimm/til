@@ -103,3 +103,33 @@
 ## Rack::TempfileReaper
 - [rack/lib/rack/tempfile_reaper.rb](https://github.com/rack/rack/blob/master/lib/rack/tempfile_reaper.rb)
 - リクエスト中に作成されたtempファイルを削除するミドルウェア
+
+## Rack::Auth
+### Rack::Auth::Basic
+- [rack/lib/rack/auth/basic.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/basic.rb)
+- RFC2617に基づくHTTP Basic認証を提供する
+
+### Rack::Auth::AbstractHandler
+- [rack/lib/rack/auth/basic.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/basic.rb)
+- 共通の認証機能を提供するハンドラ
+
+### Rack::Auth::Digest
+#### Rack::Auth::Digest::MD5
+- [rack/auth/digest/md5.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/digest/md5.rb)
+- RFC 2617に基づくMD5アルゴリズムによるHTTPダイジェスト認証を提供する
+
+#### Rack::Auth::Digest::Nonce
+- [rack/auth/digest/nonce.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/digest/nonce.rb)
+- `Rack::Auth::Digest::MD5`ハンドラ用のデフォルトのnonceジェネレータ
+
+
+## Rack::Session
+### Rack::Session::Cookie
+- [rack/lib/rack/session/cookie.rb](https://github.com/rack/rack/blob/master/lib/rack/session/cookie.rb)
+- Cookieベースのセッション管理を提供する
+  - デフォルトでは、セッションはbase64エンコードデータをキーに設定したRubyハッシュとして格納される
+  - 秘密鍵が設定されるとCookieはデータの整合性をチェックする
+
+## Rack::Session::Pool
+- 引用: [rack/lib/rack/session/pool.rb](https://github.com/rack/rack/blob/master/lib/rack/session/pool.rb)
+- シンプルなCookieベースのセッション管理を提供する
