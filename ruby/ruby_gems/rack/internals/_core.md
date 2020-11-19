@@ -3,6 +3,21 @@
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 基本
+### module Rack
+- [module Rack](https://github.com/rack/rack/blob/master/lib/rack.rb)
+- Rackのメインモジュール
+  - 定数定義
+  - モジュールのオートローディング
+- すべてのRackのコアモジュールの名前空間として機能する
+```
+Rack
+  |
+  |- Auth
+  |    |- Digest
+  |
+  |- Session
+```
+
 ### Rack::Server
 - [rack/lib/rack/server.rb](https://github.com/rack/rack/blob/master/lib/rack/server.rb)
 - `Rack::Server.start`を呼び新しいRackサーバーを起動する(`$ rackup`)
