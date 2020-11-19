@@ -61,17 +61,22 @@
   - スレッドごとに`errno`の値は一つしかないため、
     シグナルハンドラが再入可能な関数を呼ぶと、
     値が上書きされる可能性がある
+
+### `signal(2)`
 - `signal(2)` - 指定のシグナルを受信した際、指定の関数(シグナルハンドラ)を実行する
   - プロセスがシグナルを受け取った際、それまで実行していたプログラムは一時停止する
   - プロセスはいつシグナルを受け取るかわからない
   - `handler`型 - 引数が`int`、返り値が`void`である関数型
   - OSによって挙動が異なる、シグナルが紛失する場合がある、受け取れる情報が少ないなどの問題がある
     -> `signal(2)`の代わりに`sigaction(2)`を使用する
+
+### `sigaction(2)`
 - `sigaction(2)` - 指定のシグナルを受信した際の新しい動作と以前の動作をそれぞれ`sigaction`構造体に保存する
+  - `sigemptyset(2)` - シグナルマスクの初期化
 ```c
 // sigaction構造体
 struct sigaction {
-  sigset_t sa_mask;  // シグナルマスク(シグナルハンドラ実行中にブロックするシグナルの設定)
+  sigset_t sa_mask;  // シグナルハンドラ実行中にブロックするシグナル群
   int      sa_flags; // オプション設定フラグ
 
   // どちらか一つだけ設定
@@ -80,11 +85,11 @@ struct sigaction {
 };
 
 // sigactionの設定
-// struct sigaction xxx;
-// act.sa_hander = シグナルハンドラ
-// act.sa_flags  = シグナルハンドラ実行中の動作を設定
-// sigemptyset(&xxx.sa_mask);
-// sigaction(シグナル, &xxx, NULL);
+//   struct sigaction xxx;
+//   xxx.sa_hander = シグナルハンドラ
+//   xxx.sa_flags  = シグナルハンドラ実行中の動作を設定
+//   sigemptyset(&xxx.sa_mask);
+//   sigaction(シグナル, &xxx, NULL);
 ```
 
 ### シグナルマスクの設定
