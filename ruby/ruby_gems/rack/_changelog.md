@@ -1,5 +1,6 @@
 # CHANGELOG
 - 引用: [CHANGELOG](https://github.com/rack/rack/blob/master/CHANGELOG.md)
+- 参照: [The new Rack socket hijacking API](https://old.blog.phusion.nl/2013/01/23/the-new-rack-socket-hijacking-api/)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 2007-03-03
@@ -428,8 +429,8 @@
 
 ## 2013-01-21
 ### 1.5.0
-- ハイジャックSPECの導入
-  - レスポンス前後のハイジャックを実現するため
+- ソケットハイジャック機能の追加
+  - アプリケーションがクライアントソケットを乗っ取り、任意の操作を行うためのもの
 - Rack::Session
   - Abstract::SessionHashをHashのサブクラスから解除
 - Rack::File
