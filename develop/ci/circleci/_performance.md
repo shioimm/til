@@ -59,9 +59,50 @@ steps:
 - Dockerイメージをビルドする際の各レイヤをキャッシュ
   -> `$ docker build` / `$ docker compose`の実行時間を短縮
   - CircleCIのDockerレイヤキャッシュを利用する
+- Dockerイメージをビルドした際に作成されたレイヤを以後の同ジョブに引き継ぐ
+  - ジョブの終了後の使用可能なボリュームを用意し、
+    Executorのファイルシステムにアタッチして再利用できるようにする
+```yml
+version: 2.1
+jobs:
+  dlc_job:
+    machine:
+      docker_layer_caching: true
+```
 
-## ジョブ内の並列実行
-- 有料プランの利用
+```yml
+- setup_remote_docker:
+  docker_layer_caching: true
+```
+
+## ジョブ内並列実行
+- 同じジョブを同時に複数のコンテナで実行させ、
+  処理するテストファイルを書くコンテナに分配することで
+  実行時間を短縮する
+  - 有料プランの利用
+  - 通常はジョブ単体の実行は単一のコンテナで実行される
+- `$ circleci tests glog` - テストファイル一覧取得
+- `$ circleci tests split` - テストファイル一覧を並列実行数に応じて分割
+  - `--split-by` - `name`(ファイル名) / `filesize`(ファイルサイズ) / `timings`(実行時間)
+```yml
+version: 2
+jobs:
+  build:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - checkout
+      - run:
+        name: テストファイル分割1
+        command: |
+          circleci tests glog "__tests__/*.ts" | \
+          circleci tests split --total2 --index=0
+      - run:
+        name: テストファイル分割2
+        command: |
+          circleci tests glog "__tests__/*.ts" | \
+          circleci tests split --total2 --index=1
+```
 
 ## リソースクラスの変更
 - マシンリソースの不足に起因する問題を解決

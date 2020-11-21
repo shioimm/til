@@ -1,5 +1,6 @@
 # CHANGELOG
 - 引用: [CHANGELOG](https://github.com/rack/rack/blob/master/CHANGELOG.md)
+- 参照: [The new Rack socket hijacking API](https://old.blog.phusion.nl/2013/01/23/the-new-rack-socket-hijacking-api/)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
 
 ## 2007-03-03
@@ -428,8 +429,8 @@
 
 ## 2013-01-21
 ### 1.5.0
-- ハイジャックSPECの導入
-  - レスポンス前後のハイジャックを実現するため
+- ソケットハイジャック機能の追加
+  - アプリケーションがクライアントソケットを乗っ取り、任意の操作を行うためのもの
 - Rack::Session
   - Abstract::SessionHashをHashのサブクラスから解除
 - Rack::File
@@ -471,7 +472,7 @@
 - Rack::Lint
   - HijackWrapper`#check_hijack`がSPECの他の部分に準拠
 - Rack::Session
-  - 互換性のためAbstract::ID::SessionHashにハッシュライクなメソッドを追加
+  - 互換性のためAbstract::ID::SessionHashにHashライクなメソッドを追加
 - 各種ドキュメントの修正
 
 ## 2013-02-07
@@ -805,7 +806,7 @@
   freezeされていないHashを返す必要がある
 - リクエスト環境はfreezeできない
 - リクエスト環境でASCII以外の文字を持つCGIの値はASCII-8BITエンコーディングを使用しなければならない
-- `SERVER_NAME` / `SERVER_PORT` / `HTTP_HOSTに関するSPEC/lintを改善
+- `SERVER_NAME` / `SERVER_PORT` / `HTTP_HOST`に関するSPEC/lintを改善
 
 #### [Added]
 - rackup
