@@ -159,6 +159,12 @@ jobs:
 > ジョブ、コマンド、Executorのような設定要素をまとめた共有可能なパッケージ
 
 - ジョブ設定の再利用
+  - 認定済みOrbs
+    - CircleCIが作成・メンテナンスしているOrbs
+  - パートナーOrbs
+    - CircleCIテクノロジパートナーに参加している企業が作成・メンテナンスしているOrbs
+  - サードパーティOrbs
+    - 上記以外のOrbs
 - Orb Registory - Orbsの設定を保存するレジストリ
 
 #### Workflows
