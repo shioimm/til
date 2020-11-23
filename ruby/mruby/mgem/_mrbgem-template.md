@@ -15,6 +15,7 @@ $ mrbgem-template -m mrubyのバージョン 作成するmgemの名前
 
 # バイナリも一緒に生成する場合
 $ mrbgem-template -m mrubyのバージョン --bin-name バイナリの名前 作成するmgemの名前
+# -> バイナリの名前.cファイルが生成され、作成するバイナリのスタートポイントになる
 
 # mgemディレクトリへ移動
 $ cd ./mgemの名前
@@ -44,3 +45,20 @@ $ rake
   - テストコードを配置するディレクトリ
 - `tools/`
   - 作成したmgemに添付するコマンドラインツールを配置する
+
+## Rubyスクリプト用ファイルテンプレート
+- `mgemの名前/mrblib/mgemの名前
+.rb`
+```ruby
+class mgemの名前
+  def bye
+    self.hello + "bye"
+  end
+
+  # バイナリを一緒に作成した場合に追加される
+  # このメソッド内に記述した内容は $ path/to/バイナリの名前 で実行可能
+  def __main__(argv) # argv - 定数ARGV
+    raise NotImplementedError, "Please implement Kernel#__main__ in your .rb file"
+  end
+end
+```
