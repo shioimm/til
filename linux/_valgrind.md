@@ -2,7 +2,7 @@
 - 参照: [Valgrind](https://valgrind.org/)
 - 参照: [Valgrind Frequently Asked Questions](https://www.valgrind.org/docs/manual/faq.html)
 - 参照: [valgrindが検出するメモリリークの種類](https://www.wagavulin.jp/entry/2016/08/28/231547)
-- 参照: []()
+- 参照: Webで使えるmrubyシステムプログラミング入門 Section024
 
 ## TL;DR
 - メモリに関するプログラムの挙動をトレースするデバッグツール

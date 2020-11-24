@@ -15,3 +15,10 @@ MRB_API mrb_value mrb_str_new(mrb_state  *mrb,
                               size_t      len)
 ```
 - C言語の文字またはバイナリ列から長さを指定してRubyのStringオブジェクトを作る
+
+## `mrb_string_cstr`
+```c
+MRB_API const char* mrb_string_cstr(mrb_state *mrb,
+                                    mrb_value  str)
+```
+- RubyのStringクラスの`mrb_value`をC言語の文字列`char *`型に変換する

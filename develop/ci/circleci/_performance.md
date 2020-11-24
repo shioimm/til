@@ -105,4 +105,13 @@ jobs:
 ```
 
 ## リソースクラスの変更
-- マシンリソースの不足に起因する問題を解決
+- 仮想ハードウェアリソースをジョブ単位で選択
+  - ジョブを実行するExecutorのCPUやメモリサイズを設定することができる
+  - small / medium / large ...
+```yml
+text_jest:
+  executor: default
+  recource_class: large
+  steps:
+    - checkout
+```

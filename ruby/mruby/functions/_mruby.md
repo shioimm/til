@@ -1,5 +1,5 @@
 # `#include <mruby.h>`
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section019
+- 参照: Webで使えるmrubyシステムプログラミング入門 Section019 / 022
 
 ## `mrb_define_class`
 ```c
@@ -56,3 +56,44 @@ MRB_API mrb_int mrb_get_args(mrb_state  *mrb,
 | `n`  | String/Symbol        | `[mrb_sym]`             |
 | `&`  | block                | `[mrb_value]`           |
 | `*`  | 残りの引数           | `[mrb_value*, mrb_int]` |
+
+## `mrb_malloc`
+```c
+MRB_API void* mrb_malloc(mrb_state *mrb,
+                         size_t     len)
+```
+- mrubyで使うデータのための領域を割り当て、そのポインタを返す
+
+## `mrb_free`
+```c
+MRB_API void* mrb_free(mrb_state *mrb,
+                       void      *p)
+```
+- `mrb_malloc`により割り当てられた領域を解放する
+
+## `mrb_intern_lit`
+```c
+mrb_sym mrb_intern_lit(mrb_state  *mrb,
+                       const char *lit)
+```
+- 文字列リテラルの名前に相当する`mrb_sym`を返す
+
+## `mrb_funcall`
+```c
+MRB_API mrb_value mrb_funcall(mrb_state  *mrb,
+                              mrb_value   self, // レシーバ
+                              const char *name, // 呼び出すメソッド
+                              mrb_int     argc, // 引数の数
+                              ...)              // 引数の値
+```
+- mrubyのRubyレベルのメソッドを飛び出し返り値を受け取る
+
+## マクロ
+### `DATA_PTR(self)`
+- インスタンスが持つCレベルのデータへのアクセス
+  - `RData`構造体`data`メンバへのアクセス
+
+### `DATA_TYPE(self)`
+- インスタンスが持つCレベルのデータを解放する方法
+  - `RData`構造体`type`メンバへのアクセス
+- インスタンス一つ一つのデータ解放の振る舞いにアクセスする
