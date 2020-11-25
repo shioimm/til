@@ -49,24 +49,30 @@ DocumentRoot "/var/www/html"
 
 ## 設定ファイル
 ### RedHat系OS - `/etc/httpd`以下
-- `conf`           - 主となる設定ファイル`http.cong`を含むファイル群
-- `conf.d`         - 追加の設定ファイル群
-- `conf.modules.d` - モジュール関連の設定ファイル群
-- `logs`           - `/var/log/httpd`へのシンボリックリンク
-- `modules`        - `/usr/lib64/httpd/modules`へのシンボリックリンク
-- `run`            - `run/httpd`へのシンボリックリンク
+| `conf`           | 主となる設定ファイル`http.cong`を含むファイル群  |
+| `conf.d`         | 追加の設定ファイル群                             |
+| `conf.modules.d` | モジュール関連の設定ファイル群                   |
+| `logs`           | `/var/log/httpd`へのシンボリックリンク           |
+| `modules`        | `/usr/lib64/httpd/modules`へのシンボリックリンク |
+| `run`            | `run/httpd`へのシンボリックリンク                |
 
 ### Debian系OS - `/etc/apache2/`以下
-- `apache2.conf`    - 主となる設定ファイル
-- `conf-available`  - 文字コードやセキュリティに関する設定ファイル群
-- `conf-enabled`    - `conf-available/`内の各設定ファイルへのシンボリックリンク(有効化)
-- `mods-available`  - モジュール関連の設定ファイル群
-- `mods-enabled`    - `mods-available/`内の各設定ファイルへのシンボリックリンク(有効化)
-- `sites-available` - サイト公開に関する設定ファイル群
-- `sites-enabled`   - `/sites-available`内の各設定ファイルへのシンボリックリンク(有効化)
-- `ports.conf`      - ポートに関する設定ファイル
-- `envvars`         - 環境変数
-- `magic`
+| `apache2.conf`     | 主となる設定ファイル                                                 |
+| `conf-available/`  | 利用可能な一般的な設定ファイルを配置(文字コードやセキュリティなど)   |
+| `conf-enabled/`    | 現在有効な`conf-available/`内の各設定ファイルへのシンボリックリンク  |
+| `mods-available/`  | 利用可能なモジュールに関するロード設定・基本的な設定ファイルを配置   |
+| `mods-enabled/`    | 現在有効な`mods-available/`内の各設定ファイルへのシンボリックリンク  |
+| `sites-available/` | 利用可能なWebサイト設定に関するファイルを配置                        |
+| `sites-enabled/`   | 現在有効な`/sites-available`内の各設定ファイルへのシンボリックリンク |
+| `ports.conf`       | どのIP/ポートで待ち受けるかに関する設定ファイル                      |
+| `envvars`          | 他の設定ファイル内部腕使われる環境変数を指定するファイル             |
+| `magic`            | MimeTypeについての情報を指定するファイル                             |
+
+#### `/usr/lib/apache2/`
+| `modules` | モジュール本体を配置する |
+
+#### `var/log`
+| `apache2` | ログを配置する |
 
 ### 設定ファイルの書き方
 ```
