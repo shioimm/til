@@ -64,6 +64,7 @@ int pthread_join(pthread_t thread, void **value_ptr);
 - スレッドから別のスレッドに停止要求を出す
   - 対象のスレッドはOSに制御が渡り次第、自動的に`pthread_exit(3)`を発行して停止する
   - スレッドが消去されてもリソースの解放は行われない
+  - `pthread_cancel(3)`は対象のスレッドの終了を待たない
 ```c
 #include <pthread.h>
 
