@@ -1,5 +1,6 @@
 # スレッド
 - 参照: 詳解UNIXプログラミング第3版 11. スレッド
+- 参照: 詳解UNIXプログラミング第3版 12. スレッドの制御
 
 ## TL;DR
 - プロセスは一つのスレッドを持つ(メインスレッド)
@@ -80,7 +81,8 @@
 | `getpid`  | `pthread_self`         |
 | `abort`   | `pthread_cancel`       |
 
-## ミューテックス
+## 同期機構
+### ミューテックス
 - `pthread`の排他制御インターフェース
   - データを保護し一度に一つのスレッドだけが共有リソースにアクセスすることを保証する
 - 共有リソースにアクセスする前にロックし、処理を完了したらアンロックする
@@ -94,8 +96,8 @@
   一度に一つのスレッドだけロックすることができる
 - ミューテックスは全てのスレッドが同一のデータアクセス規則に従う場合のみ意味を成す
 - `pthread_mutex_t`型 - ミューテックス変数型
-- `pthread_mutex_init(3)` - ミューテックス変数の初期化
-- `pthread_mutex_destroy(3)` - ミューテックス変数の削除
+- `pthread_mutex_init(3)` - ミューテックスの初期化
+- `pthread_mutex_destroy(3)` - ミューテックスの削除
 - `pthread_mutex_lock(3)` - ミューテックスのロック
 - `pthread_mutex_trylock(3)` - ミューテックスのロック(条件付き)
 - `pthread_mutex_timedlock(3)` - ミューテックスのロック(時間制限付き)
@@ -110,7 +112,7 @@
   - ミューテックスをロックする順序が制御できない場合、
     取得したロック群を全て解放し、時間をおいて再ロックする
 
-## reader / writerロック(共有排他ロック)
+### reader / writerロック(共有排他ロック)
 - ミューテックスより高い並列度を持つロック機構
 - reader / writerロックはread(共有)モードロック / write(排他)モードロック / アンロックの状態を保ち、
   write(排他)モードでは一つのスレッド、
@@ -124,18 +126,18 @@
   - あるスレッドがwrite(排他)モードでロックを獲得している場合
     -> 他のスレッドはread(共有)モードでロックを獲得できない
     -> 他のスレッドはwriterモードでロックを獲得できない
-- `pthread_rwlock_init(3)` - 変数の初期化
-- `pthread_rwlock_destroy(3)` - 変数の削除
-- `pthread_rwlock_rdlock(3)` - 変数のロック(readモード)
-- `pthread_rwlock_tryrdlock(3)` - 変数のロック(readモード・条件付き)
-- `pthread_rwlock_rdlock(3)` - 変数のロック(readモード・時間制限付き)
-- `pthread_rwlock_wrlock(3)` - 変数のロック(writeモード)
-- `pthread_rwlock_trywrlock(3)` - 変数のロック(writeモード・条件付き)
-- `pthread_rwlock_timedwrlock(3)` - 変数のロック(writeモード・時間制限付き)
-- `pthread_rwlock_unlock(3)` - 変数のアンロック
 - reader / writerロックは使用前に初期化し、使用するメモリを解放する前に破棄する必要がある
+- `pthread_rwlock_init(3)` - reader / writerロックの初期化
+- `pthread_rwlock_destroy(3)` - reader / writerロックの削除
+- `pthread_rwlock_rdlock(3)` - reader / writerロックのロック(readモード)
+- `pthread_rwlock_tryrdlock(3)` - reader / writerロックのロック(readモード・条件付き)
+- `pthread_rwlock_rdlock(3)` - reader / writerロックのロック(readモード・時間制限付き)
+- `pthread_rwlock_wrlock(3)` - reader / writerロックのロック(writeモード)
+- `pthread_rwlock_trywrlock(3)` - reader / writerロックのロック(writeモード・条件付き)
+- `pthread_rwlock_timedwrlock(3)` - reader / writerロックのロック(writeモード・時間制限付き)
+- `pthread_rwlock_unlock(3)` - reader / writerロックのアンロック
 
-## 条件変数
+### 条件変数
 - スレッドの待ち合わせ場所を提供
   - ミューテックスと合わせて使用すると、スレッドは任意の条件が成立するまで競合なしに待つことができる
 - 条件変数はミューテックスによって保護する
@@ -150,9 +152,53 @@
       `pthread_cond_wait(3)`から戻ると
       ミューテックスは再度ロック済みになっている
 - 条件変数は使用前に初期化し、使用するメモリを解放する前に破棄する必要がある
-- `pthread_cond_init(3)` - 変数の初期化
-- `pthread_cond_destroy(3)` - 変数の削除
+- `pthread_cond_init(3)` - 条件変数の初期化
+- `pthread_cond_destroy(3)` - 条件変数の削除
 - `pthread_cond_wait(3)` - 条件が真になるまで待つ
 - `pthread_cond_timedwait(3)` - 条件が真になるまで待つ(時間制限付き)
 - `pthread_cond_signal(3)` - 条件変数待ち中の一つのスレッドへ条件が真になったことを通知する
 - `pthread_cond_broadcast(3)` - 条件変数待ち中の全スレッドへ条件が真になったことを通知する
+
+## スピンロック
+- プロセスがロックを獲得できるまでビジーウェイト(スピン)でブロックするロック機構
+  - ロックの保持期間が短く、スレッドがスケジュールから外されるコストを避ける際に使用される
+- 他の種類のロックを実装するための低レベル基本操作
+  - ノンプリエンプティブなカーネルで使うと有用
+- スピンロックは使用前に初期化し、使用するメモリを解放する前に破棄する必要がある
+- `pthread_spin_init(3)` - スピンロックの初期化
+- `pthread_spin_destroy(3)` - スピンロックの破棄
+- `pthread_spin_lock(3)` - スピンロックのロック
+- `pthread_spin_trylock(3)` - スピンロックのロック(条件付き/スピンしない)
+- `pthread_spin_unlock(3)` - スピンロックのアンロック
+
+## バリア
+- 並列動作している複数のスレッドを協調するために使える同期機構
+  - 協調動作している全てのスレッドが同一地点に達するまで各スレッドが待つ
+  - 任意個のスレッドが全て処理を完了するまで待ち合わせる
+    - スレッドは終了する必要はなく、全てのスレッドがバリアに達すると処理を続行できる
+- バリアは使用前に初期化し、使用するメモリを解放する前に破棄する必要がある
+- `pthread_barrier_init(3)` - バリアの初期化
+- `pthread_barrier_destroy(3)` - バリアの破棄
+- `pthread_barrier_wait(3)` - 当該スレッドが他のスレッドを待ち合わせ開始
+
+## 制限事項
+- `PTHREAD_DESTRUCTOR_ITERATIONS` - 4回
+  - スレッド終了時にスレッド固有データを破棄する実装の最大試行回数
+- `PTHREAD_KEYS_MAX` - 1024個
+  - スレッドが作成できるキーの最大個数
+- `PTHREAD_STACK_MIN` - 16384バイト
+  - スレッドスタックに使用可能な最小バイト数
+- `PTHREAD_THREADS_MAX` - 無制限
+  - プロセスで作成可能なスレッドの最大個数
+
+## 属性
+- pthreadインターフェースにおいては各オブジェクトに付随する属性を設定することにより、
+  スレッドと同期オブジェクトの振る舞いを微調整できる
+  - 各オブジェクトには独自の属性オブジェクトが付随する
+    - スレッド - スレッド属性
+    - ミューテックス - ミューテックス属性etc
+  - 属性オブジェクトを管理する関数群がある
+  - 属性をそのデフォルト値に設定する初期化関数がある
+  - 属性オブジェクトを破棄する別の関数がある
+  - 各属性には属性オブジェクトから属性値を取得する関数がある
+  - 各属性には属性値を設定する関数がある
