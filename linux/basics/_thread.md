@@ -81,6 +81,46 @@
 | `getpid`  | `pthread_self`         |
 | `abort`   | `pthread_cancel`       |
 
+## 制限事項
+- `PTHREAD_DESTRUCTOR_ITERATIONS` - 4回
+  - スレッド終了時にスレッド固有データを破棄する実装の最大試行回数
+- `PTHREAD_KEYS_MAX` - 1024個
+  - スレッドが作成できるキーの最大個数
+- `PTHREAD_STACK_MIN` - 16384バイト
+  - スレッドスタックに使用可能な最小バイト数
+- `PTHREAD_THREADS_MAX` - 無制限
+  - プロセスで作成可能なスレッドの最大個数
+
+## 属性
+- pthreadインターフェースにおいては各オブジェクトに付随する属性を設定することにより、
+  スレッドと同期オブジェクトの振る舞いを微調整できる
+  - 各オブジェクトには独自の属性オブジェクトが付随する
+    - スレッド - スレッド属性
+    - ミューテックス - ミューテックス属性etc
+  - 属性オブジェクトを管理する関数群がある
+  - 属性をそのデフォルト値に設定する初期化関数がある
+  - 属性オブジェクトを破棄する別の関数がある
+  - 各属性には属性オブジェクトから属性値を取得する関数がある
+  - 各属性には属性値を設定する関数がある
+- `pthread_attr_t`構造体で表す
+  - `detachstate` - デタッチ属性
+  - `gaurdsize` - スレッドのスタック末尾のガードバッファのバイト単位サイズ
+    - `スタックオーバーフローに備えてスタックの末端硫黄のメモリ領域のサイズを制御する`
+  - `stackaddr` - スレッドのスタックの低位アドレス
+  - `stacksize` - スレッドのスタックのバイト単位サイズ
+    - スレッドでは同じ大きさの仮想アドレス空間を全てのスレッドのスタックで共有する
+    - アプリケーションが使用するスレッドのスタックの総量によってスタックサイズを増減する必要がある
+- `pthread_attr_init(3)` - `pthread_attr_t`構造体の初期化
+- `pthread_attr_destroy(3)` - `pthread_attr_t`構造体の削除
+- `pthread_attr_getdetachstate(3)` - デタッチ属性の現在の値を取得
+- `pthread_attr_setdetachstate(3)` - デタッチ属性の変更
+- `pthread_attr_getstack(3)` - スタック属性の取得
+- `pthread_attr_setstack(3)` - スタック属性の変更
+- `pthread_attr_getguardsize(3)` - スタックサイズの取得
+- `pthread_attr_setguardsize(3)` - スタックサイズの変更
+- `pthread_attr_getstacksize(3)` - スタックサイズの取得
+- `pthread_attr_setstacksize(3)` - スタックサイズの変更
+
 ## 同期機構
 ### ミューテックス
 - `pthread`の排他制御インターフェース
@@ -103,6 +143,29 @@
 - `pthread_mutex_timedlock(3)` - ミューテックスのロック(時間制限付き)
 - `pthread_mutex_unlock(3)` - ミューテックスのアンロック
 - ミューテックスは使用前に初期化し、使用するメモリを解放する前に破棄する必要がある
+
+#### ミューテックス属性
+- `pthread_mutexattr_t`構造体で表す
+  - `proccess-shared` - プロセス共有
+    - 複数プロセスで共有したメモリ領域に割り付けたミューテックスをプロセス同士で共有
+  - `robust` - 堅牢性
+    - 複数プロセス間で共有しているミューテックスの状態回復問題を扱う
+  - `type` - 種別
+    - ミューテックスをロックする種別を制御
+    - `PTHREAD_MUTEX_NORMAL`
+    - `PTHREAD_MUTEX_ERRORCHECK`
+    - `PTHREAD_MUTEX_RECURSIVE`
+    - `PTHREAD_MUTEX_DEFAULT`
+- `pthread_mutexattr_init(3)` - `pthread_mutexattr_t`構造体の初期化
+- `pthread_mutexattr_destroy(3)` - `pthread_mutexattr_t`構造体の削除
+- `pthread_mutexattr_getpshared(3)` - `proccess-shared`の取得
+- `pthread_mutexattr_setpshared(3)` - `proccess-shared`の設定
+- `pthread_mutexattr_getrobust(3)` - `robust`の取得
+- `pthread_mutexattr_setrobust(3)` - `robust`の設定
+- `pthread_mutex_consistent(3)` - 当該ミューテックスをアンロックする前にミューテックスに付随する状態が一貫していることを示す
+- `pthread_mutexattr_gettype(3)` - `type`の取得
+- `pthread_mutexattr_settype(3)` - `type`の設定
+
 
 ### デッドロック
 - 複数ミューテックスがあり、両方をロックする必要がある場合、
@@ -180,25 +243,3 @@
 - `pthread_barrier_init(3)` - バリアの初期化
 - `pthread_barrier_destroy(3)` - バリアの破棄
 - `pthread_barrier_wait(3)` - 当該スレッドが他のスレッドを待ち合わせ開始
-
-## 制限事項
-- `PTHREAD_DESTRUCTOR_ITERATIONS` - 4回
-  - スレッド終了時にスレッド固有データを破棄する実装の最大試行回数
-- `PTHREAD_KEYS_MAX` - 1024個
-  - スレッドが作成できるキーの最大個数
-- `PTHREAD_STACK_MIN` - 16384バイト
-  - スレッドスタックに使用可能な最小バイト数
-- `PTHREAD_THREADS_MAX` - 無制限
-  - プロセスで作成可能なスレッドの最大個数
-
-## 属性
-- pthreadインターフェースにおいては各オブジェクトに付随する属性を設定することにより、
-  スレッドと同期オブジェクトの振る舞いを微調整できる
-  - 各オブジェクトには独自の属性オブジェクトが付随する
-    - スレッド - スレッド属性
-    - ミューテックス - ミューテックス属性etc
-  - 属性オブジェクトを管理する関数群がある
-  - 属性をそのデフォルト値に設定する初期化関数がある
-  - 属性オブジェクトを破棄する別の関数がある
-  - 各属性には属性オブジェクトから属性値を取得する関数がある
-  - 各属性には属性値を設定する関数がある
