@@ -147,7 +147,7 @@
 #### ミューテックス属性
 - `pthread_mutexattr_t`構造体で表す
   - `proccess-shared` - プロセス共有
-    - 複数プロセスで共有したメモリ領域に割り付けたミューテックスをプロセス同士で共有
+    - ミューテックスを単一プロセスのスレッド群のみが使うのか複数プロセスのスレッド群が使うのか制御
   - `robust` - 堅牢性
     - 複数プロセス間で共有しているミューテックスの状態回復問題を扱う
   - `type` - 種別
@@ -165,7 +165,6 @@
 - `pthread_mutex_consistent(3)` - 当該ミューテックスをアンロックする前にミューテックスに付随する状態が一貫していることを示す
 - `pthread_mutexattr_gettype(3)` - `type`の取得
 - `pthread_mutexattr_settype(3)` - `type`の設定
-
 
 ### デッドロック
 - 複数ミューテックスがあり、両方をロックする必要がある場合、
@@ -200,6 +199,15 @@
 - `pthread_rwlock_timedwrlock(3)` - reader / writerロックのロック(writeモード・時間制限付き)
 - `pthread_rwlock_unlock(3)` - reader / writerロックのアンロック
 
+#### reader / writerロック属性
+- `pthread_rwlocksttr_t`構造体で表す
+  - `proccess-shared` - プロセス共有
+    - reader / writerロックを単一プロセスのスレッド群のみが使うのか複数プロセスのスレッド群が使うのか制御
+- `pthread_rwlockattr_init(3)` - `pthread_rwlockattr_t`構造体の初期化
+- `pthread_rwlockattr_destroy(3)` - `pthread_rwlockattr_t`構造体の削除
+- `pthread_rwlockattr_getpshared(3)` - `proccess-shared`の取得
+- `pthread_rwlockattr_setpshared(3)` - `proccess-shared`の設定
+
 ### 条件変数
 - スレッドの待ち合わせ場所を提供
   - ミューテックスと合わせて使用すると、スレッドは任意の条件が成立するまで競合なしに待つことができる
@@ -222,6 +230,18 @@
 - `pthread_cond_signal(3)` - 条件変数待ち中の一つのスレッドへ条件が真になったことを通知する
 - `pthread_cond_broadcast(3)` - 条件変数待ち中の全スレッドへ条件が真になったことを通知する
 
+#### 条件変数属性
+- `pthread_condattr_t`構造体で表す
+  - `proccess-shared` - プロセス共有
+    - 条件変数を単一プロセスのスレッド群のみが使うのか複数プロセスのスレッド群が使うのか制御
+  - `clock` - `pthread_cond_timedwait(3)`の時間切れ引数を評価するクロックの種類(クロックID)を制御
+- `pthread_condattr_init(3)` - `pthread_condattr_t`構造体の初期化
+- `pthread_condattr_destroy(3)` - `pthread_condattr_t`構造体の削除
+- `pthread_condattr_getpshared(3)` - `proccess-shared`の取得
+- `pthread_condattr_setpshared(3)` - `proccess-shared`の設定
+- `pthread_condattr_getclock(3)` - `clock`の取得
+- `pthread_condattr_setclock(3)` - `clock`の設定
+
 ## スピンロック
 - プロセスがロックを獲得できるまでビジーウェイト(スピン)でブロックするロック機構
   - ロックの保持期間が短く、スレッドがスケジュールから外されるコストを避ける際に使用される
@@ -243,3 +263,12 @@
 - `pthread_barrier_init(3)` - バリアの初期化
 - `pthread_barrier_destroy(3)` - バリアの破棄
 - `pthread_barrier_wait(3)` - 当該スレッドが他のスレッドを待ち合わせ開始
+
+#### バリア属性
+- `pthread_barrierattr_t`構造体で表す
+  - `proccess-shared` - プロセス共有
+    - バリアを単一プロセスのスレッド群のみが使うのか複数プロセスのスレッド群が使うのか制御
+- `pthread_barrierattr_init(3)` - `pthread_barrierattr_t`構造体の初期化
+- `pthread_barrierattr_destroy(3)` - `pthread_barrierattr_t`構造体の削除
+- `pthread_barrierattr_getpshared(3)` - `proccess-shared`の取得
+- `pthread_barrierattr_setpshared(3)` - `proccess-shared`の設定
