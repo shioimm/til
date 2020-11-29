@@ -272,3 +272,8 @@
 - `pthread_barrierattr_destroy(3)` - `pthread_barrierattr_t`構造体の削除
 - `pthread_barrierattr_getpshared(3)` - `proccess-shared`の取得
 - `pthread_barrierattr_setpshared(3)` - `proccess-shared`の設定
+
+## 再入可能性
+- スレッド安全 - 同時に複数のスレッドから呼び出しても正しく動作する
+  - 静的なメモリ領域行きにデータを格納して返す関数はスレッド安全ではない
+  - 呼び出し側が自前の領域を用意するようにインターフェースを変更している関数はスレッド安全になる
