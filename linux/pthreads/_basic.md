@@ -105,7 +105,7 @@ printf("%02d:%02d:%02d\n", nowtm.tm_hour, nowtm.tm_min, nowtm.tm_sec);
 - 可読性が下がり速度も遅くなるため、使用を避ける方が望ましい(代わりに構造体を使用するなど)
   - `pthread_key_t`型 - キー番号
   - `pthread_key_create(3)`  - スレッドローカル変数の用意
-  - `pthread_key_delete(3)`  - スレッドローカル変数
+  - `pthread_key_delete(3)`  - スレッドローカル変数の削除
   - `pthread_setspecific(3)` - スレッドローカル変数の設定
   - `pthread_getspecific(3)` - スレッドローカル変数の読み取り
 
