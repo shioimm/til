@@ -46,6 +46,47 @@ struct flock {
 - 複数のディスクリプタから読み込む必要があるとき、
   関心のあるディスクリプタの一覧を作り、
   ディスクリプタの一つが入出力できるようになるまでブロックする
-- `poll(2)`
-- `pselect(2)`
-- `select(2)`
+  - `select(2)` / `pselect(2)` / `poll(2)`
+
+### `select(2)`
+```c
+#include <sys/select.h>
+
+int select(int                      maxfdp1, // 最大ファイルディスクリプタ + 1
+           fd_set         *restrict readfds,
+           fd_set         *restrict writefds,
+           fd_set         *restrict exceptfds,
+           struct timeval *restrict tvptr);
+
+// 入力値
+//   どのディスクリプタに関心があるのか
+//   各ディスクリプタのどのような状態に関心があるのか
+//   どの程度待つのか
+//
+//   fd_set - ディスクリプタセット
+
+// 出力値
+//   準備できたディスクリプタの個数の合計
+//   読み取り、書き出し、例外状態のどれでディスクリプタの準備ができているのか
+```
+
+### `poll(2)`
+```c
+#include <poll.h>
+
+int poll(struct polld fdarray[],
+         nfds_t       nfds,
+         int          timeout);
+
+// 入力値
+//   polld構造体の配列・要素数・待つ期間
+//     struct polld {
+//       int   fd;      // 検査するディスクリプタ
+//       short events;  // 待つイベント
+//       short revents; // 発生したイベント
+//     };
+
+// 出力値
+//   準備できたディスクリプタの個数の合計
+//   polld構造体のreventsメンバの変化
+```
