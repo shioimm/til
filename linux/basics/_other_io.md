@@ -90,3 +90,28 @@ int poll(struct polld fdarray[],
 //   準備できたディスクリプタの個数の合計
 //   polld構造体のreventsメンバの変化
 ```
+
+## POSIX非同期IO(AIO)
+- AIOによってアプリケーションは非同期に実行される入出力操作を一つ以上発行できる
+```c
+#include <aiocb.h>
+
+struct aiocb {
+    int             aio_fildes;     // ファイルディスクリプタ
+    off_t           aio_offset;     // 入出力のファイルオフセット
+    volatile void  *aio_buf;        // 入出力のバッファ
+    size_t          aio_nbytes;     // 転送バイト数
+    int             aio_reqprio;    // 優先度
+    struct sigevent aio_sigevent;   // シグナル情報
+    int             aio_lio_opcode; // 入出力のリストの操作
+};
+```
+- `aio_read(2)` - 非同期読み取り
+- `aio_write(2)` - 非同期書き込み
+- `aio_fsync(2)` - 保留中の全ての非同期入出力を遅延なく書き出す
+- `aio_error(2)` - 非同期IOの完了状態を調べる
+- `aio_return(2)` - 非同期IOの返り値を取得する
+- `aio_suspend(2)` - 非同期処理が未完の場合、完了するまでブロックする
+- `aio_cancel(2)` - 非同期処理をキャンセルを試みる
+- `aio_listio(2)` - AIO制御ブロックで記述した一連の入出力要求を発行
+
