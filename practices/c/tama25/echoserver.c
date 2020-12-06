@@ -1,7 +1,7 @@
-#include <stdio.h>      // perror
+#include <stdio.h>      // fgets / fprintf / perror / clearerr
 #include <stdlib.h>     // exit
-#include <string.h>     // memset / memmove
-#include <unistd.h>
+#include <string.h>     // memset / memmove / strlen
+#include <unistd.h>     // write / close
 #include <sys/socket.h> // socket / setsockopt / bind
 #include <netdb.h>      // gethostbyname / herror
 
@@ -9,11 +9,20 @@
 #define SERVER_PORT 12345
 #define NQUEUESIZE  5
 
+void rw(int sock)
+{
+  char msg[1024];
+  int  msg_len;
+
+  while ((msg_len = read(sock, msg, sizeof(msg))) > 0) {
+    write(sock, msg, msg_len);
+  }
+}
+
 int main ()
 {
-  int  listener;
-  int  reuse;
-  char msg[1024];
+  int                 listener;
+  int                 reuse;
   struct sockaddr_in  saddr;
   struct hostent     *hp;
 
@@ -30,17 +39,16 @@ int main ()
     exit(1);
   }
 
-  // ホスト名からIPアドレスへの変換
+  // ホスト名をIPアドレスへ変換
   if ((hp = gethostbyname(SERVER_NAME)) == NULL) {
     herror("gethostbyname(3)");
     exit(1);
   }
 
-  // アドレス設定
+  // 通信プロトコル・ポート・アドレスの設定
   memset(&saddr, 0, sizeof(saddr));
   saddr.sin_family = PF_INET;
   saddr.sin_port   = htons(SERVER_PORT);
-
   memmove(&saddr.sin_addr, hp->h_addr_list[0], sizeof(saddr.sin_addr));
   saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
@@ -55,9 +63,26 @@ int main ()
   }
 
   for (;;) {
-    // WIP
-    fgets(msg, sizeof(msg), stdin);
-    printf("%s", msg);
+    int                connection;
+    struct sockaddr_in caddr;
+    socklen_t          caddr_len = sizeof(caddr);
+
+    if ((connection = accept(listener, (struct sockaddr *)&caddr, &caddr_len)) < 0) {
+      perror("accept(2)");
+      exit(1);
+    }
+
+    rw(connection);
+
+    if (shutdown(connection, SHUT_RDWR) < 0) {
+      perror("shutdown(2)");
+      exit(1);
+    }
+
+    if (close(connection) < 0) {
+      perror("close(2)");
+      exit(1);
+    }
   }
 
   return 0;
