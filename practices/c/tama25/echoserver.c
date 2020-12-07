@@ -9,20 +9,10 @@
 #define SERVER_PORT 12345
 #define NQUEUESIZE  5
 
-void rw(int sock)
-{
-  char msg[1024];
-  int  msg_len;
-
-  while ((msg_len = read(sock, msg, sizeof(msg))) > 0) {
-    write(sock, msg, msg_len);
-  }
-}
-
 int main ()
 {
-  int                 listener;
-  int                 reuse;
+  int listener;
+  int reuse;
   struct sockaddr_in  saddr;
   struct hostent     *hp;
 
@@ -63,7 +53,9 @@ int main ()
   }
 
   for (;;) {
-    int                connection;
+    int  connection;
+    char msg[1024];
+    int  msgsize;
     struct sockaddr_in caddr;
     socklen_t          caddr_len = sizeof(caddr);
 
@@ -72,7 +64,9 @@ int main ()
       exit(1);
     }
 
-    rw(connection);
+    while ((msgsize = read(connection, msg, sizeof(msg))) > 0) {
+      write(connection, msg, msgsize);
+    }
 
     if (shutdown(connection, SHUT_RDWR) < 0) {
       perror("shutdown(2)");
