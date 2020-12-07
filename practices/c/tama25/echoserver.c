@@ -3,83 +3,94 @@
 #include <string.h>     // memset / memmove / strlen
 #include <unistd.h>     // write / close
 #include <sys/socket.h> // socket / setsockopt / bind
-#include <netdb.h>      // gethostbyname / herror
+#include <netdb.h>      // struct sockaddr_in / INADDR_ANY
 
 #define SERVER_NAME "localhost"
 #define SERVER_PORT 12345
 #define NQUEUESIZE  5
 
-void rw(int sock)
-{
-  char msg[1024];
-  int  msg_len;
-
-  while ((msg_len = read(sock, msg, sizeof(msg))) > 0) {
-    write(sock, msg, msg_len);
-  }
-}
-
 int main ()
 {
-  int                 listener;
-  int                 reuse;
-  struct sockaddr_in  saddr;
-  struct hostent     *hp;
+  // listen(2)
+  int listener;
 
   if ((listener = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
     perror("socket(2)");
     exit(1);
   }
 
-  reuse = 1;
-
   // アドレス再利用設定
+  int reuse = 1;
+
   if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
     perror("setsockopt(2)");
     exit(1);
   }
 
-  // ホスト名をIPアドレスへ変換
-  if ((hp = gethostbyname(SERVER_NAME)) == NULL) {
-    herror("gethostbyname(3)");
-    exit(1);
-  }
+  // アドレス設定
+  struct sockaddr_in saddr;
 
-  // 通信プロトコル・ポート・アドレスの設定
   memset(&saddr, 0, sizeof(saddr));
   saddr.sin_family = PF_INET;
   saddr.sin_port   = htons(SERVER_PORT);
-  memmove(&saddr.sin_addr, hp->h_addr_list[0], sizeof(saddr.sin_addr));
   saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
+  // bind(2)
   if (bind(listener, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
     perror("bind(2)");
     exit(1);
   }
 
+  // listen(2)
   if (listen(listener, NQUEUESIZE)) {
     perror("listen(2)");
     exit(1);
   }
 
   for (;;) {
-    int                connection;
+    // accept(2)
+    int                conn;
     struct sockaddr_in caddr;
     socklen_t          caddr_len = sizeof(caddr);
 
-    if ((connection = accept(listener, (struct sockaddr *)&caddr, &caddr_len)) < 0) {
+    if ((conn = accept(listener, (struct sockaddr *)&caddr, &caddr_len)) < 0) {
       perror("accept(2)");
       exit(1);
     }
 
-    rw(connection);
+    // read(2) / write(2)
+    char msg[1024];
+    int  readmsgsize;
+    int  fullmsgsize   = sizeof(msg);
+    char receivedmsg[] = "Request has been accepted:\n\n";
 
-    if (shutdown(connection, SHUT_RDWR) < 0) {
+    for (;;) {
+      readmsgsize = read(conn, msg, fullmsgsize);
+
+      if (readmsgsize == 0) {
+        break;
+      } else if (readmsgsize < 0) {
+        perror("read(2)");
+        exit(1);
+      }
+
+      write(conn, receivedmsg, sizeof(receivedmsg));
+      write(conn, msg, strlen(msg));
+      write(conn, "\n", 1);
+
+      if (readmsgsize <= fullmsgsize) {
+        break;
+      }
+    }
+
+    // shutdown(2)
+    if (shutdown(conn, SHUT_RDWR) < 0) {
       perror("shutdown(2)");
       exit(1);
     }
 
-    if (close(connection) < 0) {
+    // close(2)
+    if (close(conn) < 0) {
       perror("close(2)");
       exit(1);
     }
