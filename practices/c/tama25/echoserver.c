@@ -61,7 +61,8 @@ int main ()
     // read(2) / write(2)
     char msg[1024];
     int  readmsgsize;
-    int  fullmsgsize = sizeof(msg);
+    int  fullmsgsize   = sizeof(msg);
+    char receivedmsg[] = "Request has been accepted:\n\n";
 
     for (;;) {
       readmsgsize = read(conn, msg, fullmsgsize);
@@ -73,6 +74,7 @@ int main ()
         exit(1);
       }
 
+      write(conn, receivedmsg, sizeof(receivedmsg));
       write(conn, msg, strlen(msg));
       write(conn, "\n", 1);
 
