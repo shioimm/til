@@ -46,11 +46,25 @@
 - ソケットを作成した時点で相手となるプロセス(入出力する対象)は指定されない
 
 ### `bind(2)`
-- プロセスが紐づいているソケットに固有の名前をつける
+- プロセスが紐づいているソケットに固有のアドレスを対応づける
   - IPアドレス - ポート番号の組
   - 接続受け付け時、相手となるプロセスが送信先を決定する際に必要となる
-- `bind(2)`を呼ぶ前にソケット固有の名前のデータを作成する必要がある
-  - `sockaddr`構造体 - ソケット固有の名前のデータを保存する汎用アドレス構造体
+- クライアントリクエストが到着するサーバーのソケットには基地のアドレスをつける必要がある
+- `bind(2)`を呼ぶ前にソケット固有のアドレスのデータ(`sockaddr`構造体)を作成する必要がある
+  - プロセスが動くコンピュータにおいて正当なアドレス
+  - ソケットを作成したときのアドレスファミリで扱える形式のアドレス
+  - ポート番号が1024以上
+
+#### IPアドレス
+- `INADDR_ANY` (`<netinet/in.h>`)
+  - ソケット端点にシステム上のすべてのネットワークインターフェースを対応づけたマクロ
+  - システムに装着された任意のネットワークインターフェースからパケットを受け取る
+  - 自ホストが複数のIPアドレスを持っている場合、
+    どのアドレス宛て入力でもポート番号が合っていれば受け付ける
+    - ネットワークインターフェースにつけられているIPアドレス
+    - ループバックアドレス(自ホストのIPアドレス)
+- `getsockname(2)` - ソケットにつけられたアドレスを探す
+- `getpeername(2)` - 相手と接続されているソケットを通じて相手のアドレスを探索する
 
 ### サーバー: `listen(2)`
 - クライアントプロセスからの接続を受け付ける
@@ -123,7 +137,7 @@
 - サーバーソケット・クライアントソケットで同じ型の構造体を使用する
 
 ```c
-// sockaddr構造体 - 汎用アドレス構造体
+// sockaddr構造体 - ソケット固有のアドレスのデータを保存する汎用アドレス構造体
 
 struct sockaddr {
   sa_family_t sa_family; // アドレスファミリ
@@ -158,12 +172,74 @@ struct in_addr {
 - `inet_ntop(3)` - ネットワークバイトオーダーのバイナリアドレスをテキスト文字列に変換
 - `inet_pton(3)` - テキスト文字列をネットワークバイトオーダーのバイナリアドレスに変換
 
-#### IPアドレス
-- `INADDR_ANY`
-  - 自ホストが複数のIPアドレスを持っている場合、
-    どのアドレス宛て入力でもポート番号が合っていれば受け付ける
-    - ネットワークインターフェースにつけられているIPアドレス
-    - ループバックアドレス(自ホストのIPアドレス)
+### アドレス探索
+#### ネットワーク構成情報
+- ネットワーク構成情報は様々な場所に格納されうる
+  - `/etc/services` / `/etc/hosts`
+  - DNS
+  - NIS
+- `gethostent(3)` - 当該コンピュータシステムのホストデータベースファイルを取得
+
+```c
+struct hostent {
+  char  *h_name;      // ホスト名
+  char **h_aliases;   // ホスト別名配列へのポインタ
+  int    h_addtype;   // アドレス種別
+  int    h_length;    // アドレスのバイト長
+  char **h_addr_list; // ネットワークアドレスの配列へのポインタ
+};
+```
+
+- `getnetbyaddr(3)` - ネットワークの名前や番号を得る
+  - `gethostbyname(3)` / `gethostbyaddr(3)`の代わりに使用
+
+```c
+struct netent {
+  char      *n_name;     // ネットワーク名
+  char     **n_aliases;  // ネットワーク別名配列へのポインタ
+  int        n_addrtype; // アドレス種別
+  uint32_t   n_net;      // ネットワーク番号
+};
+```
+
+- `getprotobyname(3)` / `getprotobynumber(3)` / `getprotent(3)` - プロトコル名と番号のマップ
+
+```c
+struct protent {
+  char  *p_name;    // プロトコル名
+  char **p_aliases; // プロトコル別名配列へのポインタ
+  int    p_proto;   // プロトコル番号
+};
+```
+
+- `getservbyname(3)` / `getservbyport` / `getservent` - サービス名とポート番号のマップ
+
+```c
+struct servent {
+  char  *s_name;    // サービス名
+  char **s_aliases; // サービス別名配列へのポインタ
+  int    s_port;    // ポート番号
+  char  *s_proto;   // プロトコル名
+};
+```
+
+- `getaddrinfo(3)` - ホスト名とサービス名をアドレスにマップする
+  - アドレスの情報を格納する`addrinfo`構造体の連結リストを返す
+
+```c
+struct addrinfo {
+  int             ai_flags;      // 振る舞いをcッホウ生
+  int             ai_family;     // アドレスファミリ(AF_UNSPEC)
+  int             ai_socktype;   // ソケットの型
+  int             ai_protocol;   // プロトコル
+  socklen_t       ai_addrlen;    // アドレスのバイト長
+  struct sockaddr *ai_addr;      // sockaddr構造体(ソケットアドレス)へのポインタ
+  char            *ai_canonname; // 正規ホスト名
+  struct addrinfo *ai_next;      // アドレスリンクリストの次の要素
+};
+```
+
+- `getnameinfo(3)` - アドレスをホスト名とサービス名に変換する
 
 ## 並行サーバー
 ### マルチプロセス
@@ -214,14 +290,3 @@ struct  hostent {
 
 ## プロトコル独立
 - 特定のプロトコル(アドレスファミリ)に依存しない実装
-- `getaddrinfo(3)` - アドレスの情報を格納する`addrinfo`構造体型のリストを得る
-```c
-// addrinfo構造体
-
-struct addrinfo {
-  int             ai_family;     // アドレスファミリ(AF_UNSPEC)
-  int             ai_socktype;   // ソケットの型
-  struct sockaddr *ai_addr;      // sockaddr構造体(ソケットアドレス)へのポインタ
-  struct addrinfo *ai_next;      // アドレスリンクリストの次の要素
-};
-```
