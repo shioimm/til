@@ -262,7 +262,7 @@ struct servent {
 
 ```c
 struct addrinfo {
-  int             ai_flags;      // 振る舞いをcッホウ生
+  int             ai_flags;      // 振る舞いを指定
   int             ai_family;     // アドレスファミリ(AF_UNSPEC)
   int             ai_socktype;   // ソケットの型
   int             ai_protocol;   // プロトコル
@@ -274,6 +274,62 @@ struct addrinfo {
 ```
 
 - `getnameinfo(3)` - アドレスをホスト名とサービス名に変換する
+
+### プロトコル独立な実装
+- 特定のアドレスファミリに依存しない実装
+
+```c
+// 参照: 例解UNIX/Linuxプログラミング教室P320
+
+#include <sys/types.h>  // socket, connect, read, write, freeaddrinfo, getaddrinfo, gai_strerror
+#include <sys/socket.h> // socket, connect, shutdown, freeaddrinfo, getaddrinfo, gai_strerror
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>     // memset
+#include <sys/uio.h>    // read, write
+#include <unistd.h>     // close, read, write
+#include <netdb.h>      // reeaddrinfo, getaddrinfo, gai_strerror
+
+char *httpreq = "GET / HTTP/1.0 \r\n\r\n";
+
+int main()
+{
+  int             s, cc;
+  struct addrinfo hints, *addrs;
+  char            buf[1024];
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family   = AF_UNSPEC;   // アドレスファミリの規定なし
+  hints.ai_socktype = SOCK_STREAM; // コネクション型バイトストリーム
+
+  if ((cc = getaddrinfo("localhost", "http", &hints, &addrs)) != 0) {
+    fprintf(stderr, "getaddrinfo' %s\n", gai_strerror(cc));
+  }
+
+  if ((s = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0) {
+    perror("socket");
+    exit(1);
+  }
+
+  if (connect(s, addrs->ai_addr, addrs->ai_addrlen) < 0) {
+    perror("connect");
+    exit(1);
+  }
+
+  freeaddrinfo(addrs);
+
+  write(s, httpreq, strlen(httpreq));
+
+  while ((cc = read(s, buf, sizeof(buf))) > 0) {
+    write(1, buf, cc);
+  }
+
+  shutdown(s, SHUT_RDWR);
+  close(s);
+
+  return 0;
+}
+```
 
 ## 並行サーバー
 ### マルチプロセス
@@ -321,9 +377,6 @@ struct  hostent {
 // NO_RECOVERY    検索中のエラー
 // TRY_AGAIN      要再試行
 ```
-
-## プロトコル独立
-- 特定のプロトコル(アドレスファミリ)に依存しない実装
 
 ## ソケットオプション
 ### 種類
