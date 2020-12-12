@@ -262,7 +262,7 @@ struct servent {
 
 ```c
 struct addrinfo {
-  int             ai_flags;      // 振る舞いをcッホウ生
+  int             ai_flags;      // 振る舞いを指定
   int             ai_family;     // アドレスファミリ(AF_UNSPEC)
   int             ai_socktype;   // ソケットの型
   int             ai_protocol;   // プロトコル
@@ -274,6 +274,62 @@ struct addrinfo {
 ```
 
 - `getnameinfo(3)` - アドレスをホスト名とサービス名に変換する
+
+### プロトコル独立な実装
+- 特定のアドレスファミリに依存しない実装
+
+```c
+// 参照: 例解UNIX/Linuxプログラミング教室P320
+
+#include <sys/types.h>  // socket, connect, read, write, freeaddrinfo, getaddrinfo, gai_strerror
+#include <sys/socket.h> // socket, connect, shutdown, freeaddrinfo, getaddrinfo, gai_strerror
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>     // memset
+#include <sys/uio.h>    // read, write
+#include <unistd.h>     // close, read, write
+#include <netdb.h>      // reeaddrinfo, getaddrinfo, gai_strerror
+
+char *httpreq = "GET / HTTP/1.0 \r\n\r\n";
+
+int main()
+{
+  int             s, cc;
+  struct addrinfo hints, *addrs;
+  char            buf[1024];
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family   = AF_UNSPEC;   // アドレスファミリの規定なし
+  hints.ai_socktype = SOCK_STREAM; // コネクション型バイトストリーム
+
+  if ((cc = getaddrinfo("localhost", "http", &hints, &addrs)) != 0) {
+    fprintf(stderr, "getaddrinfo' %s\n", gai_strerror(cc));
+  }
+
+  if ((s = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0) {
+    perror("socket");
+    exit(1);
+  }
+
+  if (connect(s, addrs->ai_addr, addrs->ai_addrlen) < 0) {
+    perror("connect");
+    exit(1);
+  }
+
+  freeaddrinfo(addrs);
+
+  write(s, httpreq, strlen(httpreq));
+
+  while ((cc = read(s, buf, sizeof(buf))) > 0) {
+    write(1, buf, cc);
+  }
+
+  shutdown(s, SHUT_RDWR);
+  close(s);
+
+  return 0;
+}
+```
 
 ## 並行サーバー
 ### マルチプロセス
@@ -322,5 +378,46 @@ struct  hostent {
 // TRY_AGAIN      要再試行
 ```
 
-## プロトコル独立
-- 特定のプロトコル(アドレスファミリ)に依存しない実装
+## ソケットオプション
+### 種類
+- 全てのソケット種別に適用できる汎用オプション
+- 下位プロコトルに依存し、ソケットレベルで管理されるオプション
+- 個々のプロトコル特有のオプション
+
+### オプションを設定する
+- `setsockopt(2)` - ソケットオプションの設定
+  - プロトコルの識別
+  - オプションのON/OFF
+
+### オプションの状態を問い合わせる
+- `getsockopt(2)` - オプションの現在値を取得
+
+## 優先配送データ
+- 通常よりも高い優先度で配送できるオプション
+- 転送のためにキューに入っているデータに先駆けて配送される
+- TCPのみ
+- `send`関数群にフラグ`MSG_OOB`を指定すると緊急データ扱いになる
+  - シグナル`SIGURG`を配送する
+- 現在ある緊急データを読み取る前に別に緊急データが到着すると
+  現在の緊急データは破棄される
+
+### 緊急マーク
+- データストリームの中で緊急データが占める位置
+  - ソケットオプション`SO_OOBINLINE`で通常データに埋め込まれた
+    緊急データを受け取ることができる
+
+## 非ブロック / 非同期入出力
+- 入出力できるデータがない場合、ソケットは処理をブロックする
+- ソケットを非ブロックモードにすると、ブロックせず`errno`に`EWOULDBLOCK` / `EAGAIN`を設定する
+  - `poll(2)` / `select(2)`でデータの送受信ができるタイミングを判定する
+
+### 非同期入出力
+- ソケットからデータを読み取れるようになった時
+  あるいはソケットの出力キューに空きができた時
+  シグナル`SIGIO`を送る
+  - 適切なプロセスにシグナルが配送されるよう、ソケットの所有者を設定する必要がある
+    - `fcntl(2)`にコマンド`F_SETOWN` / `FIOSETOWN`を使用
+    - `ioctl(2)`にコマンド`SIOCSPGRP`を使用
+  - 入出力操作がブロックしない時にシグナルを送るよう、ソケットに指示する必要がある
+    - `fcntl(2)`にコマンド`F_SETFL`を使いファイルフラグ`O_ASYNC`を有効化
+    - `ioctl(2)`にコマンド`FIOASYNCを使用`
