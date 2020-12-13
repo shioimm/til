@@ -58,8 +58,8 @@ int main ()
   for (;;) {
     // accept(2)
     int                conn;
-    struct sockaddr_in caddr;
-    socklen_t          caddr_len = sizeof(caddr);
+    struct sockaddr_storage caddr;
+    socklen_t                caddr_len = sizeof(caddr);
 
     if ((conn = accept(listener, (struct sockaddr *)&caddr, &caddr_len)) < 0) {
       perror("accept(2)");
