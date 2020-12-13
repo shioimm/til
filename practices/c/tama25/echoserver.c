@@ -2,8 +2,9 @@
 #include <stdlib.h>     // exit
 #include <string.h>     // memset / memmove / strlen
 #include <unistd.h>     // write / close
-#include <sys/socket.h> // socket / setsockopt / bind
-#include <netdb.h>      // struct sockaddr_in / INADDR_ANY
+#include <sys/socket.h> // ソケット
+#include <netdb.h>      // getaddrinfo
+#include <sys/types.h>  // getaddrinfo
 
 #define SERVER_NAME "localhost"
 #define SERVER_PORT 12345
@@ -11,10 +12,23 @@
 
 int main ()
 {
+  // アドレス設定
+  struct addrinfo hints, *res;
+  int addrinfoerr;
+
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+
+  if ((addrinfoerr = getaddrinfo(NULL, "12345", &hints, &res)) < 0) {
+    gai_strerror(addrinfoerr);
+  }
+
   // listen(2)
   int listener;
 
-  if ((listener = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+  if ((listener = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0) {
     perror("socket(2)");
     exit(1);
   }
@@ -27,19 +41,13 @@ int main ()
     exit(1);
   }
 
-  // アドレス設定
-  struct sockaddr_in saddr;
-
-  memset(&saddr, 0, sizeof(saddr));
-  saddr.sin_family = PF_INET;
-  saddr.sin_port   = htons(SERVER_PORT);
-  saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
   // bind(2)
-  if (bind(listener, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
+  if (bind(listener, res->ai_addr, res->ai_addrlen) < 0) {
     perror("bind(2)");
     exit(1);
   }
+
+  freeaddrinfo(res);
 
   // listen(2)
   if (listen(listener, NQUEUESIZE)) {
