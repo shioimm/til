@@ -172,6 +172,7 @@ struct msghdr {
 
 ```c
 // sockaddr構造体 - ソケット固有のアドレスのデータを保存する汎用アドレス構造体
+// 16バイト
 
 struct sockaddr {
   sa_family_t sa_family; // アドレスファミリ
@@ -181,6 +182,7 @@ struct sockaddr {
 
 ```c
 // sockaddr_in構造体 - TCP(IPv4)を使用する際に使用するsockaddr構造体
+// 16バイト
 
 struct sockaddr_in {
   sa_family_t    sin_family;  // アドレスファミリ(AF_INET)
@@ -188,7 +190,7 @@ struct sockaddr_in {
   struct in_addr sin_addr;    // IPv4アドレス(INADDR_ANY)
 };
 
-// INET6領域のアドレスファミリを使用する場合はsockaddr_in6構造体
+// INET6領域のアドレスファミリを使用する場合はsockaddr_in6構造体(28バイト)
 // UNIX領域のアドレスファミリを使用する場合はsockaddr_un構造体を使用する
 ```
 
@@ -205,6 +207,15 @@ struct in_addr {
 ```
 - `inet_ntop(3)` - ネットワークバイトオーダーのバイナリアドレスをテキスト文字列に変換
 - `inet_pton(3)` - テキスト文字列をネットワークバイトオーダーのバイナリアドレスに変換
+
+```c
+// 受信時にバイト数が不明の場合
+// 128バイト
+
+struct sockaddr_storage {
+  sa_family_t ss_family; // アドレスファミリ
+};
+```
 
 ### アドレス探索
 #### ネットワーク構成情報
@@ -261,6 +272,8 @@ struct servent {
   - アドレスの情報を格納する`addrinfo`構造体の連結リストを返す
 
 ```c
+// 48バイト
+
 struct addrinfo {
   int             ai_flags;      // 振る舞いを指定
   int             ai_family;     // アドレスファミリ(AF_UNSPEC)
