@@ -1,4 +1,4 @@
-# Utility
+# Utils
 ## System Specでよく使うメソッド
 ### 操作系
 - `visit`
@@ -20,7 +20,7 @@ end
 ```
 
 ### マッチャ系
-- `have_content / `have_no_content``
+- `have_content` / `have_no_content`
 - `have_selector`
 - `change`
 - `have_enqueued_job`
