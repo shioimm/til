@@ -50,7 +50,7 @@ $ which ruby
 
 ```
 # コマンド探索パスに/usr/local/bin(※コマンド実行ファイルのインストール先)を追加
-echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
+$ echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 ```
 
 ## `bin`がつくコマンドとつかないコマンドの違い
