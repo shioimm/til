@@ -1,5 +1,8 @@
 # cURL
-### ログインしてPOSTでデータを送信したい(Rails)
+## オプション
+- `-o` - 引数としてファイル名を渡し、当該ファイル名にて`cURL`の返り値を保存
+
+## ログインしてPOSTでデータを送信したい(Rails)
 ```shell
 : ログインする
 curl -X POST https://example.com/sign_in \ : メソッドとログイン先の指定
