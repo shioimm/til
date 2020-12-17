@@ -4,16 +4,15 @@
 - 参照: [rbenv + ruby-build はどうやって動いているのか](https://takatoshiono.hatenablog.com/entry/2015/01/09/012040)
 
 ### パス
-#### 例: `ruby`コマンド
-- `ruby`コマンドは.rbenv/shims以下にシンボリックリンクとして存在している
+- `ruby`コマンドは`.rbenv/shims`以下にシンボリックリンクとして存在している
 ```
-❯❯❯ which ruby
+$ sudo which ruby
 /.rbenv/shims/ruby
 ```
 
 - rbenvは、shimをコマンド検索パスの先頭に挿入する
 ```
-❯❯❯ echo $PATH
+$ echo $PATH
 /usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
 
 # この場合、.rbenv/shimsは次のようにパスに追加されている
@@ -26,45 +25,39 @@ eval "$(rbenv init -)"
 ```
 
 ### 実行
-- rubyコマンドは下記のように実行される
-  - rubyコマンドの実行可能ファイルが探索される
+- `ruby`コマンドは下記のように実行される
+  - `ruby`コマンドの実行可能ファイルが探索される
   - コマンド検索パスの先頭にあるrbenv shimが見つかる
-  - rubyという名前のshimを実行し、rbenvにコマンドを渡す
+  - `ruby`という名前のshimを実行し、`rbenv`にコマンドを渡す
 
-### バージョン
-- Rubyバージョンは次の優先順に指定されている
-  - 1.RBENV_VERSION環境変数で指定されたバージョン
-    - rbenvシェルコマンドを使用して、現在のシェルセッションでこの環境変数を設定することができる
-  - 2.最初に見つかった.ruby-versionに記述されているバージョン
-    - 実行中のスクリプトのディレクトリと、その各親ディレクトリからファイルシステムのルートまで検索した際に見つかった順
-    - `rbenv local`コマンドによって現在のディレクトリにruby-versionファイルを作成することができる
-  - 4.~/.rbenv/versionで指定されたバージョン。
-    - `rbenv global`コマンドによって変更できる
-    - ~/.rbenv/versionが存在しない場合、rbenvは「システム」Ruby(rbenvがパスにない場合に実行されるバージョン)を使用する
-
-- 各Rubyのバージョンは、~/.rbenv/versions以下にインストールされる
+### バージョン探索優先順
+- (1) `RBENV_VERSION`環境変数で指定されたバージョン
+  - rbenvシェルコマンドを使用して、現在のシェルセッションでこの環境変数を設定することができる
+- (2) 最初に見つかった`.ruby-version`に記述されているバージョン
+  - 実行中のスクリプトのディレクトリと、その各親ディレクトリからファイルシステムのルートまで検索した際に見つかった順
+  - `$ rbenv local`コマンドによって現在のディレクトリにruby-versionファイルを作成することができる
+- (3) `~/.rbenv/version`で指定されたバージョン
+  - `$ rbenv global`コマンドによって変更できる
+  - `~/.rbenv/version`が存在しない場合、
+    rbenvはシステムRuby(rbenvがパスにない場合に実行されるバージョン)を使用する
+- Rubyの各バージョンは、`~/.rbenv/versions`以下にインストールされる
 
 ### rbenvのインストール先
-- homebrewを使用した場合、以下の場所にインストールされる
-  - rbenv は /usr/local/Cellar/rbenv/バージョン番号
-  - ruby-build は /usr/local/Cellar/ruby-build/バージョン番号(年月日)
+- Homebrewを使用した場合、 rbenvは`/usr/local/Cellar/rbenv/バージョン番号`
 
 ### プラグイン
-- rbenv のコマンドはプラグイン方式になっている
-- プラグインは~/.rbenv/pluginsに配置される
+- `rbenv`のコマンドはプラグイン方式になっている
+- プラグインは`~/.rbenv/plugins/`以下に配置される
 
 #### ruby-build
 - [ruby-build](http://ruby.studio-kingdom.com/rbenv/ruby_build/)
 - `rbenv install`コマンドを提供するプラグイン
 ```
-# Installation
-$ brew install ruby-build
-
-# Homebrewではなく直接/pluginsディレクトリ以下にソースコードをpullする
+# /pluginsディレクトリ以下にソースコードをpullする
 $ mkdir -p "$(rbenv root)"/plugins
 $ cd "$(rbenv root)/plugins"; git clone https://github.com/rbenv/ruby-build.git
 
-# Upgrading
+# 新しいRubyバージョンをpull
 $ git pull --rebase
 ```
 
