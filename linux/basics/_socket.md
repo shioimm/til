@@ -235,8 +235,7 @@ struct hostent {
 };
 ```
 
-- `getnetbyaddr(3)` - ネットワークの名前や番号を得る
-  - `gethostbyname(3)` / `gethostbyaddr(3)`の代わりに使用
+- `getnetbyaddr(3)` - ホスト名ではなくネットワーク名からネットワークアドレスを得る
 
 ```c
 struct netent {
@@ -269,7 +268,9 @@ struct servent {
 ```
 
 - `getaddrinfo(3)` - ホスト名とサービス名をアドレスにマップする
+- `getnameinfo(3)` - アドレスをホスト名とサービス名に変換する
   - アドレスの情報を格納する`addrinfo`構造体の連結リストを返す
+  - プロトコルファミリに依存しないため、`gethostbyname(3)`に代わって使用される
 
 ```c
 // 48バイト
@@ -284,9 +285,11 @@ struct addrinfo {
   char            *ai_canonname; // 正規ホスト名
   struct addrinfo *ai_next;      // アドレスリンクリストの次の要素
 };
-```
 
-- `getnameinfo(3)` - アドレスをホスト名とサービス名に変換する
+// ai_flagsにAI_PASSIVEを指定することで
+// INADDR_ANY / inaddr6anyの切り分けや
+// sockaddr_in構造体 / sockaddr_in6構造体の切り分けが不要になる
+```
 
 ### プロトコル独立な実装
 - 特定のアドレスファミリに依存しない実装
@@ -374,6 +377,7 @@ int main()
 
 ## ホスト名からIPアドレスへの変換
 - `gethostbyname(3)` - 指定したホスト名をIPアドレスに変換し`hostent`構造体へのポインタを返す
+  - IPv4の名前解決しかできない
 ```c
 // hostent構造体
 struct  hostent {
