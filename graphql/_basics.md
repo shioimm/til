@@ -62,3 +62,12 @@ type Person {
 - 強い型付け
 - クライアントごとのクエリ
 - 自己参照
+
+## GraphQLクライアント
+- [Relay](https://facebook.github.io/relay/)
+  - Facebookによる実装
+  - ReactコンポーネントとGraphQLサーバーから取得したデータを結びつけることを目的とする
+- [Apollo](https://www.apollographql.com/)
+  - Meteorの開発グループが開発
+  - Apolloクライアントはすべてのメジャーなフロントエンドのプラットフォームとフレームワークをサポートしている
+  - バックエンドのパフォーマンス向上ツールやAPIのパフォーマンスのモニタリングツールも提供している
