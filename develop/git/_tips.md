@@ -27,3 +27,5 @@ $ git push -f origin/dependabot/bundler/xxxx
 [core]
   excludesfile = ~/.gitignore
 ```
+- `git`コマンドが使える全てのディレクトリに対してignoreする対象のファイルを指定できる
+  - Ex. `.DS_Store` / `tags` / `.envrc`
