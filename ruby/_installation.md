@@ -58,8 +58,15 @@ $ mkdir -p "$(rbenv root)"/plugins
 $ cd "$(rbenv root)/plugins"; git clone https://github.com/rbenv/ruby-build.git
 
 # 新しいRubyバージョンをpull
+$ cd "$(rbenv root)/plugins/ruby-build"
 $ git pull --rebase
 ```
+
+- `$ rbenv global x.x.x`でバージョンが切り替わらない場合:
+  - `$ rbenv rehash`
+  - シェルを再起動
+  - `$ rbenv version`
+    -> `set by`で`.ruby-version`が設定されている場合、バージョンの書き換えが必要
 
 ## gemコマンド
 ### `$ gem env`
