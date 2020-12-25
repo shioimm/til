@@ -57,11 +57,19 @@ type Person {
 ```
 
 ## 設計原則
+- [GraphQL 設計に関するガイドライン](http://spec.graphql.org/June2018/#sec-Overview)
 - 階層構造
 - プロダクト中心
 - 強い型付け
 - クライアントごとのクエリ
 - 自己参照
+
+## 統合開発環境
+- ブラウザ上で利用できるGraphQL APIのための統合開発環境
+- GraphiQL
+  - [GitHub - graphql/graphiql: GraphiQL & the GraphQL LSP Reference Ecosystem for building browser & IDE tools.](https://github.com/graphql/graphiql)
+- GraphQL Playground
+  - [GraphQL Playground](https://www.graphqlbin.com/v2/new)
 
 ## GraphQLクライアント
 - [Relay](https://facebook.github.io/relay/)
@@ -71,3 +79,7 @@ type Person {
   - Meteorの開発グループが開発
   - Apolloクライアントはすべてのメジャーなフロントエンドのプラットフォームとフレームワークをサポートしている
   - バックエンドのパフォーマンス向上ツールやAPIのパフォーマンスのモニタリングツールも提供している
+
+## 型定義の自動生成
+- [GraphQL Code Generator | GraphQL Code Generator](https://graphql-code-generator.com/)
+  - Typescriptのために型定義を自動生成する
