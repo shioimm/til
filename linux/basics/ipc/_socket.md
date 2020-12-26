@@ -213,8 +213,11 @@ struct in_addr {
 // 128バイト
 
 struct sockaddr_storage {
-  sa_family_t ss_family; // アドレスファミリ
+  sa_family_t ss_family;   // アドレスファミリ
+  char        sa_data[14]; // 任意のデータ
 };
+
+// 任意のsockaddr構造体(sockaddr_in / sockaddr_in6)を格納できる入れ物として機能する
 ```
 
 ### アドレス探索
