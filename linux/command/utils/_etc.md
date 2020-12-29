@@ -145,6 +145,11 @@ $ swapon /swapfile # 確保した領域を使用
 /swapfile swap swap defaults 0 0
 ```
 
+### 指定のCPUでプログラムを実行
+```
+$ taskset -c CPU番号 実行するプログラム
+```
+
 ### マニュアル
 ```
 $ man 1 xxx # コマンド
