@@ -19,16 +19,13 @@ class Fork
 
       pid = fork do
         begin
-          loop do
-            msg = conn.read_nonblock(1024)
+          msg = conn.readpartial(1024)
 
-            puts "Client requests: #{msg.split("\r\n").first}"
+          puts "Client requests: #{msg.split("\r\n").first}"
 
-            conn.puts '-- Server received the request message --'
-            conn.puts "\r\n"
-            conn.puts msg
-          end
-        rescue Errno::EAGAIN
+          conn.puts '-- Server received the request message --'
+          conn.puts "\r\n"
+          conn.puts msg
         ensure
           conn.shutdown if conn
         end
