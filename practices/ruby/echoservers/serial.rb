@@ -15,16 +15,21 @@ class Serial
 
   def run
     loop do
-      begin
-        conn = listener.accept
+      conn = listener.accept
 
+      begin
         loop do
           msg = conn.read_nonblock(1024)
+
+          puts "Client requests: #{msg.split("\r\n").first}"
+
+          conn.puts '-- Server received the request message --'
+          conn.puts "\r\n"
           conn.puts msg
         end
       rescue Errno::EAGAIN
       ensure
-        conn.close if conn
+        conn.shutdown if conn
       end
     end
   end
