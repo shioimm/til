@@ -1,41 +1,98 @@
 # 設定
 - 参照: nginx実践ガイド
+- 参照: [nginx連載3回目: nginxの設定、その1](https://heartbeats.jp/hbblog/2012/02/nginx03.html#more)
 
-## `/etc/nginx/nginx.conf`
+## 概観
 ```
-# mainコンテキスト(全体の設定)
-user  nginx;         # workerが動作するユーザー名
-worker_processes  1; # workerプロセス数の設定 autoに設定するとコア数と同数のプロセスを起動する
+# /etc/nginx/nginx.conf
 
-error_log  /var/log/nginx/error.log warn; # エラーログの出力先とログレベル
-pid        /var/run/nginx.pid;            # プロセスIDを記述したファイルの配置先
+coreモジュールの設定(mainコンテキスト)
 
-# eventsコンテキスト
-# イベントループ関連の設定
 events {
-  worker_connections  1024; # 一つのworkerプロセスが同時に受け付けられる接続数
+  eventモジュールの設定
 }
 
-# httpコンテキスト
-# Webサーバー全体の設定
 http {
-  include       /etc/nginx/mime.types; # mime.typesファイルの読み込み
-  default_type  application/octet-stream;
+  httpモジュールの設定
+  server {
+    サーバ毎の設定
 
-  log_format  main  '$remote_addr - $remote_user [$time_local] "$request" ' # ログフォーマットの定義
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
+    location PATH {
+      URI毎の設定
+    }
+    location PATH {
+      URI毎の設定
+    }
+   ...
+  }
+  ...
+}
 
-  access_log  /var/log/nginx/access.log  main; # アクセスログの出力先とログフォーマットの指定
+mail {
+  mailモジュールの設定
+}
+```
 
-  sendfile        on; # ファイルの送信方法を指定(性能向上)
-  #tcp_nopush     on;
+##  mainコンテキスト(全体の設定)
+```
+# workerプロセスの実行権限ユーザー名
+user nginx;
 
-  keepalive_timeout  65; # Keep-Aliveのサーバー側のタイムアウト時間を指定
+# workerのプロセス数
+# autoに設定するとコア数と同数のプロセスを起動する
+worker_processes 1;
 
-  #gzip  on;
+# エラーログの出力先とログレベル
+error_log /var/log/nginx/error.log warn;
 
-  include /etc/nginx/conf.d/*.conf; # 設定ファイルの読み込み
+# masterプロセスのプロセスIDを保存するファイル
+pid /var/run/nginx.pid;
+```
+
+## eventsコンテキスト
+```
+# イベントループ関連の設定
+
+events {
+  # 一つのworkerプロセスが同時に受け付けられる接続数
+  worker_connections 1024;
+}
+```
+
+## httpコンテキスト
+```
+# Webサーバー全体の設定
+
+http {
+  # mime.typesファイルの読み込み
+  include /etc/nginx/mime.types;
+
+  # レスポンスのデフォルトのMIMEタイプ
+  default_type application/octet-stream;
+
+  # ログフォーマットの定義
+  log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                  '$status $body_bytes_sent "$http_referer" '
+                  '"$http_user_agent" "$http_x_forwarded_for"';
+
+  # アクセスログの出力先とログフォーマットの指定
+  access_log /var/log/nginx/access.log main;
+
+  # コンテンツのファイルの読み込みとクライアントへのレスポンスの送信にsendfile APIを使うか
+  sendfile on;
+
+  # sendfileが有効なとき、TCP_CORKソケットオプションを使うか
+  # レスポンスヘッダとファイルの内容をまとめて送るようになる
+  tcp_nopush on;
+
+  # Keep-Aliveのサーバー側のタイムアウト秒数を指定
+  keepalive_timeout 65;
+
+  # レスポンスのコンテンツを圧縮するか
+  gzip  on;
+
+  # バーチャルサーバーの読み込み
+  include /etc/nginx/conf.d/*.conf;
 }
 
 # その他事項
@@ -44,18 +101,27 @@ http {
 ```
 
 ### `/etc/nginx/conf.d/*.conf`
-- バーチャルホストの設定
+- バーチャルサーバーの設定
 ```
 server {
-  listen 80;                 # listenするポート番号の設定
-  server_name *.example.com; # バーチャルホストのサーバーのホスト名
+  # listenするポート番号の設定
+  listen 80;
+
+  # バーチャルホストのサーバーのホスト名
+  server_name *.example.com;
+
   access_log /var/log/nginx/access.log;
   error_log /var/log/nginx/error.log;
 
   location / { # パス名に対応するコンテキスト
-    root /www/dir;    # ドキュメントルート
-    index index.html; # ディレクトリにアクセスした際にレスポンスとして使用されるファイル名
-    limit_exept GET POST { # GET/POST以外のHTTPメソッドにアクセス制限をかける
+    # ドキュメントルート
+    root /www/dir;
+
+    # ディレクトリにアクセスした際にレスポンスとして使用されるファイル名
+    index index.html;
+
+    limit_exept GET POST {
+      # GET/POST以外のHTTPメソッドにアクセス制限をかける
       deny all;
     }
   }
