@@ -1,6 +1,8 @@
 require 'socket'
 
-class Fork
+class ProcessBased
+  DATA_SIZE = 1024
+
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
 
@@ -19,7 +21,7 @@ class Fork
 
       pid = fork do
         begin
-          msg = conn.readpartial(1024)
+          msg = conn.readpartial(DATA_SIZE)
 
           puts "Client requests: #{msg.split("\r\n").first}"
 
@@ -27,7 +29,7 @@ class Fork
           conn.puts "\r\n"
           conn.puts msg
         ensure
-          conn.shutdown if conn
+          conn.shutdown
         end
       end
 
@@ -41,5 +43,5 @@ end
 HOST = 'localhost'
 PORT = 12345
 
-server = Fork.new(HOST, PORT)
+server = ProcessBased.new(HOST, PORT)
 server.run

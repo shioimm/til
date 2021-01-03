@@ -1,6 +1,8 @@
 require 'socket'
 
 class Serial
+  DATA_SIZE = 1024
+
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
 
@@ -18,7 +20,7 @@ class Serial
       conn = listener.accept
 
       begin
-        msg = conn.readpartial(1024)
+        msg = conn.readpartial(DATA_SIZE)
 
         puts "Client requests: #{msg.split("\r\n").first}"
 
@@ -26,7 +28,7 @@ class Serial
         conn.puts "\r\n"
         conn.puts msg
       ensure
-        conn.shutdown if conn
+        conn.shutdown
       end
     end
   end
