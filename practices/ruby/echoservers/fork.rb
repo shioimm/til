@@ -1,6 +1,6 @@
 require 'socket'
 
-class Serial
+class Fork
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
 
@@ -17,17 +17,21 @@ class Serial
     loop do
       conn = listener.accept
 
-      begin
-        msg = conn.readpartial(1024)
+      pid = fork do
+        begin
+          msg = conn.readpartial(1024)
 
-        puts "Client requests: #{msg.split("\r\n").first}"
+          puts "Client requests: #{msg.split("\r\n").first}"
 
-        conn.puts '-- Server received the request message --'
-        conn.puts "\r\n"
-        conn.puts msg
-      ensure
-        conn.shutdown if conn
+          conn.puts '-- Server received the request message --'
+          conn.puts "\r\n"
+          conn.puts msg
+        ensure
+          conn.shutdown if conn
+        end
       end
+
+      Process.detach pid
     end
   end
 
@@ -37,5 +41,5 @@ end
 HOST = 'localhost'
 PORT = 12345
 
-server = Serial.new(HOST, PORT)
+server = Fork.new(HOST, PORT)
 server.run

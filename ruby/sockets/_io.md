@@ -9,21 +9,28 @@
 ## 読み込み(`read(2)`)
 ### `#read`
 - `read(length = nil, outbuf = "")` -> String | nil
-  - 指定したサイズのデータを読み込む
-    - データが指定したサイズに満たない場合、処理がブロックされる
+  - 遅延的な読み込み処理
   - サイズを指定しない場合、EOFまで読み込む
     - EOFがない場合、処理がブロックされる
+  - `length`を指定する場合、`length`バイトを下限としてデータを読み込む
+    - データが`length`バイトに満たない場合、処理がブロックされる
+    - データが`length`バイトに満たない場合、ブロックを回避する方法は以下のどちらか
+      (1) クライアントがデータを送信した後にEOFを送信する
+      (2) サーバーが`read`の代わりに`readpartial`を使用する
 
 ### `#readpartial`
 - `readpartial(maxlen, outbuf = "")` -> String
-  - 指定したサイズを上限としてデータを読み込む
-    - データが指定したサイズに満たない場合、読み込める限りのデータを読み込む
+  - 先読み的な読み込み処理
+  - `maxlen`バイトを上限としてデータを読み込む
+    - データが`length`バイトに満たない場合、読み込める限りのデータを読み込む
+    - データがEOFに達した場合、EOFErrorを投げる
+    - 一般的な読み込みサイズは`16 * 1024`バイト(Puma、Unicorn、Net::HTTP)
 
 ### `#read_nonblock`
 - `read_nonblock(maxlen, outbuf = nil, exception: true)` -> String | Symbol | nil
-  - IOをノンブロッキングモードに設定し、指定したサイズを上限としてデータを読み込む
-    - データが指定したサイズに満たない場合、読み込める限りのデータを読み込む
-    - データが送信されていない場合、`Errno::EAGAIN`を返す -> `IO.select` -> `retry` させる
+  - IOをノンブロッキングモードに設定し、`length`バイトを上限としてデータを読み込む
+    - データが`length`バイト満たない場合、読み込める限りのデータを読み込む
+    - データが読み込めない場合、`Errno::EAGAIN`を返す -> `retry` させる
   - `Errno::EAGAIN` / `Errno::EWOULDBLOCK`が発生した場合
     例外オブジェクトに対して`IO::WaitReadable`が`extend`される
 
