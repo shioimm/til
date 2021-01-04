@@ -1,12 +1,16 @@
 # class Thread::Mutex
 - [class Thread::Mutex](https://docs.ruby-lang.org/ja/2.7.0/class/Thread=3a=3aMutex.html) - ミューテックス
 
-```ruby
-xxx = XXX.new
-xxx_mutex = Mutex.new
+## TL;DR
+- 並行アクセスから保護するための相互排他制御機構
 
-xxx_mutex.synchronize do
-  xxx.some_method
+```ruby
+mutex = Mutex.new
+
+Thread.fork do
+  mutex.synchronize do
+    do_something
+  end
 end
 ```
 
@@ -20,15 +24,22 @@ end
 ## ロックの解放
 - `#unlock` - Mutexオブジェクトのロックを解放
 
+## ロックの状態の確認
+- `#locked?` - Mutexオブジェクトがロックされている場合は真、そうでない場合は偽
+
 ## module Mutex_m
 - [module Mutex_m](https://docs.ruby-lang.org/ja/2.7.0/class/Mutex_m.html) - Thread::Mutexクラスのモジュール版
 - `include Mutex_m`することでそのクラスにミューテックス機能を持たせる
 
 ```ruby
-xxx = XXX.new
-xxx.extend(Mutex_m)
+require 'mutex_m'
 
+class Xxx
+  include Mutex_m
+end
+
+xxx = Xxx.new
 xxx.synchronize do
-  xxx.some_method
+  do_something
 end
 ```

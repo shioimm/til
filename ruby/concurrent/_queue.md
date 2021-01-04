@@ -1,13 +1,28 @@
 # class Thread::Queue
-- [class Thread::Queue](https://docs.ruby-lang.org/ja/2.7.0/class/Thread=3a=3aQueue.html) - FIFOキュー
+- [class Thread::Queue](https://docs.ruby-lang.org/ja/2.7.0/class/Thread=3a=3aQueue.html) - スレッドセーフなFIFOキュー
+- [class Thread::SizedQueue](https://docs.ruby-lang.org/ja/3.0.0/class/Thread=3a=3aSizedQueue.html) - 最大サイズが指定できるスレッドセーフなFIFOキュー
+
+## TL;DR
+- スレッド間のFIFOの通信路
+- エンキュー操作でキューの末尾に値を追加する
+- デキュー操作でキューの先頭の値を取り出す
+- キューが空の時、スレッドがデキューしようとした場合、呼び出し元のスレッドがブロックされる
+  - キューに何らかのリクエストがエンキューされると呼び出し元のスレッドの実行が再開される
+
+### ワーカースレッド
+1. キューを用意する
+2. キューからリクエストをデキューするワーカースレッドを用意する
+3. キューにリクエストをエンキューする
+4. ワーカースレッドがリクエストを実行する -> キューが空になる
+5. 3 ~ 4繰り返し
 
 ## キューの生成
-- `.new` - 新しいキューを生成
+- `.new` - 新しいキューオブジェクトを生成
 
 ## キューへのpush
-- `#enq` / `#push` - キューの値を追加
+- `#enq` / `#push` - キューの末尾に値を追加
   - 呼び出し元のスレッドが`stop`状態の場合(空のキューに値を追加する場合)は`run`状態にする
 
 ## キューからのpop
-- `#deq` / `#pop` - キューから値を一つ取り出す
+- `#deq` / `#pop` - キューの先頭から値を一つ取り出す
   - キューが空の時、新しいキューの値が追加されるまで呼出元のスレッドは`stop`状態になる
