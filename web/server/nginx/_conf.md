@@ -1,6 +1,7 @@
 # 設定
 - 参照: nginx実践ガイド
 - 参照: [nginx連載3回目: nginxの設定、その1](https://heartbeats.jp/hbblog/2012/02/nginx03.html#more)
+- 参照: [nginx連載4回目: nginxの設定、その2](https://heartbeats.jp/hbblog/2012/04/nginx04.html)
 
 ## 概観
 ```
@@ -101,21 +102,36 @@ http {
 ```
 
 ### `/etc/nginx/conf.d/*.conf`
-- バーチャルサーバーの設定
+- バーチャルサーバー毎の設定ファイルとして使用する
+  - バーチャルサーバーはIPベースあるいは名前ベースで区別する
+  - デフォルトでは`default.conf` / `example_ssl.conf`が用意されている
 ```
 server {
-  # listenするポート番号の設定
-  listen 80;
+  # リクエストを受け付けるIPアドレス・ポート番号 / UNIXドメインソケット
+  listen [2001:db8:dead:beef::1]:80;;
+  # default_serverパラメータをつけると、このserverディレクティブがデフォルトサーバーになる
 
-  # バーチャルホストのサーバーのホスト名
-  server_name *.example.com;
+  # バーチャルサーバーのホスト名(複数指定可能)
+  server_name example.com www.example.com;
+  # example.comがプライマリサーバーとなる
 
+  # リダイレクト時、Locationヘッダに埋め込むサーバ名
+  #   on  - server_name指定したプライマリサーバー
+  #   off - リクエストのHostヘッダフィールドで指定されたホスト名
+  server_name_in_redirect on;
+
+  # アクセスログの出力先
   access_log /var/log/nginx/access.log;
+
+  # エラーログの出力先
   error_log /var/log/nginx/error.log;
 
-  location / { # パス名に対応するコンテキスト
+  # パス名/に対応するコンテキスト
+  # パスの条件は前方一致ka正規表現で評価される
+  location / {
     # ドキュメントルート
     root /www/dir;
+    # 必要に応じて、個別のパスのlocationコンテキストに個別にドキュメントルートを設定する
 
     # ディレクトリにアクセスした際にレスポンスとして使用されるファイル名
     index index.html;
