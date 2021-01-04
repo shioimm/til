@@ -2,6 +2,7 @@
 - 参照: nginx実践ガイド
 - 参照: [nginx連載3回目: nginxの設定、その1](https://heartbeats.jp/hbblog/2012/02/nginx03.html#more)
 - 参照: [nginx連載4回目: nginxの設定、その2](https://heartbeats.jp/hbblog/2012/04/nginx04.html)
+- 参照: [nginx連載5回目: nginxの設定、その3](https://heartbeats.jp/hbblog/2012/04/nginx05.html#more)
 
 ## 概観
 ```
@@ -133,8 +134,25 @@ server {
     root /www/dir;
     # 必要に応じて、個別のパスのlocationコンテキストに個別にドキュメントルートを設定する
 
-    # ディレクトリにアクセスした際にレスポンスとして使用されるファイル名
-    index index.html;
+    # ディレクトリ(/で終わるパス)にアクセスした際にインデックスとして使用されるファイル名
+    # httpコンテキスト、serverコンテキスト、locationコンテキストに記述できる
+    index index.html index.php /index.php;
+    # /index.htmlへ内部リダイレクトさせる
+    # index.htmlがなければindex.php、index.phpがなければ/index.phpへフォールバックさせる
+
+    # ファイルの存在チェック
+    try_files try_files $uri $uri/ @webapp;
+    # リクエストURIのパスに対するファイル(静的コンテンツ)が存在すればそのファイルを返す
+    # 存在しなければ動的コンテンツとして@webappに内部リダイレクトさせる
+    # @xxx - 名前付きロケーション
+
+    # エラーページ
+    # エラーコードが発生したときに表示するページのURIを指定
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+      root /usr/share/nginx/html;
+    }
+    # 50x系のエラーが発生したとき、/50x.htmlページへ内部リダイレクトさせる
 
     limit_exept GET POST {
       # GET/POST以外のHTTPメソッドにアクセス制限をかける
@@ -143,6 +161,7 @@ server {
   }
 }
 ```
+- `locatioin`ディレクティブのパスの指定方法: [nginx連載5回目: nginxの設定、その3](https://heartbeats.jp/hbblog/2012/04/nginx05.html#more)
 
 ## 内部変数(一部)
 - `$request_method`       - リクエストメソッド
