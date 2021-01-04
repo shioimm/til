@@ -1,0 +1,18 @@
+# class Monitor
+- [class Monitor](https://docs.ruby-lang.org/ja/2.7.0/class/Monitor.html) - スレッドの同期機構としてのモニター機能
+- Mutexに似ているがネストしたロックをサポートしており、条件変数の機能を兼ね備える
+
+## Monitorオブジェクトの生成
+- `.new` - Monitorオブジェクトを生成
+
+## 条件変数の取得
+- `#new_cond` - Monitorオブジェクトに関連づけられた条件変数を返す
+  - Monitorオブジェクトと結びついているため`wait`にミューテックスを渡す必要がない
+
+## 条件変数の条件待ち
+- `#wait` - Monitorオブジェクトのロックを解放し、カレントスレッドを`stop`状態にする
+
+## 条件変数への通知
+- `#signal` / `#broadcast` - `wait`時に解放したMonitorオブジェクトのロックを獲得し、スレッドを`run`状態にする
+  - `#signal` - 一つのスレッドが対象
+  - `#broadcast` - すべてのスレッドが対象
