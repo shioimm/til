@@ -3,6 +3,7 @@
 - 参照: [nginx連載3回目: nginxの設定、その1](https://heartbeats.jp/hbblog/2012/02/nginx03.html#more)
 - 参照: [nginx連載4回目: nginxの設定、その2](https://heartbeats.jp/hbblog/2012/04/nginx04.html)
 - 参照: [nginx連載5回目: nginxの設定、その3](https://heartbeats.jp/hbblog/2012/04/nginx05.html#more)
+- 参照: [nginx連載6回目: nginxの設定、その4](https://heartbeats.jp/hbblog/2012/04/nginx06.html#more)
 
 ## 概観
 ```
@@ -162,6 +163,59 @@ server {
 }
 ```
 - `locatioin`ディレクティブのパスの指定方法: [nginx連載5回目: nginxの設定、その3](https://heartbeats.jp/hbblog/2012/04/nginx05.html#more)
+
+### `example_ssl.conf`
+```
+server {
+  # SSLのポート番号は443
+  listen 443;
+
+  # SSLサーバー証明書で指定したCNと同じサーバー名
+  server_name example.jp;
+
+  # SSLを有効化
+  ssl on;
+
+  # サーバー証明書
+  ssl_certificate /etc/nginx/cert.pem;
+
+  # プライベート鍵
+  ssl_certificate_key /etc/nginx/cert.key;
+
+  # 使用するTLS/SSLのバージョン
+  ssl_protocols SSLv3 TLSv1;
+
+  # 使用する暗号スイート
+  ssl_ciphers HIGH:!aNULL:!MD5;
+
+  # サーバが示した暗号スイートを優先するかどうか
+  ssl_prefer_server_ciphers on;
+
+  # SSLセッションキャッシュの種類とサイズの指定
+  ssl_session_cache shared:SSL:10m;
+  # shared - すべてのワーカープロセスで共有
+
+  # SSLセッションキャッシュのタイムアウトの指定
+  ssl_session_timeout 10m;
+
+  location / {
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+  }
+}
+```
+
+#### HTTPとHTTPSの設定を共有する
+```
+server {
+  # sslパラメータでSSLを有効化する
+  # 同一のバーチャルサーバーでHTTP/HTTPSを使用できるようになる
+  listen 80;
+  listen 443 ssl;
+
+  server_name example.jp;
+  ...
+```
 
 ## 内部変数(一部)
 - `$request_method`       - リクエストメソッド
