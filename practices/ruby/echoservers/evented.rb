@@ -8,39 +8,35 @@ class Evented
 
     def initialize(sock)
       @sock = sock
-      @response = ''
-      @request = ''
-
-      on_writable
+      @res = ''
+      @req = ''
     end
 
     def on_writable
-      bytes = sock.write_nonblock(@response)
-      @response.slice(0, bytes)
+      written_size = sock.write_nonblock(@res)
+      res.slice!(0, written_size)
     end
 
-    def on_data(msg)
-      @request << msg
-
-      if @request.end_with?("\r\n")
-        @response << @request + "\r\n"
-        on_writable
-        @request = ''
-      end
+    def ready_to_respond(msg)
+      req.concat(msg)
+      res.concat(req + "\r\n")
+      req.clear
     end
 
-    def reading?
+    def to_read?
       true
     end
 
-    def writing?
-      !(@response.empty?)
+    def to_write?
+      !(res.empty?)
     end
+
+    private attr_reader :req, :res
   end
 
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
-    @handles = {}
+    @connections = {}
 
     _protocol, port, host, _ipaddr = @listener.addr
     puts "Server is running on #{host}:#{port}"
@@ -53,31 +49,42 @@ class Evented
 
   def run
     loop do
-      reading_socks = @handles.values.select(&:reading?).map(&:sock)
-      writing_socks = @handles.values.select(&:writing?).map(&:sock)
+      socks_to_read = @connections.values.select(&:to_read?).map(&:sock)
+      socks_to_write = @connections.values.select(&:to_write?).map(&:sock)
 
-      readables, writables = IO.select(reading_socks + [listener], writing_socks)
+      readables, writables = IO.select([listener, *socks_to_read], socks_to_write)
 
       readables.each do |rsock|
-        if rsock == @listener
-          sock = @listener.accept
-          @handles[rsock.fileno] = Connection.new(sock)
+        if rsock == listener
+          client = listener.accept
+          @connections[client.fileno] = Connection.new(client)
         else
-          conn = @handles[rsock.fileno]
+          conn = @connections[rsock.fileno]
 
           begin
             msg = rsock.read_nonblock(DATA_SIZE)
-            conn.on_data(msg)
+            conn.ready_to_respond(msg)
+
+            puts "Client requests: #{msg.split("\r\n").first}"
+
+            sleep 0.01
+
+            writables << conn.sock
           rescue Errno::EAGAIN
           rescue EOFError
-            @handle.delete(rsock.fileno)
+            @connections.delete(rsock.fileno)
           end
         end
       end
 
       writables.each do |wsock|
-        conn = @handles[wsock.fileno]
+        conn = @connections[wsock.fileno]
         conn.on_writable
+
+        unless conn.to_write?
+          @connections.delete(wsock.fileno)
+          conn.sock.close
+        end
       end
     end
   end
@@ -90,3 +97,42 @@ PORT = 12345
 
 server = Evented.new(HOST, PORT)
 server.run
+
+# $ ab -n 1000 -c 10 'http://[::1]:12345/'
+#
+# Server Software:
+# Server Hostname:        ::1
+# Server Port:            12345
+#
+# Document Path:          /
+# Document Length:        2 bytes
+#
+# Concurrency Level:      10
+# Time taken for tests:   11.502 seconds
+# Complete requests:      1000
+# Failed requests:        0
+# Non-2xx responses:      1000
+# Total transferred:      81000 bytes
+# HTML transferred:       2000 bytes
+# Requests per second:    86.94 [#/sec] (mean)
+# Time per request:       115.019 [ms] (mean)
+# Time per request:       11.502 [ms] (mean, across all concurrent requests)
+# Transfer rate:          6.88 [Kbytes/sec] received
+#
+# Connection Times (ms)
+#               min  mean[+/-sd] median   max
+# Connect:        0    0   0.1      0       1
+# Processing:    11  114   6.9    114     128
+# Waiting:       10  114   6.9    114     128
+# Total:         11  114   6.9    115     128
+#
+# Percentage of the requests served within a certain time (ms)
+#   50%    115
+#   66%    116
+#   75%    117
+#   80%    117
+#   90%    119
+#   95%    121
+#   98%    123
+#   99%    123
+#  100%    128 (longest request)#
