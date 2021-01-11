@@ -17,3 +17,9 @@ $ ldd xxx | grep glibc
 
 ## glibcバージョンの確認
 - `gnu_get_libc_version(3)` - 実行時のglibcのバージョンを表示
+
+## エラーハンドリング
+- ライブラリ関数の戻り値の型は様々
+  - `-1`を返し、`errno`を更新する
+  - `-1`以外を返し、`errno`を更新する
+  - `errno`を一切使用しない
