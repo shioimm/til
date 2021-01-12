@@ -2,12 +2,8 @@ require 'fiber'
 
 CONCURRENCY = 4
 
-fibers = []
-
-CONCURRENCY.times do
-  fibers << Fiber.new do |i|
-    break if i >= CONCURRENCY
-
+fibers = CONCURRENCY.times.map do
+  Fiber.new do |i|
     puts "#{i + 1}: ID=#{Fiber.current.object_id} / PID=#{Process.pid} - #{Time.now.strftime('%H:%M:%S')}"
 
     sleep 1
@@ -17,9 +13,7 @@ end
 fibers.each_with_index do |fiber, i|
   fiber.resume(i)
 
-  unless fiber.alive?
-    puts "#{fiber.object_id} was already terminated - #{Time.now.strftime('%H:%M:%S')}"
-  end
+  puts "#{fiber.object_id} was already terminated - #{Time.now.strftime('%H:%M:%S')}"
 end
 
 # $ ruby practices/ruby/concurrency/fiber.rb
