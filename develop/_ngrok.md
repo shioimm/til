@@ -14,12 +14,27 @@
 3. ngrokは発生したアクセスをローカルマシン上で実行されているngrokプロセスに中継し、
    指定したローカルアドレスに転送する
 
-## 基本
+## Usage
 ```
-$ ngrok http 80
+$ ngrok http 3000
 ```
-- アプリケーションを稼働させているWebサーバがリッスンしているポートを
-  ngrokに渡すことによって起動する
-- トンネルの公開URL、
-  トンネル上で行われた接続に関するステータス、
-  メトリクス情報などが表示される
+
+### 起動
+- アプリケーションを稼働しているローカルホストがlistenしているポート番号をngrokに渡す
+- CLIに以下の情報が表示される
+  - トンネルの公開URL
+  - トンネル上で行われた接続に関するステータス
+  - メトリクス情報など
+
+### GUI環境
+- `http://localhost:4040`
+
+### Rails: `blocked host: xxxxxxxx.ngrok.io`
+
+```ruby
+# config/environments/development.rb
+
+Rails.application.configure do
+  config.hosts << '.ngrok.io'
+end
+```
