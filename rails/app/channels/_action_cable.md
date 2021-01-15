@@ -4,56 +4,37 @@
 
 ## TL;DR
 - Railsが標準で提供する、WebSocketを使用したリアルタイム通信機構
-- デフォルトで`/cable`にActionCable用のRackサーバーがマウントされており、
-  WebSocket通信時にアクセスする
 
 ### 用語
-- connection: クライアントとサーバー間を結ぶ
-- channel: ActionCableにおけるコントローラの役割
-- consumer: WebSocketコネクションにおけるクライアント・複数のchannelにsubscribeできる
-- subscriber: channelにsubscribeされたconsumer
-- subscription: channelとconsumer間のコネクション
+- channel: ActionCableにおけるcontroller
+- consumer: クライアント・複数のchannelを購読できる
+- subscriber: channelを購読しているconsumer
+- subscription: channelとsubscriber間の接続
 - broadcast: channelからsubscriberに対して直接送信されるpub/subリンク
 
-### Pub/Subパラダイム
-- サーバーと多数のクライアント間の通信を確立するためにActionCableが採用しているパラダイム
-- PublisherがSubscriberの抽象クラスに情報を送信する
-- Publisherは個別の受信者を指定しない
-
-## ActionCableにおけるサーバーコンポーネント
-### Connectionクラス
-- サーバーでWebSocketを受け付けると、ApplicationCable::Connectionがインスタンス化される
-- connectionオブジェクトはchannel subscriberの親となる
-- connectionはidを持つ(`ex. identified_by: current_user`)
-  - idはそのconnection以外で作成されるすべてのchannelインスタンスでも共通に利用できる
-  - ex. current_userによるコネクションが識別されると、同じユーザーによる他のコネクションを操作できる
-
-### Channelクラス
-- ApplicationCable::Channelを継承し、論理的な作業単位を記述する
-- consumerがchannelを購読(subscribe)すると`Channel#subscribed`メソッドが呼ばれる
-
-## ActionCableにおけるクライアントコンポーネント
+## サーバーコンポーネント
 ### Connection
-- クライアント側で`createConsumer()`を呼ぶことによりconsumerが作成される
-- 利用したいsubscriptionを指定することによりconnectionが確立される
+- `app/channels/application_cable/connection.rb`
+- Websocketプロトコルの抽象化クラス
+- サーバーでWebSocketを受け付けると、`ApplicationCable::Connection`がインスタンス化される
 
-### Subscriber
-- 指定のchannelにsubscriptionを作成するとconsumerがsubscriberになる
+### Channel
+- `app/channels/application_cable/channel.rb`
+  - Connection を介してメッセージを交換するchannelの抽象クラス
+- `app/channels/xxx_channel.rb`
+  - `ApplicationCable::Channel`クラスを継承し、論理的な作業単位を記述する
+  - consumerがchannelの購読者になると`XxxChannel#subscribed`が呼ばれる
+  - consumerから`XxxChannel`クラスに記述されているメソッド`yyy`を呼ぶことができる
+    - `this.perform('yyy', {...})`
+  - consumerから`XxxChannel`クラスに記述されているメソッド`yyy`を呼ばれたとき、
+    channelは所定の処理を行い、`ActionCable.server.broadcast`を使ってsubscriberへ通知を行う
 
-## ActionCableにおけるクライアント-サーバー間のメッセージパッシング
-### Stream
-- broadcastするコンテンツをどのsubscriberにルーティングするか指定する(`stream_from` `stream_for`)
-
-### BroadCasting
-- サーバー側から送信された内容はすべてbroadcastを経由し、
-  同じ名前のbroadcastをストリーミングするchannelのsubscriberに直接ルーティングされる
-
-### Subscription
-- サーバー側から送信された内容は、connection idに基づきchannel subscriberにルーティングされる
-
-### Params
-- クライアントサイドにてsubscriptionを確立する際、
-  `subscriptions.create`関数にchannel名を指定するハッシュを渡すことでchannelを特定する
+## クライアントコンポーネント
+- クライアントが`createConsumer()`を呼ぶとconsumerが作成される
+- consumerが購読したいチャンネルに対して`subscription.create`すると、
+  consumerはそのチャンネルに対するsubscriberになる
+- subscriberはサーバーから通知(とデータ)を受け取ることができ、
+  通知に基づいて任意の処理を行うことができる
 
 ## 関連ファイル
 ### `app/javascript`
