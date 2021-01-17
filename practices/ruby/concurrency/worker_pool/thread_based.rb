@@ -1,12 +1,12 @@
 require 'socket'
 
 class ThreadBased
-  DATA_SIZE = 16 * 1024
+  DATA_SIZE  = 16 * 1024
   CONCURRECY = 4
 
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
-    @threads = ThreadGroup.new
+    @workers  = ThreadGroup.new
 
     _protocol, port, host, _ipaddr = @listener.addr
     puts "Server is running on #{host}:#{port}"
@@ -20,14 +20,13 @@ class ThreadBased
   end
 
   def run
-    CONCURRECY.times { threads.add spawn_thread }
+    CONCURRECY.times { workers.add spawn_thread }
 
-    threads.list.each(&:join)
+    workers.list.each(&:join)
   end
 
   private
-    attr_reader :listener
-    attr_accessor :threads
+    attr_reader :listener, :workers
 
     def spawn_thread
       Thread.new do

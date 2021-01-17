@@ -1,12 +1,12 @@
 require 'socket'
 
 class FiberBased
-  DATA_SIZE = 16 * 1024
+  DATA_SIZE  = 16 * 1024
   CONCURRECY = 4
 
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
-    @fibers = []
+    @workers  = []
 
     _protocol, port, host, _ipaddr = @listener.addr
     puts "Server is running on #{host}:#{port}"
@@ -18,17 +18,17 @@ class FiberBased
   end
 
   def run
-    CONCURRECY.times { fibers << spawn_fiber }
+    CONCURRECY.times { workers << spawn_fiber }
 
-    fibers.each(&:resume)
+    workers.each(&:resume)
   end
 
   private
-    attr_reader :listener
-    attr_accessor :fibers
+    attr_reader   :listener
+    attr_accessor :workers
 
     def spawn_fiber
-      Fiber.new do |conn|
+      Fiber.new do
         loop do
           conn = listener.accept
 

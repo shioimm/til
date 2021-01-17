@@ -1,12 +1,12 @@
 require 'socket'
 
 class ProcessBased
-  DATA_SIZE = 16 * 1024
+  DATA_SIZE  = 16 * 1024
   CONCURRECY = 4
 
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
-    @pids = []
+    @workers  = []
 
     _protocol, port, host, _ipaddr = @listener.addr
     puts "Server is running on #{host}:#{port}"
@@ -15,7 +15,7 @@ class ProcessBased
   end
 
   def run
-    CONCURRECY.times { pids << spawn_process }
+    CONCURRECY.times { workers << spawn_process }
 
     trap(:INT) do
       kill_processes(:INT)
@@ -28,7 +28,7 @@ class ProcessBased
 
   private
     attr_reader   :listener
-    attr_accessor :pids
+    attr_accessor :workers
 
     def spawn_process
       fork do
@@ -53,9 +53,9 @@ class ProcessBased
     end
 
     def kill_processes(signal)
-      pids.each do |pid|
+      workers.each do |worker|
         begin
-          Process.kill(signal, pid)
+          Process.kill(signal, worker)
         rescue Errno::ESRCH
         end
       end
@@ -63,11 +63,11 @@ class ProcessBased
 
     def clean_up_terminated_processes
       loop do
-        pid = Process.wait
-        puts "Process #{pid} quit unexpectedly"
+        worker = Process.wait
+        puts "Process #{worker} quit unexpectedly"
 
-        pids.delete pid
-        pids << spawn_process
+        workers.delete worker
+        workers << spawn_process
       end
     end
 end
