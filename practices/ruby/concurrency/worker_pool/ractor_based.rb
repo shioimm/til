@@ -1,17 +1,14 @@
 require 'socket'
 
-class ThreadBased
-  DATA_SIZE  = 16 * 1024
+class RactorBased
+  DATA_SIZE = 16 * 1024
   CONCURRECY = 4
 
   def initialize(host, port)
     @listener = TCPServer.open(host, port)
-    @workers  = ThreadGroup.new
 
     _protocol, port, host, _ipaddr = @listener.addr
     puts "Server is running on #{host}:#{port}"
-
-    Thread.abort_on_exception = true
 
     trap(:INT) do
       puts "Shutdown on #{Time.now.strftime("%Y/%m/%d %H:%M")}"
@@ -20,20 +17,32 @@ class ThreadBased
   end
 
   def run
-    CONCURRECY.times { workers.add spawn_thread }
+    CONCURRECY.times { spawn_ractor }
 
-    workers.list.each(&:join)
+    loop do
+      conn = listener.accept
+      queue.send(conn, move: true)
+    end
   end
 
   private
-    attr_reader :listener, :workers
+    attr_reader :listener
 
-    def spawn_thread
-      Thread.new do
+    def queue
+      @queue ||= Ractor.new do
         loop do
-          conn = listener.accept
+          conn = Ractor.recv
+          Ractor.yield(conn, move: true)
+        end
+      end
+    end
 
+    def spawn_ractor
+      Ractor.new(queue) do |queue|
+        loop do
           begin
+            conn = queue.take
+
             msg = conn.readpartial(DATA_SIZE)
 
             puts "Client requests: #{msg.split("\r\n").first}"
@@ -54,10 +63,10 @@ end
 HOST = 'localhost'
 PORT = 12345
 
-server = ThreadBased.new(HOST, PORT)
+server = RactorBased.new(HOST, PORT)
 server.run
 
-# $ ab -n 1000 -c 10 'http://[::1]:12345/'
+# $ ab -n 1000 -c 10 'http://[::1]:12345/' 
 #
 # Server Software:
 # Server Hostname:        ::1
@@ -67,31 +76,31 @@ server.run
 # Document Length:        0 bytes
 #
 # Concurrency Level:      10
-# Time taken for tests:   2.951 seconds
+# Time taken for tests:   2.837 seconds
 # Complete requests:      1000
 # Failed requests:        0
 # Non-2xx responses:      1000
 # Total transferred:      123000 bytes
 # HTML transferred:       0 bytes
-# Requests per second:    338.83 [#/sec] (mean)
-# Time per request:       29.514 [ms] (mean)
-# Time per request:       2.951 [ms] (mean, across all concurrent requests)
-# Transfer rate:          40.70 [Kbytes/sec] received
+# Requests per second:    352.53 [#/sec] (mean)
+# Time per request:       28.366 [ms] (mean)
+# Time per request:       2.837 [ms] (mean, across all concurrent requests)
+# Transfer rate:          42.34 [Kbytes/sec] received
 #
 # Connection Times (ms)
 #               min  mean[+/-sd] median   max
 # Connect:        0    0   0.2      0       1
-# Processing:    13   29   5.0     29      40
-# Waiting:       12   29   5.0     28      39
-# Total:         13   29   4.9     29      40
+# Processing:    11   28   5.2     28      38
+# Waiting:       11   28   5.2     28      38
+# Total:         11   28   5.1     28      38
 #
 # Percentage of the requests served within a certain time (ms)
-#   50%     29
+#   50%     28
 #   66%     32
-#   75%     34
-#   80%     34
-#   90%     36
-#   95%     37
-#   98%     38
-#   99%     38
-#  100%     40 (longest request)
+#   75%     32
+#   80%     33
+#   90%     35
+#   95%     35
+#   98%     36
+#   99%     37
+#  100%     38 (longest request)

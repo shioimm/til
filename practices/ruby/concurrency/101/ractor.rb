@@ -25,3 +25,13 @@ end
 # 80  was already terminated - 21:29:45
 # 100 was already terminated - 21:29:45
 # 120 was already terminated - 21:29:45
+
+# ractor.takeを呼ばなかった場合
+# 3: ID=80 / PID=81601 - 22:50:32
+# 60 was already terminated - 22:50:32
+# 4: ID=120 / PID=81601 - 22:50:32
+# 1: ID=60 / PID=81601 - 22:50:32
+# 2: ID=100 / PID=81601 - 22:50:32
+# 100 was already terminated - 22:50:32
+# 80 was already terminated - 22:50:32
+# 120 was already terminated - 22:50:32
