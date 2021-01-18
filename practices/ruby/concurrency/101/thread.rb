@@ -4,26 +4,28 @@ threads = []
 
 CONCURRENCY.times do |i|
   threads << Thread.new do
-    puts "#{i + 1}: ID=#{Thread.current.object_id} / PID=#{Process.pid} - #{Time.now.strftime('%H:%M:%S')}"
+    puts "#{i + 1}: ObjectID=#{Thread.current.object_id} / PID=#{Process.pid} - #{Time.now.strftime('%H:%M:%S')}"
 
     sleep 1
   end
 end
 
 threads.each do |thread|
-  dead_thread = thread.join
-
-  puts "ID=#{dead_thread.object_id} was dead - #{Time.now.strftime('%H:%M:%S')}"
+  puts "ObjectID=#{thread.join.object_id} was joined - #{Time.now.strftime('%H:%M:%S')}"
 end
 
-# $ ruby practices/ruby/concurrency/thread.rb
-#
-# 1: ID=60  / PID=67149 - 14:03:54
-# 2: ID=80  / PID=67149 - 14:03:54
-# 4: ID=100 / PID=67149 - 14:03:54
-# 3: ID=120 / PID=67149 - 14:03:54
-#
-# ID=60  was dead - 14:03:55
-# ID=80  was dead - 14:03:55
-# ID=120 was dead - 14:03:55
-# ID=100 was dead - 14:03:55
+# 1: ObjectID=60  / PID=90506 - 16:10:47
+# 3: ObjectID=80  / PID=90506 - 16:10:47
+# 4: ObjectID=100 / PID=90506 - 16:10:47
+# 2: ObjectID=120 / PID=90506 - 16:10:47
+# ObjectID=60  was joined - 16:10:48
+# ObjectID=120 was joined - 16:10:48
+# ObjectID=80  was joined - 16:10:48
+# ObjectID=100 was joined - 16:10:48
+
+# thread.joinを呼ばない場合
+# ObjectID=60  was joined - 16:11:49
+# ObjectID=80  was joined - 16:11:49
+# ObjectID=120 was joined - 16:11:49
+# 3: ObjectID=120 / PID=90629 - 16:11:49
+# ObjectID=100 was joined - 16:11:49
