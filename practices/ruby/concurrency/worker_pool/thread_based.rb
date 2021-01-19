@@ -20,7 +20,9 @@ class ThreadBased
   end
 
   def run
-    CONCURRECY.times { workers.add spawn_thread }
+    CONCURRECY.times do
+      workers.add Thread.new { server_processing }
+    end
 
     workers.list.each(&:join)
   end
@@ -28,24 +30,22 @@ class ThreadBased
   private
     attr_reader :listener, :workers
 
-    def spawn_thread
-      Thread.new do
-        loop do
-          conn = listener.accept
+    def server_processing
+      loop do
+        conn = listener.accept
 
-          begin
-            msg = conn.readpartial(DATA_SIZE)
+        begin
+          msg = conn.readpartial(DATA_SIZE)
 
-            puts "Client requests: #{msg.split("\r\n").first}"
+          puts "Client requests: #{msg.split("\r\n").first}"
 
-            sleep 0.01
+          sleep 0.01
 
-            conn.puts '-- Server received the request message --'
-            conn.puts "\r\n"
-            conn.puts msg
-            conn.close
-          rescue EOFError
-          end
+          conn.puts '-- Server received the request message --'
+          conn.puts "\r\n"
+          conn.puts msg
+          conn.close
+        rescue EOFError
         end
       end
     end

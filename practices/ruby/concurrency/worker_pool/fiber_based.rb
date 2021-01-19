@@ -18,7 +18,9 @@ class FiberBased
   end
 
   def run
-    CONCURRECY.times { workers << spawn_fiber }
+    CONCURRECY.times do
+      workers << Fiber.new { server_processing }
+    end
 
     workers.each(&:resume)
   end
@@ -27,24 +29,22 @@ class FiberBased
     attr_reader   :listener
     attr_accessor :workers
 
-    def spawn_fiber
-      Fiber.new do
-        loop do
-          conn = listener.accept
+    def server_processing
+      loop do
+        conn = listener.accept
 
-          begin
-            msg = conn.readpartial(DATA_SIZE)
+        begin
+          msg = conn.readpartial(DATA_SIZE)
 
-            puts "Client requests: #{msg.split("\r\n").first}"
+          puts "Client requests: #{msg.split("\r\n").first}"
 
-            sleep 0.01
+          sleep 0.01
 
-            conn.puts '-- Server received the request message --'
-            conn.puts "\r\n"
-            conn.puts msg
-            conn.close
-          rescue EOFError
-          end
+          conn.puts '-- Server received the request message --'
+          conn.puts "\r\n"
+          conn.puts msg
+          conn.close
+        rescue EOFError
         end
       end
     end
