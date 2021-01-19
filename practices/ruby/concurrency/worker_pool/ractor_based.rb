@@ -1,7 +1,7 @@
 require 'socket'
 
 class RactorBased
-  DATA_SIZE = 16 * 1024
+  DATA_SIZE  = 16 * 1024
   CONCURRECY = 4
 
   def initialize(host, port)
@@ -17,32 +17,12 @@ class RactorBased
   end
 
   def run
-    CONCURRECY.times { spawn_ractor }
-
-    loop do
-      conn = listener.accept
-      queue.send(conn, move: true)
-    end
-  end
-
-  private
-    attr_reader :listener
-
-    def queue
-      @queue ||= Ractor.new do
+    CONCURRECY.times do
+      Ractor.new(pipe) do |pipe|
         loop do
-          conn = Ractor.recv
-          Ractor.yield(conn, move: true)
-        end
-      end
-    end
+          conn = pipe.take
 
-    def spawn_ractor
-      Ractor.new(queue) do |queue|
-        loop do
           begin
-            conn = queue.take
-
             msg = conn.readpartial(DATA_SIZE)
 
             puts "Client requests: #{msg.split("\r\n").first}"
@@ -55,6 +35,24 @@ class RactorBased
             conn.close
           rescue EOFError
           end
+        end
+      end
+    end
+
+    loop do
+      conn = listener.accept
+      pipe.send(conn, move: true)
+    end
+  end
+
+  private
+    attr_reader :listener
+
+    def pipe
+      @pipe ||= Ractor.new do
+        loop do
+          conn = Ractor.recv
+          Ractor.yield(conn, move: true)
         end
       end
     end

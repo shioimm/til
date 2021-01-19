@@ -15,7 +15,9 @@ class ProcessBased
   end
 
   def run
-    CONCURRECY.times { workers << spawn_process }
+    CONCURRECY.times do
+      workers << fork { server_processing }
+    end
 
     trap(:INT) do
       kill_processes(:INT)
@@ -30,24 +32,22 @@ class ProcessBased
     attr_reader   :listener
     attr_accessor :workers
 
-    def spawn_process
-      fork do
-        loop do
-          conn = listener.accept
+    def server_processing
+      loop do
+        conn = listener.accept
 
-          begin
-            msg = conn.readpartial(DATA_SIZE)
+        begin
+          msg = conn.readpartial(DATA_SIZE)
 
-            puts "Client requests: #{msg.split("\r\n").first}"
+          puts "Client requests: #{msg.split("\r\n").first}"
 
-            sleep 0.01
+          sleep 0.01
 
-            conn.puts '-- Server received the request message --'
-            conn.puts "\r\n"
-            conn.puts msg
-            conn.close
-          rescue EOFError
-          end
+          conn.puts '-- Server received the request message --'
+          conn.puts "\r\n"
+          conn.puts msg
+          conn.close
+        rescue EOFError
         end
       end
     end
