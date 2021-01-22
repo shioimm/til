@@ -1,5 +1,5 @@
 # refs: worker pool
-# https://github.com/ko1/ruby/blob/ractor/ractor.ja.md#worker-pool
+# https://github.com/ruby/ruby/blob/master/doc/ractor.md#worker-pool
 
 require 'prime'
 

@@ -1,5 +1,5 @@
 # refs: pipeline with yield/take
-# https://github.com/ko1/ruby/blob/ractor/ractor.ja.md#pipeline
+# https://github.com/ruby/ruby/blob/master/doc/ractor.md#pipeline
 
 r1 = Ractor.new do
   # 'r1'をメッセージとして送信

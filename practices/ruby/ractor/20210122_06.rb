@@ -1,5 +1,5 @@
 # refs: ring example with an error
-# https://github.com/ko1/ruby/blob/ractor/ractor.ja.md#supervise
+# https://github.com/ruby/ruby/blob/master/doc/ractor.md#supervise
 
 RN = 3
 
