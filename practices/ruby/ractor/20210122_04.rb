@@ -1,5 +1,5 @@
 # refs: pipeline with send/recv
-# https://github.com/ko1/ruby/blob/ractor/ractor.ja.md#pipeline
+# https://github.com/ruby/ruby/blob/master/doc/ractor.md#pipeline
 
 # main Ractor
 cr = Ractor.current

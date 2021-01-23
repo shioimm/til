@@ -1,5 +1,5 @@
 # refs: fork-join
-# https://github.com/ko1/ruby/blob/ractor/ractor.ja.md#fork-join
+# https://github.com/ruby/ruby/blob/master/doc/ractor.md#fork-join
 
 def fib(n)
   return 1 if n < 2
