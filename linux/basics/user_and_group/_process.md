@@ -58,8 +58,10 @@ $ chmod g+s prog // set-group-IDビットをセット
   - 他のUNIXシステムでは実効IDによって権限を照合する
   - set-user-ID / set-group-IDされ実効IDが場合は
     filesystem user ID / filesystem group IDも変更される
-  - `setfsuid()` / `setfsgid()`によりfilesystem IDのみの変更も可能
+  - `setfsuid(2)` / `setfsgid(2)`によりfilesystem IDのみの変更も可能
 
 ## 追加グループID
 - プロセスが属する補助的なグループ
 - 実効ID、filesystem IDと組み合わせてパーミッション検査時に参照される
+- `getgroups(2)`で参照、
+  特権プロセスなら`setgroups(2)` / `initgroups(2)`で変更可能
