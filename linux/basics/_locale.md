@@ -30,3 +30,16 @@
   - `LC_NUMERIC` - 通貨以外の数値の表記規則
   - `LC_TIME` - 日付と時刻の表示規則
   - `LC_MESSAGES` - yes/noの応答やその他のメッセージの表記規則を記述したファイルを置くディレクトリ
+
+## API
+### `setlocale(3)`
+- プログラムのlocaleを参照・変更する
+
+#### 引数
+- `category`、`*locale`を指定する
+  - `category` - localeサブディレクトリのカテゴリ
+  - `*locale` - locale文字列
+
+#### 返り値
+- 新たに設定したlocaleを表す文字列へのポインタを返す
+  - エラー時はNULLを返す
