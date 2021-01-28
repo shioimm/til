@@ -102,16 +102,3 @@ struct utmp {
   long ut_time;              // 起点からの経過秒数
 };
 ```
-
-## システムの識別
-- `uname(3)` - ホストとOSに関する情報を`utsname`構造体として返す
-```c
-struct utsname {
-  char sysname[];   // OS名
-  char nodename[];  // ノード名
-  char release[];   // OSのリリース番号
-  char version[];   // OSのバージョン */
-  char machine[];   // ハードウェア識別子
-};
-```
-- `gethostname(3)` - TCP/IPネットワーク上のホスト名を返す
