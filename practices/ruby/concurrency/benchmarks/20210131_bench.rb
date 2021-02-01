@@ -1,4 +1,5 @@
 # inspired from https://gist.github.com/ytnk531/edead9655ebdcde7d0273db941ec43ae
+# ruby 3.0.0p0 (2020-12-25 revision 95aff21468) [x86_64-darwin18]
 
 CONCURRENCY = 16
 Ractor.new {} # for printing warning in advance
