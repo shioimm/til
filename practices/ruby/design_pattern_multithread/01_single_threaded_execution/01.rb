@@ -1,53 +1,18 @@
 # Java言語で学ぶデザインパターン入門 マルチスレッド編 第1章
+# パーフェクトRuby 改訂2版 5-9
 
-class User
-  def initialize(gate, name, address)
-    @gate, @name, @address = gate, name, address
-  end
-
-  def run
-    puts "#{@name} BEGIN"
-
-    loop do
-      @gate.pass(@name, @address)
-      puts "#{@name} passed the gate."
-    end
+def countup
+  File.open('01_counter', File::RDWR | File::CREAT) do |f|
+    last_count = f.read.to_i
+    f.rewind
+    f.write last_count + 1
   end
 end
 
-class Gate
-  @@counter = 0
-  @@name = 'Nobody'
-  @@address = 'Nowhere'
+10.times.map {
+  Thread.fork {
+    countup
+  }
+}.map(&:join)
 
-  def pass(name, address)
-    @@counter += 1
-    @@name = name
-    @@address = address
-
-    check
-  end
-
-  private
-
-    def to_string
-      "#{@@counter}: #{@@name}, #{@@address}"
-    end
-
-    def check
-      return if @@name.start_with? @@address[0]
-
-      # Rubyの場合はGVLの働きによりこの行が実行されることはない
-      puts "*** BROKEN *** No. #{@@counter}: #{@@name}, #{@@address}"
-    end
-end
-
-puts 'Testing gate, hit CTRL+C to exit.'
-
-GATE = Gate.new
-threads = []
-threads << Thread.new { User.new(GATE, 'Alice', 'Alaska').run }
-threads << Thread.new { User.new(GATE, 'Bobby', 'Brazil').run }
-threads << Thread.new { User.new(GATE, 'Chris', 'Canada').run }
-
-threads.each(&:join)
+puts File.read('01_counter').to_i
