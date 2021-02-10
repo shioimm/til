@@ -1,12 +1,7 @@
-CONCURRENCY = 4
+require_relative 'fibonacchi'
+
+CONCURRENCY = 12
 
 CONCURRENCY.times do |i|
-  puts "#{i + 1}: PID=#{Process.pid} - #{Time.now.strftime('%H:%M:%S')}"
-  sleep 1
+  solve_fibonacci(100_000)
 end
-
-# $ ruby practices/ruby/concurrency/serial.rb
-# 1: PID=65016 - 12:23:53
-# 2: PID=65016 - 12:23:54
-# 3: PID=65016 - 12:23:55
-# 4: PID=65016 - 12:23:56
