@@ -109,6 +109,48 @@ sighandler_t signal(int sig, sighandler_t handler);
 - 変更前のシグナル動作へのポインタを返す
   - エラー時は`SIG_ERR`を返す
 
+### `sigaction(2)`
+- 指定のシグナルの動作を変更する
+- `signal(2)`より柔軟性・可搬性に優れる
+
+#### 引数
+- `sig`、`*act`、`*oldact`を指定する
+  - `sig` - 動作を変更するシグナルを示すマクロ
+  - `*act` - 変更前の動作を表す`sigaction`構造体へのポインタ
+  - `*oldact` - 変更前の動作を表す`sigaction`構造体へのポインタ
+```c
+struct sigaction {
+  void     (*sa_handler)(int); // シグナルハンドラへのポインタ
+  void     (*sa_sigaction)(int, siginfo_t *, void *);  // シグナルハンドラへのポインタ
+                                                       //   シグナル捕捉時にシグナル番号以外の詳細な情報も取得できる
+                                                       //   *sa_handlerと併用できない
+  sigset_t   sa_mask;                                  // ハンドラ実行中にブロックするシグナル
+  int        sa_flags;                                 // ハンドラを操作するフラグ
+  void     (*sa_restorer)(void);                       // システムが使用する
+};
+```
+
+```c
+// sigactionの設定
+
+struct sigaction xxx;
+xxx.sa_hander = シグナルハンドラ
+xxx.sa_flags  = シグナルハンドラ実行中の動作を設定
+sigemptyset(&xxx.sa_mask);
+sigaction(シグナル, &xxx, NULL);
+```
+
+#### 返り値
+- 数値0を返す
+  - エラー時は数値-1を返す
+
+## シグナルの待機
+### `pause(2)`
+- シグナルハンドラが実行されるまで自プロセスの実行を停止する
+
+#### 返り値
+- 数値-1を返す
+
 ## シグナルの説明文字列
 ### `strsignal(3)`
 - 配列`sys_siglist`からシグナルの説明文字列を参照する
@@ -118,3 +160,28 @@ sighandler_t signal(int sig, sighandler_t handler);
 
 #### 返り値
 - シグナルを説明する文字列へのポインタを返す
+
+## シグナルマスク
+### `sigprocmask(2)`
+- シグナルマスクを変更する
+
+#### 引数
+- `how`、`*set`、`*oldset`を指定する
+  - `how` - シグナルマスクをどのように変更するかを指定するフラグ
+  - `*set` - 新しいシグナルマスクへのポインタ
+  - `*oldset` - 変更前のシグナルマスクへのポインタ
+
+#### 返り値
+- 数値0を返す
+  - エラー時は数値-1を返す
+
+### `sigpending(2)`
+- 保留中のシグナルセットを参照する
+
+#### 引数
+- `*set`を指定する
+  - `*set` - 取得したシグナルセットを格納するシグナルセットへのポインタ
+
+#### 返り値
+- 数値0を返す
+  - エラー時は数値-1を返す
