@@ -1,7 +1,7 @@
 require_relative 'fibonacchi'
 
-CONCURRENCY = 12
+CONCURRENCY = 4
 
-CONCURRENCY.times do |i|
+CONCURRENCY.times do
   solve_fibonacci(100_000)
 end

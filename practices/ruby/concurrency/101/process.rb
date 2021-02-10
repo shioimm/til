@@ -1,10 +1,10 @@
 require_relative 'fibonacchi'
 
-CONCURRENCY = 12
+CONCURRENCY = 4
 
 pids = []
 
-CONCURRENCY.times do |i|
+CONCURRENCY.times do
   pids << fork { solve_fibonacci(100_000) }
 end
 
