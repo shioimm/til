@@ -374,3 +374,9 @@
 - `pthread_barrierattr_destroy(3)` - `pthread_barrierattr_t`構造体の削除
 - `pthread_barrierattr_getpshared(3)` - `proccess-shared`の取得
 - `pthread_barrierattr_setpshared(3)` - `proccess-shared`の設定
+
+## リエントラントな関数
+- 複数のスレッドから同時に実行された際、
+  他のスレッドの状態に関わらず期待通りの結果が保証される関数
+- グローバルまたはスタティックなデータを更新する関数は
+  非リエントラントである恐れがある
