@@ -40,6 +40,10 @@
 - 数値0を返す
   - エラー時は数値-1を返す
 
+### `abort(3)`
+- 自プロセスへシグナル`SIGABRT`を送信する
+  - `SIGABRT`のデフォルト動作はコアダンプ後プロセス終了
+
 ## シグナルセット
 ### `sigemptyset(2)` / `sigfillset(2)`
 - シグナルセットの初期化
@@ -118,26 +122,38 @@ sighandler_t signal(int sig, sighandler_t handler);
   - `sig` - 動作を変更するシグナルを示すマクロ
   - `*act` - 変更前の動作を表す`sigaction`構造体へのポインタ
   - `*oldact` - 変更前の動作を表す`sigaction`構造体へのポインタ
+
 ```c
 struct sigaction {
-  void     (*sa_handler)(int); // シグナルハンドラへのポインタ
-  void     (*sa_sigaction)(int, siginfo_t *, void *);  // シグナルハンドラへのポインタ
-                                                       //   シグナル捕捉時にシグナル番号以外の詳細な情報も取得できる
-                                                       //   *sa_handlerと併用できない
-  sigset_t   sa_mask;                                  // ハンドラ実行中にブロックするシグナル
-  int        sa_flags;                                 // ハンドラを操作するフラグ
-  void     (*sa_restorer)(void);                       // システムが使用する
+  // シグナルハンドラへのポインタ
+  union {
+    void     (*sa_handler)(int);
+    void     (*sa_sigaction)(int, siginfo_t *, void *); // シグナル捕捉時にシグナル番号以外の詳細な情報も取得できる
+  } __sigaction_handler;
+
+  sigset_t   sa_mask;            // ハンドラ実行中にブロックするシグナル
+  int        sa_flags;           // ハンドラを操作するフラグ
+  void     (*sa_restorer)(void); // システムが使用する
 };
+
+#define sa_hander __sigaction_handler.sa_hander
+#define sa_sigaction __sigaction_handler.sa_sigaction
 ```
 
 ```c
-// sigactionの設定
+// Ex.
 
-struct sigaction xxx;
-xxx.sa_hander = シグナルハンドラ
-xxx.sa_flags  = シグナルハンドラ実行中の動作を設定
-sigemptyset(&xxx.sa_mask);
-sigaction(シグナル, &xxx, NULL);
+void handler(int sig, siginfo_t *siginfo, void *ucontext);
+
+struct sigaction act;
+
+sigemptyset(&act.sa_mask);
+act.sa_sigaction = handler;
+act.sa_flags  = SA_SIGINFO;
+
+if (sigaction(SIGINT, &act, NULL) == -1) {
+  // ...
+}
 ```
 
 #### 返り値
@@ -181,6 +197,52 @@ sigaction(シグナル, &xxx, NULL);
 #### 引数
 - `*set`を指定する
   - `*set` - 取得したシグナルセットを格納するシグナルセットへのポインタ
+
+#### 返り値
+- 数値0を返す
+  - エラー時は数値-1を返す
+
+## シグナルハンドラ内からのグローバルジャンプ
+### `sigsetjmp(3)`
+- シグナルマスクを保存する`setjmp`
+
+#### 引数
+- `env`、`savesigs`を指定する
+  - `env` - 環境を保存する`sigjmp_env`型のバッファ
+  - `savesigs` - 数値0以外を指定することでシグナルマスクを`env`へ退避、ジャンプ後に復元する
+    - 数値0を指定するとシグナルマスクを退避・復元しない
+
+#### 返り値
+- 数値0を返す
+
+### `siglongjmp(3)`
+- シグナルマスクを復元する`longjmp`
+
+#### 引数
+- `env`、`val`を指定する
+  - `env` - 環境を保存する`jmp_env`型のバッファ
+    (プログラムカウンタレジスタとスタックポインタレジスタ)
+
+#### 返り値
+- 数値0以外を返す
+
+## シグナル処理専用スタック
+### `sigaltstack(2)`
+- シグナル処理専用スタックを設定し、
+  それまで設定されていたシグナル処理専用スタックの情報(あれば)を返す
+
+#### 引数
+- `*sigstack`、`*oldsigstack`を指定する
+  - `*sigstack` - シグナル処理専用スタックのアドレスと属性を持つ`stack_t`構造体へのポインタ
+  - `*oldsigstack` - それまで設定されていた`stakck_t`構造体へのポインタ
+
+```c
+typedef struct {
+  void  *ss_sp;    // シグナル処理専用スタックのアドレス
+  int    ss_flags; // フラグ SS_ONSTACK / SS_DISABLE
+  size_t ss_size;  // シグナル処理専用スタックのサイズ
+} stack_t;
+```
 
 #### 返り値
 - 数値0を返す
