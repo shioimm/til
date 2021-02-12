@@ -1,5 +1,5 @@
 ts = 10.times.map do
-  Thread.new do
+  Thread.fork do
     File.open('thread_counter', File::RDWR | File::CREAT) do |f|
       ex_count = f.read.to_i
       count = ex_count + 1
