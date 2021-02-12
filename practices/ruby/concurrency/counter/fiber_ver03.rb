@@ -1,19 +1,30 @@
-fiber = Fiber.new do |initial|
-  count = initial + 1
+class FiberWrapper
+  def fiber
+    Fiber.new do
+      loop do
+        File.open('fiber_counter', File::RDWR | File::CREAT) do |f|
+          ex_count = f.read.to_i
+          count = ex_count + 1
+          f.rewind
+          f.write count
+        end
 
-  loop do
-    Fiber.yield count
-    count += 1
+        Fiber.yield
+      end
+    end
+  end
+
+  def resume
+    fiber.resume
   end
 end
 
-10.times do |i|
-  File.open('fiber_counter', File::RDWR | File::CREAT) do |f|
-    initial = f.read.to_i
-    count = fiber.resume(initial)
-    f.rewind
-    f.write count
+ts = 10.times.map do
+  Thread.fork do
+    FiberWrapper.new.resume
   end
 end
+
+ts.each(&:join)
 
 puts File.read('fiber_counter').to_i
