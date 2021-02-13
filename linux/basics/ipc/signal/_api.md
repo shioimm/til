@@ -156,6 +156,32 @@ if (sigaction(SIGINT, &act, NULL) == -1) {
 }
 ```
 
+```
+// siginfo_t構造体
+
+siginfo_t {
+  int      si_signo;   // シグナルハンドラを呼び出したシグナル番号
+  int      si_code;    // シグナル発生源に関する付加情報
+  int      si_trapno;  // ハードウェアが生成したシグナル用のトラップ番号
+  sigval_t si_value;   // sigqueue()に指定した不可情報
+  pid_t    si_pid;     // シグナルを送信したPID
+  uid_t    si_uid;     // シグナルを送信した実ユーザーID
+  int      si_errno;   // エラー番号
+  void    *si_addr;    // シグナルが発生したアドレス(ハードウェアが生成したシグナルのみ)
+
+  // 非標準のLinux拡張
+  int      si_timerid; // カーネル内のタイマーID
+  int      si_overrun; // タイマーのオーバーラン回数
+  long     si_band;    // IOイベントの帯域イベント
+  int      si_fd;      // IOイベントのファイルディスクリプタ
+
+  // SIGCHLDの場合
+  int      si_status;  // 子プロセスの終了コード or シグナル番号
+  clock_t  si_utime;   // 子プロセスが消費したユーザーCPU時間
+  clock_t  si_stime;   // 子プロセスが消費したシステムCPU時間
+}
+```
+
 #### 返り値
 - 数値0を返す
   - エラー時は数値-1を返す
@@ -243,6 +269,21 @@ typedef struct {
   size_t ss_size;  // シグナル処理専用スタックのサイズ
 } stack_t;
 ```
+
+#### 返り値
+- 数値0を返す
+  - エラー時は数値-1を返す
+
+## システムコールへの割り込み・再開
+### `siginterrupt(3)`
+- シグナル単位で`SA_RESTART`フラグの設定を変更する
+- SUSv4では代わりに`sigaction(2)`を使用することを推奨
+
+#### 引数
+- `sig`、`flag`を指定する
+  - `flag` - シグナル単位で`SA_RESTART`の設定を変更するフラグ
+    - 数値1 -> `sig`のシグナルハンドラはブロッキングなシステムコールへ割り込む
+    - 数値0 -> ブロッキングなシステムコールは`sig`のシグナルハンドラ後に実行を再開する
 
 #### 返り値
 - 数値0を返す
