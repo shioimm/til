@@ -8,7 +8,7 @@
 - Producer - Consumer間の同期を取るために橋渡しが必要
   - Producer / Consumerは同期が取れるまで処理を待つ
 - Producer / Consumerが単数の場合、Pipeパターンと呼ぶ
-- ChannelがMutexと条件変数を使用する
+- ChannelがGuarded Suspensionを使用する
 
 ## 要素
 ### Data
@@ -22,8 +22,7 @@
 
 ### Channel
 - Producerからデータを受け取り、Consumerからのリクエストに応じてDataを渡す
-- 安全性確保のためProducerとConsumerからのアクセスに対して排他制御を行う
-  - 排他制御のためにGuarded Suspensionを使用する
+- 安全性確保のためProducerとConsumerからのアクセスに対して排他制御(Guarded Suspension)を行う
 - ChannelがDataを中継する仕事に専念することで、
   ProducerはDataを作成する仕事に専念できる
   ConsumerはDataを利用する仕事に専念できる
