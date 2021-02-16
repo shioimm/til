@@ -324,3 +324,59 @@ union sigval {
 
 #### 返り値
 - `errno`へ`EINTR`を代入し、数値-1を返す
+
+### `sigwaitinfo(2)
+- 指定のシグナルセットのうちいずれかのシグナルが保留されるまで、プロセスの実行を一時停止する
+  - 指定のシグナルセットのうちすでに保留されているシグナルがあれば即時リターンする
+  - ブロックし保留されたシグナルも受信できる
+    - 予めシグナルをブロックしておいてから`sigwaitinfo(2)`を呼ぶのが一般的
+- `sigtimedwait(2)` - 時間制限付きの`sigwaitinfo(2)`
+
+#### 引数
+- `*set`、`*info`を指定する
+  - `*set` - 指定のシグナルセットへのポインタ
+  - `*info` - シグナルの情報を格納する`siginfo_t`構造体へのポインタ
+
+#### 返り値
+- シグナル番号を返す
+  - エラー時は数値-1を返す
+
+### `signalfd(2)
+- シグナルを読み取る特殊なファイルディスクリプタを作成する
+- ファイルディスクリプタ作成後は`read(2)`によりシグナルを読み取ることができる
+  - `signalfd_siginfo`構造体を格納する程度以上のバッファを用意しておく
+
+```c
+// signalfd_siginfo構造体
+
+struct signalfd_siginfo {
+  uint32_t ssi_signo;   // シグナル番号
+  int32_t  ssi_errno;   // エラー番号(未使用)
+  int32_t  ssi_code;    // シグナルコード
+  uint32_t ssi_pid;     // 送信元PID
+  uint32_t ssi_uid;     // 送信元実ユーザーID
+  int32_t  ssi_fd;      // ファイルディスクリプタ
+  uint32_t ssi_tid;     // カーネルタイマーID (POSIX タイマー)
+  uint32_t ssi_band;    // 帯域イベント(SIGIO)
+  uint32_t ssi_overrun; // タイマーのオーバーラン回数
+  uint32_t ssi_trapno;  // シグナルの原因となったトラップ番号
+  int32_t  ssi_status;  // 終了ステータス or シグナル(SIGCHLD)
+  int32_t  ssi_int;     // sigqueue(3)に指定された付加データ(整数)
+  uint64_t ssi_ptr;     // sigqueue(3)に指定された付加データ(ポインタ)
+  uint64_t ssi_utime;   // 消費したユーザーCPU 時間(SIGCHLD)
+  uint64_t ssi_stime;   // 消費したシステムCPU 時間(SIGCHLD)
+  uint64_t ssi_addr;    // シグナルが発生したアドレス(ハードウェア関連シグナル)
+};
+```
+
+#### 引数
+- `fd`、`*mask`、`flags`を指定する
+  - `fd` - ファイルディスクリプタ
+    - 数値-1を指定すると新たなファイルディスクリプタを作成する
+    - 数値-1以外を指定するとそのfdに対応する`*mask`を変更する
+  - `*mask` - ファイルディスクリプタから読み取るシグナルセットへのポインタ
+  - `flags` - 付加的な動作へのフラグ
+
+#### 返り値
+- ファイルディスクリプタ番号を返す
+  - エラー時は数値-1を返す
