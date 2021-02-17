@@ -20,6 +20,10 @@
   - Read中のスレッドがいる場合は待つ
   - Write中のスレッドがいる場合は待つ
 
+## ガード条件
+- Read処理と同時にWrite処理を行おうとしていないかどうか
+- Write処理と同時にWrite処理を行おうとしていないかどうか
+
 ## 要素
 ### Reader
 - SharedResourceに対してReadを行う

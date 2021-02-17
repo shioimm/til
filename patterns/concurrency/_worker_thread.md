@@ -13,6 +13,10 @@
   - 分散処理を実現できる
 - ChannelがGuarded Suspensionを使用する
 
+## ガード条件
+- (Workerに対して)ClientがChannelにアクセスしようとしていないかどうか
+- (Clientに対して)WorkerがChannelにアクセスしようとしていないかどうか
+
 ## 要素
 ### Client
 - Requestを作成し、Channelに渡す
