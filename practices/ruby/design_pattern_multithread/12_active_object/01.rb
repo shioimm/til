@@ -3,10 +3,16 @@
 class MakerClient
   def initialize(name, active_object)
     @name, @active_object = name, active_object
+    @fillchar = @name[0]
   end
 
   def run
-    # WIP
+    for i in 1.. do
+      result = @active_object.make_string(i, @fillchar)
+      sleep 1
+      value = request.get_result_value
+      puts "value = #{value}"
+    end
   end
 end
 
@@ -16,16 +22,19 @@ class DisplayClient
   end
 
   def run
-    # WIP
+    for i in 1.. do
+      @active_object.display_string(i)
+      sleep 2
+    end
   end
 end
 
 class ActiveObjectFactory
   def self.create_active_object
-    servant = Servant.new
-    queue = ActivationQueue.new
-    scheduler = Scheduler.new(queue)
-    proxy = Proxy.new(scheduler, servant)
+    servant = Servant.new # 実際の処理を行う
+    queue = ActivationQueue.new # MethodRequestオブジェクトを順序よく保持する
+    scheduler = Scheduler.new(queue) # MethodRequestオブジェクトをexecuteする
+    proxy = Proxy.new(scheduler, servant) # メソッド呼び出しをMethodRequestオブジェクトに変換する
     scheduler.run
     proxy
   end
@@ -37,11 +46,13 @@ class Proxy
   end
 
   def make_string(count, fillchar)
-    # WIP
+    future = FutureResult.new
+    @scheduler.invoke(MakeStringRequest.new(@servant, future, count, fillchar))
+    future
   end
 
   def display_string(string)
-    # WIP
+    @scheduler.invoke(DisplayStringRequest.new(@servant, string))
   end
 end
 
@@ -51,28 +62,48 @@ class Scheduler
   end
 
   def invoke(request)
-    # WIP
+    @queue.put_request(request)
   end
 
   def run
-    # WIP
+    request = @queue.take_request
+    request.execute
   end
 end
 
 class ActivationQueue
-  MAX_METHOD_REQUEST = 100
-
   def initialize
-    @request_queue = MethodRequest.new(MAX_METHOD_REQUEST)
+    @request_queue = MethodRequest.new()
     @head, @tail, @count = 0, 0, 0
+    @m = Mutex.new
+    @cond = ConditionVariable.new
   end
 
   def put_request(request)
-    # WIP
+    @m.synchronize do
+      while @count >= @request_queue.size
+        @cond.wait @m
+      end
+
+      @request_queue[@tail] = request
+      @tail = (@tail + 1) % @request_queue.size
+      @count += 1
+      @cond.broadcast
+    end
   end
 
   def take_request
-    # WIP
+    @m.synchronize do
+      while @count <= 0
+        @cond.wait @m
+      end
+
+      request = @request_queue[head]
+      @head = (@head + 1) % @request_queue.size
+      @count -= 1
+      @cond.broadcast
+      request
+    end
   end
 end
 
@@ -88,7 +119,8 @@ class MakeStringRequest
   end
 
   def execute
-    # WIP
+    result = @servant.make_string(@count, @fillchar)
+    @future.set_result(result)
   end
 end
 
@@ -98,7 +130,7 @@ class DisplayStringRequest
   end
 
   def execute
-    # WIP
+    @servant.display_string(@string)
   end
 end
 
@@ -106,12 +138,29 @@ class Result
 end
 
 class FutureResult
+  def initialize
+    @result = nil
+    @ready = false
+    @m = Mutex.new
+    @cond = ConditionVariable.new
+  end
+
   def set_result(result)
-    # WIP
+    @m.synchronize do
+      @result = result
+      @ready = true
+      @cond.broadcast
+    end
   end
 
   def get_result_value
-    # WIP
+    @m.synchronize do
+      while !ready
+        @cond.wait @m
+      end
+
+      @result.get_result_value
+    end
   end
 end
 
@@ -121,17 +170,23 @@ class RealResult
   end
 
   def get_result_value
-    # WIP
+    @result_value
   end
 end
 
 class Servant
   def make_string(count, fillchar)
-    # WIP
+    str = count.times.each_with_object([]) do |i, arr|
+      arr << fillchar
+      sleep 1
+    end
+
+    RealResult.new(str)
   end
 
   def display_string(string)
-    # WIP
+    puts "display_string #{string}"
+    sleep 1
   end
 end
 
