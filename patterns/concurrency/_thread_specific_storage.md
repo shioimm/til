@@ -2,10 +2,25 @@
 - 参照: Java言語で学ぶデザインパターン入門 マルチスレッド編 第11章
 
 ## TL;DR
-- Clientスレッドごとに固有のThread-Specific Object領域を確保する
 - スレッドをキーとしてスレッド固有のオブジェクトにアクセスするためのパターン
   - スレッド固有のオブジェクト = 複数のスレッドで共有されないオブジェクト
   - スレッドにコンテキストを導入する
+- Clientスレッドごとに固有のThread-Specific Object領域を確保する
+
+### 文脈
+- シングルスレッド環境で操作することを想定しているリソース(Thread-Specific Object)を
+  マルチスレッド環境で操作したいとき
+
+### 問題
+- Thread-Specific Objectをスレッド間で再利用することが困難
+
+### 解決方法
+- スレッド固有の領域を作り、領域とスレッドを対応づけて管理する
+- Thread-Specific Objectと同じインターフェースで動作するThread-Specific ObjectProxyを用意する
+- スレッドとThread-Specific Objectを対応づけるThread-Specific Collectionを用意する
+- スレッドはThread-Specific ObjectProxyに対して処理を呼び出す
+- Thread-Specific ObjectProxyはThread-Specific Collectionを使用して
+  現在のスレッドに対応するThread-Specific Objectを取得し、処理を委譲する
 
 ## 要素
 ### Client
@@ -36,6 +51,4 @@
 
 ## 関連するパターン
 - Singleton
-- Worker Thread
-- Single Threaded Execution
 - Proxy
