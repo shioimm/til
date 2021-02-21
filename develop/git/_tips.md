@@ -29,3 +29,13 @@ $ git push -f origin/dependabot/bundler/xxxx
 ```
 - `git`コマンドが使える全てのディレクトリに対してignoreする対象のファイルを指定できる
   - Ex. `.DS_Store` / `tags` / `.envrc`
+
+### `fatal: could not read Username for 'https://github.com': terminal prompts disabled`
+- 解決: パーソナルアクセストークンを`.gitconfig`に設定
+  - GitHub > Developer settings > Generate new token
+    - `repo`にチェックを入れる
+  - `$ git config --global url."https://パーソナルアクセストークン:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+`
+
+#### 発生状況
+- Macのローカルの`.vimrc`に新しいVimプラグインを追加して`:PlugInstall`を実行(vim-plug)
