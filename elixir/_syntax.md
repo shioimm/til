@@ -19,3 +19,18 @@
 
 ## 変数のスコープ
 - レキシカルスコープ
+
+### `with`式
+- `do`~`end`ブロックの中で使用する一時変数を定義する
+
+```exs
+# プログラミングElixir 4.8 変数のスコープ basic-types/with-scopes.exs
+
+lp = with { :ok, file } = File.open("/etc/passwd"),
+          content       = IO.read(file, :all),
+          :ok           = File.close(file),
+          [_, uid, gid] = Regex.run(~r/^lp:.*(\d+):(\d+)/m, content)
+     do
+       "Group: #{gid}, User: #{uid}"
+     end
+```

@@ -60,3 +60,12 @@ a = 2 # => 2
 # ^aは数値2に束縛されているためマッチエラーとなる
 ^a = 1 # => ** (MatchError) no match of right hand side value: 1
 ```
+
+### `<-`演算子
+- `=`でパターンマッチしなかった場合: `MatchError`が返る
+- `with` + `<-`でパターンマッチしなかった場合: `nil`が返る
+
+```exs
+with [a, _] <- [1, 2], do: a # => 1
+with [a, _] <- nil, do: a    # => nil
+```
