@@ -1,4 +1,4 @@
-# プログラミングElixir 4.8 変数のスコープ basic-types/with-scopes.exs
+# プログラミングElixir basic-types/with-scopes.exs
 
 content = "Now is the time"
 
