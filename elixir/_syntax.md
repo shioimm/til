@@ -1,5 +1,5 @@
 # 文法
-- プログラミングElixir 第4章 / 第5章
+- プログラミングElixir 第4章 / 第5章 / 第6章
 
 ## 変数名
 - モジュール、レコード、プロトコル、ビヘイビアの名前はアッパーキャメルケース
@@ -123,6 +123,8 @@ len.([1, 2, 3]) # => 3
 ```
 
 ## 名前付き関数
+- `def` - パブリック関数定義
+- `defp` - プライベート関数定義(モジュール内でのみ呼び出せる関数)
 ```exs
 # プログラミングElixir 6 mm/times.exs
 
@@ -199,4 +201,119 @@ end
 Example.func("a", "b")           # => ["a", 2, 3, "b"]
 Example.func("a", "b", "c")      # => ["a", "b", 3, "c"]
 Example.func("a", "b", "c", "d") # => ["a", "b", "c", "d"]
+```
+
+### パイプ演算子
+- `|>` - 左の項の式の結果をとって右の関数の呼び出しの第一パラメータとして渡す
+  - パイプラインの中ではパラメータは括弧で囲む必要がある
+```exs
+(1..10)
+|> Enum.map(&(&1 * &1))
+|> Enum.filter(&(&1 < 10)) # => [1, 4, 9]
+
+# 以下の式と等価
+list = Enum.map((1..10), &(&1 * &1))
+Enum.filter(list, &(&1 < 10))
+```
+
+## モジュール
+- ネームスペースの提供
+- 名前付き関数、マクロ、構造、プロトコル、他のモジュールをカプセル化する
+
+```exs
+defmodule X do
+  def x_func do
+    Y.y_func
+  end
+
+  defmodule Y do
+    def y_func do
+    end
+  end
+end
+```
+
+### モジュールのネスト
+- 全てのモジュールはトップレベルで定義される
+
+```exs
+defmodule X do
+  def x_func do
+    Y.y_func
+  end
+end
+
+defmodule X.Y do
+  def y_func do
+  end
+end
+```
+
+### モジュールのディレクティブ
+#### `import`ディレクティブ
+- モジュールの関数やマクロをカレントスコープに持ってくる
+- `import モジュール名`
+  - `import モジュール名, only: 関数名: arity`
+  - `import モジュール名, except: 関数名: arity`
+    - 関数名を`:function`にする -> 関数のみを取り込む
+    - 関数名を`:macros`にする -> マクロのみを取り込む
+
+```exs
+# プログラミングElixir 6.9 mm/import.exs
+
+defmodule Example do
+  def func do
+    # Listモジュールのflatten/1関数をimportする
+    import List, only: [flatten: 1]
+    flatten [5, [6, 7], 8]
+  end
+end
+```
+
+#### `alias`ディレクティブ
+- モジュールのエイリアスを作る
+- `alias モジュール名, as: エイリアス名`
+  - `as:`パラメータはモジュール名の最後の部分をデフォルト値とする
+
+```exs
+defmodule Example do
+  def func do
+    alias X, as Y
+    Y.y_func
+  end
+end
+```
+
+#### `require`ディレクティブ
+- モジュールで定義したマクロを使うときはそのモジュールを`require`する
+
+### モジュールの属性
+- モジュールは対応するメタデータ(属性)を持つ
+  - `@属性名 値` - 属性に値をセットする
+    - 属性は関数の中でセットすることはできない
+
+```exs
+# プログラミングElixir 6.9 mm/attributes.exs
+
+defmodule Example do
+  @musician "Patti Smith"
+
+  def get_musician do
+    @musician
+  end
+end
+```
+
+### モジュールの名前
+- Elixirのモジュールの名前は内部的には`Elixir`をprefixにつけたアトム
+```exs
+is_atom IO      # => true
+Elixir.IO == IO # => true
+```
+
+- Erlangのモジュールの名前は単純なアトム
+```exs
+# ioモジュールのformat関数
+
+:io.format("~3.1f~n", [1.23]) # => 1.2 / :ok
 ```
