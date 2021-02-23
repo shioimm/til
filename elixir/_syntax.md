@@ -46,7 +46,7 @@ swap = fn({ a, b }) -> { b, a } end # => #Function<7.126501267/1 in :erl_eval.ex
 swap.({ 1, 2 })                     # => {2, 1}
 ```
 
-- 渡された引数の型と内容によって異なる実装を定義することができる
+- 同じ関数の中で渡された引数の型と内容によって異なる実装を定義する
 
 ```exs
 # プログラミングElixir 5.2 first-steps/handle_open.exs
@@ -60,7 +60,7 @@ IO.puts handle_open.(File.open("../intro/hello.exs")) # => OK: IO.puts "Hello, W
 IO.puts handle_open.(File.open("./noexistent"))       # => Error: no such file or directory
 ```
 
-## クロージャ
+### クロージャ
 - 関数は、関数が定義されたスコープにある変数の束縛を関数自身と一緒に持ち回る
 
 ```exs
@@ -72,7 +72,7 @@ greeter.("World")
 greet_world.() # => Hello, World
 ```
 
-## 高階関数
+### 高階関数
 - 関数を引数に渡す
 
 ```exs
@@ -87,7 +87,7 @@ apply.(times_2, 6) # => 12
 Enum.map([1, 2, 3], fn elem -> elem * 2 end) # => [2, 4, 6]
 ```
 
-## `&`演算子
+### `&`演算子
 - `&`以降の式を無名関数にする
 
 ```exs
@@ -120,4 +120,83 @@ len.([1, 2, 3]) # => 3
 
 len = &Enum.count/1
 len.([1, 2, 3]) # => 3
+```
+
+## 名前付き関数
+```exs
+# プログラミングElixir 6 mm/times.exs
+
+defmodule Times do
+  def double(n) do
+    n * 2
+  end
+end
+
+# => double/1 (引数を一つ取る関数double)を定義
+```
+
+```exs
+# `do...end`形式はキーワードリスト`do:`形式のシンタックスシュガー
+
+defmodule Times do
+  def double(n), do: n * 2
+end
+```
+
+- 同じ関数名で渡された引数の型と内容によって異なる実装を定義する
+
+```exs
+# プログラミングElixir 6.3 mm/factorial1.exs
+
+defmodule Factorial do
+  def of(0), do: 1
+  def of(n), do: n * of(n - 1)
+end
+```
+
+### ガード節 / `when`キーワード
+- 引数の型、値の評価のチェックによって異なる実装を定義する
+
+```exs
+# プログラミングElixir 6.4 mm/guard.exs
+
+defmodule Guard do
+  def what_is(x) when is_number(x) do
+    IO.puts "#{x} is a number"
+  end
+
+  def what_is(x) when is_list(x) do
+    IO.puts "#{inspect(x)} is a list"
+  end
+
+  def what_is(x) when is_atom(x) do
+    IO.puts "#{x} is an atom"
+  end
+end
+```
+
+#### ガード節に渡せる式
+- 比較演算子
+- ブール演算子 / 否定演算子
+- 連結演算子
+- `in`演算子
+- 型チェック関数
+- その他
+
+### デフォルトパラメータ
+- `パラメータ\\値`構文によって引数にデフォルト値を設定する
+
+```exs
+# プログラミングElixir 6.5 mm/default_params.exs
+
+defmodule Example do
+  def func(p1, p2 \\ 2, p3 \\ 3, p4) do
+    IO.inspect [p1, p2, p3, p4]
+  end
+end
+
+# パラメータは左から右に向かってマッチされる
+Example.func("a", "b")           # => ["a", 2, 3, "b"]
+Example.func("a", "b", "c")      # => ["a", "b", 3, "c"]
+Example.func("a", "b", "c", "d") # => ["a", "b", "c", "d"]
 ```
