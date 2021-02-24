@@ -280,10 +280,15 @@ void func(int status, void *arg)
 
 ### `waitpid(2)`
 - 指定の子プロセスが終了するまで処理をブロックする
-  - すでに終了済みの場合は`ECHLD`を送信して即時返す
+  - `WNOHANG`フラグをセットすると処理をブロックせず
+    子プロセスの終了を定期的に確認する
 - 子プロセスが終了したら`wait`ステータスを取得する
 - オプションで処理のブロックを行うことができる
 - オプションでジョブ制御を扱うことができる
+- `waitid(2)`は`siginfo_t`構造体を使用して子プロセスの状態をより詳細に取得できる
+- `wait3(2)` / `wait(4)`は`rusage`構造体を使用してリソース消費情報を取得できる
+  - `wait(3)`は`waitpid(-1, &status, options)`と同じ
+  - `wait(4)`は`waitpid(pid, &status, options)`と同じ
 
 #### 引数
 - `pid`、`*status`、`options`を指定する
