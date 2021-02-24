@@ -1,4 +1,4 @@
-# プログラミングElixir 7.2 list/mylist.exs
+# プログラミングElixir 7.2 lists/mylist.exs
 
 defmodule MyList do
   def len([]),           do: 0
