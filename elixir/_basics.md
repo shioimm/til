@@ -1,6 +1,7 @@
 # Elixir
 - [elixir](https://elixir-lang.jp/)
 - [getting-started](https://elixir-lang.jp/getting-started/introduction.html)
+- [リファレンス](https://hexdocs.pm/elixir)
 - プログラミングElixir 第1章
 
 ## IEx
