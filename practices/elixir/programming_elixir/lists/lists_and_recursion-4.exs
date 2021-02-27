@@ -7,7 +7,7 @@ defmodule MyList do
   end
 
   def span(_, to) do
-    to
+    [to]
   end
 end
 

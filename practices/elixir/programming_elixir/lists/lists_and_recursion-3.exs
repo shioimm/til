@@ -2,13 +2,13 @@
 
 defmodule MyList do
   def ceasar([s], n)
-  when s + n > 26 do
-    s + n - 26
+  when s + n > 27 do
+    [s + n - 27]
   end
 
   def ceasar([s], n)
-  when s + n <= 26 do
-    s + n
+  when s + n <= 27 do
+    [s + n]
   end
 
   def ceasar([ head | tail ], n) do
@@ -16,5 +16,5 @@ defmodule MyList do
   end
 end
 
-IO.inspect MyList.ceasar 'abcd', 2
-IO.inspect MyList.ceasar 'ryvkve', 13
+IO.puts MyList.ceasar 'abcd', 2
+IO.puts MyList.ceasar 'ryvkve', 13
