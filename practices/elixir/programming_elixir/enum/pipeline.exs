@@ -1,4 +1,4 @@
-# プログラミングElixir 10.2 enum/pipeline/exs
+# プログラミングElixir 10.2 enum/pipeline.exs
 
 IO.inspect [1, 2 ,3, 4, 5]
 |> Enum.map(&(&1 * &1))                               # [1, 4, 9, 16, 25]
