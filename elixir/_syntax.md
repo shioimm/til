@@ -317,3 +317,51 @@ Elixir.IO == IO # => true
 
 :io.format("~3.1f~n", [1.23]) # => 1.2 / :ok
 ```
+
+## 内包表記
+- 与えられた一つ以上のコレクションに対して各要素の値のすべての組み合わせを展開する
+  - 内包表記の内側で代入されたすべての変数は、その内包表記の中でだけ利用できる
+    (内包表記の外側のスコープには影響を与えない)
+
+```exs
+for ジェネレータまたはフィルタ [, into: 値 ], do: 式
+```
+
+```exs
+for x <- [1, 2, 3], do: x * x           # => [1, 4, 9]
+
+for x <- [1, 2, 3], x == 2, do: x * x   # => [4]
+
+for x <- [1, 2], y <- [3, 4], do: x * y # => [3, 4, 6, 8]
+```
+
+```exs
+minmaxes = [{ 1, 4 }, { 2, 3 }, { 10, 12 }]
+for { min, max } <- minmaxes, n <- min..max, do: n
+# => [1, 2, 3, 4, 2, 3, 10, 11, 12]
+
+n = [1, 2, 3, 4, 5, 6, 7]
+for x <- n, y <- n, x >= y, rem(x * y, 10) == 0, do: { x, y }
+# => [{5, 2}, {5, 4}, {6, 5}]
+```
+
+```exs
+for << ch <- "hello" >>, do: << ch >>
+# => ["h", "e", "l", "l", "o"]
+
+for << << b1::size(2), b2::size(3), b3::size(3) >> <- "hello" >>, do: "0#{b1}#{b2}#{b3}"
+# => ["0150", "0145", "0154", "0154", "0157"]
+```
+
+### `into`パラメータ
+- `into`パラメータは内包表記の結果を受け取る
+
+```exs
+for x <- ~w{ cat dog }, into: %{}, do: { x, String.upcase(x) }
+# => %{"cat" => "CAT", "dog" => "DOG"}
+
+for x <- ~w{ cat dog }, into: IO.stream(:stdio, :line), do: "#{x}\n"
+cat
+dog
+# => %IO.Stream{device: :standard_io, line_or_bytes: :line, raw: false}
+```
