@@ -1,9 +1,15 @@
 # プログラミングElixir 11.3 StringsAndBinaries-5
 
 defmodule MyString do
-  def center([]) do
-    codepoints = Enum.to_list 65..125
+  def center(list) do
+    longest_size = Enum.map(list, &(String.length &1)) |> Enum.max
+
+    Enum.each(list, fn str ->
+      size = round((longest_size - String.length str)  / 2)
+      spaces = String.duplicate(" ", size)
+      "#{spaces}#{str}#{spaces}" |> IO.puts
+    end)
   end
 end
 
-IO.puts MyString.center(["cat", "zebra", "elephant"])
+MyString.center(["cat", "zebra", "elephant"])

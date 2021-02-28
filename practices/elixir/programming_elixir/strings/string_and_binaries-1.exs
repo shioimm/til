@@ -1,10 +1,10 @@
 # プログラミングElixir 11.3 StringsAndBinaries-1
 
 defmodule MyString do
-  def printable?() do
-    codepoints = Enum.to_list 65..125
+  def printable?(str) do
+    Enum.all?(str, &(&1 in Enum.to_list 65..125))
   end
 end
 
-IO.puts MyString.printable?('{text}')
-IO.puts MyString.printable?(12345)
+IO.inspect MyString.printable?('{text}')
+IO.inspect MyString.printable?([1, 2, 3, 4, 5])

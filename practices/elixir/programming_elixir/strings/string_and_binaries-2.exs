@@ -1,9 +1,10 @@
 # プログラミングElixir 11.3 StringsAndBinaries-2
 
 defmodule MyString do
-  def anagram?() do
+  def anagram?(str1, str2) do
+    Enum.sort(str1) == Enum.sort(str2)
   end
 end
 
-IO.puts MyString.anagram?('silent', 'listen')
-IO.puts MyString.anagram?('silent', 'loud')
+IO.inspect MyString.anagram?('silent', 'listen')
+IO.inspect MyString.anagram?('silent', 'loud')
