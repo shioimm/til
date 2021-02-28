@@ -205,6 +205,25 @@ $ XXX=yyy command
   - エラー時は数値-1を返す
 - 子プロセス - 数値0を返す
 
+### `clone(2)`
+- `fork(2)`と同目的
+- スレッドライブラリの内部で使用される
+- 可搬性がなくアプリケーションから直接使用されることはない
+- 実行開始点となる関数を指定する(子関数)
+  - 生成された子プロセスは子関数からリターンするか`exit()`で終了する
+  - 関数の返り値が子プロセスの終了コードになる
+
+#### 引数
+- `*func`、`*child_stack`、`flags`、`*func_args`を指定する
+  - `*func` - 実行開始点となる子関数へのポインタ
+  - `*child_stack` - 子プロセスに新たに割り当てられるスタックへのポインタ
+  - `flags` - `clone(2)`の動作を制御するフラグ
+  - `*func_args` - 子関数の引数
+
+#### 返り値
+- 子プロセス / スレッドのIDを返す
+  - エラー時は数値-1を返す
+
 ## プロセスの正常終了
 ### `_exit(2)`
 - 指定の`wait`ステータスでプロセスを終了させる
@@ -351,3 +370,69 @@ void func(int status, void *arg)
 - 子プロセスの作成に失敗 - 数値−１を返す
 - 子プロセスがシェルを実行できない - シェルが`_exit(127)`を実行したものとして処理
 - 成功 - 指定したコマンドを実行したシェルの終了ステータス
+
+## プロセスアカウンティング
+### `acct(2)`
+- プロセスアカウンティングを有効化し、
+  アカウンティングレコード`acct`構造体をアカウンティングファイルへ記録する
+
+```c
+// <sys/acct.h>
+
+struct acct {
+  char      ac_flag;     // 実行中の事象を記録するフラグ
+  u_int16_t ac_uid;      // 実ユーザーID
+  u_int16_t ac_gid;      // 実グループID
+  u_int16_t ac_tty;      // 制御端末
+  u_int32_t ac_btime;    // 開始時間
+  comp_t    ac_utime;    // ユーザーCPU時間
+  comp_t    ac_stime;    // システムCPU時間
+  comp_t    ac_etime;    // 経過時間
+  comp_t    ac_mem;      // 平均使用メモリ量
+  comp_t    ac_io;       // 読み書きによる転送バイト数
+  comp_t    ac_rw;       // 読み書きしたブロック数
+  char      ac_comm[17]; // 17文字
+};
+
+// ac_flag
+//   AFORK - forkされたプロセスがexecを呼んでいない
+//   ASU   - スーパーユーザー権限を使ったプロセス
+//   ACORE - コアダンプしたプロセス
+//   AXSIG - シグナルでkillされたプロセス
+```
+
+```c
+// 新ファイルフォーマット
+// CONFIG_BSD_PROCESS_ACCT_V3`を有効化する必要がある
+
+// <sys/acct.h>
+
+struct acct_v3 {
+  char      ac_flag;     // 実行中の事象を記録するフラグ
+  char      ac_version;  // アカウンティングバージョン
+  u_int32_t ac_uid;      // 実ユーザーID(32ビット)
+  u_int32_t ac_gid;      // 実グループID(32ビット)
+  u_int32_t ac_pid;      // プロセスID
+  u_int32_t ac_ppid;     // 親プロセスID
+  u_int16_t ac_tty;      // 制御端末
+  u_int32_t ac_btime;    // 開始時間
+  u_int32_t ac_etime;    // 経過時間
+  comp_t    ac_utime;    // ユーザーCPU時間
+  comp_t    ac_stime;    // システムCPU時間
+  comp_t    ac_etime;    // 経過時間
+  comp_t    ac_mem;      // 平均使用メモリ量
+  comp_t    ac_io;       // 読み書きによる転送バイト数
+  comp_t    ac_rw;       // 読み書きしたブロック数
+  comp_t    ac_minflt;   // マイナーページフォールト回数
+  comp_t    ac_majflt;   // メジャーページフォールト回数
+  char      ac_comm[17]; // 17文字
+};
+```
+
+#### 引数
+- `*acctfile`
+  - `*acctfile` - アカウンティング情報を保存するファイル名を示す文字列へのポインタ
+    - 一般に`/var/log/pacct`または`/usr/account/pacct`
+    - NULLを指定すると無効化
+
+#### 返り値
