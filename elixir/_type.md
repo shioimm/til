@@ -120,6 +120,7 @@ IO.puts s4.name # => "Marie"
 | `get_and_update_in` | 値を取得して関数を適用する | (path, fn)         | (dict, keys, fn)    |
 
 ## バイナリ型(`<<1, 2>>`)
+- ビット列(0-255)
 
 ```exs
 bin = <<1, 2>> # => <<1, 2>>
@@ -128,6 +129,14 @@ byte_size bin  # => 2
 # 修飾子でフィールドごとの型と大きさを制御する
 bin = <<1 :: size(8), 2 :: size(8)>> # => <<1, 2>>
 byte_size bin                        # => 2
+```
+
+- `size(n)` - そのフィールドのビット数
+- `signed` / `unsigned` - 符号付き / 符号なし(整数フィールド)
+- `big` / `little` / native - エンディアン
+
+```exs
+<< length::unsigned-integer-size(12), flags::bitstring-size(4) >> = data
 ```
 
 ## Date型
