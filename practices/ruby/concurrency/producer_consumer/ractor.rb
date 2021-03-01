@@ -1,30 +1,28 @@
 class Producer
-  @@id = 0
-
-  def initialize(name, factory)
-    Ractor.current.name = name
+  def initialize(factory, indexer)
     @factory = factory
+    @indexer = indexer
   end
 
   def make
     loop do
       sleep rand
-      product = "Product no. #{next_id} by #{Ractor.current.name}"
+      product_no = ask_product_no
+
+      product = "Product no. #{product_no} by #{Ractor.current.name}"
       @factory.send product
       puts "#{Ractor.current.name} makes #{product}."
     end
   end
 
-  private
-
-    def next_id
-      @@id += 1
-    end
+  def ask_product_no
+    @indexer.send Ractor.current
+    Ractor.receive
+  end
 end
 
 class Consumer
-  def initialize(name, factory)
-    Ractor.current.name = name
+  def initialize(factory)
     @factory = factory
   end
 
@@ -39,20 +37,28 @@ end
 
 factory = Ractor.new do
   loop do
-    product = Ractor.recv
+    product = Ractor.receive
     Ractor.yield product
   end
 end
 
+indexer = Ractor.new(no = 1) do |no|
+  loop do
+    producer = Ractor.receive
+    producer.send no
+    no += 1
+  end
+end
+
 producers = 3.times.map { |i|
-  Ractor.new do
-    Producer.new("P-#{i + 1}", factory).make
+  Ractor.new(factory, indexer, name: "P-#{i + 1}") do |factory, indexer|
+    Producer.new(factory, indexer).make
   end
 }
 
 consumers = 3.times.map { |i|
-  Ractor.new do
-    Consumer.new("C-#{i + 1}", factory).take
+  Ractor.new(factory, name: "C-#{i + 1}") do |factory|
+    Consumer.new(factory).take
   end
 }
 
