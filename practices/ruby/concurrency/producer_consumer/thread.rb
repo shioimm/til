@@ -33,7 +33,7 @@ class Factory
 end
 
 class Producer
-  @@id = 0
+  @@product_no = 1
 
   def initialize(name, factory)
     Thread.current.name = name
@@ -44,16 +44,16 @@ class Producer
   def make
     loop do
       sleep rand
-      product = "Product no. #{next_id} by #{Thread.current.name}"
+      product = "Product no. #{next_product_no} by #{Thread.current.name}"
       @factory.make product
     end
   end
 
   private
 
-    def next_id
+    def next_product_no
       @mutex.synchronize do
-        @@id += 1
+        @@product_no += 1
       end
     end
 end
