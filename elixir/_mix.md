@@ -66,6 +66,7 @@ defmodule プロジェクト名.MixProject do
   def project do
     [
       app: :プロジェクト名,
+      escript: escript_config(),
       version: "バージョン",
       elixir: "Elixirのバージョン",
       start_permanent: Mix.env() == :prod,
@@ -86,6 +87,12 @@ defmodule プロジェクト名.MixProject do
       { :依存ライブラリ名, "バージョン" }
     ]
   end
+
+  # escriptの設定
+  # $ mix escript.buildでパッケージング
+  defp escript_config do
+    main_module: メイン関数を含むモジュール名
+  end
 end
 ```
 
@@ -94,3 +101,22 @@ end
 - `$ mix deps` - ライブラリの状態を確認
 - `$ mix deps.get` - 依存ライブラリのダウンロード
   - ライブラリはコンパイルされていない状態でダウンロードされる
+
+### `config/config.exs`
+- 設定情報を記述する
+
+```exs
+use Mix.Config
+
+# 外部から環境を読み込む
+import_config "#{Mix.env}.exs" # 環境に応じてdev.env / test.env / prod.envを呼び出す
+
+# アプリケーション側で呼び出せる値を定義
+config :名前空間, キー: 値
+```
+
+```exs
+# アプリケーション側で値を呼び出せる
+
+Application.get_env(:名前空間, :キー)
+```
