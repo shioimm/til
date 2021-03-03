@@ -1,5 +1,5 @@
 # Mix
-- プログラミングElixir 第13章
+- プログラミングElixir 第13章 / 第14章
 
 ## TL;DR
 - Elixirのプロジェクトを管理するためのコマンドラインユーティリティ
@@ -13,7 +13,7 @@ $ mix help                      # ヘルプ
 $ mix run -e '呼び出したい関数' # 関数をインラインで呼び出す
 ```
 
-### 新規プロジェクトの作成
+## Mixプロジェクト
 
 ```
 $ mix new プロジェクト名
@@ -36,11 +36,11 @@ $ mix new プロジェクト名
        └── test_helper.exs
 ```
 
-#### 規約
+### 規約
 - CLI用のモジュールは`プロジェクト.CLI`と呼ばれ、エンドポイント`run`を持ち、
   コマンドライン引数の配列を一つ受け取る
 
-### テスト
+### `test/`
 - Mixで作成したプロジェクトは`test/プロジェクト名_test.exs`としてテストテンプレートを作成する
 - `test/`以下に`モジュール名_test.exs`としてファイルを作成し
   テンプレートを元にしてテストを追加していく
@@ -58,7 +58,24 @@ defmodule プロジェクト名Test do
 end
 ```
 
+- `setup` - テストのセットアップ
+  - 各テストが実行される前に自動的に起動する(`setup_all`は一回だけ起動する)
+
+```exs
+setup do
+  [
+    キー: 値,
+  ]
+end
+
+# fixtureとしてパラメータを渡すとfixture.キーでアクセスできる
+test "テスト名", fixture do
+  # ...
+end
+```
+
 ### `mix.exs`
+
 ```
 defmodule プロジェクト名.MixProject do
   use Mix.Project
@@ -96,7 +113,7 @@ defmodule プロジェクト名.MixProject do
 end
 ```
 
-### 依存ライブラリ
+#### 依存ライブラリ
 - `mix.exs`の`deps`関数に必要な関数を追加する
 - `$ mix deps` - ライブラリの状態を確認
 - `$ mix deps.get` - 依存ライブラリのダウンロード
@@ -120,3 +137,12 @@ config :名前空間, キー: 値
 
 Application.get_env(:名前空間, :キー)
 ```
+
+### コードの依存関係
+- `$ mix xref unreachable` - 呼び出し時に不明な関数の一覧
+- `$ mix xref warnings` - 依存関係に関する警告の一覧
+- `$ mix xref callers MOD | MOD.func | MOD.func/arity` - モジュールや関数の呼び出し元一覧
+- `$ mix xref graph` - アプリケーションの依存ツリーの表示
+
+### コードフォーマット
+- `$ mix format`
