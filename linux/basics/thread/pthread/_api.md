@@ -72,3 +72,36 @@
 #### 返り値
 - 数値0を返す
   - エラー時は正のエラー番号を返す
+
+## mutex
+### mutexの初期化(スタティック)
+```c
+pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+```
+
+### `pthread_mutex_lock(3)`
+- 指定のmutexをロックする
+- mutexがアンロック状態 -> ロック状態へ遷移させる
+- mutexがロック状態 -> アンロックされるまで待つ
+  - 自スレッドがロックしたmutexへ`pthread_mutex_lock(3)`を呼ぶ -> デッドロック(Linux)
+
+#### 引数
+- `*mutex`を指定する
+  - `*mutex` - 指定のmutexへのポインタ
+
+#### 返り値
+- 数値0を返す
+  - エラー時は正のエラー番号を返す
+
+### `pthread_mutex_unlock(3)`
+- 指定のmutexをアンロックする
+- mutexがロック状態 -> アンロック状態へ遷移させる
+- mutexがアンロック状態 -> エラー
+
+#### 引数
+- `*mutex`を指定する
+  - `*mutex` - 指定のmutexへのポインタ
+
+#### 返り値
+- 数値0を返す
+  - エラー時は正のエラー番号を返す
