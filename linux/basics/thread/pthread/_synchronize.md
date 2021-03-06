@@ -159,9 +159,3 @@ pthread_mutex_lock(mutex2) | pthread_mutex_lock(mutex1)
 - `pthread_spin_lock(3)` - スピンロックのロック
 - `pthread_spin_trylock(3)` - スピンロックのロック(条件付き/スピンしない)
 - `pthread_spin_unlock(3)` - スピンロックのアンロック
-
-## リエントラントな関数
-- 複数のスレッドから同時に実行された際、
-  他のスレッドの状態に関わらず期待通りの結果が保証される関数
-- グローバルまたはスタティックなデータを更新する関数は
-  非リエントラントである恐れがある
