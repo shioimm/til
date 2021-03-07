@@ -2,7 +2,7 @@
 - [elixir](https://elixir-lang.jp/)
 - [getting-started](https://elixir-lang.jp/getting-started/introduction.html)
 - [リファレンス](https://hexdocs.pm/elixir)
-- プログラミングElixir 第1章 / 第14章
+- プログラミングElixir 第1章 / 第14章 / 第20章
 
 ## IEx
 - `$ iex`
@@ -45,3 +45,10 @@
 - Erlang標準ライブラリを使う
 - [Hex](https://hex.pm/)を使う
 - GitHubから探す
+
+## アプリケーション仕様ファイル
+- `xxx.app` - ランタイム環境にアプリケーションを定義する際に使用される
+- アプリケーション仕様ファイルは`mix.exs`にある情報と、
+  アプリケーションをコンパイルするときに集めた情報をつなげて生成される
+- アプリケーションを実行する際はアプリケーション仕様ファイルに基づいてロードされる
+- アプリケーション仕様ファイルは`_build/ENV/lib/xxx/ebin`以下に置かれる
