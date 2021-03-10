@@ -1,32 +1,32 @@
 class Channel
   def initialize(size)
-    @in_progress_products = []
-    @max_size = size # 同時に作ることができる最大数
+    @products = []   # Channelが保有しているproduct
+    @max_size = size # Channelが同時保有することができる最大数
     @mutex    = Mutex.new
     @cond     = ConditionVariable.new
   end
 
-  def make(product)
+  def put(product)
     @mutex.synchronize do
-      while @in_progress_products.size >= @max_size # 最大仕掛かり数 >= 同時に作ることができる最大数
+      while @products.size >= @max_size # 現在の保有数 >= 最大保有数
         @cond.wait(@mutex)
       end
 
-      @in_progress_products.push product
-      puts "#{Thread.current.name} makes #{product}. WIP: #{@in_progress_products.size}/#{@max_size}"
+      @products.push product
+      puts "#{Thread.current.name} makes #{product}"
       @cond.signal
     end
   end
 
   def take
     @mutex.synchronize do
-      while @in_progress_products.size <= 0 # 最大仕掛かり数 <= 0
+      while @products.size <= 0 # 現在の保有数 <= 0
         @cond.wait(@mutex)
       end
 
-      product = @in_progress_products.pop
+      product = @products.pop
       @cond.signal
-      puts "#{Thread.current.name} takes #{product}. WIP: #{@in_progress_products.size}/#{@max_size}"
+      puts "#{Thread.current.name} takes #{product}."
       product
     end
   end
@@ -54,7 +54,7 @@ class Producer
       sleep rand
       product_no = Numbering.issue
       product = "Product no. #{product_no} by #{Thread.current.name}"
-      @channel.make product
+      @channel.put product
     end
   end
 end
