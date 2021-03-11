@@ -13,7 +13,7 @@ class Channel
       end
 
       @products.push product
-      puts "#{Thread.current.name} makes #{product}"
+      puts "#{Thread.current.name} produces #{product}"
       @cond.signal
     end
   end
@@ -26,7 +26,7 @@ class Channel
 
       product = @products.pop
       @cond.signal
-      puts "#{Thread.current.name} takes #{product}."
+      puts "#{Thread.current.name} consumes #{product}."
       product
     end
   end
@@ -49,7 +49,7 @@ class Producer
     @mutex   = Mutex.new
   end
 
-  def make
+  def run
     loop do
       sleep rand
       product_no = Numbering.issue
@@ -65,7 +65,7 @@ class Consumer
     @channel = channel
   end
 
-  def take
+  def run
     loop do
       @channel.take
       sleep rand
@@ -77,13 +77,13 @@ channel = Channel.new(3)
 
 producers = 3.times.map { |i|
   Thread.new do
-    Producer.new("P-#{i + 1}", channel).make
+    Producer.new("P-#{i + 1}", channel).run
   end
 }
 
 consumers = 3.times.map { |i|
   Thread.new do
-    Consumer.new("C-#{i + 1}", channel).take
+    Consumer.new("C-#{i + 1}", channel).run
   end
 }
 

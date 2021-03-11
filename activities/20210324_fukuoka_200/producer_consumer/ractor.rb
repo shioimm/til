@@ -4,7 +4,7 @@ class Producer
     @numbering = numbering
   end
 
-  def make
+  def run
     loop do
       sleep rand
       product_no = issue_product_no
@@ -25,7 +25,7 @@ class Consumer
     @channel = channel
   end
 
-  def take
+  def run
     loop do
       product = @channel.take
       puts "#{Ractor.current.name} takes #{product}"
@@ -51,13 +51,13 @@ end
 
 producers = 3.times.map { |i|
   Ractor.new(channel, numbering, name: "P-#{i + 1}") do |channel, numbering|
-    Producer.new(channel, numbering).make
+    Producer.new(channel, numbering).run
   end
 }
 
 consumers = 3.times.map { |i|
   Ractor.new(channel, name: "C-#{i + 1}") do |channel|
-    Consumer.new(channel).take
+    Consumer.new(channel).run
   end
 }
 
