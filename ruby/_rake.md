@@ -1,5 +1,10 @@
 # Rake
 ## 事例
+### Rakeタスクの中でRakeタスクを呼ぶ
+```ruby
+Rake::Task["実行したいRakeタスク"].invoke
+```
+
 ### RailsにおけるRakeタスク
 - 参考: [rakeタスクを定義するときのおまじない :environment がやっていること](https://qiita.com/vivid_muimui/items/5ef9dfa31f5168190278)
 - `:environment`はRailsアプリケーションの`config/environment.rb`
