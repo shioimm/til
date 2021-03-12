@@ -46,7 +46,6 @@ class Producer
   def initialize(name, channel)
     Thread.current.name = name
     @channel = channel
-    @mutex   = Mutex.new
   end
 
   def run
