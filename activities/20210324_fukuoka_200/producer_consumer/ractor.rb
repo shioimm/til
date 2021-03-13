@@ -6,11 +6,8 @@ class Producer
 
   def run
     loop do
-      sleep rand
       product_no = issue_product_no
-      product = "Product no. #{product_no} by #{Ractor.current.name}"
-      @channel.send product
-      puts "#{Ractor.current.name} makes #{product}."
+      @channel.send ["Product no. #{product_no}", Ractor.current.name]
     end
   end
 
@@ -28,24 +25,25 @@ class Consumer
   def run
     loop do
       product = @channel.take
-      puts "#{Ractor.current.name} takes #{product}"
-      sleep rand
+      puts "#{Ractor.current.name} consumes #{product}"
     end
   end
 end
 
 channel = Ractor.new do
   loop do
-    product = Ractor.receive
+    product, producer = Ractor.receive
+    puts "#{producer} produces #{product}."
+
     Ractor.yield product
   end
 end
 
-numbering = Ractor.new(no = 1) do |no|
+numbering = Ractor.new(no = 0) do |no|
   loop do
+    no += 1
     producer = Ractor.receive
     producer.send no
-    no += 1
   end
 end
 
