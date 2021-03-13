@@ -33,7 +33,7 @@ end
 channel = Ractor.new do
   loop do
     product, producer = Ractor.receive
-    puts "#{producer} produces #{product}."
+    puts "#{producer} produces #{product}"
 
     Ractor.yield product
   end
