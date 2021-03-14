@@ -26,7 +26,6 @@ class Channel
 
       product = @products.pop
       @cond.signal
-      puts "#{Thread.current.name} consumes #{product}."
       product
     end
   end
@@ -50,9 +49,8 @@ class Producer
 
   def run
     loop do
-      sleep rand
       product_no = Numbering.issue
-      product = "Product no. #{product_no} by #{Thread.current.name}"
+      product = "Product no. #{product_no}"
       @channel.put product
     end
   end
@@ -66,8 +64,8 @@ class Consumer
 
   def run
     loop do
-      @channel.take
-      sleep rand
+      product = @channel.take
+      puts "#{Thread.current.name} consumes #{product}"
     end
   end
 end
