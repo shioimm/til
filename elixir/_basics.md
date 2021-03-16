@@ -3,6 +3,21 @@
 - [getting-started](https://elixir-lang.jp/getting-started/introduction.html)
 - [リファレンス](https://hexdocs.pm/elixir)
 - プログラミングElixir 第1章 / 第14章 / 第20章
+- Elixir実践ガイド 1.2
+
+## Erlang/OTP
+- Erlang言語処理系
+  - ERTS - ランタイムシステム
+  - BEAM - ErlangVM
+  - OTP - Erlang標準ライブラリ
+- ElixirはOTPによって実装されている
+- ElixirのコンパイラはElixirのソースコードを
+  BEAM上で実行可能なバイトコードへ変換する
+
+## コンパイル
+- `$ elixirc` - ソースコードをバイトコードへコンパイルする
+  - コンパイルに成功すると、`.beam`拡張子を持つバイトコードファイルが生成される
+  - バイトコードファイルは`$ elixir -e '関数'`コマンドで直接実行できる
 
 ## IEx
 - `$ iex`
