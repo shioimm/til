@@ -3,7 +3,7 @@
 - [getting-started](https://elixir-lang.jp/getting-started/introduction.html)
 - [リファレンス](https://hexdocs.pm/elixir)
 - プログラミングElixir 第1章 / 第14章 / 第20章
-- Elixir実践ガイド 1.2
+- Elixir実践ガイド 1.2 / 5.2.9
 
 ## Erlang/OTP
 - Erlang言語処理系
@@ -18,6 +18,15 @@
 - `$ elixirc` - ソースコードをバイトコードへコンパイルする
   - コンパイルに成功すると、`.beam`拡張子を持つバイトコードファイルが生成される
   - バイトコードファイルは`$ elixir -e '関数'`コマンドで直接実行できる
+
+### コンパイルの工程
+1. ソースコードをASTに変換
+2. ASTに含まれるマクロを展開
+3. ASTをバイトコードに変換
+
+## 関数とマクロの評価タイミングの違い
+- マクロはコンパイル時に評価される
+- 関数は実行時に評価される
 
 ## IEx
 - `$ iex`
