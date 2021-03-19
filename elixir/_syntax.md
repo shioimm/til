@@ -1,5 +1,6 @@
 # 文法
 - プログラミングElixir 第4章 / 第5章 / 第6章 / 第10章
+- Elixir実践ガイド 10.1.1 / 10.2.6
 
 ## 変数名
 - モジュール、レコード、プロトコル、ビヘイビアの名前はアッパーキャメルケース
@@ -34,6 +35,35 @@ lp = with { :ok, file } = File.open("/etc/passwd"),
        "Group: #{gid}, User: #{uid}"
      end
 ```
+
+## `do` ~ `end`ブロック
+- Elixirの`do` ~ `end`ブロックはキーワードリストに変換可能
+
+```exs
+defmodule X do
+  def x_func(one, opts) do
+    IO.inspect({ one, opts[:do], opts[:else] })
+  end
+end
+```
+
+```exs
+# キーワードリスト構文による呼び出し
+
+X.x_func(1, do: 2, else: 3) # => {1, 2, 3}
+```
+
+```exs
+# do ~ endブロックによる呼び出し
+
+X.x_func 1 do
+  2
+else
+  3
+end # => {1, 2, 3}
+```
+
+- `do` ~ `end`ブロックはキーワード
 
 ## 無名関数
 - `fn`~`end`キーワードで定義する
@@ -317,6 +347,27 @@ Elixir.IO == IO # => true
 # ioモジュールのformat関数
 
 :io.format("~3.1f~n", [1.23]) # => 1.2 / :ok
+```
+
+## マクロ
+```exs
+def module X do
+  defmacro define_x
+    quote do # コードをASTに変換する
+      def x do
+       :x
+      end
+    end
+  end
+end
+
+defmodule Y do
+  require X
+    X.define_x # マクロから送られてくるASTを埋め込む
+  end
+end
+
+Y.x # => :x
 ```
 
 ## 内包表記

@@ -3,7 +3,7 @@
 - [getting-started](https://elixir-lang.jp/getting-started/introduction.html)
 - [リファレンス](https://hexdocs.pm/elixir)
 - プログラミングElixir 第1章 / 第14章 / 第20章
-- Elixir実践ガイド 1.2 / 5.2.9
+- Elixir実践ガイド 1.2 / 5.2.9 / 11.1.1
 
 ## Erlang/OTP
 - Erlang言語処理系
@@ -13,6 +13,10 @@
 - ElixirはOTPによって実装されている
 - ElixirのコンパイラはElixirのソースコードを
   BEAM上で実行可能なバイトコードへ変換する
+
+### アトムテーブル
+- BEAMは内部にアトムテーブルという記憶領域を持つ
+- アトムテーブルはデフォルトで約100万個のアトムを格納することができる
 
 ## コンパイル
 - `$ elixirc` - ソースコードをバイトコードへコンパイルする
