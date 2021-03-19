@@ -12,6 +12,9 @@
 - ユーザーのログイン・ログアウトの履歴を保持する
   - ログインのたびに`utmp`ファイルと同じ情報が追加され、ログアウト時にも追加される
 
+### `/var/run/lastlog`ファイル(`_PATH_LASTLOG`)
+- ユーザーがシステムへログインした時刻を記録する
+
 ## `utmpx`構造体
 - `utmp` / `wtmp`ファイルでは`utmpx`構造体を一レコードとしてレコードが連続した構造を取る
 ```c
@@ -40,3 +43,37 @@ struct utmp {
   char    __unused[20];         // 予約
 };
 ```
+
+## `lastlog`構造体
+```c
+#define UT_NAMESIZE  32
+#define UT_HOSTSIZE 256
+
+struct lastlog {
+  int32_t ll_time;              // 最終ログイン時刻
+  char    ll_line[UT_LINESIZE]; // 端末デバイス名(リモートログイン時)
+  char    ll_host[UT_HOSTSIZE]; // ホスト名(リモートログイン時)
+};
+```
+
+## API
+### `setutxent(3)`
+- 現在位置を`utmp`ファイルの先頭まで移動する
+
+### `endutxent(3)`
+- `utmp`ファイルをクローズする
+
+### `*getutxent(3)` / `*getutxid(3)` / `*gettutxline(3)`
+- `utmp`ファイルからレコードを読み取り、`utmpx`構造体へのポインタを返す
+- 一致するレコードがない場合、ファイルがEOFに達した場合はNULLを返す
+- `wtmp`ファイルを操作する場合は`utmpxname(3)`でパス名を指定する
+
+### `*getlogin(3)`
+- 制御端末へログイン中のユーザー名を示す文字列へのポインタを返す
+- エラー時はNULLを返す
+
+### `*pututxline(3)`
+- 指定した`utmpx`構造体を`/var/run/utmp`ファイルへ記録する
+
+### `updwtmpx(3)`
+- 指定した`utmpx`構造体を指定のファイル(`wtmp`ファイル)へ記録する
