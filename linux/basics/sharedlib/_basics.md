@@ -82,6 +82,8 @@ $ gcc -g -o prog prog.o -Ldirname -larchive
   そのモジュールを必要とするプログラムを初めて実行した際にライブラリをメモリへロードする
   - その後に同じモジュールを使用する他のプログラムを実行すると、
     メモリにロード済みのライブラリを使用する
+- 共有ライブラリには作成時にELFヘッダが付与される
+  - ELFヘッダはsonameを含む
 
 ### 利点
 - 実行ファイルが消費するディスク容量・実行時の仮想メモリサイズを削減できる
@@ -148,3 +150,47 @@ $ ./prog
 # (共有ファイルがカレントディレクトリに置かれている場合)
 $ LD_LIBRARY_PATH=. ./prog
 ```
+
+### soname
+- 実行ファイルに埋め込まれる共有オブジェクトライブラリ名
+- 共有ライブラリ作成時に名前を指定することができる
+- sonameを指定していない共有ライブラリの場合、
+  ダイナミックリンク時に実行ファイルに
+  共有ライブラリファイルの実際の名前(real name)が埋め込まれる
+
+```
+$ gcc -g -c -fPIC -Wall mod1.c mod2.2 mod3.c
+
+# 共有ライブラリlibfoo.soにsonameとしてlibbar.soをつけるようリンカに指示
+$ gcc -g -shared -Wl -soname, libbar.so -o libfoo.so mod1.o mod2.o mod3.o
+
+# 既存の共有ライブラリのsonameを確認する
+$ objdmp  -p libfoo.so | grep SONAME
+$ readelf -d libfoo.so | grep SONAME
+
+# sonameを持つ共有ライブラリをプログラムにリンクして実行ファイルを作成
+# (リンカが実行ファイルにsonameであるlibbar.soを埋め込む)
+$ gcc -g -Wall -o prog prog.c libfoo.so
+
+# ダイナミックリンカがlibbar.soを解決できるようにするため、
+# real nameであるlibfoo.soへのシンボリックリンクをsonameで作成
+$ ln -s libfoo.so libbar.so
+
+# プログラムを実行
+$ LD_LIBRARY_PATH=. ./prog
+```
+
+## 共有ライブラリ関連ツール
+### `ldd(1)`
+- list dynamic dependencies
+- プログラム・共有ライブラリの実行に必要な共有ライブラリを表示する
+- ダイナミックリンカと同じ検索規則に従い、参照するライブラリを解決する
+
+### `objdmp(1)` / `readelf(1)`
+- 共有ライブラリ、実行ファイル、オブジェクトファイルの解析に役立つ各種情報を表示する
+  - 実行ファイル、オブジェクトファイル、共有ライブラリから逆アセンブルしたマシン語
+  - ELFセクションヘッダなど
+- `objdmp(1)` / `readelf(1)`では表示形式が異なる
+
+### `nm(1)`
+- オブジェクトライブラリ、実行ファイル内のシンボルを表示する
