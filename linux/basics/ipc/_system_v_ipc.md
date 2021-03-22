@@ -3,7 +3,7 @@
 - 参照: 詳解UNIXプログラミング第3版 15. プロセス間通信
 - 参照: Linuxネットワークプログラミング Chapter7 プロセス間通信 7-8
 - 参照: Linuxによる並行プログラミング入門 第6章 相互排除とセマフォ 6.2
-- 参照: Linuxプログラミングインターフェース 45章
+- 参照: Linuxプログラミングインターフェース 45章 / 46章
 
 ## TL;DR
 - SystemV メッセージキュー / SystemVセマフォ / SystemV共有メモリの総称
@@ -14,14 +14,15 @@
 
 ## API
 
-| インターフェース | メッセージキュー          | セマフォ         | 共有メモリ                |
-| -                | -                         | -                | -                         |
-| ヘッダファイル   | `<sys/msg.h>`             | `<sys/sem.h>`    | `<sys/shim.h>`            |
-| 対応構造体       | `msqid_ds`構造体          | `semid_ds`構造体 | `shmid_ds`構造体          |
-| get操作          | `msgget(2)`               | `semget(2)`      | `shmget(2)` + `shimat(2)` |
-| 削除操作         | なし                      | なし             | `shmdt(2)`                |
-| 制御             | `msgctl(2)`               | `semctl(2)`      | `shmctl(2)`               |
-| 通信             | `msgsnd(2)` / `msgrcv(2)` | `semop(2)`       | メモリへのアクセス        |
+| インターフェース | メッセージキュー          | セマフォ            | 共有メモリ                 |
+| -                | -                         | -                   | -                          |
+| ヘッダファイル   | `<sys/msg.h>`             | `<sys/sem.h>`       | `<sys/shim.h>`             |
+| 対応構造体       | `msqid_ds`構造体          | `semid_ds`構造体    | `shmid_ds`構造体           |
+| get操作          | `msgget(2)`               | `semget(2)`         | `shmget(2)` + `shimat(2)`  |
+| 削除操作         | なし                      | なし                | `shmdt(2)`                 |
+| 制御             | `msgctl(2)`               | `semctl(2)`         | `shmctl(2)`                |
+| 通信             | `msgsnd(2)` / `msgrcv(2)` | `semop(2)`          | メモリへのアクセス         |
+| オブジェクト一覧 | `/proc/sysvipc/msg`       | `/proc/sysvipc/sem` | `/proc/sysvipc/sem`        |
 
 ### get操作
 - オブジェクトが存在しない場合: 指定のIPCキーのオブジェクトを新規に作成し、IPCIDを返す
@@ -33,59 +34,89 @@
 - IPCIDはIPCオブジェクト自身の属性であり、システム全体から参照可能
 
 ### IPCキー
-- `fftok(3)` - ファイルパスを利用してIPCキーを生成する
+- `key_t`型の整数
+- get操作は一意なIPCキーを一意なIPCIDへ変換する
+- 一意なIPCキーは`IPC_PRIVATE`か`ftok(3)`を使用することで得られる
+  - `IPC_PRIVATE` - 新規IPCオブジェクト生成時にキーとして指定できるマクロ定数
+  - `ftok(3)` - ファイルパスから得られるi-node番号を利用してIPCキーを生成する
 
-### IPC資源の管理
-- `ipcs(1)` - IPC資源に関する情報を表示する
-- `ipcrm(1)` - IPC資源を解放する
+### IPC対応構造体
+- カーネルは内部でSystem V IPCオブジェクトそれぞれに対応する構造体を管理する
+- 構造体は各IPCオブジェクトのヘッダファイルにて定義される
+- 構造体はget操作のシステムコールが作成時に初期化する
+- 各構造体は、各IPCオブジェクトに共通する構造体`ipc_perm`を内包する
 
-## アクセス許可構造
 ```c
 include <sys/ipc.h>
 
 struct ipc_perm {
-  uid_t uid;   // 所有者の実効ユーザーID
-  gid_t gid;   // 所有者の実効グループID
-  uid_t cuid;  // 作成者の実効ユーザーID
-  gid_t cgid;  // 作成者の実効グループID
-  mode_t mode; // アクセスモード
+  key_t          __key; // getに指定したキー
+  uid_t          uid;   // 所有者の実効ユーザーID
+  gid_t          gid;   // 所有者の実効グループID
+  uid_t          cuid;  // 作成者の実効ユーザーID
+  gid_t          cgid;  // 作成者の実効グループID
+  unsigned short mode;  // パーミッション
+  unsigned short __seq; // シーケンス番号
 };
 ```
-- `msgctl(2)` / `semctl(2)` / `shmctl(2)`で操作可能
+
+## カーネル内におけるSystem V IPCの構造
+- カーネルはIPC種類ごとに`ipc_ids`構造体を作成する
+  カーネルはIPC種類ごとの全IPCオブジェクトに関するグローバルな情報を管理する
+- `ipc_ids`構造体はポインタのダイナミック配列`entries`を持ち、
+  各IPCオブジェクトに対応する構造体を指す
+
+## IPCオブジェクトの管理
+- `ipcs(1)` - System V IPCにおける`ls(1)`
+- `ipcrm(1)` - System V IPCにおける`rm(1)`
 
 ## System V メッセージキュー
-- プロセス間でメッセージを送受信する
-  - メッセージの区切りを持つ
-  - メッセージの種類を持つ(種類によって書き込み・読み込み順の制御が可能)
-- First In, First Outのキュー構造をしたメッセージ配送システム
-- カーネル内に収められたメッセージの連結リスト
-- キューからメッセージを取り出すと、そのメッセージはキューから消える
-- メッセージキュー識別子で識別される
-  - キュー - メッセージキュー
-  - キューID - メッセージキュー識別子
-  - メッセージ - キューイングされたメッセージ
-    - 種別フィールド
-    - 非負の長さ
-    - 実際のデータバイト
-- `msgget(2)` - 新しいキューを作成(IPC資源の確保)
-- `msgsnd(2)` - キューの末尾に新しいメッセージを追加
-- `msgrcv(2)` - メッセージをキューから取り出す
-  - FIFOでメッセージを取り出す
-  - メッセージの種別フィールドを指定してメッセージを取り出す
-- `msgctl(2)` - キューに対する操作(IPC資源の削除を含む)↲
+- メッセージ形式のデータをプロセス間で交換する機構
+  - メッセージキューを表すハンドルは`msgget(2)`が返すIPCID
+  - メッセージキューによる通信はメッセージ指向
+  - メッセージは区切り・種類を持つ
+- 新規作成するアプリケーションではSystem Vメッセージキューの代わりに
+  他のIPC手段を使用するべき
+
+### System V メッセージキューの欠点
+- メッセージキューの参照に独自のIPCIDを使用しているため、
+  ファイルディスクリプタベースのIOを使用できない
+- キーによってオブジェクトを識別するためプログラムの複雑性が増す
+- コネクションレスであり、カーネルはキューが参照するプロセス数を管理しない
+- メッセージキューの総数、メッセージ数、ここのキューの容量に上限がある
+
+### API
+- `msgget(2)` - 新規メッセージキューの作成または既存のメッセージキューのIDを返す
+- `msgctl(2)` - メッセージキューに対する各種操作を行う
+- `msgsnd(2)` - メッセージキューの末尾にメッセージを書き込む
+- `msgrcv(2)` - メッセージキューからメッセージを読み取る
+  - `mtype`フィールドを指定して任意の種別のメッセージを取り出すことが可能
 
 ```c
-// msqid_ds構造体 - キューの現在の状態を定義する
+// msgsnd(2) / msgrcv(2)では
+// メッセージを表現するプログラマ定義の構造体を介して
+// キューに対する操作を行う
+
+struct mymsg {
+  long mtype;
+  char mtext[];
+};
+```
+
+```c
+// msqid_ds構造体 - メッセージキューを表す
+
+#include <sys/msg.h>
 
 struct msqid_ds {
-  struct ipc_perm msg_perm;   // 所有権と許可
+  struct ipc_perm msg_perm;   // 所有権とパーミッション
   msgqnum_t       msg_qnum;   // キュー内のメッセージの数
   msglen_t        msg_qbytes; // キュー内の最大バイト数
-  pid_t           msg_lspid;  // 最後のmsgsnd(2)のPID
-  pid_t           msg_lrpid;  // 最後のmsgrcv(2)のPID
-  time_t          msg_stime;  // 最後のmsgsnd(2)の時刻
-  time_t          msg_rtime;  // 最後のmsgrcv(2) の時刻
-  time_t          msg_ctime;  // 最後に変更が行われた時刻
+  pid_t           msg_lspid;  // 最終msgsnd(2)実行PID
+  pid_t           msg_lrpid;  // 最終msgrcv(2)実行PID
+  time_t          msg_stime;  // 最終msgsnd(2)時刻
+  time_t          msg_rtime;  // 最終msgrcv(2)時刻
+  time_t          msg_ctime;  // 最終変更時刻
 };
 ```
 
