@@ -3,7 +3,7 @@
 - 参照: 詳解UNIXプログラミング第3版 15. プロセス間通信
 - 参照: Linuxネットワークプログラミング Chapter7 プロセス間通信 7-8
 - 参照: Linuxによる並行プログラミング入門 第6章 相互排除とセマフォ 6.2
-- 参照: Linuxプログラミングインターフェース 45章
+- 参照: Linuxプログラミングインターフェース 45章 / 46章
 
 ## TL;DR
 - SystemV メッセージキュー / SystemVセマフォ / SystemV共有メモリの総称
@@ -78,17 +78,24 @@ struct ipc_perm {
 - 新規作成するアプリケーションではSystem Vメッセージキューの代わりに
   他のIPC手段を使用するべき
 
+### System V メッセージキューの欠点
+- メッセージキューの参照に独自のIPCIDを使用しているため、
+  ファイルディスクリプタベースのIOを使用できない
+- キーによってオブジェクトを識別するためプログラムの複雑性が増す
+- コネクションレスであり、カーネルはキューが参照するプロセス数を管理しない
+- メッセージキューの総数、メッセージ数、ここのキューの容量に上限がある
+
 ### API
 - `msgget(2)` - 新規メッセージキューの作成または既存のメッセージキューのIDを返す
-- `msgsnd(2)` - メッセージキューの末尾に新しいメッセージを追加
-- `msgrcv(2)` - メッセージをキューから取り出す
-  - FIFOでメッセージを取り出す
-  - メッセージの種別フィールドを指定してメッセージを取り出す
-- `msgctl(2)` - キューに対する操作(IPC資源の削除を含む)↲
+- `msgctl(2)` - メッセージキューに対する各種操作を行う
+- `msgsnd(2)` - メッセージキューの末尾にメッセージを書き込む
+- `msgrcv(2)` - メッセージキューからメッセージを読み取る
+  - `mtype`フィールドを指定して任意の種別のメッセージを取り出すことが可能
 
 ```c
-// msgsnd(2) / msgrcv(2)には
-// メッセージを表現するプログラマ定義の構造体を渡す
+// msgsnd(2) / msgrcv(2)では
+// メッセージを表現するプログラマ定義の構造体を介して
+// キューに対する操作を行う
 
 struct mymsg {
   long mtype;
@@ -97,17 +104,19 @@ struct mymsg {
 ```
 
 ```c
-// msqid_ds構造体 - キューの現在の状態を定義する
+// msqid_ds構造体 - メッセージキューを表す
+
+#include <sys/msg.h>
 
 struct msqid_ds {
-  struct ipc_perm msg_perm;   // 所有権と許可
+  struct ipc_perm msg_perm;   // 所有権とパーミッション
   msgqnum_t       msg_qnum;   // キュー内のメッセージの数
   msglen_t        msg_qbytes; // キュー内の最大バイト数
-  pid_t           msg_lspid;  // 最後のmsgsnd(2)のPID
-  pid_t           msg_lrpid;  // 最後のmsgrcv(2)のPID
-  time_t          msg_stime;  // 最後のmsgsnd(2)の時刻
-  time_t          msg_rtime;  // 最後のmsgrcv(2) の時刻
-  time_t          msg_ctime;  // 最後に変更が行われた時刻
+  pid_t           msg_lspid;  // 最終msgsnd(2)実行PID
+  pid_t           msg_lrpid;  // 最終msgrcv(2)実行PID
+  time_t          msg_stime;  // 最終msgsnd(2)時刻
+  time_t          msg_rtime;  // 最終msgrcv(2)時刻
+  time_t          msg_ctime;  // 最終変更時刻
 };
 ```
 
