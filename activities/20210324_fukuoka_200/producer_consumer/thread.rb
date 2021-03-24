@@ -33,9 +33,10 @@ end
 
 class Numbering
   @@product_no = 0
+  @@mutex      = Mutex.new
 
   def self.issue
-    Mutex.new.synchronize do
+    @@mutex.synchronize do
       @@product_no += 1
     end
   end
@@ -73,13 +74,13 @@ end
 channel = Channel.new(3)
 
 producers = 3.times.map { |i|
-  Thread.new do
+  Thread.new(i) do |i|
     Producer.new("P-#{i + 1}", channel).run
   end
 }
 
 consumers = 3.times.map { |i|
-  Thread.new do
+  Thread.new(i) do |i|
     Consumer.new("C-#{i + 1}", channel).run
   end
 }
