@@ -1,6 +1,6 @@
 # 文法
 - プログラミングElixir 第4章 / 第5章 / 第6章 / 第10章
-- Elixir実践ガイド 10.1.1 / 10.2.6
+- Elixir実践ガイド 10.1.1 / 10.2.6 / 18.4
 
 ## 変数名
 - モジュール、レコード、プロトコル、ビヘイビアの名前はアッパーキャメルケース
@@ -413,7 +413,7 @@ for << << b1::size(2), b2::size(3), b3::size(3) >> <- "hello" >>, do: "0#{b1}#{b
 ```
 
 ### `into`パラメータ
-- `into`パラメータは内包表記の結果を受け取る
+- `into`パラメータは内包表記の結果を巻き取る
 
 ```exs
 for x <- ~w{ cat dog }, into: %{}, do: { x, String.upcase(x) }
@@ -423,6 +423,15 @@ for x <- ~w{ cat dog }, into: IO.stream(:stdio, :line), do: "#{x}\n"
 cat
 dog
 # => %IO.Stream{device: :standard_io, line_or_bytes: :line, raw: false}
+```
+
+### ビットストリングジェネレータ
+```exs
+# dataの先端から4ビットずつ取得し、
+# 最初の1ビットをx、残りの3ビットをyに束縛する
+for <<x::1, y::3 <- data>> do
+   x + y
+end
 ```
 
 ## 制御構文
