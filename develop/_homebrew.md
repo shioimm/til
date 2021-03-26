@@ -19,3 +19,10 @@
 ### `$ brew tap`
 - Third-Party RepositoriesのライブラリをHomebrew経由でインストールする
 - [Taps (Third-Party Repositories)](https://docs.brew.sh/Taps)
+
+### `$ brew uses xxx`
+- `xxx`に依存しているフォーミュラを確認する
+
+### `$ brew deps xxx`
+- `xxx`が依存しているフォーミュラを確認する
+- `--tree` - 依存先をツリー表示
