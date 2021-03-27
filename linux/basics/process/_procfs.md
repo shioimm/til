@@ -69,7 +69,7 @@
 
 #### 引数
 - `*utsbuf`を指定する
-  - `*utsbuf` - システムに関する情報を保存する`utsname`構造体へのポインタ
+  - `*utsbuf` - システムに関する情報を格納する`utsname`構造体へのポインタ
 
 ```c
 #include <sys/utsname.h>
