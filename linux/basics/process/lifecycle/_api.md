@@ -114,7 +114,7 @@ void func(int status, void *arg)
 
 #### 引数
 - `*status`を指定する
-  - `*status` - `wait`ステータスを保存するメモリへのポインタ
+  - `*status` - `wait`ステータスを格納するメモリへのポインタ
 
 #### 返り値
 - 子プロセスのプロセスIDを返す
@@ -139,7 +139,7 @@ void func(int status, void *arg)
     - `pid == 0` - 親プロセスと同じプロセスグループに属する子プロセス
     - `pid == -1` - 任意の子プロセス(`wait`と同じ)
     - `pid < -1` - プロセスグループIDが指定したPIDの絶対値に等しい子プロセス
-  - `*status` - `wait`ステータスを保存するメモリへのポインタ
+  - `*status` - `wait`ステータスを格納するメモリへのポインタ
   - `options` - `waitpid(2)`の動作を制御するフラグ
 
 #### 返り値
@@ -254,7 +254,7 @@ struct acct_v3 {
 
 #### 引数
 - `*acctfile`
-  - `*acctfile` - アカウンティング情報を保存するファイル名を示す文字列へのポインタ
+  - `*acctfile` - アカウンティング情報を格納するファイル名を示す文字列へのポインタ
     - 一般に`/var/log/pacct`または`/usr/account/pacct`
     - NULLを指定すると無効化
 

@@ -78,7 +78,7 @@ struct itimerval {
 #### 引数
 - `which`、`*curr_value`を指定する
   - `which` - タイマー種類
-  - `*curr_value` - タイマーの現在値を保存する`itimerval`構造体へのポインタ
+  - `*curr_value` - タイマーの現在値を格納する`itimerval`構造体へのポインタ
 
 #### 返り値
 - 数値0を返す

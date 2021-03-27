@@ -28,7 +28,7 @@
 
 #### 引数
 - `*thread`、`*attr`、`*start`、`*arg`を指定する
-  - `*thread` - 作成するスレッドのスレッドIDを保管する`pthread_t`へのポインタ
+  - `*thread` - 作成するスレッドのスレッドIDを格納する`pthread_t`へのポインタ
   - `*attr` - 作成するスレッドのスレッド属性
   - `*start` - 作成するスレッドが開始する関数
   - `*arg` - `*start`への引数
@@ -304,7 +304,7 @@ void init(void)
 
 #### 引数
 - `*key`、`*destructor`を指定する
-  - `*key` - スレッド固有データのキーを保管する`pthread_key_t`へのポインタ
+  - `*key` - スレッド固有データのキーを格納する`pthread_key_t`へのポインタ
   - `*destructor` - デストラクタ関数へのポインタ
 
 ```c
@@ -326,10 +326,10 @@ void dest(void *value)
 
 #### 引数
 - `pthread_setspecific(3)` - `*key`、`*value`を指定する
-  - `*key` - スレッド固有データのキーを保管する`pthread_key_t`へのポインタ
+  - `*key` - スレッド固有データのキーを格納する`pthread_key_t`へのポインタ
   - `*value` - 自スレッドが割り当てたメモリ領域へのポインタ(デストラクタの引数)
 - `pthread_getspecific(3)` - `*key`を指定する
-  - `*key` - スレッド固有データのキーを保管する`pthread_key_t`へのポインタ
+  - `*key` - スレッド固有データのキーを格納する`pthread_key_t`へのポインタ
 
 #### 返り値
 - 数値0を返す

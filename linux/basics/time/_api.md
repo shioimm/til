@@ -62,7 +62,7 @@ struct timespec {
 
 #### 引数
 - `*tv`、`*tz`を指定する
-  - `*tv` - 結果を保存する`timeval`構造体へのポインタ
+  - `*tv` - 結果を格納する`timeval`構造体へのポインタ
   - `*tz` - NULLを指定する
     - 元はタイムゾーンを表す`timezone`構造体へのポインタが指定されていたが現在は使用されない
 
@@ -78,7 +78,7 @@ struct timespec {
 
 #### 引数
 - `*timep`を指定する
-  - `*timep` - 結果を保存する`time_t`型へのポインタ
+  - `*timep` - 結果を格納する`time_t`型へのポインタ
 
 #### 返り値
 - Epochからの経過秒を返す
@@ -90,7 +90,7 @@ struct timespec {
 #### 引数
 - `*delta`、`*olddelta`を指定する
   - `*delta` - 時計の針をずらす秒数orマイクロ秒数を示す`timeval`構造体へのポインタ
-  - `*olddelta` - 過去の調整でまだ完了せず残っている時間を保存する`timeval`構造体へのポインタ
+  - `*olddelta` - 過去の調整でまだ完了せず残っている時間を格納する`timeval`構造体へのポインタ
 
 #### 返り値
 - 数値0を返す
@@ -187,7 +187,7 @@ struct timespec {
 
 #### 引数
 - `*outstr`、`maxsize`、`*format`、`*timeptr`を指定する
-  - `*outstr` - 結果文字列を保存する領域
+  - `*outstr` - 結果文字列を格納する領域
   - `maxsize` - `*outstr`の領域サイズ
   - `*format` - フォーマット
   - `*timeptr` - 変換元の`tm`型へのポインタ
