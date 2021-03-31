@@ -4,23 +4,32 @@
 
 ## セットアップ
 - rspecのセットアップ
-  - [gem 'rspec-rails'](https://github.com/rspec/rspec-rails#installation)
-  - `rails generate rspec:install`
+  - [`gem 'rspec-rails'`](https://github.com/rspec/rspec-rails#installation)
+  - `$ rails generate rspec:install`
 - factoryのセットアップ
-  - [gem 'factory_bot_rails'](https://github.com/thoughtbot/factory_bot_rails#configuration)
+  - [`gem 'factory_bot_rails'`](https://github.com/thoughtbot/factory_bot_rails#configuration)
 - capybaraのセットアップ
   - Rails5.1以降同梱
-  - [gem 'capybara'](https://github.com/teamcapybara/capybara#setup)
+  - [`gem 'capybara'`](https://github.com/teamcapybara/capybara#setup)
 
 ## システムテストについて(System Spec / Feature Spec)
 - FeatureからSystemへ移行が必要
 - SystemはFeatureに比較して以下の機能をサポートしている
-  - テスト終了時に自動的にDBをロールバック(database_cleanerが不要)
+  - テスト終了時に自動的にDBをロールバック(`database_cleane`rが不要)
   - テスト失敗時のスクリーンショットをデスクトップに保存(capybara-screenshotが不要)
-  - スペックごとのブラウザ切り替えが可能(driven_by)
+  - スペックごとのブラウザ切り替えが可能(`driven_by`)
 
 ## スタブ / モックの違い
 - 参照: [Rails tips: RSpecのスタブとモックの違い（翻訳）](https://techracho.bpsinc.jp/hachi8833/2018_04_25/55467)
 - スタブ -> 指定のメソッドを呼んだ際、本来のメソッドを実行せず、欲しい値を返させる(`allow`)
 - モック -> 指定のメソッドがテスト中に実行されたかどうかをチェックする(`expect`)
 - スタブを利用してモックをチェックするテストの構造をスパイと呼ぶ
+
+## リクエストメソッド
+- [Rails テスティングガイド](https://railsguides.jp/testing.html)
+
+### オプション
+- `params` - リクエストパラメータ
+- `headers` - リクエストヘッダ
+- `env` - リクエスト環境
+- `xhr` - Ajaxリクエストの場合`true`
