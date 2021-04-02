@@ -492,3 +492,22 @@ raise 例外種別, message: "例外メッセージ"
 ```
 
 - 末尾に`!`を持つ関数は失敗時に例外を発生させる(Ex. `File.open!`)
+
+## プロトコル
+```exs
+defprotocol プロトコル名 do
+  def xxx # 関数の定義
+end
+
+defimpl プロトコル名, for: プロトコルを実装する型 do
+  def xxx do
+    実際の処理
+  end
+end
+```
+
+### 組み込みプロトコル
+- `Enumerable`
+- `Inspect`
+- `List.Chars`
+- `String.Chars`
