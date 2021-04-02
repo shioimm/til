@@ -351,9 +351,30 @@ Elixir.IO == IO # => true
 
 ## マクロ
 ```exs
+# ASTを返す
+
+defmodule X do
+  defmacro x(param) do
+    IO.inspect param
+  end
+end
+
+X.x :x # => :xを返す
+
+X.x do
+  1 + 2
+else
+  3 + 4
+end
+# => [do: {:+, [line: n], [1, 2]}, else: {:+, [line: n + 2], [3, 4]}]
+```
+
+### `quate`
+
+```exs
 def module X do
   defmacro define_x
-    quote do # コードをASTに変換する
+    quote do # ブロックを受け、ブロックのASTを返す
       def x do
        :x
       end
