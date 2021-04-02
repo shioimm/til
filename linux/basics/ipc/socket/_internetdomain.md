@@ -93,10 +93,15 @@ struct sockaddr_storage {
 - ポート番号はバイナリ形式・サービス名のいずれかによって表現する
   - サービス名 - ポート番号を表すシンボル
 
-### ホスト名・サービス名の変換関数
+### ホスト名・サービス名の変換関数種別
 - ドット区切りの10進数で表現したIPv4アドレス - バイナリ形式間の変換(使わない)
 - バイナリ形式のIPv4 / IPv6アドレス - 可読形式間の変換
 - ホスト名・サービス名 - バイナリ形式間の変換
+
+### ホスト名・サービス名の新旧変換関数API
+- `inet_aton(3)` / `inet_ntoa(3)` -> `inet_pton(3)` / `inet_ntop(3)`
+- `gethostbyname(3)` / `gethostbyaddr(3)` -> `getaddrinfo(3)` / `getnameinfo(3)`
+- `getservbyname(3)` / `getservbyport(3)` -> `getaddrinfo(3)` / `getnameinfo(3)`
 
 ## DNS
 - ホスト名に対応するIPアドレスを取得するための機構
@@ -126,7 +131,7 @@ struct sockaddr_storage {
 
 ### `/etc/services`
 - well-knownポートのみを一元管理するファイル
-- `getaddrinfo(2)`は`/etc/services`ファイルを参照しポート番号とサービス名を相互に変換する
+- `getaddrinfo(3)`は`/etc/services`ファイルを参照しポート番号とサービス名を相互に変換する
 - `/etc/services`ファイルはサービス名・プロトコル・オプションのフィールドを持つ
 
 ## API
@@ -177,3 +182,69 @@ struct sockaddr_storage {
   - エラー時は数値-1を返す
 - `inet_ntop(2)` - `*dst_str`のポインタを返す
   - エラー時はNULLを返す
+
+### `getaddrinfo(3)`
+- 指定のホスト名・サービス名をIPアドレス・ポート番号へ変換し、
+  ホスト・サービスに対応するソケットアドレス構造体のリンクリストを返す
+  - アドレス構造体リストの全要素はダイナミックにメモリを割り当てられる
+
+#### 引数
+- `*host`、`*service`、`*hints`、`**result`を指定する
+  - `*host` - 指定のホスト名または10進数 / 16進数のアドレスを示す文字列へのポインタ
+  - `*service` - 指定のサービス名またはポート番号を示す文字列へのポインタ
+  - `*hints` - `result`へ返すソケットアドレス構造体を絞り込む条件を表す`addrinfo`構造体へのポインタ
+    - `hints.ai_flags` - `getaddrinfo(3)`の動作を操作する入力フラグ(ビットマスク)を指定する
+  - `**result` - 内部でダイナミックに割り当てた`addrinfo`構造体のリストの先頭アドレスへのポインタ
+
+```c
+#include <sys/socket.h>
+#include <netdb.h>
+
+struct addrinfo {
+  int              ai_flags;     // 入力フラグ
+  int              ai_family;    // AF_INET / AF_INET6
+  int              ai_socktype;  // SOCK_STREAM / SOCK_DGRAM
+  int              ai_protocol;  // ソケットプロトコル
+  socklen_t        ai_addrlen;   // ai_addrが指す構造体のサイズ
+  char            *ai_canonname; // 正式ホスト名
+  struct sockaddr *ai_addr;      // ソケットアドレス構造体へのポインタ
+  struct addrinfo *ai_next;      // リスト内の次の要素へのポインタ
+};
+```
+
+#### 返り値
+- 数値0を返す
+  - 数値0以外を返す
+
+### `freeaddrinfo(3)`
+- リスト内のアドレス構造体のメモリを一度に解放する
+
+#### 引数
+- `*result`を指定する
+
+### `gai_strerror(3)`
+- `getaddrinfo(3)`が返すエラーコードを表現する文字列を取得する
+
+#### 引数
+- `errcode`を指定する
+  - `errcode` - `getaddrinfo(3)`が返すエラーコードを示す数値
+
+#### 返り値
+- エラー説明文字列へのポインタを返す
+
+### `getnameinfo(3)`
+- 指定されたソケットアドレス構造体をホスト名・サービス名へ変換する
+
+#### 引数
+- `*addr`、`addrlen`、`*host`、`hostlen`、`*service`、`servlen`、`flags`を指定する
+  - `*addr` - 変換するソケットアドレス構造体へのポインタ
+  - `addrlen` - ソケットアドレス構造体のサイズ
+  - `*host` - 変換結果のホスト名を格納する文字列へのポインタ
+  - `hostlen` - `host`のサイズ
+  - `*service` - 変換結果のサービス名を格納する文字列へのポインタ
+  - `servlen` - `service`のサイズ
+  - `flags` - `getnameinfo(2)`の動作を操作する入力フラグ(ビットマスク)
+
+#### 返り値
+- 数値0を返す
+  - 数値0以外を返す
