@@ -187,6 +187,7 @@ struct sockaddr {
 ### `recv(2)` / `send(2)`
 - 接続済みソケットに対してIOを実行する
 - `flags`によって操作を指定することができる
+- `recvmsg(2)` / `sendmsg(2)`は`recv(2)`/`send(2)`とファイルIOの機能を包含し、スキャッタギャザIO可能
 
 #### 引数
 - `sockfd`、`*buffer`、`length`、`flags`を指定する
