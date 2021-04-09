@@ -141,3 +141,12 @@
 - DCCP - Datagram Congestion Control Protocol
   - 信頼性や順序の維持を保証しない
   - 輻輳制御機能を持つ
+
+### ICMP
+- [TCP/IPプロトコルを支えるICMPメッセージ](https://www.atmarkit.co.jp/ait/articles/0306/13/news002.html)
+- TCP/IPが動作するために補助的な役割を担うプロトコル
+- TCP、UDPなどの通信においてエラーが発生した際にエラーを通知する
+- `ping(1)`の内部で使用される
+
+#### ICMPエコー
+- 指定されたエコー・データ・パケットを2つのTCP/IPノード間で送受信するメッセージ(要求・応答)
