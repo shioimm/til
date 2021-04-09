@@ -32,6 +32,7 @@ IP xxx.xxx.xxx.xxx > 8.8.8.8: ICMP echo request, id 5, seq 1, length 64
 IP 8.8.8.8 > xxx.xxx.xxx.xxx: ICMP echo reply,   id 5, seq 1, length 64
 
 # -t - 時刻に関する情報を出力しない
-# -n - IPアドレスを逆引きしない
+# -n - IPアドレスを名前解決しない
 # -i - パケットキャプチャを行う対象のネットワークインターフェース
+# icmp - パケットキャプチャの対象をICMPに絞る
 ```
