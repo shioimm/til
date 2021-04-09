@@ -7,6 +7,9 @@ default: &default
   timeout: 5000 # 接続を取得できない場合のタイムアウト時間
 ```
 
+- DB自体の接続可能数を超えないようにする
+  - Herokuの場合`dyno数 * アプリケーションサーバーのスレッド数 <= DBの接続可能数`になるようにする
+
 ### 接続プールのサイズ変更
 - マルチスレッドサーバーの場合、直接`database.yml`内に設定する(Rails 4.1~)
   - pumaを使用している場合はpool値をpumaのスレッド数`ENV['RAILS_MAX_THREADS']`に指定する
