@@ -1,6 +1,10 @@
 # Network Namespace
 - 参照: Linuxで動かしながら学ぶTCP/IPネットワーク入門
+
+##TL;DR
 - ネットワーク的にホスト環境から独立した領域
+
+## 基本操作
 
 ```
 # 新規Namespaceを作成
