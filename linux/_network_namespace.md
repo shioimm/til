@@ -151,3 +151,16 @@ $ sudo ip netns exec ROUTER sysctl net.ipv4.ip_forward=1
 # 疎通確認
 $ sudo ip netns exec HOST1 ping NETWORK2_HOST_ADDRESS -I NETWORK1_HOST_ADDRESS
 ```
+
+## ネットワークインターフェースのMACアドレス変更
+- デフォルトではランダムなMACアドレスがvethインターフェースに割り振られる
+
+```
+$ sudo ip netns exec NAMESPACE ip link set dev VETHNAME-veth0 address MACADDRESS
+
+# アドレスの確認
+$ sudo ip netns exec NAMESPACE ip link show | grep link/ether
+
+# MACアドレスのキャッシュを削除する
+$ sudo ip netns exec NAMESPACE ip neigh flush all
+```
