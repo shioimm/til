@@ -13,8 +13,8 @@ src > dst: flags data-seqno ack window urg <options>
 
 | 項目名       | 説明                                                              |
 | -            | -                                                                 |
-| `src`        | 送信元IPアドレス・ポート番号                                      |
-| `dst`        | 宛先IPアドレス・ポート番号                                        |
+| `src`        | 送信元ノードIPアドレス・ポート番号(`-e`オプションでMACアドレス)   |
+| `dst`        | 送信先ノードIPアドレス・ポート番号(`-e`オプションでMACアドレス)   |
 | `flags`      | TCPの制御フラグ                                                   |
 | `data-seqno` | 当該パケットが対応するシーケンス番号範囲                          |
 | `ack`        | 当該コネクションの受信側が次に期待するシーケンス番号(`ack n`)     |
@@ -31,7 +31,13 @@ $ sudo tcpdump -tn -i any icmp
 IP xxx.xxx.xxx.xxx > 8.8.8.8: ICMP echo request, id 5, seq 1, length 64
 IP 8.8.8.8 > xxx.xxx.xxx.xxx: ICMP echo reply,   id 5, seq 1, length 64
 
-# -t - 時刻に関する情報を出力しない
-# -n - IPアドレスを逆引きしない
-# -i - パケットキャプチャを行う対象のネットワークインターフェース
+# any  - 全ての種類のネットワークインターフェース
+# icmp - パケットキャプチャの対象をICMPに絞る
 ```
+
+## オプション
+- `-t` - 時刻に関する情報を出力しない
+- `-n` - IPアドレスを名前解決しない
+- `-i` - パケットキャプチャを行う対象のネットワークインターフェース
+- `-e` - Ethernetのヘッダ情報を表示する
+- `-l` - Network Namespaceで`tcpdump(1)`を使用する際に指定する
