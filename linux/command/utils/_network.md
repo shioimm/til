@@ -97,6 +97,7 @@ $ traceroute リモートホスト名(アドレス)
 ```
 
 ### DHCP
+
 ```
 # サーバープロセスにDHCP機能を付与する
 $ sudo dnsmasq --dhcp-range=取り扱うIPアドレスの範囲 \
@@ -107,4 +108,18 @@ $ sudo dnsmasq --dhcp-range=取り扱うIPアドレスの範囲 \
 
 # DHCPサーバーへ問い合わせる
 $ sudo dhclient -d ネットワークインターフェース
+```
+
+### NAT
+
+```
+# NATテーブルの設定を表示
+$ iptables -t nat -L
+
+# NATテーブルにルールを追加
+$ iptables -t nat \
+           -A POSTROUTING \ # チェイン追加: ルーティングが終わってパケットから出ていく直前
+           -s 送信元IPアドレス \
+           -o 出力先ネットワークインターフェース \
+           -j MASQUERADE # 処理内容を追加: Source NAT
 ```
