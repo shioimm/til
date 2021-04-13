@@ -20,32 +20,6 @@ rtt 最小/平均/最大/mdev = 112.631/113.443/114.203/0.642ミリ秒
 # 3リクエストに対して3レスポンスがあり、パケット損失は0
 ```
 
-### ホストマシンのIPアドレス確認
-```
-$ ip address show
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-    inet 127.0.0.1/8 scope host lo
-       valid_lft forever preferred_lft forever
-    inet6 ::1/128 scope host
-       valid_lft forever preferred_lft forever
-
-# 1: lo - lo = ネットワークインターフェース
-# inet 127.0.0.1 - 127.0.0.1 = IPアドレス
-```
-
-### MACアドレスのキャッシュを確認する
-```
-$ ip neigt
-```
-
-### ルーティングテーブル確認
-```
-$ ip route show
-default via ネクストホップ
-ネクストホップ dev ネクストホップの次のネクストホップ
-```
-
 ### 経路確認
 ```
 $ traceroute ドメイン名 or IPアドレス
@@ -96,6 +70,21 @@ $ sudo ifconfig
 $ traceroute リモートホスト名(アドレス)
 ```
 
+## ネットワーク接続状況の確認
+
+```
+$ ss
+```
+
+### オプション
+- `-t` - TCP接続を表示する
+- `-u` - UDP接続を表示する
+- `-x` - UNIXドメインソケットを表示する
+- `-p` - ソケットを利用しているプロセスを表示する
+- `-l` - LISTEN中のソケットのみ表示する
+- `-n` - サービス名を名前解決しない
+- `-s` - 統計サマリを表示する
+
 ### DHCP
 
 ```
@@ -116,10 +105,19 @@ $ sudo dhclient -d ネットワークインターフェース
 # NATテーブルの設定を表示
 $ iptables -t nat -L
 
-# NATテーブルにルールを追加
+# NATテーブルにSorce NATのルールを追加
 $ iptables -t nat \
            -A POSTROUTING \ # チェイン追加: ルーティングが終わってパケットから出ていく直前
            -s 送信元IPアドレス \
            -o 出力先ネットワークインターフェース \
            -j MASQUERADE # 処理内容を追加: Source NAT
+
+# NATテーブルにDestination NATのルールを追加
+$ iptables -t nat \
+           -A PREROUTING \ # チェイン追加: インターフェースからパケットが入ってきた直後
+           -p tcp \ # トランスポート層のプロトコル
+           --dport ポート番号 \
+           -d 変換前IPアドレス \
+           -j DNAT \ # 処理内容を追加: Destination NAT↲
+           --to-destination # 変換後IPアドレス
 ```
