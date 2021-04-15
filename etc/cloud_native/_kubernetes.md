@@ -3,9 +3,18 @@
 - 引用: [Kubernetesとは](https://www.redhat.com/ja/topics/containers/what-is-kubernetes)
 - 参照: [コンテナオーケストレーションツールの“事実上の標準”という座をつかんだ「Kubernetes」。その重要性とは？](https://cn.teldevice.co.jp/column/10519/)
 - 翻訳参考: [DeepL](https://www.deepl.com/translator)
+
+## TL;DR
 - Cloud Native Computing Foundationが開発するコンテナ管理ツール
 - コンテナ化されたアプリケーションのデプロイ、スケーリング、管理の自動化を行う
-- コンテナを実行しているホストを論理的な単位にまとめてクラスタ化する
+- Kubernetes - マルチホストでのアプリケーションコンテナオーケストレーション
+- docker-compose - シングルホストでのアプリケーションコンテナオーケストレーション
+- 稼働基盤となるノード(サーバー)のうち、どのノードにPod(一連のコンテナ群)をどのように配備・接続するかを設定・管理する
+
+### Kubernetesのマネージドサービス
+- Amazon EKS
+- GCP GKE
+- Azure AKS
 
 ## コンテナオーケストレーション
 - 複数のコンテナに対する運用管理作業
