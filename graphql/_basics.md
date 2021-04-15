@@ -56,6 +56,15 @@ type Person {
 }
 ```
 
+#### クエリ言語
+- GraphQL APIのリクエストのための言語
+  - query -> データ取得系
+  - mutation -> データ更新系
+  - subscription -> サーバーサイドからのイベント通知
+
+#### スキーマ言語
+- GraphQL APIの仕様を記述するための言語
+
 ## 設計原則
 - [GraphQL 設計に関するガイドライン](http://spec.graphql.org/June2018/#sec-Overview)
 - 階層構造
