@@ -20,6 +20,9 @@ static int calc_checksum(register u_short *ptr, register int nbytes)
   u_short          oddbyte;
   register u_short answer;
 
+  // 対象となるパケットに対し
+  // 16ビットごとの1の補数和を取り、
+  // さらにそれの1の補数を取る
   sum = 0;
 
   while(nbytes > 1) {
@@ -40,6 +43,7 @@ static int calc_checksum(register u_short *ptr, register int nbytes)
   return answer;
 }
 
+// Echo Requestの送信
 static int SendPing(int soc, char *name, int len, unsigned short sqc, struct timeval *sendtime)
 {
   struct hostent     *host;
@@ -52,9 +56,11 @@ static int SendPing(int soc, char *name, int len, unsigned short sqc, struct tim
   char                sbuff[BUFSIZE];
 
   sinp = (struct sockaddr_in *)&sa;
-  sinm->sin_family = AF_INET;
+  sinp->sin_family = AF_INET;
 
+  // 宛先の確定
   if ((sinp->sin_addr.s_addr = inet_addr(name)) == INADDR_NONE) {
+    // IPアドレスではなくホスト名を取得する
     host = gethostbyname(name);
 
     if (host == NULL) {
@@ -64,28 +70,39 @@ static int SendPing(int soc, char *name, int len, unsigned short sqc, struct tim
     memcpy(&(sinp->sin_addr), host->h_addr, host->h_length);
   }
 
+  // 送信時刻
   gettimeofday(sendtime, NULL);
 
-  memset(sbuf, 0, BUFSIZE);
+  // 送信データ作成
+  memset(sbuff, 0, BUFSIZE);
+  icp = (struct icmphdr *)sbuff;
 
-  icp                   = (struct icmphdr *)sbuff;
-  icp->type             = ICMP_ECHO;
-  icp->code             = 0;
-  icp->un.echo.id       = htons((unsigned short)getpid());
+  // Type: 8=Echo Request, 0=Echo Reply
+  icp->type = ICMP_ECHO;
+
+  // Code: 常に0
+  icp->code = 0;
+
+  // Identifier: 識別子
+  icp->un.echo.id = htons((unsigned short)getpid());
+
+  // Sequence: シーケンス番号(1からの連番)
   icp->un.echo.sequence = htons(sqc);
-  ptr                   = (unsigned char *)&sbuff[ECHO_HDR_SIZE];
-  psize                 = len - ECHO_HDR_SIZE;
 
+  // Data: データ部分(送信時刻)
+  ptr   = (unsigned char *)&sbuff[ECHO_HDR_SIZE];
+  psize = len - ECHO_HDR_SIZE;
   for (; psize; psize--) {
     *ptr++ = (unsigned char)0xA5;
   }
-
   ptr = (unsigned char *)&sbuff[ECHO_HDR_SIZE];
   memcpy(ptr, sendtime, sizeof(struct timeval));
 
+  // Checksum: ICMPパケット全体の1の補数の和の更に1の補数
   icp->checksum = calc_checksum((u_short *)icp, len);
-  n             = sendto(soc, sbuff, len, 0, &sa, sizeof(struct sockaddr));
 
+  // 送信
+  n = sendto(soc, sbuff, len, 0, &sa, sizeof(struct sockaddr));
   if (n == len) {
     return 0;
   } else {
@@ -93,43 +110,52 @@ static int SendPing(int soc, char *name, int len, unsigned short sqc, struct tim
   }
 }
 
-static int check_packet(char *rbuff, int nbytes, int len, struct sockaddr_in *from, unsigned short sqc, int *ttl, struct timeval *sendtime, struct timeval, *recvtime, double *diff)
+static int check_packet(char *rbuff, int nbytes, int len, struct sockaddr_in *from, unsigned short sqc, int *ttl, struct timeval *sendtime, struct timeval *recvtime, double *diff)
 {
   struct iphdr   *iph;
   struct icmphdr *icp;
   int             i;
   unsigned char  *ptr;
 
-  *diff = (double)(recvtime->tvsec - sendtime->tvsec) + (double)(recvtime->tv_usec - sendtime->tv_usec) / 1000000.0;
-   iph  = (struct iphdr *)rbuff;
-  *ttl  = iph->ttl;
-   icp  = (struct icmphdr *)(rbuff + iph->ihl * 4);
+  // RTTを計算
+  *diff = (double)(recvtime->tv_sec - sendtime->tv_sec) + (double)(recvtime->tv_usec - sendtime->tv_usec) / 1000000.0;
 
+  // 受信バッファにIPヘッダも含まれている
+  iph  = (struct iphdr *)rbuff;
+  *ttl = iph->ttl;
+
+  // ICMPヘッダ
+  // IPヘッダサイズiph->ihl
+  // ICMPヘッダの先頭位置をicmphdr構造体として扱えるようにする
+  icp = (struct icmphdr *)(rbuff + iph->ihl * 4);
+
+  // 内容の確認
+  // IdentifierがプロセスIDの16ビット分と等しいか
   if (ntohs(icp->un.echo.id) != (unsigned short)getpid()) {
     return 1;
   }
   if (nbytes < len + iph->ihl * 4) {
     return -3000;
   }
+  // TypeがEcho Replyか
   if (icp->type != ICMP_ECHOREPLY) {
     return -3010;
   }
+  // Sequenceが指定したシーケンス番号と一致しているか
   if (ntohs(icp->un.echo.sequence) != sqc) {
     return -3030;
   }
 
   ptr = (unsigned char *)(rbuff + iph->ihl * 4 + ECHO_HDR_SIZE);
   memcpy(sendtime, ptr, sizeof(struct timeval));
-
   ptr += sizeof(struct timeval);
-
   for (i = nbytes - iph->ihl * 4 - ECHO_HDR_SIZE - sizeof(struct timeval); i; i--) {
     if (*ptr++ != 0xA5) {
       return -3040;
     }
   }
 
-  printf("%d bytes from %s: icmp_seq = %d ttl = %d time = %.2f ms\n",
+  printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.2f ms\n",
          nbytes - iph->ihl * 4,
          inet_ntoa(from->sin_addr),
          sqc,
@@ -139,6 +165,7 @@ static int check_packet(char *rbuff, int nbytes, int len, struct sockaddr_in *fr
   return 0;
 }
 
+// Echo Replyの受信
 static int RecvPing(int soc, int len, unsigned short sqc, struct timeval *sendtime, int timeoutSec)
 {
   struct pollfd      targets[1];
@@ -159,9 +186,11 @@ static int RecvPing(int soc, int len, unsigned short sqc, struct timeval *sendti
     targets[0].events = POLLIN|POLLERR;
     nready            = poll(targets, 1, timeoutSec * 1000);
 
+    // タイムアウト時の処理
     if (nready == 0) {
       return -2000;
     }
+    // エラー時の処理
     if (nready == -1) {
       if (errno == EINTR) {
         continue;
@@ -170,27 +199,31 @@ static int RecvPing(int soc, int len, unsigned short sqc, struct timeval *sendti
       }
     }
 
+    // 受信
     fromlen = sizeof(from);
-    nbytes  = recvfrom(doc, rbuff, sizeof(rbuff), 0, (struct sockaddr *)&from, &fromlen);
+    nbytes  = recvfrom(soc, rbuff, sizeof(rbuff), 0, (struct sockaddr *)&from, &fromlen);
 
+    // 受信時刻
     gettimeofday(&recvtime, NULL);
 
+    // 受信パケットの確認
     ret = check_packet(rbuff, nbytes, len, &from, sqc, &ttl, sendtime, &recvtime, &diff);
 
     switch(ret) {
-      case 0:
+      case 0: // 自プロセスのREPLYを受信
         return ((int)(diff * 1000.0));
-      case 1:
-        if (diff > (timeoutSec * 1000)) {
+      case 1: // 他プロセスのREPLYを受信
+        if (diff > (timeoutSec * 1000)) { // タイムアウト
           return -2000;
         }
         break;
-      default:
+      default: // 自プロセスのREPLY(異常)を受信
         ;
     }
   }
 }
 
+// ping実行
 int PingCheck(char *name, int len, int times, int timeoutSec)
 {
   int            soc;
@@ -199,6 +232,8 @@ int PingCheck(char *name, int len, int times, int timeoutSec)
   int            total    = 0;
   int            total_no = 0;
 
+  // SOCK_RAW, IPPROTO_ICMPを指定した場合
+  // IPヘッダはsendto(2)の宛先に従って自動生成される
   if ((soc = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0) {
     return -300;
   }
@@ -221,7 +256,7 @@ int PingCheck(char *name, int len, int times, int timeoutSec)
   if (total_no > 0) {
     return(total / total_no);
   } else {
-    return -1
+    return -1;
   }
 }
 
