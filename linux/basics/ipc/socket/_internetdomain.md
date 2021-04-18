@@ -87,6 +87,23 @@ struct sockaddr_storage {
 // 任意のsockaddr構造体(sockaddr_in / sockaddr_in6)を格納できる入れ物として機能する
 ```
 
+```c
+// Software Design 2021年5月号 ハンズオンTCP/IP
+
+struct sockaddr_storage ss;
+socklen_t sslen = sizeof(ss);
+
+accept(sock, (struct sockaddr *)&ss, &sslen);
+
+if (ss.ss_family == AF_INET) {
+  struct sockaddr_in *s_in;
+  s_in = (struct sockaddr_in *)&ss;
+} else if (ss.ss_family == AF_INET6) {
+  struct sockaddr_in *s_in6;
+  s_in = (struct sockaddr_in6 *)&ss;
+}
+```
+
 ## ホスト名・サービス名
 - ホストアドレスはバイナリ形式・ホスト名・可読形式のいずれかによって表現する
   - ホスト名 - ネットワークに接続したシステムを表すシンボル
