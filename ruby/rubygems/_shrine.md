@@ -11,3 +11,12 @@ if !Rails.env.test? || ENV['SHRINE_INSTRUMENTATION']
   Shrine.plugin :instrumentation
 end
 ```
+
+### `determine_mime_type`
+- [Determine MIME Type](https://shrinerb.com/docs/plugins/determine_mime_type)
+- バイナリに含まれた情報を解析し、ファイルの実際のMIMEタイプを決定して保存する
+- MIMEタイプの解析ツールは変更可能(デフォルトではUNIXファイルユーティリティが実行する)
+
+### `infer_extension`
+- [Infer Extension](https://shrinerb.com/docs/plugins/infer_extension)
+- ファイルのMIMEタイプに基づいてファイル拡張子を推測する
