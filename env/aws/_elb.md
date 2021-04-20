@@ -1,12 +1,26 @@
 # Elastic Load Balancing
 - 参照: [Elastic Load Balancing](https://aws.amazon.com/jp/elasticloadbalancing/)
 - 参照: AWSをはじめよう　～AWSによる環境構築を1から10まで～
+- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
 
 ## TL;DR
-- ロードバランサ
+- 複数のターゲットに渡る着信トラフィックを分配するロードバランサ
   - ALB(Application Load Balancer) - リクエストレベル(HTTP / HTTPS)
   - NLB(Network Load Balancer) - 接続レベル(TCP / UDP)
+  - CLB(Classic Load Balancer)
 - 冗長化やパフォーマンスの調整を行う
+- スペックやノード数の指定はなく、リクエストの量やELBの負荷などによって自動的に調整される
+- アクティブレベルチェックによる疎通確認と切り離しが可能
+
+## 振分方式
+- ラウンドロビン
+- LOR(最小未解決リクエスト)
+
+## 利用方法
+1. 種類・利用するVPC・ゾーン・アタッチするセキュリティグループを
+指定する
+2. AWSがそれぞれ指定されたゾーンにELBのノードを起動する
+3. ELBの作成時に発行された接続先のエンドポイント(ドメイン名・ポート番号)を、本来利用したいドメインのCNAMEレコードとしてDNSに設定する
 
 ## Get Started
 1. EC2ダッシュボード
