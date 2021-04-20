@@ -3,15 +3,19 @@
 
 ## Accept
 - 参照: [Accept](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept)
-- クライアントが受け付けるMIMEタイプ
+- クライアントが受け付けるMIMEタイプ(コンテントネゴシエーション)
 
 ## Accept-Language
 - 参照: [Accept-Language](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Language)
-- クライアントが受け付ける言語タイプ
+- クライアントが受け付ける表示言語(コンテントネゴシエーション)
 
 ## Accept-Encoding
 - 参照: [Accept-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Encoding)
-- クライアントが受け付けるエンコーディングタイプ(圧縮アルゴリズム)
+- クライアントが受け付けるボディの圧縮アルゴリズム(コンテントネゴシエーション)
+
+## Accept-Charset
+- 参照: [Accept-Charset](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Charset)
+- クライアントが受け付ける文字のキャラクターセット(コンテントネゴシエーション)
 
 ## Authorization
 - 参照: [Authorization](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Authorization)
