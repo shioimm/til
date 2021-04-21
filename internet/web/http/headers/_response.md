@@ -26,17 +26,26 @@ Content-Security-Policy: 指定したいポリシー
   - `script-src`ディレクティブに`nonce-ランダムな文字列`を指定することによって、
   同じnonce属性を持つscriptタグのみを実行するようになる
 
-## Content-Length
-- 参照: [Content-Length](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Length)
-- コンテンツのデータ長
-
-## Content-Type
-- 参照: [Content-Type](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Type)
-- コンテンツのMIMEタイプ
+## Content-Charset
+- 参照: [Content-Charset](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Charset)
+- コンテンツの文字のキャラクターセット(コンテントネゴシエーション)
 
 ## Content-Encoding
 - 参照: [Content-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Encoding)
-- コンテンツのエンコーディングタイプ
+- コンテンツのボディの圧縮アルゴリズム(コンテントネゴシエーション)
+
+## Content-Language
+- 参照: [Content-Language](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Language)
+- コンテンツのボディの表示言語(コンテントネゴシエーション)
+
+## Content-Length
+- 参照: [Content-Length](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Length)
+- コンテンツのデータ長
+- 圧縮されている場合は圧縮後のデータサイズ
+
+## Content-Type
+- 参照: [Content-Type](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Type)
+- コンテンツのMIMEタイプ(コンテントネゴシエーション)
 
 ## Content-Security-Policy-Report-Only
 - [Content-Security-Policy-Report-Only](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Security-Policy-Report-Only)
