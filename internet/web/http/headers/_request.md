@@ -1,5 +1,6 @@
 # Request
 - 参照: よくわかるHTTP/2の教科書P29/38-39/41
+- 参照: Real World HTTP 第2版
 
 ## Accept
 - 参照: [Accept](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept)
@@ -16,6 +17,7 @@
 ## Accept-Charset
 - 参照: [Accept-Charset](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Charset)
 - クライアントが受け付ける文字のキャラクターセット(コンテントネゴシエーション)
+- モダンブラウザでは全キャラクラーセットのエンコーダーが内包されているため送信されていない
 
 ## Authorization
 - 参照: [Authorization](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Authorization)
