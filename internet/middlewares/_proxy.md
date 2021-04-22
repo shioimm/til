@@ -50,3 +50,17 @@
 - `Expires` - コンテンツの有効期限
 - `Vary` - キャッシュ共有可能範囲を識別する値をプロキシに指示する
 - `Cookie` - Cookieが設定されているレスポンスはキャッシュしないプロキシが多い
+
+## Forwardedヘッダ
+- [Forwarded](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Forwarded)
+- リクエストパスにプロキシが含まれている場合に変更または失われたプロキシサーバーのクライアント側の情報
+  - X-Forwarded-For、X-Forwarded-Host、X-Forwarded-Proto
+
+```
+Forwarded: by=<identifier>;    # リクエストがプロキシサーバーに入ってきたインターフェイス
+           for=<identifier>;   # リクエストを発行したクライアントと、その後のプロキシチェーン内のプロキシ
+           host=<host>;        # プロキシから受信したときのHostリクエストヘッダ
+           proto=<http|https>  # リクエスト作成時に使用されたプロトコル
+
+# identifier - 変更または失われた情報を公開する識別子(IPアドレス、難読化された識別子、etc)
+```
