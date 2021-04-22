@@ -61,6 +61,10 @@
 - リンク元のURLを示す
 - URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
 
+## Referrer-Policy
+- 参照: [Referrer-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referrer-Policy)
+- Refererの情報をリクエストにどれだけ含めるかを制御する
+
 ## User-Agent
 - 参照: [User-Agent](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/User-Agent)
 - クライアントを表す識別子
