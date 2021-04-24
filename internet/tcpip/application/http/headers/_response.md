@@ -2,6 +2,11 @@
 - 参照: よくわかるHTTP/2の教科書P32/38-39/41
 - 参照: Real World HTTP 第2版
 
+## Content-Disposition
+- [Content-Disposition](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Disposition)
+- レスポンスがブラウザに表示するためのもの(`inline`)か、
+  ダウンロードしてローカルに保存するためのもの(`attachment`)かを示す
+
 ## Content-Security-Policy
 - [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)
 
