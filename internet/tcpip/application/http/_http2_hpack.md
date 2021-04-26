@@ -1,16 +1,8 @@
 # HPACK
-- 参照: [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
-- 参照: [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
-- 参照: [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
-- 参照: [Request and Response](https://youtu.be/0cmXVXMdbs8)
-- 参照: [HTTP/2 Server Pushとは？(CDN サーバープッシュでWeb高速化）](https://blog.redbox.ne.jp/http2-server-push-cdn.html)
-- 参照: [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
-- 参照: [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
-- 参照: よくわかるHTTP/2の教科書P108-116
-
-## HPACKによるヘッダの圧縮
-- HPACKにおいて、ハフマン符号化とインデックステーブルを利用することによって
-  HTTPヘッダのデータ量を圧縮している
+## TL;DR
+- HTTPヘッダのデータ量を圧縮するための仕組み
+  - ハフマン符号化
+  - インデックステーブル(静的テーブル・動的テーブル)
 
 ## ハフマン符号化
 - HTTPヘッダに利用されている文字のうち、
@@ -22,15 +14,17 @@
 ## インデックステーブル
 - インデックス値・ヘッダ名・ヘッダ値を格納する辞書テーブル
   - インデックスヘッダフィールド表現 -> インデックス値だけでヘッダ名とヘッダ値を表現すること
-```
-# 静的テーブル
-- よく利用されるヘッダが事前に定義されているもの
+- 静的テーブルと動的テーブルはインデックスアドレスを共有しており、
+  動的テーブルはインデックス62以降が使用される
+  - インデックス62は新しいエントリの挿入ポイントとなっており、
+    それ以前に追加されていたエントリは63以降にずれる
+
+### 静的テーブル
+- よく利用されるヘッダが事前に定義された辞書テーブル
 - ヘッダ値が空の場合はヘッダ名のみ利用できる
-```
-```
-# 動的テーブル
-- 一度使ったヘッダフィールドを動的にテーブルへ追加するもの
-  - 以降、同じ同じヘッダフィールドを表現する場合はそのインデックスを指定する
+
+### 動的テーブル
+- 同じコネクション中に登場したHTTPヘッダをインデックス化して格納する辞書テーブル
 - 動的テーブルは独立したエンコード用テーブルとデコード用テーブルを持つ
 - エンコード用動的テーブルとデコード用動的テーブルは同期している
   - 送信時はエンコード用テーブル、受信時はデコード用テーブルを使用する
@@ -38,11 +32,6 @@
 - 動的テーブルのサイズはSETTINGSフレームで変更可能
   - デフォルトは4096byte
   - 上限を越したエントリは古い方から削除されていく
-```
-- 静的テーブルと動的テーブルはインデックスアドレスを共有しており、
-  動的テーブルはインデックス62以降が使用される
-  - インデックス62は新しいエントリの挿入ポイントとなっており、
-    それ以前に追加されていたエントリは63以降にずれる
 
 ## Header Block Flagment
 - HTTPヘッダはHEADERSフレームにおけるHeader Block Flagmentフィールドに格納される
@@ -57,3 +46,14 @@
   - インデックスされないリテラルヘッダフィールド -> 動的テーブルに追加されない
     - インデックスされた名前を使用
     - 新しい名前
+
+### 参照
+- [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
+- [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
+- [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
+- [Request and Response](https://youtu.be/0cmXVXMdbs8)
+- [HTTP/2 Server Pushとは？(CDN サーバープッシュでWeb高速化）](https://blog.redbox.ne.jp/http2-server-push-cdn.html)
+- [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
+- [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
+- よくわかるHTTP/2の教科書P108-116
+- Real World HTTP 第2版

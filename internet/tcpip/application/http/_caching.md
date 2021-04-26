@@ -1,6 +1,4 @@
 # キャッシュ
-- 参照: Real World HTTP 第2版
-
 ## 機構による分類
 - ブラウザによるキャッシュ
 - プロキシサーバー・CDNによるキャッシュ
@@ -51,3 +49,6 @@ no-cache            / no-cache                     / max-age
 - Cache-Controlヘッダに`no-store`が設定されている場合
 - Authorizationヘッダがあるが、Cache-Controlヘッダに`public`が設定されていない場合
 - ステータスコードが200 / 203 / 207 / 302 / 410 / 404以外
+
+## 参照
+- Real World HTTP 第2版

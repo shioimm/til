@@ -1,17 +1,7 @@
-# HTTP/2概論
-- 参照: [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
-- 参照: [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
-- 参照: [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
-- 参照: [Request and Response](https://youtu.be/0cmXVXMdbs8)
-- 参照: [HTTP/2 Server Pushとは？(CDN サーバープッシュでWeb高速化）](https://blog.redbox.ne.jp/http2-server-push-cdn.html)
-- 参照: [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
-- 参照: [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
-- 参照: よくわかるHTTP/2の教科書P76-78
-- 参照: [【招待講演】最速ウェブサーバの作り方　奥 一穂氏](https://www.youtube.com/watch?v=Iu5Uynq7ubo&feature=youtu.be)
-- 参照: Real World HTTP 第2版
-
-## HTTP/2とは
-- HTTP/1.xのセマンティクスを変更せず、より効率よくHTTPメッセージを送信するためのプロトコル
+# HTTP/2
+## TL;DR
+- HTTP/1.1のセマンティクスを変更せず、より効率よくHTTPメッセージを送信するためのプロトコル
+- 一本のTCP接続の内部に仮想のTCPソケット(ストリーム)を作成し通信を行う
 - HTTP/2自身はTLSが必須ではないがHTTP/2サポートブラウザはTLSを使用する
 
 ### 目的
@@ -52,3 +42,15 @@
 - HTTP/2通信は、ポート番号とは別にどのような方式で接続を行うかを決める識別子を持つ
   - h2(HTTP/2 over TLS -> いわゆるhttps)
   - h2c(HTTP/2 over TCP -> いわゆるhttp)
+
+## 参照
+- [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
+- [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
+- [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
+- [Request and Response](https://youtu.be/0cmXVXMdbs8)
+- [HTTP/2 Server Pushとは？(CDN サーバープッシュでWeb高速化）](https://blog.redbox.ne.jp/http2-server-push-cdn.html)
+- [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
+- [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
+- よくわかるHTTP/2の教科書P76-78
+- [【招待講演】最速ウェブサーバの作り方　奥 一穂氏](https://www.youtube.com/watch?v=Iu5Uynq7ubo&feature=youtu.be)
+- Real World HTTP 第2版

@@ -1,12 +1,4 @@
 # コネクション
-- 参照: [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
-- 参照: [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
-- 参照: [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
-- 参照: [Request and Response](https://youtu.be/0cmXVXMdbs8)
-- 参照: [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
-- 参照: [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
-- 参照: よくわかるHTTP/2の教科書P83-88/96-97
-
 ## コネクションの接続
 - HTTP/2はHTTP/1.xと同じTCPポートを利用して接続を行う
 - クライアント -> サーバーへHTTP/2での通信開始をネゴシエーションする
@@ -69,3 +61,12 @@
 #### https接続の場合
 - 接続しようとしているサーバーのIPアドレスが同じであること
 - 接続しようとしているサーバーの 証明書が有効であること
+
+## 参照
+- [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
+- [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
+- [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
+- [Request and Response](https://youtu.be/0cmXVXMdbs8)
+- [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
+- [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
+- よくわかるHTTP/2の教科書P83-88/96-97
