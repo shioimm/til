@@ -1,7 +1,4 @@
 # XMLHttpRequest
-- [XMLHttpRequest](https://developer.mozilla.org/ja/docs/Web/API/XMLHttpRequest)
-- 参照: Real World HTTP 第2版
-
 ## TL;DR
 - JavaScriptでHTTP通信を実行するための機能
 - curlコマンドと同等の操作を行うことができる
@@ -43,3 +40,7 @@
   - プロトコルのルールや環境に影響を与えるヘッダの送信禁止
   - セキュリティに影響を与えるヘッダの送信禁止
   - ブラウザの能力を超えられないヘッダの送信禁止
+
+## 参照
+- [XMLHttpRequest](https://developer.mozilla.org/ja/docs/Web/API/XMLHttpRequest)
+- Real World HTTP 第2版
