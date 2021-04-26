@@ -1,5 +1,5 @@
 # HTML
-- 参照: よくわかるHTTP/2の教科書P12
+## TL;DR
 - メタ情報(head) + 内容・構造(body)
 - ブラウザはメタ情報を参考にしてWebページやタイトルを表示する
 
@@ -64,3 +64,6 @@ value = element.getAttribute('data-x') // => 'x'
 ```haml
 <input type='password' name='password' autocomplete='new-password'>
 ```
+
+## 参照
+- よくわかるHTTP/2の教科書P12

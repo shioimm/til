@@ -1,66 +1,99 @@
-# ストリーム、多重化、フレーム
-- 参照: [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
-- 参照: [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
-- 参照: [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
-- 参照: [Request and Response](https://youtu.be/0cmXVXMdbs8)
-- 参照: [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
-- 参照: [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
-- 参照: よくわかるHTTP/2の教科書P76-126
-
+# ストリーム(HTTP/2)
 ## TL;DR
-- HTTP/2において、一つのTCPコネクション内でリクエストとレスポンスを
-  並列に扱うための仮想的な概念
+- 一本のTCP接続の内部に作られる仮想のTCPソケット
+  - 1ストリーム上で1リクエスト・1レスポンスのやりとりが行われる
+  - ストリームはフレームに付随するフラグによって簡単に作ったり閉じたりすることができる
+  - ストリーム単位ではTCPハンドシェイクは不要
+  - ストリームIDの数値とTCPの通信容量が許す限り並列接続を行うことができる
 - クライアント・サーバーはそれぞれ複数のストリームを作成し、
   実際には一つのTCPコネクション上で直列化して送信する
   - ブラウザから複数のタブを開いていてもリクエストは一つの接続にまとめられる
 
-## ストリーム
-- HTTP/2における通信単位
-- 1ストリーム上で1リクエスト・1レスポンスのやりとりが行われる
-
-### ストリームID
-- 各ストリームは一意のストリームIDを持ち、それぞれ独立して通信が行われる
-  - ストリームID 0 -> コネクション自体を意味する
-  - ストリームID 奇数 -> クライアントから開始したストリーム
-  - ストリームID 偶数 -> サーバーから開始したストリーム(サーバープッシュ)
-
-### ストリームの状態
-- 1コネクションにつき使用済みの各ストリームは再利用されなくなる
+## ストリームの状態
 - ストリームID 0以外のストリームは状態を持つ
-  - Idle -> 通信前
-  - Open -> 通信可能
-  - Close -> 通信終了
+- ストリームの状態は最初idle状態から始まり、ヘッダを受け取ると即時通信可能なopen状態になる
+- 1コネクションにつき使用済みの各ストリームは再利用されなくなる
 
-### フレームによる制御
-- ストリームごとに優先度を設定することが可能 -> PRIORITYフレーム
-- ストリームレベルでフロー制御を行うことが可能 -> SETTINGSフレーム/WINDOW_UPDATEフレーム
-  - フロー制御 -> 受信可能データ量の調整
-  - コネクションレベルでのフロー制御も可能
-    - 参照: [コネクションレベルとストリームレベル](https://qiita.com/Jxck_/items/622162ad8bcb69fa043d#%E3%83%95%E3%83%AD%E3%83%BC%E5%88%B6%E5%BE%A1%E3%81%AE%E6%96%B9%E6%B3%95)
+### 状態
+- idle
+  - 遷移先 - open / reserved(local) / reserved (remote)
+  - 送信可能フレーム - `HEADERS` / `PUSH_PROMISE`(予約ID)
+  - 受信可能フレーム - `HEADERS` / `PRIORITY`
+-  reserved(local)
+  - 遷移先 - half closed(remote) / closed
+  - 送信可能フレーム - `HEADERS` / `RST_STREAM` / `PRIORITY`
+  - 受信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
+- reserved(remote)
+  - 遷移先 - half closed(remote) / closed
+  - 送信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
+  - 受信可能フレーム - `HEADERS` / `RST_STREAM` / `PRIORITY`
+-  open
+  - 遷移先 - half closed(local) / half closed(remote) / closed
+  - 送信可能フレーム - `HEADERS(END_STREAM)` / `RST_STREAM`
+  - 受信可能フレーム - `PUSH_PROMISE`以外
+- half closed(local)
+  - 遷移先 - closed
+  - 送信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
+  - 受信可能フレーム - 全て可能
+- half closed(remote)
+  - 遷移先 - closed
+  - 送信可能フレーム - `HEADERS(END_STREAM)` / `RST_STREAM`
+  - 受信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
+- close
+  - 遷移先 - reserved
+  - 送信可能フレーム - `PRIORITY`
+  - 受信可能フレーム - `WINDOW_UPDATE`(加算する必要あり)
 
 ## フレーム
-- HTTP/2におけるメッセージの最小単位
+- ストリーム内の各データの最小単位
 - 各フレームはストリームIDに紐づき、受信後ストリームIDを元に復元される
 
-### フレームタイプ
-- 引用: [HTTP/2 Server Pushとは？(CDN サーバープッシュでWeb高速化）](https://blog.redbox.ne.jp/http2-server-push-cdn.html)
-```
-0x0  DATA          リクエスト・レスポンスボディ
-0x1  HEADERS       非圧縮または圧縮されたHTTPヘッダー
-0x2  PRIORITY      ストリーム優先度変更
-0x3  RST_STREAM    ストリーム終了通知
-0x4  SETTINGS      接続に関する設定(ストリームID 0で使用)
-0x5  PUSH_PROMISE  リソースのプッシュ通知
-0x6  PING          接続状況確認
-0x7  GOAWAY        接続終了通知(ストリームID 0で使用)
-0x8  WINDOW_UPDATE フロー制御ウィンドウの更新
-0x9  CONTINUATION  HEADERSフレーム・PUSH_PROMISEフレームのデータ
-```
+### フレームヘッダ
+- 各フレームは9バイトの共通ヘッダを持つ
 
-### ORIGINフレーム
-- 参照: よくわかるHTTP/2の教科書P131-132
+| 要素              | サイズ                 | 概要               |
+| -                 | -                      | -                  |
+| Length            | 24                     | ペイロードのサイズ |
+| Type              | 8                      | フレームの種類     |
+| Flags             | 8                      | -                  |
+| R                 | 1                      | 予約領域           |
+| Stream Identifier | 31                     | ストリーム識別子   |
+| Frame Payload     | Lengthで指定された長さ | フレームの実データ |
+
+#### Stream Identifier(ストリームID)
+- 各ストリームは一意のストリームIDを持ち、同じIDを持つ一連のフレーム受信時にグループ化されて扱われる
+  - 数値0 - 予約ID
+  - 奇数ID - クライアントから開始したストリーム
+  - 偶数ID - サーバーから開始したストリーム(サーバープッシュ)
+
+### フレームタイプ
+
+| タイプ番号 | タイプ名        | 概要                                             |
+| -          | -               | -                                                |
+| 0x0        | `DATA`          | リクエスト・レスポンスボディ                     |
+| 0x1        | `HEADERS`       | HTTPヘッダ                                       |
+| 0x2        | `PRIORITY`      | 依存するストリーム、ストリーム優先度、排他フラグ |
+| 0x3        | `RST_STREAM`    | エラーコード(即時終了通知する)                   |
+| 0x4        | `SETTINGS`      | 接続に関する設定(ストリームID 0で使用)           |
+| 0x5        | `PUSH_PROMISE`  | サーバープッシュ開始の予約                       |
+| 0x6        | `PING`          | 応答速度計測用                                   |
+| 0x7        | `GOAWAY`        | 最終ストリームID、エラーコード                   |
+| 0x8        | `WINDOW_UPDATE` | ウィンドウサイズ                                 |
+| 0x9        | `CONTINUATION`  | `HEADERS`・`PUSH_PROMISE`の続きのデータ          |
+
+### `ORIGIN`フレーム
 - サーバーはHTTP/2コネクション確立後、ストリームID 0でORIGINフレームを送信する
   - このコネクションでコンテンツを提供できるオリジンのリストが含まれる
     - スキーム/ドメイン名/ポート番号
 - クライアントは以降それらのオリジンにリクエストを送信する際、そのコネクションを再利用する
   - その他のオリジンへリクエストを送信する際は新しいコネクションを確立する
+
+## 参照
+- [普及が進む「HTTP/2」の仕組みとメリットとは](https://knowledge.sakura.ad.jp/7734/)
+- [HTTP の進化](https://developer.mozilla.org/ja/docs/Web/HTTP/Basics_of_HTTP/Evolution_of_HTTP)
+- [そろそろ知っておきたいHTTP/2の話](https://qiita.com/mogamin3/items/7698ee3336c70a482843)
+- [Request and Response](https://youtu.be/0cmXVXMdbs8)
+- [HTTP/2とは](https://www.nic.ad.jp/ja/newsletter/No68/0800.html)
+- [HTTP/2](https://hpbn.co/http2/#binary-framing-layer)
+- よくわかるHTTP/2の教科書
+- Real World HTTP 第2版
