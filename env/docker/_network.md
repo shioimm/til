@@ -1,10 +1,4 @@
 # ネットワーキング
-- 参照: [Docker コンテナ・ネットワークの理解](https://docs.docker.jp/engine/userguide/networking/dockernetworks.html)
-- 参照: [Docker0 ブリッジのカスタマイズ](https://docs.docker.jp/engine/userguide/networking/default_network/custom-docker0.html)
-- 参照: [Linuxカーネルのコンテナ機能［5］ ─ネットワーク](https://gihyo.jp/admin/serial/01/linux_containers/0006)
-- 参照: [Docker Compose入門 (3) ～ネットワークの理解を深める～](https://knowledge.sakura.ad.jp/23899/)
-- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その5:Dockerのネットワークってどうなってるの？ 〜](https://tech-lab.sios.jp/archives/20179)
-
 ## ネットワーク構成種別
 ### bridge
 - Linuxのブリッジ機能を使うブリッジ・ネットワーク
@@ -67,3 +61,11 @@ LAN <-> eth0(物理NIC) <-> docker0(ブリッジ) <-> veth <-> veth(仮想NIC) <
 - `docker-compose`で起動されたコンテナはデフォルトのブリッジネットワークを使用せず
   `docker-compose`プロジェクト単位で専用のブリッジネットワークを持つ
   - デフォルトのブリッジネットワークとはIPアドレスのレンジが異なるため、通信を行うことができない
+
+## 参照
+- [Docker コンテナ・ネットワークの理解](https://docs.docker.jp/engine/userguide/networking/dockernetworks.html)
+- [Docker0 ブリッジのカスタマイズ](https://docs.docker.jp/engine/userguide/networking/default_network/custom-docker0.html)
+- [Linuxカーネルのコンテナ機能［5］ ─ネットワーク](https://gihyo.jp/admin/serial/01/linux_containers/0006)
+- [Docker Compose入門 (3) ～ネットワークの理解を深める～](https://knowledge.sakura.ad.jp/23899/)
+- [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その5:Dockerのネットワークってどうなってるの？ 〜](https://tech-lab.sios.jp/archives/20179)
+

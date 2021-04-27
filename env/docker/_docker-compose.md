@@ -1,5 +1,4 @@
-- 引用・参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その4:docker-composeってなに？ 〜](https://tech-lab.sios.jp/archives/20051)
- 
+# docker-compose
 ## TL;DR
 - 複数のコンテナからなる一つのシステムの構築を簡便に行うためのツール
   - 設定 - `docker-compose.yml`の記述
@@ -78,3 +77,6 @@ services:
 volumes:                             # ホスト上にボリュームを定義
   db_data: /var/lib/mysql            # mysqlコンテナの/var/lib/mysqlをホスト上のdb_dataにマウント
 ```
+
+## 引用・参照
+- [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その4:docker-composeってなに？ 〜](https://tech-lab.sios.jp/archives/20051)

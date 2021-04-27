@@ -1,7 +1,4 @@
 # Dockerfile
-- 参照: [Dockerfile リファレンス](https://docs.docker.jp/engine/reference/builder.html)
-- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その3:Dockerfileってなに？ 〜](https://tech-lab.sios.jp/archives/19191)
-
 ## TL;DR
 - 新しいDockerイメージを構築する際に実行するコマンドをコード化したファイル
 
@@ -30,3 +27,8 @@ CMD [コマンド, 引数]
 ```
 1. `$ docker build -t 作成するDockerイメージ名 /path/to/Dockerfile`を実行
 2. `$ docker run --name 作成したDockerイメージ名`を実行
+
+## 参照
+- [Dockerfile リファレンス](https://docs.docker.jp/engine/reference/builder.html)
+- [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その3:Dockerfileってなに？ 〜](https://tech-lab.sios.jp/archives/19191)
+

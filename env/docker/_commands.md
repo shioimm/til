@@ -1,7 +1,4 @@
 # コマンド
-- [コマンドライン・リファレンス](https://docs.docker.jp/compose/reference/toc.html)
-- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
-
 ### DockerHubからDockerイメージをダウンロード
 ```
 $ docker login
@@ -143,3 +140,7 @@ $ docker-compose down [オプション]
 ```
 $ docker-compose logs [オプション] [サービス...]
 ```
+
+## 参照
+- [コマンドライン・リファレンス](https://docs.docker.jp/compose/reference/toc.html)
+- [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)

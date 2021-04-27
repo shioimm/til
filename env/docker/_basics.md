@@ -1,13 +1,4 @@
 # Docker
-- 参照: [Docker](https://www.docker.com/)
-- 参照: [Docker 概要](https://docs.docker.jp/get-started/overview.html)
-- 参照: [Docker入門（第一回）～Dockerとは何か、何が良いのか～](https://knowledge.sakura.ad.jp/13265/)
-- 参照: [Docker入門（第二回）～Dockerセットアップ、コンテナ起動～](https://knowledge.sakura.ad.jp/13795/)
-- 参照: [Docker入門（第四回）～Dockerfileについて～](https://knowledge.sakura.ad.jp/15253/)
-- 参照: [Dockerイメージの理解とコンテナのライフサイクル](https://www.slideshare.net/zembutsu/docker-images-containers-and-lifecycle)
-- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
-- 参照: [Rails on Docker](https://speakerdeck.com/sinsoku/rails-on-docker)
-
 ## TL;DR
 - コンテナのライフサイクルを管理するツールとプラットフォーム
   - コンテナ - Linuxカーネルのnamespaceによって分離された作業空間
@@ -75,3 +66,13 @@
     - イメージ化したコンテナをDockerHubにpush(`$ docker push`)
 4. Dockerコンテナを削除(`$ docker rm`)
 6. Dockerイメージを削除(`$ docker rmi`)
+
+## 参照
+- [Docker](https://www.docker.com/)
+- [Docker 概要](https://docs.docker.jp/get-started/overview.html)
+- [Docker入門（第一回）～Dockerとは何か、何が良いのか～](https://knowledge.sakura.ad.jp/13265/)
+- [Docker入門（第二回）～Dockerセットアップ、コンテナ起動～](https://knowledge.sakura.ad.jp/13795/)
+- [Docker入門（第四回）～Dockerfileについて～](https://knowledge.sakura.ad.jp/15253/)
+- [Dockerイメージの理解とコンテナのライフサイクル](https://www.slideshare.net/zembutsu/docker-images-containers-and-lifecycle)
+- [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
+- [Rails on Docker](https://speakerdeck.com/sinsoku/rails-on-docker)
