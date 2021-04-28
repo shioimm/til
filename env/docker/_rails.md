@@ -118,7 +118,7 @@ $ docker-compose run web rails new . --force --database=postgresql
 $ docker-compose build
 ```
 
-## 4. dotenv-railsの追加
+## 4. 環境変数の設定
 #### Gemfile
 ```
 gem 'dotenv-rails'
@@ -129,34 +129,53 @@ gem 'dotenv-rails'
 .env
 ```
 
-#### Dockerイメージの再構築
+#### .env
 ```
-$ docker-compose build
-
-# 動作確認
-$ docker-compose up
+MYAPP_DATABASE_HOST=任意のホスト名
+MYAPP_DATABASE_USERNAME=任意のユーザー名
+MYAPP_DATABASE_PASSWORD=任意のパスワード
 ```
+- `""`で囲むとdocker-compose.ymlが正しくパースしない
 
 ## 4. データベースの接続設定
+#### docker-compose.ymlの修正
+```yml
+  # ...
+
+  db:
+    image: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data:cached
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: ${MYAPP_DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${MYAPP_DATABASE_PASSWORD}
+      TZ: Asia/Tokyo
+
+  # ...
+```
+
 #### config/database.yml
 ```
 default: &default
   adapter: postgresql
   encoding: unicode
-  host: db
+  host: <%= ENV.fetch('MYAPP_DATABASE_HOST') { 'db' } %>
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 development:
   <<: *default
   database: myapp_development
-  username: postgres
-  password: password
+  username: <%= ENV.fetch('MYAPP_DATABASE_USERNAME') { 'postgres' } %>
+  password: <%= ENV.fetch('MYAPP_DATABASE_PASSWORD') { 'password' } %>
 
 test:
   <<: *default
   database: myapp_test
-  username: postgres
-  password: password
+  username: <%= ENV.fetch('MYAPP_DATABASE_USERNAME') { 'postgres' } %>
+  password: <%= ENV.fetch('MYAPP_DATABASE_PASSWORD') { 'password' } %>
 
 production:
   <<: *default
@@ -171,8 +190,8 @@ $ docker-compose exec db bash
 
 # パスワード設定
 root@container-id:/# passwd postgres
-New password:
-Retype new password:
+New password: # 任意のパスワード
+Retype new password: # 任意のパスワード
 passwd: password updated successfully
 ```
 
