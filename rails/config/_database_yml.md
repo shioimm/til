@@ -26,3 +26,17 @@ $ bundle exec rails dbconsole
 
 # select count(*) from pg_stat_activity where pid <> pg_backend_pid() and usename = current_user;
 ```
+
+### DBの特定
+- `url: <%= ENV["DATABASE_URL"] %>`で一意なURLを特定する
+- `database`・`host`・`port`・`username`キーの組み合わせで一意なDBを特定する
+  - `database` - DB名
+  - `host` - ホスト名
+  - `username` - ユーザー名(デフォルトはpostgresのデフォルトのrole名を使用する)
+  - `password` - `usename`で指定したユーザーのパスワード
+  - `port` - サーバーがリッスンするTCPポート(デフォルトは5432)
+
+#### DB URLの構造
+```
+database://username:password@/host:port
+```
