@@ -157,6 +157,12 @@ MYAPP_DATABASE_PASSWORD=任意のパスワード
   # ...
 ```
 
+```
+# 正しく設定できているか確認
+
+$ docker-compose config
+```
+
 #### config/database.yml
 ```
 default: &default
