@@ -11,11 +11,17 @@
 - 回線に合わせてすばやくビットレートを切り替える
 - マルチアングル、広告に対応
 
-### HLSとの違い
+## HLSとの違い
 - HLSはブラウザ自身のHLSの`.m3u8`ファイルを解釈して再生する
-- MPEG-DASHはデータの解析をJavaScriptが行い、
-  動画の再生はブラウザのコーデックをJavaScriptから扱うAPI(HTML5 Media Source Extensions)を利用する
+- [dash.jp](https://github.com/Dash-Industry-Forum/dash.js/wiki)- MPEG-DASHの参考実装である動画プレーヤー
+  - MPEG-DASHはデータの解析をJavaScriptが行う
+  - 動画の再生はブラウザのコーデックをJavaScriptから扱うAPI(HTML5 Media Source Extensions)で行う
 - HLSの動画を再生するプレーヤーも開発されており、サポート環境が充実している
+
+## MPD
+- Media Presentation Description
+- MPEG-DASHのマニフェストファイル
+- 拡張子`.mpd`で実体はXML
 
 ## 参照
 - Real World HTTP 第2版
