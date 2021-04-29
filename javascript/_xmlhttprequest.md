@@ -12,6 +12,22 @@
     レスポンスはブラウザで表示される
 - セキュリティのための制約を持つ
 
+## XMLHttpRequestオブジェクト
+
+```js
+var xhr = new XMLHttpRequest();
+
+xhr.open("GET", "/path", true); // 処理を設定・第三引数をtrueにすると非同期実行
+xhr.responseType = "json" // レスポンスの型を指定
+xhr.onload = fuction() {
+  if (xhr.status == 200) {
+    // レスポンス200時に呼ばれる処理
+  }
+}
+xhr.setRequestHeader("Content-Type", "application/json")
+zhr.send(); // 処理を実行
+```
+
 ## Comet
 - XMLHttpRequestによる単方向通信同士の組み合わせを駆使した古典的なリアルタイム双方向通信技術
 - ロングポーリングによって実装される
