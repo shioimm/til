@@ -105,6 +105,39 @@
 4. コンテナを削除(`$ docker rm`)
 5. イメージを削除(`$ docker rmi`)
 
+## Namespace
+- 特殊なフラグを指定して実行されるプロセス
+- Namespaceの子プロセスはNamespaceのメンバとなる
+- DockerはNamespaceを使用してコンテナ同士を隔離する
+
+### コンテナ実行時の動作
+1. Dockerデーモンはそのコンテナ専用のNamespaceとなるプロセスを作成する
+2. DockerデーモンはNamespaceのメンバとしてコンテナに含まれるプロセスを実行する
+
+### Namespaceの種類
+
+| Namespace | リソース                                 |
+| -         | -                                        |
+| Mount     | ファイルシステム                         |
+| IPC       | プロセス間通信                           |
+| Network   | ネットワークインターフェース・ポート番号 |
+| UTS       | ホスト名                                 |
+| PID       | プロセスID(Linux 3.8~)                   |
+| User      | UID / GID(Linux 3.8~)                    |
+| Cgroup    | cgroup(Linux4.6~)                        |
+| Time      | システムクロックの一部(Linux 5.6~)       |
+
+### control groups
+- コンテナごとに利用可能なハードウェアリソースの使用量に上限を設ける機能
+- cgroup - 制限の対象となるプロセスの集合
+- cgroups - control groups、あるいは複数のcgroup
+
+#### cgroupfs
+- control groupsの設定を変更するためのファイルシステムライクなインターフェース
+- control groupsは階層構造になっている
+  - 上位のcgroupの設定は下位のcgroupへ引き継がれる
+  - 下位のcgroupは上位のcgroupによって設定された制限を超えない
+
 ## 参照
 - [Docker](https://www.docker.com/)
 - [Docker 概要](https://docs.docker.jp/get-started/overview.html)
