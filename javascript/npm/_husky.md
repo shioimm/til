@@ -1,5 +1,4 @@
 # Husky
-- 参照: [husky](https://github.com/typicode/husky)
 - `git commit` `git push`などコマンドの実行にフックして任意の処理を走らせる
 
 ### 用途
@@ -18,3 +17,6 @@
   }
 }
 ```
+
+## 参照
+- [husky](https://github.com/typicode/husky)

@@ -1,7 +1,4 @@
 # Strage
-- 参照: [Storage](https://developer.mozilla.org/ja/docs/Web/API/Storage)
-- 参照: [ブラウザにデータを保存するlocalStorage（ローカルストレージ）の使い方](https://www.granfairs.com/blog/staff/local-storage-01)
-- 参照: [HTML5のLocal Storageを使ってはいけない（翻訳）](https://techracho.bpsinc.jp/hachi8833/2019_10_09/80851)
 - 特定のドメインのセッションストレージ / ローカルストレージへアクセスする機能
   - セッションストレージを操作する場合は`window.sessionStrage`を使用する
   - ローカルストレージを操作する場合は`window.localStrage`を使用する
@@ -28,3 +25,8 @@
 - 純粋なJavaScriptによって扱う
   - 外部のJavaScriptコードからアクセスできる
   - Cookie -> Webサーバーが作成する
+
+## 参照
+- [Storage](https://developer.mozilla.org/ja/docs/Web/API/Storage)
+- [ブラウザにデータを保存するlocalStorage（ローカルストレージ）の使い方](https://www.granfairs.com/blog/staff/local-storage-01)
+- [HTML5のLocal Storageを使ってはいけない（翻訳）](https://techracho.bpsinc.jp/hachi8833/2019_10_09/80851)

@@ -1,7 +1,4 @@
 # Lodash
-- 参照: [Lodash](https://lodash.com/)
-
-## TL;DR
 - JavaScript用のユーティリティライブラリ
 
 ##  導入
@@ -37,3 +34,6 @@ const ItemList = (props: Props): ReactElement => {
   )
 }
 ```
+
+## 参照
+- [Lodash](https://lodash.com/)

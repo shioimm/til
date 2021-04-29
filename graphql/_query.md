@@ -1,8 +1,4 @@
 # クエリ
-- 参照: [GraphQL](https://graphql.org/)
-- 参照: 初めてのGraphQL 3章
-
-## TL;DR
 - GraphQLにおけるクエリは問い合わせ(`query`)と変更(`mutation`)の二種類
 - GraphQLは全てのHTTPリクエストをPOSTリクエストとして発行する
 - GraphQLはクエリをPOSTリクエストのbodyとして使用する
@@ -220,3 +216,7 @@ query {
   }
 }
 ```
+
+## 参照
+- [GraphQL](https://graphql.org/)
+- 初めてのGraphQL 3章

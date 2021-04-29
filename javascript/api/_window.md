@@ -1,5 +1,4 @@
 # window
-- 参照: [window](https://developer.mozilla.org/ja/docs/Web/API/Window)
 - DOM documentを収めるウィンドウを指す
 
 ## `window.localStrage`
@@ -14,3 +13,6 @@ window.localStorage.removeItem('Book')
 // or
 window.localStrage.clear()
 ```
+
+## 参照
+- [window](https://developer.mozilla.org/ja/docs/Web/API/Window)

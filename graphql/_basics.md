@@ -1,9 +1,4 @@
 # GraphQL
-- 参照: [GraphQL](https://graphql.org/)
-- 参照: [「GraphQL」徹底入門 ─ RESTとの比較、API・フロント双方の実装から学ぶ](https://employment.en-japan.com/engineerhub/entry/2018/12/26/103000)
-- 参照: 初めてのGraphQL 1章
-
-## TL;DR
 - APIのためのクエリ言語
 - クエリの構造とレスポンスの構造が対応関係にある
 - エンドポイントが一つに集約されている(`/graphql`)
@@ -92,3 +87,8 @@ type Person {
 ## 型定義の自動生成
 - [GraphQL Code Generator | GraphQL Code Generator](https://graphql-code-generator.com/)
   - Typescriptのために型定義を自動生成する
+
+## 参照
+- [GraphQL](https://graphql.org/)
+- [「GraphQL」徹底入門 ─ RESTとの比較、API・フロント双方の実装から学ぶ](https://employment.en-japan.com/engineerhub/entry/2018/12/26/103000)
+- 初めてのGraphQL 1章

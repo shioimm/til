@@ -1,7 +1,4 @@
 # SSH
-- 参照: [ssh 【 Secure SHell 】 セキュアシェル](http://e-words.jp/w/ssh.html)
-
-## TL;DR
 - ネットワークを介しリモートホストに遠隔ログイン・操作するためのソフトウェア
 - 公開鍵暗号と秘密鍵暗号を組み合わせることで通信経路が暗号化される
 - sshd - 外部からのsshによる接続を受け付けるデーモンプロセス
@@ -61,3 +58,6 @@ $ ssh-copy-id -i ~/.ssh/xxx_rsa.pub USER@HOSTNAME
 # HOSTNAME - 接続先ホスト名
 ```
 - あるいは接続先のGUIから公開鍵を登録する
+
+## 参照
+- [ssh 【 Secure SHell 】 セキュアシェル](http://e-words.jp/w/ssh.html)

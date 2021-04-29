@@ -1,5 +1,4 @@
 # XMLHttpRequest
-## TL;DR
 - JavaScriptでHTTP通信を実行するための機能
 - curlコマンドと同等の操作を行うことができる
 - 画面全体をクリアせずにWebページを読み込んだり更新するAjaxアーキテクチャの基幹技術として使用される

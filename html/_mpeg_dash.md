@@ -1,5 +1,4 @@
 # MPEG-DASH
-## TL;DR
 - MPEG Dynamic Adaptive Streaming over HTTP
   - HTTPを使用し適切なビットレートでストリーミングを行う方式
 - 動画ストリーミング再生の仕組み(MPEGコンソーシアムによる標準化)

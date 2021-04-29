@@ -1,7 +1,4 @@
 # UDP
-- 参照: Linuxプログラミングインターフェース 58章
-- 参照: Software Design 2021年5月号 ハンズオンTCP/IP
-
 ## 特徴
 - IPの性質を引き継ぎ、信頼性のないデータグラム型の通信サービスを提供する
 - パケットは損失する可能性がある
@@ -57,3 +54,7 @@ struct group_req {
   struct sockaddr_storage gr_group;
 };
 ```
+
+## 参照
+- Linuxプログラミングインターフェース 58章
+- Software Design 2021年5月号 ハンズオンTCP/IP

@@ -1,5 +1,4 @@
 # HLS
-## TL;DR
 - HTML Live Streaming
 - 動画ストリーミング再生の仕組み(Appleが提唱)
 - HTTPを使ったプログレッシブダウンロードで動画再生を行う

@@ -1,8 +1,4 @@
 # NAT
-- 参照: Linuxで動かしながら学ぶTCP/IPネットワーク入門 7
-- 参照: [「NAT」の仕組みとルーターへの設定方法 ](https://www.atmarkit.co.jp/ait/articles/1512/03/news018.html)
-
-## TL;DR
 - Network Address Translation
 - 少数のグローバルIPアドレスを多数のプライベートIPアドレスで共有するための仕組み
   - LAN内の特定のノード(NATノード)のみがグローバルアドレス・プライベートアドレスを持つ
@@ -41,3 +37,7 @@
 - パケットの送信先をルーターのグローバルアドレスからLAN内のプライベートアドレスへ変換する
   - 「ポートを開ける」
   - 送信先のポート番号が特定の値になっているパケットのみに対して操作を実行する
+
+## 参照
+- Linuxで動かしながら学ぶTCP/IPネットワーク入門 7
+- [「NAT」の仕組みとルーターへの設定方法 ](https://www.atmarkit.co.jp/ait/articles/1512/03/news018.html)

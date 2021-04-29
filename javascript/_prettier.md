@@ -1,7 +1,4 @@
 # Prettier
-- 参照・引用: [Prettier](https://prettier.io/)
-
-## TL;DR
 - opinionatedなコードフォーマッター
   - JavaScriptの他、JavaScriptによるライブラリやAltJSなど幅広い言語環境に対応
 
@@ -24,3 +21,6 @@
 - `$ yarn prettier --write .` -> フォーマットを実行
 - `$ yarn prettier --check .` -> フォーマットを確認
 - huskeyにフックして実行する etc
+
+## 参照・引用
+- [Prettier](https://prettier.io/)
