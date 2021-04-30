@@ -1,7 +1,4 @@
 # ESLint
-- 参照・引用: [ESLint](https://eslint.org/)
-
-## TL;DR
 - オープンソースのリンター
 - 対象のコードは自動的に修正される
 - 独自のルールに従ってカスタマイズすることもできる
@@ -29,3 +26,6 @@
 - [Command Line Interface](https://eslint.org/docs/user-guide/command-line-interface)
 - `$ npm i -g eslint`を実行する
 - huskeyにフックして実行する etc
+
+## 参照・引用
+- [ESLint](https://eslint.org/)

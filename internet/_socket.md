@@ -1,9 +1,4 @@
 # ソケット
-- 参照: [2015年Webサーバアーキテクチャ序論](https://blog.yuuk.io/entry/2015-webserver-architecture)
-  - 引用: UNIXネットワークプログラミング 第２版 Vol.1 p43
-- 参照: [「Working with TCP Sockets」を読んだ](https://blog.tsurubee.tech/entry/2018/07/25/152514)
-
-## TL;DR
 - ソケット
   - 通信におけるエンドポイント(IPアドレス + TCPポート)を表現したデータモデル
 - ソケットペア
@@ -26,3 +21,8 @@
 - (2．bind)
 - 3．connect -> サーバーソケットへの接続を行う
 - 4．close
+
+## 参照・引用
+- [2015年Webサーバアーキテクチャ序論](https://blog.yuuk.io/entry/2015-webserver-architecture)
+- UNIXネットワークプログラミング 第2版 Vol.1 p43
+- [「Working with TCP Sockets」を読んだ](https://blog.tsurubee.tech/entry/2018/07/25/152514)

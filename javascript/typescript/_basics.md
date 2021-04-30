@@ -1,6 +1,4 @@
 # TypeScriptの基礎
-- 参照: [TypeScript基礎講座](https://www.udemy.com/course/typescript-y/)
-
 ### 基本
 - `let`に続けて型を定義
 ```js
@@ -192,3 +190,7 @@ doubleFunc = (x: number, y: number) => {
   return (x ** y)
 }
 ```
+
+## 参照
+- [TypeScript基礎講座](https://www.udemy.com/course/typescript-y/)
+

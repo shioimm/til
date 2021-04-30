@@ -1,6 +1,4 @@
 # 非同期処理
-- 参照: [非同期処理:コールバック/Promise/Async Function](https://jsprimer.net/basic/async/)
-
 ## 性質
 - JSにおいて、非同期処理 = 非同期的なタイミングで実行される処理
 - JSにおいて、非同期処理は並行処理として扱われる
@@ -99,3 +97,6 @@ async function asyncMain() {
 
 - PromiseインスタンスがRejectedな状態になった場合、`await`はエラーを`throw`する
   - `try...catch` ブロックで`await`式を囲むことによってキャッチできる
+
+## 参照
+- [非同期処理:コールバック/Promise/Async Function](https://jsprimer.net/basic/async/)

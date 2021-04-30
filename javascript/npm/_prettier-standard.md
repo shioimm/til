@@ -1,5 +1,4 @@
 # prettier-standard
-- 参照: [prettier-standard](https://github.com/sheerun/prettier-standard)
 - prettierと標準ルールで設定されたeslintのルールを使ったフォーマットツール
 
 ### Usage
@@ -11,3 +10,6 @@
   }
 }
 ```
+
+## 参照
+- [prettier-standard](https://github.com/sheerun/prettier-standard)

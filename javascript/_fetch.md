@@ -1,5 +1,4 @@
 # Fetch API
-## TL;DR
 - ワンショットのクライアント起点のHTTPリクエストを行う関数(XMLHttpRequestの再設計)
 
 ### 特徴
