@@ -1,6 +1,4 @@
 # バーチャルホストの設定
-- 参照: [プログラミングビギナーNekoteniがあなたに贈る！NginxでVirtual Hostの巻](https://blog.goo.ne.jp/moonycat/e/b09ff732b80e098dea9c627bc0b64eda)
-
 ## ディレクトリ構成
 ```
 # Debian
@@ -35,3 +33,6 @@
 |  　　   |- nginx/
 |              |- index.html デフォルトのウェルカムページ
 ```
+
+## 参照
+- [プログラミングビギナーNekoteniがあなたに贈る！NginxでVirtual Hostの巻](https://blog.goo.ne.jp/moonycat/e/b09ff732b80e098dea9c627bc0b64eda)
