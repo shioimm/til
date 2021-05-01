@@ -1,7 +1,5 @@
 # direnv
 - [direnv/direnv](https://github.com/direnv/direnv)
-
-## TL;DR
 - ディレクトリごとに環境変数を管理する
 
 ## Get Started

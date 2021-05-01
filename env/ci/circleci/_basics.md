@@ -1,9 +1,4 @@
 # CircleCI
-- 参照: [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
-- 参照・引用: WEB+DB PRESS Vol.107 ［Dockerもサポート！］実践CircleCI ワークフローで複雑なCI/CDを自動化 P10-40
-- 参照・引用: CitrcleCI実践入門 第一章 / 第二章
-- 参照: [はてなリモートインターンシップ2020](https://hatenacorp.jp/intern2020/public_broadcast)
-
 ## 特徴
 - Dockerのサポート
   - Dockerコンテナ上でのビルドをサポート
@@ -250,3 +245,9 @@ workflows:
 environment:
   XXX: xxx
 ```
+
+## 参照
+- [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
+- WEB+DB PRESS Vol.107 ［Dockerもサポート！］実践CircleCI ワークフローで複雑なCI/CDを自動化 P10-40
+- CitrcleCI実践入門 第一章 / 第二章
+- [はてなリモートインターンシップ2020](https://hatenacorp.jp/intern2020/public_broadcast)

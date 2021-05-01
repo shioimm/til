@@ -1,9 +1,4 @@
 # Amazone RDS
-- ソース: [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
-- 参照: DNSをはじめよう ～基礎からトラブルシューティングまで～ 改訂第2版
-- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
-
-## TL;DR
 - AWSクラウド上のフルマネージドRDBMS
 - 既存のDBエンジンを使用可能
   - Amazon Aurora/PostgreSQL/MySQL/MariaDB/Oracle/SQL Server
@@ -45,3 +40,8 @@
     - 詳細の指定
     - [詳細設定] の設定
 5. セキュリティグループでポートを開ける
+
+## 参照
+- [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
+- DNSをはじめよう ～基礎からトラブルシューティングまで～ 改訂第2版
+- サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3

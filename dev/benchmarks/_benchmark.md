@@ -1,5 +1,4 @@
 # library benchmark
-- 参照: [library benchmark](https://docs.ruby-lang.org/ja/2.6.0/library/benchmark.html)
 - Rubyプログラムのベンチマークを取るライブラリ
 
 ```ruby
@@ -55,3 +54,6 @@ benchmark "Benchmarking" do
   # ベンチマークしたい処理
 end
 ```
+
+## 参照
+- [library benchmark](https://docs.ruby-lang.org/ja/2.6.0/library/benchmark.html)

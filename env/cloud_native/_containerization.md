@@ -1,10 +1,4 @@
 # コンテナ技術
-- 参照: [ソフトウェア開発の課題を解決するコンテナ技術](https://www.atmarkit.co.jp/ait/articles/1901/29/news005.html)
-- 参照: [コンテナとは？(3)仮想化技術編](https://news.mynavi.jp/article/zerocontena-3/)
-- 参照: [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その1:コンテナってなに？ 〜](https://tech-lab.sios.jp/archives/18811)
-- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 5
-
-## TL;DR
 - 仮想化技術の一種
 - Linuxカーネルのnamespaceによる作業空間の分離
   - プロセス空間の分離
@@ -95,3 +89,9 @@
 ### Kubernetes
 - 事実上のデファクトスタンダードであるコンテナオーケストレーションツール
 - Googleによって開発が開始され、現在はCNCFが開発を行っている
+
+## 参照
+- [ソフトウェア開発の課題を解決するコンテナ技術](https://www.atmarkit.co.jp/ait/articles/1901/29/news005.html)
+- [コンテナとは？(3)仮想化技術編](https://news.mynavi.jp/article/zerocontena-3/)
+- [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その1:コンテナってなに？ 〜](https://tech-lab.sios.jp/archives/18811)
+- サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 5

@@ -1,5 +1,4 @@
 # RedisToGo -> Heroku Redisへの移行作業メモ
-
 ## 移行理由
 - Sidekiq5->6系へのupdateの際、Herokuアドオンで使用しているRedisToGoの最新バージョンが古かったため
 

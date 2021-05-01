@@ -1,7 +1,4 @@
 # AWS
-- ソース: [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
-- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
-
 ## クラウドインフラストラクチャのメリット
 - キャパシティの予測が不要
 - スピードとアジリティの向上
@@ -91,3 +88,7 @@
   - 認証 / 認可を行う
   - ユーザーあるいはグループごとに権限を付与する
   - AWSリソース同士の認証・認可を行う
+
+## 参照
+- [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
+- サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3

@@ -1,8 +1,8 @@
 # スロークエリのログを取得する
-- 参照: [Rails tips: 遅いクエリのログをDB設定変更なしで取るコツ（翻訳）](https://techracho.bpsinc.jp/hachi8833/2018_04_26/55463)
 - ActiveSupport::Notificationsで指定のイベントにサブスクライブする機能を利用
 - スロークエリが発生した際にログに出力する
-- config/initializer/slow_query_logger.rb
+- `config/initializer/slow_query_logger.rb`
+
 ```ruby
 class SlowQueryLogger
   MAX_DURATION = 1.0 # 1.0秒を越すクエリが対象
@@ -28,3 +28,6 @@ end
 
 SlowQueryLogger.initialize!(Logger.new(Rails.root.join('log', "#{Rails.env}_slow_query.log"))) unless Rails.env.production?
 ```
+
+## 参照
+- [Rails tips: 遅いクエリのログをDB設定変更なしで取るコツ（翻訳）](https://techracho.bpsinc.jp/hachi8833/2018_04_26/55463)

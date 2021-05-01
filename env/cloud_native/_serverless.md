@@ -1,9 +1,4 @@
 # サーバーレスコンピューティング
-- 参照: [サーバーレスとは](https://www.redhat.com/ja/topics/cloud-native-apps/what-is-serverless)
-- 参照: [サーバレスとコンテナ：同じところと違うところ](https://sumologic.digitalstacks.net/blog/serverless-vs-containers/)
-- 参照: [新たなクラウドアプリケーションのトレンドとして注目される「サーバーレスコンピューティング」―― そのメリットとデメリットとは？](https://cn.teldevice.co.jp/column/10516/)
-
-## TL;DR
 - アプリケーションコードがオンデマンドで実行されるアーキテクチャ
   - アプリケーション開発者はコードをアップロードし、実行したい時にトリガーする
   - 実行するコードがイベントによってトリガーされた際、
@@ -74,3 +69,8 @@
 - 異なるホストサーバー間でアプリケーションをすばやく移動する
 - オンプレミスとクラウドの間でワークロードを移動する機能を保持する
 - サービスを継続的に利用可能にする
+
+## 参照
+- [サーバーレスとは](https://www.redhat.com/ja/topics/cloud-native-apps/what-is-serverless)
+- [サーバレスとコンテナ：同じところと違うところ](https://sumologic.digitalstacks.net/blog/serverless-vs-containers/)
+- [新たなクラウドアプリケーションのトレンドとして注目される「サーバーレスコンピューティング」―― そのメリットとデメリットとは？](https://cn.teldevice.co.jp/column/10516/)

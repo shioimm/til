@@ -1,8 +1,4 @@
 # GitHub Actions
-- 参照: [GitHub Actionsについて](https://docs.github.com/ja/actions/getting-started-with-github-actions/about-github-actions)
-- 参照: パーフェクトRuby on Rails[増補改訂版] P406-410
-
-## TL;DR
 - GitHubに組み込まれた継続的インテグレーションサービス
 - 継続的インテグレーション(CI)と継続的デプロイメント(CD)機能を直接リポジトリにビルドすることができる
 
@@ -40,3 +36,7 @@ jobs:
         bin/rails test
         bin/rails test:system
 ```
+
+## 参照
+- [GitHub Actionsについて](https://docs.github.com/ja/actions/getting-started-with-github-actions/about-github-actions)
+- パーフェクトRuby on Rails[増補改訂版] P406-410

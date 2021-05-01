@@ -1,5 +1,4 @@
 # ErrorsController
-- 参照: [exceptions_appによる例外捕捉](https://qiita.com/upinetree/items/273ae574f1c021d24c37#exceptions_app%E3%81%AB%E3%82%88%E3%82%8B%E4%BE%8B%E5%A4%96%E6%8D%95%E6%8D%89)
 - `Rails.configuration.exceptions_app`を利用して例外をハンドリングするErrorsControllerを実装する
 
 ## 概要
@@ -133,3 +132,6 @@ RSpec.describe ErrorsController, type: :request do
   end
 end
 ```
+
+## 参照
+- [`exceptions_app`による例外捕捉](https://qiita.com/upinetree/items/273ae574f1c021d24c37#exceptions_app%E3%81%AB%E3%82%88%E3%82%8B%E4%BE%8B%E5%A4%96%E6%8D%95%E6%8D%89)

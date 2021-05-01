@@ -1,9 +1,4 @@
 # EC2
-- 参照: [Amazon EC2](https://aws.amazon.com/jp/ec2/?nc2=h_ql_prod_fs_ec2)
-- 参照: AWSをはじめよう　～AWSによる環境構築を1から10まで～
-- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
-
-## TL;DR
 - AWSの基盤上で任意のOSを実行できるサービス
 - OSの実行単位はインスタンスと呼ばれる
   - インスタンスのコピーや破棄を容易に行うことができる
@@ -126,3 +121,8 @@
 8. EC2: 環境変数の設定
 9. ホスト: デプロイ
     - `$ bundle exec cap production deploy`
+
+## 参照
+- [Amazon EC2](https://aws.amazon.com/jp/ec2/?nc2=h_ql_prod_fs_ec2)
+- AWSをはじめよう　～AWSによる環境構築を1から10まで～
+- サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3

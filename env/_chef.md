@@ -1,15 +1,7 @@
 # Chef
-- 参照: [Chef Documentation](https://docs.chef.io/)
-- 参照: [サーバー設定ツール「Chef」の概要と基礎的な使い方](https://knowledge.sakura.ad.jp/867/)
-- 参照: [オープンソースの運用管理・運用自動化／Chefとは](https://www.ossnews.jp/oss_info/Chef)
-
-## TL;DR
 - 構成管理ツール
-  - 設定ファイルに従いユーザーの作成、パッケージのインストール、設定ファイルの編集などを自動的に行う
-
-## 特徴
-- Infrastructure as Code
-  - コードによってインフラの構成管理を行う
+- 設定ファイルに従いユーザーの作成、パッケージのインストール、設定ファイルの編集などを自動的に行う
+- Infrastructure as Code(コードによってインフラの構成管理を行う)
 
 ## 構成要素
 ### Recipe
@@ -43,3 +35,8 @@
 - サーバーにChefサーバーのインストールが必要
 - クライアントにChefクライアントのインストールが必要
   - クライアントはNodeと呼ばれる
+
+## 参照
+- [Chef Documentation](https://docs.chef.io/)
+- [サーバー設定ツール「Chef」の概要と基礎的な使い方](https://knowledge.sakura.ad.jp/867/)
+- [オープンソースの運用管理・運用自動化／Chefとは](https://www.ossnews.jp/oss_info/Chef)

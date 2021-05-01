@@ -1,11 +1,6 @@
 # Ansible
-- 参照: [Ansible Documentation](https://docs.ansible.com/ansible/latest/index.html)
-- 参照: [Ansible (ソフトウェア)](https://ja.wikipedia.org/wiki/Ansible_(%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A7%E3%82%A2)
-- 参照: [AnsibleとChefを比較](https://www.ossnews.jp/compare/Ansible/Chef)
-
-## TL;DR
 - RedHatが開発する構成管理/オーケストレーション/デプロイメントツール
-  - 設定ファイルに従いソフトウェアのインストールや設定を自動的に実行する事が出来る
+- 設定ファイルに従いソフトウェアのインストールや設定を自動的に実行する事が出来る
 
 ### 特徴
 - シンプルさと使いやすさ
@@ -37,3 +32,8 @@
 - Ansibleにおいて順序立てられたタスクのリスト
 - 繰り返し実行が可能
 - YAMLで記述される
+
+## 参照
+- [Ansible Documentation](https://docs.ansible.com/ansible/latest/index.html)
+- [Ansible (ソフトウェア)](https://ja.wikipedia.org/wiki/Ansible_(%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A7%E3%82%A2)
+- [AnsibleとChefを比較](https://www.ossnews.jp/compare/Ansible/Chef)

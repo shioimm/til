@@ -1,6 +1,7 @@
 # seedファイルで画像データを格納する際、対象の画像ファイルがSVGだと表示されない
 ## 挙動
 - 元々あったseedデータを参考にして新しいseedデータを作成したところ、ファイルが正常に展開されなかった
+
 ```ruby
 # 元々あったseedデータ
 # db/fixtures/foo.rb
@@ -38,7 +39,9 @@ Bar.seed do |s|
   s.image = StringIO.new(File.read(Rails.root.join('db/fixtures/images/bars/hogehoge.svg')))
 end
 ```
+
 - また、`StringIO`を使わず直接`File`クラスから`IO`オブジェクトを返すように変更した
+
 ```ruby
 # db/fixtures/bar.rb
 

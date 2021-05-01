@@ -26,4 +26,7 @@ $ circleci config validate
 ## ローカルでのジョブ実行
 ```
 $ circleci local execute
+
+# ステージングと同じ環境でジョブを実行する場合
+$ circleci local execute --job 実行したいジョブ -e 環境変数キー=環境変数値
 ```

@@ -1,9 +1,4 @@
 # クラウドネイティブ
-- 参照: [CNCF Cloud Native Definition v1.0](https://github.com/cncf/toc/blob/master/DEFINITION.md#%E6%97%A5%E6%9C%AC%E8%AA%9E%E7%89%88)
-- 参照: [クラウドネイティブ・アプリケーションについて理解する](https://www.redhat.com/ja/topics/cloud-native-apps)
-- 参照: [「クラウドネイティブ」とはなにか――「クラウドファースト」となにが違うのか？](https://cn.teldevice.co.jp/column/22384/)
-
-## TL;DR
 - クラウド基盤において、クラウドに最適化したアプリケーションを構築・実行するための開発手法
   - クラウドネイティブアプリケーション - 疎結合された小型で独立したサービスの集合
 - モジュール性、疎結合、サービス独立性に力点を置く
@@ -33,3 +28,8 @@
 4. アプリケーションはクラウドを基盤に運用される
     - イミュータブルインフラストラクチャ: 本番環境に対してupgradeやパッチ管理をせず常に新しい環境に置き換える
 5. CI/CD、自動デプロイ処理などのDevOpsワークフローによって開発がサポートされる
+
+## 参照
+- [CNCF Cloud Native Definition v1.0](https://github.com/cncf/toc/blob/master/DEFINITION.md#%E6%97%A5%E6%9C%AC%E8%AA%9E%E7%89%88)
+- [クラウドネイティブ・アプリケーションについて理解する](https://www.redhat.com/ja/topics/cloud-native-apps)
+- [「クラウドネイティブ」とはなにか――「クラウドファースト」となにが違うのか？](https://cn.teldevice.co.jp/column/22384/)

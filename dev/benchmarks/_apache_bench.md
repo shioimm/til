@@ -1,7 +1,4 @@
 # Apache Bench
-- 参照: [ab - Apache HTTP server benchmarking tool](https://httpd.apache.org/docs/2.4/programs/ab.html)
-
-## TL;DR
 - Apacheの提供するベンチマークツール(`apache2-utils`に含まれる)
 - Webサーバーにリクエストを送信し、秒あたりのスループットを計測する
 - Apache以外のWebサーバーに対しても使用可能
@@ -53,3 +50,6 @@ $ ab -n 100 -c 10 http://example.com
   - リクエストあたりの平均処理時間
 - Transfer rate
   - `totalread / 1024 / timetaken`の式で計算される転送率
+
+## 参照
+- [ab - Apache HTTP server benchmarking tool](https://httpd.apache.org/docs/2.4/programs/ab.html)

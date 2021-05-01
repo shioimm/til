@@ -1,9 +1,4 @@
 # Elastic Load Balancing
-- 参照: [Elastic Load Balancing](https://aws.amazon.com/jp/elasticloadbalancing/)
-- 参照: AWSをはじめよう　～AWSによる環境構築を1から10まで～
-- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
-
-## TL;DR
 - 複数のターゲットに渡る着信トラフィックを分配するロードバランサ
   - ALB(Application Load Balancer) - リクエストレベル(HTTP / HTTPS)
   - NLB(Network Load Balancer) - 接続レベル(TCP / UDP)
@@ -41,3 +36,8 @@
     -> ステータス
 8. Route53でElasticIPを直接指定している箇所を修正
     - Alias - Alias Targetにロードバランサーを指定
+
+## 参照
+- [Elastic Load Balancing](https://aws.amazon.com/jp/elasticloadbalancing/)
+- AWSをはじめよう　～AWSによる環境構築を1から10まで～
+- サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3

@@ -1,7 +1,4 @@
 # ワークフロー
-- 参照: [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
-- 参照・引用: CitrcleCI実践入門 第四章
-
 ## ワークフローでできること
 - ジョブのオーケストレーション
   - シーケンシャルジョブ - 複数ジョブを連続実効
@@ -217,3 +214,7 @@ workflows:
         requires:
           - hold
 ```
+
+## 参照・引用
+- [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
+- CitrcleCI実践入門 第四章
