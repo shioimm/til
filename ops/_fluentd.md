@@ -1,8 +1,4 @@
 # Fluentd
-- 参照・引用: [柔軟なログ収集を可能にする「fluentd」入門](https://knowledge.sakura.ad.jp/1336/)
-- 参照: [Fluentd](https://www.fluentd.org/)
-
-## TL;DR
 - Treasure Dataが開発するログ収集管理ツール
 - ログの収集方法やログの記録先などを柔軟にカスタマイズできる
   - ログを記録するイベントの受け取り(input)・ストレージへの出力(output)がすべてプラグインとして実装されている
@@ -14,3 +10,7 @@
 ＜親タグ名＞.＜子タグ名＞
 ```
 - ログはJSON形式で出力される
+
+## 参照・引用
+- [柔軟なログ収集を可能にする「fluentd」入門](https://knowledge.sakura.ad.jp/1336/)
+- [Fluentd](https://www.fluentd.org/)

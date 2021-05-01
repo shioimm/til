@@ -1,6 +1,4 @@
 # OpenAPI
-- 参照: [OpenAPI Specification](https://swagger.io/specification/)
-- 参照: [OpenAPI の概要](https://cloud.google.com/endpoints/docs/openapi/openapi-overview?hl=ja)
 - RESTful APIにおけるインターフェイス定義の記述形式
   - OAS: OpenAPI仕様
 - Swaggerが標準的実装となっている
@@ -28,3 +26,7 @@
   - [Swagger Codegen](https://swagger.io/tools/swagger-codegen/)
     - コード生成ツール
     - OASで定義されたAPI用サーバースタブとクライアントSDKを生成する
+
+## 参照
+- [OpenAPI Specification](https://swagger.io/specification/)
+- [OpenAPI の概要](https://cloud.google.com/endpoints/docs/openapi/openapi-overview?hl=ja)

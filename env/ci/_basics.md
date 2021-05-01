@@ -1,10 +1,4 @@
 # 継続的インテグレーション
-- 参照: [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
-- 引用・参照: [継続的インテグレーション・継続的デリバリー](https://knowledge.sakura.ad.jp/13251/])
-- 参照: [CIマニアから見た各種CIツールの使い所](https://sue445.hatenablog.com/entry/2018/12/07/114638)
-- 参照・引用: CitrcleCI実践入門 第一章
-
-## TL;DR
 - CI - 継続的インテグレーション
   - コードに変更があるたびテストを自動で実行すること
 - CD - 継続的デリバリー
@@ -65,3 +59,9 @@
   - AWS CodeBDeployやAWS CodePipelineと組み合わせてAWS上にCI/CD環境を構築する
 - GitHub Actions(SaaS)
   - GitHubが提供するCI/CDツール
+
+## 引用・参照
+- [CircleCI](https://circleci.com/docs/ja/2.0/about-circleci/#section=welcome)
+- [継続的インテグレーション・継続的デリバリー](https://knowledge.sakura.ad.jp/13251/])
+- [CIマニアから見た各種CIツールの使い所](https://sue445.hatenablog.com/entry/2018/12/07/114638)
+- CitrcleCI実践入門 第一章

@@ -1,8 +1,4 @@
-# Apache
-- 参照: [Apache HTTP サーバ バージョン 2.4 ドキュメント](https://httpd.apache.org/docs/2.4/ja/)
-- 参照: [Apache HTTP Server](https://ja.wikipedia.org/wiki/Apache_HTTP_Server)
-
-## TL;DR
+# Apache HTTP Server
 - オープンソースのクロスプラットフォームWebサーバーソフトウェア
 - 核となるCoreに対してモジュールを追加することにより機能を拡張する(`mod_XXX`)
 - MPM(マルチプロセッシングモジュール)により多種多様なプラットホームで動作する設計となっている
@@ -115,3 +111,7 @@ DocumentRoot "/var/www/html"
 - `ErrorLog`          - エラーログの置き場所
 - `LogLevel`          - ログを出力するレベル
 - `ErrorDocument`     - エラーページのカスタマイズ設定
+
+## 参照
+- [Apache HTTP サーバ バージョン 2.4 ドキュメント](https://httpd.apache.org/docs/2.4/ja/)
+- [Apache HTTP Server](https://ja.wikipedia.org/wiki/Apache_HTTP_Server)

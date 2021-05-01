@@ -1,10 +1,4 @@
 #nginx
-- 参照: [nginx](https://nginx.org/en/)
-- 参照: [nginx](https://ja.wikipedia.org/wiki/Nginx)
-- 参照: nginx実践ガイド
-- 参照: [nginx連載1回目: nginxの紹介](https://heartbeats.jp/hbblog/2012/01/nginx01.html)
-
-## TL;DR
 - オープンソースのクロスプラットフォームWebサーバーソフトウェア
 - 処理性能・高い並行性・メモリ使用量の小ささに焦点を当てて開発されている
 - 静的コンテンツの高速な配信に対応している
@@ -103,3 +97,9 @@
   - キャッシュファイル群
 - `/log/nginx`
   - ログファイル群
+
+## 参照
+- [nginx](https://nginx.org/en/)
+- [nginx](https://ja.wikipedia.org/wiki/Nginx)
+- nginx実践ガイド
+- [nginx連載1回目: nginxの紹介](https://heartbeats.jp/hbblog/2012/01/nginx01.html)

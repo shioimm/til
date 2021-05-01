@@ -1,8 +1,4 @@
 # perf
-- 参照: [perf: Linux profiling with performance counters](https://perf.wiki.kernel.org/index.php/Main_Page)
-- 参照: []()
-
-## TL;DR
 - Linuxの`perf`コマンド(`tools/perf`に含まれる)
 - プログラムの実行時のパフォーマンスを計測する
 
@@ -106,3 +102,7 @@ $ sudo perf report --stdio
   - 分岐命令の実行回数
 - branch-misses
   - 分岐予測をミスした回数
+
+## 参照
+- [perf: Linux profiling with performance counters](https://perf.wiki.kernel.org/index.php/Main_Page)
+- Webで使えるmrubyシステムプログラミング入門

@@ -1,8 +1,4 @@
 # ngrok
-- 参照: [ngrok](https://ngrok.com/)
-- 翻訳参考: [DeepL](https://www.deepl.com/translator)
-
-## TL;DR
 - ローカル環境のWebサーバーを公開するトンネリングツール
   - ローカル環境のNATやファイアウォールを経由し、
     安全なトンネルを介してローカルサーバーをインターネットに公開する
@@ -38,3 +34,6 @@ Rails.application.configure do
   config.hosts << '.ngrok.io'
 end
 ```
+
+## 参照
+- [ngrok](https://ngrok.com/)

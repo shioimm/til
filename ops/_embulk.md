@@ -1,11 +1,11 @@
 # Embulk
-- 参照: [embulk](https://www.embulk.org/)
-- 参照: [embulk / embulk](https://github.com/embulk/embulk)
-
-## TL;DR
 - ストレージ、データベース、クラウドサービス間のデータ転送をサポートするバルクデータローダ
   - データローダ - データを一括でインポート・エクスポートするためのクライアント
 - ログ収集管理ツールであるFluentdのバッチ版であり、バッチ処理に特化している
   - データのインプット元やアウトプット先をプラグインで柔軟に柔軟にカスタマイズできる
 - 並列分散処理を備える
 - トランザクション機能を備える
+
+## 参照
+- [embulk](https://www.embulk.org/)
+- [embulk / embulk](https://github.com/embulk/embulk)

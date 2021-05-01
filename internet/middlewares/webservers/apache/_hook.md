@@ -1,8 +1,4 @@
 # フック
-- 参照: [モジュールの Apache 1.3 から Apache 2.0 への移植](https://httpd.apache.org/docs/2.4/ja/developer/modules.html)
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section027
-
-## TL;DR
 - Apacheはレスポンスを返すまでの一連の処理の流れの中に多数のフックポイントを持つ
 - Apacheはフックポイントにおいて作成した関数を呼び出す
 - どの関数をどのフックのハンドラとして利用するかを`static void register_hooks(void)`関数で登録する
@@ -46,3 +42,7 @@
   - `HTTP_NOT_FOUND`             - 404
   - `HTTP_INTERNAL_SERVER_ERROR` - 500
   - `HTTP_SERVICE_UNAVAILABLE`   - 503
+
+## 参照
+- [モジュールの Apache 1.3 から Apache 2.0 への移植](https://httpd.apache.org/docs/2.4/ja/developer/modules.html)
+- Webで使えるmrubyシステムプログラミング入門 Section027

@@ -1,8 +1,4 @@
 # AWS IAM
-- ソース: [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
-- 参照: サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
-
-## TL;DR
 - ユーザーアクセスと暗号化キーの管理
 - AWSにおけるアカウントは特定個人単位ではなく取引単位で管理される
 
@@ -30,3 +26,7 @@
 - IAMユーザー・IAMグループ・IAMロールに対してアタッチすることで宣言的に認可を行う設定
 - AWSが予め用意している定番ポリシーを使用するか、自分でポリシーを書くことで適用する
 - それぞれのIAMポリシーはJSONで評価される
+
+## 参照
+- [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
+- サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3

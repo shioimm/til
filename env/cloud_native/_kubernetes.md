@@ -1,10 +1,4 @@
 # Kubernetes
-- 引用: [Kubernetes](https://kubernetes.io/)
-- 引用: [Kubernetesとは](https://www.redhat.com/ja/topics/containers/what-is-kubernetes)
-- 参照: [コンテナオーケストレーションツールの“事実上の標準”という座をつかんだ「Kubernetes」。その重要性とは？](https://cn.teldevice.co.jp/column/10519/)
-- 翻訳参考: [DeepL](https://www.deepl.com/translator)
-
-## TL;DR
 - Cloud Native Computing Foundationが開発するコンテナ管理ツール
 - コンテナ化されたアプリケーションのデプロイ、スケーリング、管理の自動化を行う
 - Kubernetes - マルチホストでのアプリケーションコンテナオーケストレーション
@@ -93,3 +87,8 @@
   - コンテナマニフェストを読み取り、定義されたコンテナが確実に開始し実行されるようにする
 - kubectl
   - Kubernetesのコマンドライン設定ツール
+
+## 引用・参照
+- [Kubernetes](https://kubernetes.io/)
+- [Kubernetesとは](https://www.redhat.com/ja/topics/containers/what-is-kubernetes)
+- [コンテナオーケストレーションツールの“事実上の標準”という座をつかんだ「Kubernetes」。その重要性とは？](https://cn.teldevice.co.jp/column/10519/)

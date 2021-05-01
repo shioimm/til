@@ -1,7 +1,4 @@
 # Homebrew
-- 参照: [Homebrew Documentation](https://docs.brew.sh/)
-
-## TL;DR
 - Mac用パッケージマネージャー
 - コマンドラインツールのインストールに使用する
 - ex. vim, ruby-build, heroku
@@ -26,3 +23,6 @@
 ### `$ brew deps xxx`
 - `xxx`が依存しているフォーミュラを確認する
 - `--tree` - 依存先をツリー表示
+
+## 参照
+- [Homebrew Documentation](https://docs.brew.sh/)

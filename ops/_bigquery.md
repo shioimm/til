@@ -1,9 +1,4 @@
 # BigQuery
-- 参照: [BigQuery](https://cloud.google.com/bigquery?hl=ja)
-- 参照: [BigQueryでビッグデータを解析する](https://thinkit.co.jp/story/2015/08/27/6346)
-- 参照: [Google BigQueryは何がすごいのか？](https://www.dsk-cloud.com/blog/what-is-google-bigquery)
-
-## TL;DR
 - Google Cloud Platformで提供されるビッグデータ解析プラットフォーム
 - ペタバイト規模のデータを高速に分析可能
 - データ構造は事前にスキーマとして定義され、処理対象のデータはテーブルとしてBigQueryに保持され、
@@ -18,3 +13,8 @@
   - ツリー構造でクエリが広がることにより規模分散処理を実現
     - ルートサーバー - クライアントからクエリを受け取る唯一のサーバー
     - リーフサーバー - 実際にクエリ処理を実行する多数のサーバー
+
+## 参照
+- [BigQuery](https://cloud.google.com/bigquery?hl=ja)
+- [BigQueryでビッグデータを解析する](https://thinkit.co.jp/story/2015/08/27/6346)
+- [Google BigQueryは何がすごいのか？](https://www.dsk-cloud.com/blog/what-is-google-bigquery)

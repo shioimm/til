@@ -1,7 +1,4 @@
-# 2021-01-14
-## 目的
-- 開発環境でTwilioのStatus Callbackを動作させたい
-
+# 開発環境でTwilioのStatus Callbackを動作させたい
 ## 課題
 - 動作確認時、コールバックが動作していない
 

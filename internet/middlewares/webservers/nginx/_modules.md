@@ -1,7 +1,4 @@
 # モジュール
-- 参照: nginx実践ガイド
-- 参照: [nginx連載3回目: nginxの設定、その1](https://heartbeats.jp/hbblog/2012/02/nginx03.html#more)
-
 ## 種類
 - 静的モジュール
 - 動的モジュール
@@ -50,3 +47,7 @@
   - `rewrite`ディレクティイブによる書き換え
     - 書き換え先は同一のnginxがコンテンツを提供するパス名であること
     - 書き換え元文字列・書き換え先文字列・フラグを指定する
+
+## 参照
+- nginx実践ガイド
+- [nginx連載3回目: nginxの設定、その1](https://heartbeats.jp/hbblog/2012/02/nginx03.html#more)

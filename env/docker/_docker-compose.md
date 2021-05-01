@@ -1,5 +1,4 @@
 # docker-compose
-## TL;DR
 - 複数のコンテナからなる一つのシステムの構築を簡便に行うためのツール
   - 設定 - `docker-compose.yml`の記述
   - 起動 - `$ docker-compose up` `-d`でデーモン化

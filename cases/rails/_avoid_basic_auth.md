@@ -1,7 +1,5 @@
-# 2021-01-15
-## 目的
-- 特定のcontrollerでBasic認証をスキップする
-  - `http_basic_authenticate_with`をスキップしたい
+# 特定のcontrollerでBasic認証をスキップする
+- `http_basic_authenticate_with`をスキップしたい
 
 ## 課題
 - `http_basic_authenticate_with`にはスキップするためのオプションが指定されていない

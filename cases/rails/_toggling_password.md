@@ -1,4 +1,5 @@
 # パスワードの表示・非表示を切り替える
+
 ```haml
 = f.password_field :password, autocomplete: "off", class: "form-control toggle-password"
 

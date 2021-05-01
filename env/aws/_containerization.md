@@ -1,8 +1,4 @@
 # AWSコンテナ
-- 参照: [AWS のコンテナ](https://aws.amazon.com/jp/containers/)
-- 参照: [Containers on AWS](https://aws.amazon.com/jp/containers/services/)
-
-## TL;DR
 - AWSの複数のサービスを組み合わせてコンテナを実行する場所として使用する
 
 ### どのサービスを選択するか
@@ -16,3 +12,7 @@
   - No  -> ECS - AWSによるコンテナオーケストレーション
 - コンテナレジストリ
   - ECR - コンテナイメージの保存、管理、デプロイ
+
+## 参照
+- [AWS のコンテナ](https://aws.amazon.com/jp/containers/)
+- [Containers on AWS](https://aws.amazon.com/jp/containers/services/)
