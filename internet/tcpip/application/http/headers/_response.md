@@ -1,4 +1,12 @@
 # Response
+## CORSの許可に使用されるヘッダ
+- Access-Control-Allow-Origin - 通信を許容するオリジン名
+- Access-Control-Allow-Method - 通信を許容するメソッドのリスト
+- Access-Control-Allow-Headers - 通信を許容するリクエストヘッダのリスト
+- Access-Control-Allow-Credentials - サーバーがCookieを受け取るときのみtrueを返す
+- Access-Control-Expose-Headers - レスポンスヘッダのうちクライアントのスクリプトから参照できるヘッダのリスト
+- Access-Control-Max-Age - サーバーがクライアントに対して許容するキャッシュ可能秒数
+
 ## Content-Disposition
 - [Content-Disposition](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Disposition)
 - レスポンスがブラウザに表示するためのもの(`inline`)か、
@@ -6,6 +14,7 @@
 
 ## Content-Security-Policy
 - [Content-Security-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/CSP)
+- Webサイトで使える機能を細かくON/OFFする
 
 ```
 Content-Security-Policy: 指定したいポリシー
@@ -15,9 +24,15 @@ Content-Security-Policy: 指定したいポリシー
   - `script-src`ディレクティブに`nonce-ランダムな文字列`を指定することによって、
   同じnonce属性を持つscriptタグのみを実行するようになる
 
+### 一括でセキュリティを向上させるディレクティブ
+- `default-src` - リソースのアクセス範囲一括設定
+- `sandbox` - ポップアップ・フォームの許可を設定
+- `upgrade-insecture-requests` - HTTPの通信先をHTTPSへ向ける
+
 ## Content-Security-Policy-Report-Only
 - [Content-Security-Policy-Report-Only](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Security-Policy-Report-Only)
-- ポリシーの適用を行わず、指定したポリシーに反する内容を指定したURLに送信する
+- Content-Security-Policyのチェックは行うが動作は止めない
+- 指定したポリシーに反する操作があった場合、指定したURLにレポートを送信する
 - `report-uri` -> 報告先のURIを指定する
 
 ## ETag
