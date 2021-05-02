@@ -1,7 +1,4 @@
 # Response
-- 参照: よくわかるHTTP/2の教科書P32/38-39/41
-- 参照: Real World HTTP 第2版
-
 ## Content-Disposition
 - [Content-Disposition](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Disposition)
 - レスポンスがブラウザに表示するためのもの(`inline`)か、
@@ -141,3 +138,7 @@ Vary: Accept-Encoding, Accept-Language
 ## X-XSS-Protection
 - [X-XSS-Protection](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/X-XSS-Protection)
 -  IE/Chrome/Safariにおいて、クロスサイトスクリプティング (XSS) 攻撃を検出したときにページの読み込みを停止する
+
+## 参照
+- よくわかるHTTP/2の教科書P32/38-39/41
+- Real World HTTP 第2版
