@@ -1,10 +1,4 @@
 # SSL/TLS
-- 参照: [How is data secure over https?](https://blog.joshsoftware.com/2019/08/23/how-is-data-secure-over-https/)
-- 参照: よくわかるHTTP/2の教科書P18-20/124-125
-- 参照: SSLをはじめよう ～「なんとなく」から「ちゃんとわかる！」へ～
-- 参照: [図解で学ぶネットワークの基礎：SSL編](https://xtech.nikkei.com/it/article/COLUMN/20071002/283518/)
-
-## TL;DR
 ### SSL (Secure socket layer)
 - クライアント-サーバー間で間で機密情報を送信するため、インターネット接続を安全に行う技術
 
@@ -147,3 +141,9 @@ $ openssl req -new -key xxx.key -out xxx.csr
 ### SSLターミネーション
 - Webサーバー手前のロードバランサーにSSL証明書を設置する手法
 - ロードバランサーとWebサーバー間はHTTPで通信を行う
+
+## 参照
+- [How is data secure over https?](https://blog.joshsoftware.com/2019/08/23/how-is-data-secure-over-https/)
+- よくわかるHTTP/2の教科書P18-20/124-125
+- SSLをはじめよう ～「なんとなく」から「ちゃんとわかる！」へ～
+- [図解で学ぶネットワークの基礎：SSL編](https://xtech.nikkei.com/it/article/COLUMN/20071002/283518/)

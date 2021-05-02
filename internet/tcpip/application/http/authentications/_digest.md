@@ -1,9 +1,7 @@
 # Digest認証
-- 参照: Real World HTTP 第2版
-
-## TL;DR
 - ハッシュ関数を利用した認証
-- 現在はあまり使われておらず、フォームを使ったログイン + Cookieを使ったセッション管理の組み合わせによる認証が一般的
+- 実用上ではあまり使われていない
+  - フォームを使ったログイン + Cookieを使ったセッション管理の組み合わせによる認証が一般的
 
 ## ヘッダ
 ### レスポンスヘッダ
@@ -26,3 +24,6 @@ Authorization: Digest username=<username>,
                       cnonce=<cnonce>,
                       response=<response>
 ```
+
+## 参照
+- Real World HTTP 第2版

@@ -1,6 +1,8 @@
 # Request
-- 参照: よくわかるHTTP/2の教科書P29/38-39/41
-- 参照: Real World HTTP 第2版
+## プリフライトリクエストに使用されるヘッダ
+- Access-Control-Request-Method - 通信を許可してもらいたいメソッドのリスト
+- Access-Control-Request-Headers - 通信を許可してもらいたいリクエストヘッダのリスト
+- Origin - 通信元のWebページのドメイン名
 
 ## Accept
 - [Accept](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept)
@@ -60,3 +62,7 @@
 ## User-Agent
 - [User-Agent](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/User-Agent)
 - クライアントを表す識別子
+
+## 参照
+- よくわかるHTTP/2の教科書P29/38-39/41
+- Real World HTTP 第2版
