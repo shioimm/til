@@ -31,6 +31,7 @@ $ mount -t overlay [一意の識別名] -o lowerdir=[lowerdirに指定するデ�
   - 追加操作 -> `upperdir`にファイルが追加される
   - 変更操作 -> `lowerdir`から`upperdir`へファイルがコピーされ内容が変更される
   - 削除操作 -> `lowerdir`から`upperdir`に同名のキャラクタデバイスファイルが作成される
+
 #### `lowerdir`
 - ベースとなるディレクトリ
 - 読み取り専用(変更時は再mountが必要)
@@ -49,6 +50,7 @@ $ mount -t overlay [一意の識別名] -o lowerdir=[lowerdirに指定するデ�
 ## プライベートリポジトリ
 - 任意の環境にプライベートなDockerリポジトリを作成する
   - Docker Hubと同じ動作を行う
+
 ```
 # プライベートリポジトリregistry:2.7.1をpullし
 # localhost:5000でアクセスできるようにする
@@ -61,6 +63,7 @@ $ docker tag xxxx localhost:5000/xxxx:1.0.0
 # プライベートリポジトリへpush
 $ docker push localhost:5000/xxxx
 ```
+
 ```
 /var/lib/registry/docker/registry/v2
   |- repositories             // イメージのメタ情報
