@@ -1,61 +1,62 @@
 # コマンド
-### DockerHubからDockerイメージをダウンロード
+### イメージをビルド
+- 作成するイメージ名・タグ名、Dockerfileを置いてあるディレクトリを指定する
+```
+$ docker build -t イメージ名:タグ名 /path/to/Dockerfileを置いてあるディレクトリ
+
+# 作成したイメージを確認
+$ docker image ls イメージ名:タグ名
+```
+
+### コンテナの実行
+- 作成するコンテナ名、コンテナの元になるイメージ名・タグ名を指定する
+```
+$ docker run --name コンテナ名 イメージ名:タグ名
+```
+
+### コンテナの中でシェルをインタラクティブに操作する
+```
+$ docker run -it --name コンテナ名 /bin/bash
+```
+
+### コンテナからネットワークに接続する
+```
+$ docker run -p localhostのポート番号:コンテナのポート番号 --name コンテナ名
+
+# デーモン化
+$ docker run -d -p localhostのポート番号:コンテナのポート番号 --name コンテナ名
+```
+
+### コンテナの停止・削除
+```
+$ docker stop コンテナ名
+
+$ docker rm コンテナ名
+
+# 停止中のコンテナと無名のイメージを削除
+$ docker system prune
+```
+
+### イメージの削除
+```
+$ docker rmi イメージ名
+```
+
+### DockerHubからイメージをpull、push
 ```
 $ docker login
 
-$ docker pull [オプション] [サービス...]
+$ docker pull イメージ名:タグ名
+
+$ docker push イメージ名:タグ名
 ```
 
-### Dockerイメージに対する変更履歴を確認
+### イメージに対する変更履歴を確認
 ```
-$ docker history [オプション] イメージ
-```
-
-### Dockerfileから新しいDockerイメージを構築
-```
-$ docker build [ -t ｛イメージ名｝ [ :{タグ名} ] ] {Dockerfileのあるディレクトリ}
+$ docker history イメージ名
 ```
 
-### Dockerコンテナを起動
-```
-$ docker run [オプション] [--name {コンテナ名}] {イメージ名}[:{タグ名}] [コンテナで実行するコマンド] [引数]
-
-# ホストマシンからDockerコンテナにVolumeをマウント
-$ docker run --volumes マウント元パス(ホスト):マウント先パス コンテナ
-
-# Dockerコンテナの環境変数を設定する
-$ docker run -d --env KEY=VALUE コンテナ
-
-# コンテナ内部にログイン
-$ docker run -it --name 作成するコンテナ名 イメージ名:タグ名 /bin/シェル名
-
-#コンテナからネットワークに接続
-$ docker run -p localhostのポート番号:コンテナのポート番号 --name 作成するコンテナ名 イメージ名:タグ名
-
-#コンテナからネットワークに接続(デーモン化)
-$ docker run -d -p localhostのポート番号:コンテナのポート番号 --name 作成するコンテナ名 イメージ名:タグ名
-```
-- `--detach` - バックグラウンドで起動
-
-### 実行中のDockerコンテナの中にログイン
-```
-$ docker exec [オプション] コンテナ名 コマンド [引数...]
-
-# 指定のシェルで入り標準入出力で表示する
-$ docker exec -it コンテナ名 シェル名
-```
-
-### ファイルをDockerコンテナの中にコピー
-```
-$ docker cp ファイル名 コンテナ名:/path/to/コンテナ内のファイル設置場所
-```
-
-### Dockerコンテナを停止
-```
-$ docker stop [オプション] コンテナ [コンテナ...]
-```
-
-### 起動中のDockerコンテナプロセス一覧を表示
+### 起動中のコンテナプロセス一覧を表示
 ```
 $ docker ps
 
@@ -63,82 +64,38 @@ $ docker ps
 $ docker ps -a
 ```
 
-### Dockerコンテナのログを表示
+### コンテナのログを表示
 ```
-$ docker logs [オプション] コンテナ
-```
-
-### Dockerコンテナのメタ情報を表示
-```
-$ docker inspect [オプション] コンテナ|イメージ|タスク [コンテナ|イメージ|タスク...]
-```
-
-### Dockerコンテナを元に新しいDockerイメージを生成
-```
-$ docker commit [オプション] コンテナ [リポジトリ[:タグ]]
-```
-
-### 生成したDockerイメージをDockerHubに保存
-```
-# 生成したDockerイメージにタグ付け
-$ docker tag ユーザー名/リポジトリ名(イメージ名)
-
-# ログイン
-$ docker login
-
-# DockerイメージをDockerHubに送信
-$ docker push [オプション] 名前[:タグ]
-```
-
-### 取得済みのDockerイメージ一覧
-```
-$ docker images [オプション] [リポジトリ[:タグ]]
-```
-
-### Dockerコンテナ・Dockerイメージの削除
-```
-# 停止中のコンテナと無名のイメージを削除
-$ docker system prune
-
-# コンテナを削除
-$ docker rm [オプション] コンテナ [コンテナ...]
-
-# 停止中の全コンテナを削除
-$ docker rm $(docker ps -a -q)
-
-# 起動中のコンテナを含む全コンテナを削除
-$ docker rm -vf $(docker ps -a -q)
-
-# イメージを削除
-$ docker rmi [オプション] イメージ [イメージ...]
-
-# 起動中のコンテナを含む全イメージを削除
-$ docker rmi -f $(docker ps -a -q)
+$ docker logs コンテナ名
 ```
 
 ## docker-compose
-- Dockerコンテナ起動時の設定をyamlファイルに記述
 - 複数のDockerコンテナを同時に立ち上げることができる
 
-### docker-composeを立ち上げる
-- `-d`オプションでデーモン化
+### docker-compose.ymlからイメージをビルド
 ```
-$ docker-compose up [オプション] [サービス...]
+$ docker-compose build
 ```
 
-### docker-composeでコマンドを実行
+### docker-compose.ymlで定義したサービスの開始
+- `-d`オプションでデーモン化
 ```
-$ docker-compose run [-f=<引数>...] [オプション] [コマンド] [引数...]
+$ docker-compose up
+```
+
+### docker-compose.ymlで定義したサービスを指定し、タスクをアドホックに実行
+```
+$ docker-compose run サービス名 実行したいタスク・コマンド
 ```
 
 ### docker-composeで立ち上げた環境を(DBに保存されたデータごと)削除
 ```
-$ docker-compose down [オプション]
+$ docker-compose down
 ```
 
 ### docker-composeのログを出力
 ```
-$ docker-compose logs [オプション] [サービス...]
+$ docker-compose logs
 ```
 
 ## 参照
