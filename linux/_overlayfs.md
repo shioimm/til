@@ -38,4 +38,4 @@ merged/
 ```
 
 ## 参照
-- イラストでわかるDocker & Kubernetes
+- イラストでわかるDockerとKubernetes

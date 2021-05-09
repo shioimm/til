@@ -175,4 +175,4 @@
 - [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その2:Dockerってなに？ 〜](https://tech-lab.sios.jp/archives/19073)
 - [Rails on Docker](https://speakerdeck.com/sinsoku/rails-on-docker)
 - 仮想化&コンテナがこれ1冊でしっかりわかる教科書
-- イラストでわかるDocker & Kubernetes
+- イラストでわかるDockerとKubernetes

@@ -120,4 +120,4 @@ OCIランタイム          CNIプラグイン
 ## 引用・参照
 - [Kubernetes](https://kubernetes.io/)
 - 仮想化&コンテナがこれ1冊でしっかりわかる教科書
-- イラストでわかるDocker & Kubernetes
+- イラストでわかるDockerとKubernetes
