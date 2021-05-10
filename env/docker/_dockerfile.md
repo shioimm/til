@@ -40,4 +40,4 @@ ENTRYPOINT ["コンテナ内のファイル名"]
 ## 参照
 - [Dockerfile リファレンス](https://docs.docker.jp/engine/reference/builder.html)
 - [【連載】世界一わかりみが深いコンテナ & Docker入門 〜 その3:Dockerfileってなに？ 〜](https://tech-lab.sios.jp/archives/19191)
-- イラストでわかるDocker & Kubernetes
+- イラストでわかるDockerとKubernetes
