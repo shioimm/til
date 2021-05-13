@@ -14,9 +14,9 @@
 ## XMLHttpRequestオブジェクト
 
 ```js
-var xhr = new XMLHttpRequest();
+var xhr = new XMLHttpRequest()
 
-xhr.open("GET", "/path", true); // 処理を設定・第三引数をtrueにすると非同期実行
+xhr.open("GET", "/path", true) // 処理を設定・第三引数をtrueにすると非同期実行
 xhr.responseType = "json" // レスポンスの型を指定
 xhr.onload = fuction() {
   if (xhr.status == 200) {
@@ -24,8 +24,26 @@ xhr.onload = fuction() {
   }
 }
 xhr.setRequestHeader("Content-Type", "application/json")
-zhr.send(); // 処理を実行
+zhr.send() // 処理を実行
 ```
+
+## XMLHttpRequestがサポートするデータ型
+- ArrayBuffer - 固定長のバイナリデータ
+- Blob - 巨大なバイナリの不変データオブジェクト
+- Document - パースされたHTML / XMLドキュメント
+- JSON - JavaScriptオブジェクトと類似するデータ構造
+- Text - シンプルな文字列
+
+## XMLHttpRequest進行状況イベント
+
+| イベントタイプ | 説明         | 発行される回数 |
+| -              | -            | -              |
+| loadstart      | 転送開始     | 1回            |
+| progress       | 転送中       | 0回以上        |
+| error          | 転送失敗     | 0回 or 1回     |
+| abort          | 転送強制中断 | 0回 or 1回     |
+| load           | 転送成功     | 0回 or 1回     |
+| loadend        | 転送終了     | 1回            |
 
 ## Comet
 - XMLHttpRequestによる単方向通信同士の組み合わせを駆使した古典的なリアルタイム双方向通信技術
@@ -59,3 +77,4 @@ zhr.send(); // 処理を実行
 ## 参照
 - [XMLHttpRequest](https://developer.mozilla.org/ja/docs/Web/API/XMLHttpRequest)
 - Real World HTTP 第2版
+- ハイパフォーマンスブラウザネットワーキング
