@@ -18,10 +18,16 @@ https://domain-hoge.com で提供されているJavaScriptコードが
 https://domain-fuga.com/data.json へリクエストを行う
 ```
 
+## 認証メカニズム
+1. リクエストが発行されると、ブラウザは自動的に保護されているOriginヘッダを追加する
+  - Originヘッダはリクエスト元のオリジンを広告する
+2. サーバーはOriginヘッダを検証し、Accecss-Control-Allow-Originヘッダを付与したレスポンスを返す
+3. Accecss-Control-Allow-Originヘッダで指定されたオリジンはリソース共有にオプトインされる
+
 ## フロー
-- simple cross-origin request
+- simple cross-origin requestであること
   - simple cross-origin requestの条件を満たさない場合はプリフライトリクエストが必要
-- プリフライトリクエストを伴うactual request
+- プリフライトリクエストを伴うactual requestであること
 
 ### simple cross-origin requestの条件
 - リクエストメソッドがGET、POST、HEADのいずれか
@@ -47,3 +53,4 @@ https://domain-fuga.com/data.json へリクエストを行う
 ## 引用
 - [オリジン間リソース共有 (CORS)](https://developer.mozilla.org/ja/docs/Web/HTTP/CORS)
 - Real World HTTP 第2版
+- ハイパフォーマンスブラウザネットワーキング
