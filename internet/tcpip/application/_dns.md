@@ -1,6 +1,7 @@
 # DNS
 - Domain Name Service
-- ドメイン名からIPアドレスを見つける
+- ドメイン名からIPアドレスを見つけるシステム
+- トランスポート層でUDPを利用してjissousareteiru
 
 ## 名前解決
 - 正引き - ドメイン名 -> IPアドレス
