@@ -222,6 +222,16 @@
 - 各チャンクは送信先でメッセージとして再構成される
 - SCTPはUDP/DTLS上でTCPに似たハンドシェイクシーケンスとフロー制御を行う
 
+### DataChannel API
+- DataChannelはピア間における任意のアプリケーションデータの双方向のやり取りを行うネットワークチャネル
+  - 全てのDataChannelはRTCPeerConnectionに関連付けられる
+  - 共通のRTCPeerConnectionを持つ双方のピアが各自新規DataChannelセッションを開始することができる
+- WebSocket APIに似たインターフェースを持つ(DataChannel APIはWebSocket APIの上位集合)
+- DataChannelはP2Pの接続性を提供することができるUDP、送信データの暗号化を行うDTLS、
+  多重化・フロー制御・服装制御を行うSCTP全てのプロトコル上で動作する
+- 送信元ピアが最初に接続オファーを生成する際または送信先ピアがアンサーを生成する際、
+  ピアはSDPのセッション記述においてSCTPアソシエーションのパラメータをアドバタイズする必要がある
+
 ## 参照
 - [WebRTC](https://webrtc.org/)
 - [WebRTC API](https://developer.mozilla.org/ja/docs/Web/API/WebRTC_API)
