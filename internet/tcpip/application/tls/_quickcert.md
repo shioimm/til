@@ -39,6 +39,6 @@ $ openssl x509 -req -days 3650 -signkey server.key < server.csr > server.crt
     - `2024` - 2048ビット鍵長
 2. 証明書署名要求(CSR)の作成(server.csr)
     - Common Name(コモンネーム) - `ssl.localhost`
-3. サーバ証明書の作成(server.crt)
+3. サーバー証明書の作成(server.crt)
     - `openssl x509` - 自己署名
     - `-days 3650` - 3650日
