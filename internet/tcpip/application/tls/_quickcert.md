@@ -8,7 +8,7 @@ $ openssl genrsa 2024 > server.key
     ................................+++
     e is 65537 (0x10001)
 
-$ openssl req -new -key server.key > server.csr
+$ openssl req -new -days 3650 -sha256 -key server.key > server.csr
     You are about to be asked to enter information that will be incorporated
     into your certificate request.
     What you are about to enter is what is called a Distinguished Name or a DN.
@@ -28,7 +28,7 @@ $ openssl req -new -key server.key > server.csr
     to be sent with your certificate request
     A challenge password []:
 
-$ openssl x509 -req -days 3650 -signkey server.key < server.csr > server.crt
+$ openssl x509 -req -signkey server.key < server.csr > server.crt
     Signature ok
     subject=/CN=sample_cert
     Getting Private key
