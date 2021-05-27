@@ -20,15 +20,6 @@
   - 正規のSSL証明書を購入してTLSを運用する
 - Cookieに`secure`属性を付与する(HTTPS以外で通信しなくなる)
 
-## HSTS
-- HTTP Strict Transport Security
-- 中間者攻撃に対抗する仕組みの一つ
-1. Strict-Transport-Securityレスポンスヘッダを用いて、サーバーからクライアントへHTTPSでの接続を要請する
-2. ブラウザは内部にStrict-Transport-Securityレスポンスヘッダを送信したURLのデータベースを持つ
-3. 指定の有効期限までブラウザは対象のURLに対してHTTPSでのリクエストを行う
-    - 初回のリクエストでHTTPでの通信となる
-    - ブラウザによっては事前に対象サイトを申請することで初回からHTTPSリクエストを行うようにする
-
 ## 参照
 - 安全なWebアプリケーションの作り方(脆弱性が生まれる原理と対策の実践)
 - Real World HTTP 第2版
