@@ -62,7 +62,16 @@
 - フォームを使ったログイン + Cookieを使ったセッション管理の組み合わせによる認証が一般的に使用される
   - ユーザーIDとパスワードを直接送信するため、SSL/TLSによる通信の暗号化が必須
 
+## セキュリティ上の問題点
+- Cookieはプロトコルとポートをまたいで共有される
+- Cookieは同一ドメイン名の全ホスト名で共有される
+  - Ex. example.comで生成されたCookieはwww.example.comやsecure.example.comでも有効
+- サーバーはクライアントからCookieの名前と値以外の情報(生成元など)以外の情報を受け取ることができない
+- CookieはSecure属性の有無に関わらず同じドメイン名で格納される
+  - ドメインとパスが一致する場合、Secure属性がないCookieとSecure属性があるCookieを上書きする可能性がある
+
 ## 参照
 - [サードパーティクッキーって何だっけ？ 今さら聞けないHTTP Cookieのキホン](https://webtan.impress.co.jp/e/2017/10/03/27016)
 - よくわかるHTTP/2の教科書P34-37
 - Real World HTTP 第2版
+- プロフェッショナルSSL/TLS
