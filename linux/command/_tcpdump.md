@@ -72,3 +72,13 @@ IP 8.8.8.8 > xxx.xxx.xxx.xxx: ICMP echo reply,   id 5, seq 1, length 64
 - `-e` - Ethernetのヘッダ情報を表示する
 - `-l` - Network Namespaceで`tcpdump(1)`を使用する際に指定する
 - `-A` - キャプチャした内容をASCII文字列として表示させる
+
+## MacOSでパケットトレースを行う場合
+- [Recording a Packet Trace](https://developer.apple.com/documentation/network/recording_a_packet_trace#//apple_ref/doc/uid/DTS10001707-CH1-SECNOTES)
+```
+# ネットワークインターフェース名を取得
+$ networksetup -listallhardwareports
+
+# tcpdump(1)を実行
+$ sudo tcpdump -i ネットワークインターフェース名 -n
+```
