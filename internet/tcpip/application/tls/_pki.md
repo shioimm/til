@@ -75,14 +75,23 @@
   - OCSP(Online Certificate Status Protocol: オンライン証明書状態プロトコル)
 
 #### CRL
-- まだ期限切れになっていないが失効した証明書のシリアル番号を一覧にしたもの
-- 証明書に対応するCRLの場所はCRL配布点(CRL Distribution Points)拡張として格納される
+- Certificate Revocation List
+- CAが管理する証明書の失効情報(シリアル番号と失効日)リスト
+- まだ期限切れになっていないが失効済みの証明書の情報が記載される
+- CRLのURLは証明書のCRL配布点(CRL Distribution Points)拡張として格納される
+1. CRLに対応ブラウザから証明書が設定されたWebサイトへアクセスを行う際、CRLのURLへ自動的にアクセスを行い、
+   CRLをダウンロードする
+2. ブラウザは取得したCRLの全シリアル番号とWebサーバーから送信された証明書のシリアル番号を照合する
 
 #### OCSP
-- 単一の証明書の失効状態を証明書利用者が取得できるようにする仕組み
-- OCSPのサーバーはOCSPレスポンダと呼ばれる
-- CAのOCSPレスポンダの場所はAuthority Information Access拡張にエンコードされる
+- Online Certificate Status Protocol
+- X.509公開鍵証明書の失効状態をリアルタイムで取得するための通信プロトコル
+- CAのOCSPレスポンダ(OCSPサーバー)はCAのCRLを保存している
+- OCSPレスポンダのURLは証明書のAuthority Information Access拡張のオンライン証明書状態プロトコル項目に格納される
 - OCSPステープリング - 各サーバーがOCSPレスポンスをTLSハンドシェイクに埋め込めるようにする機能
+1. OCSP対応ブラウザから証明書が設定されたWebサイトへアクセスを行う際、OCSPレスポンダのURLへ自動的にアクセスを行う
+2. OCSPレスポンダは自身が保存するCRLの全シリアル番号とWebサーバーから送信された証明書のシリアル番号を照合し、
+   ブラウザへ確認結果を送信する
 
 ### 証明書拡張
 - 証明書のフォーマットに柔軟性を持たせるための機能
@@ -142,3 +151,4 @@ $ openssl req -new -key xxx.key -out xxx.csr
 - サーバ／インフラエンジニアの基本がこれ1冊でしっかり身につく本 3.6
 - 食べる！SSL！　―HTTPS環境構築から始めるSSL入門
 - プロフェッショナルSSL/TLS
+- [OCSP (Online Certificate Status Protocol)](https://www.cybertrust.co.jp/sureserver/support/glossary/ocsp.html)
