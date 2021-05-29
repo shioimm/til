@@ -1,7 +1,7 @@
 # ARP / NDR
 - Address Resolution Protocol(IPv4)
 - Neighbor Discovery Protocol(IPv6)
-- アドレス解決プロトコル
+- パケットの送り先の物理アドレス(MACアドレス)をIPアドレスから取得するプロトコル
 - 送信元ノードが送信先ノードのMACアドレスを取得し、
   送信先MACアドレスをEthernetフレームのヘッダに書き込み、データを送出する
   - ARP要求 - IPアドレスを元にMACアドレスを問い合わせる(ブロードキャスト)
