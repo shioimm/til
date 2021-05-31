@@ -1,8 +1,4 @@
 # Redis
-- 参照: [Redis](https://redis.io/)
-- 参照: [Redis](https://ja.wikipedia.org/wiki/Redis)
-
-## TL;DR
 - インメモリDB
   - ディスク上ではなく、より高速なメモリ上でデータの格納を行う
 - NoSQL DB
@@ -30,6 +26,10 @@ $ redis-cli
 127.0.0.1:xxxx> type キー名  キーの型を取得
 127.0.0.1:xxxx> get  キー名  キーの値を取得
 127.0.0.1:xxxx> ttl  キー名  キーの期限を取得
-127.0.0.1:xxxx> del キー名   特定のキーを削除
+127.0.0.1:xxxx> del  キー名  特定のキーを削除
 127.0.0.1:xxxx> monitor      リアルタイムモニタリング
 ```
+
+## 参照
+- [Redis](https://redis.io/)
+- [Redis](https://ja.wikipedia.org/wiki/Redis)
