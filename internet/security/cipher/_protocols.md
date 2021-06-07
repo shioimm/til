@@ -1,4 +1,13 @@
 # プロトコル
+## OSI参照モデルにおける暗号化技術
+
+| 階層                           | 暗号化技術                                                        |
+| -                              | -                                                                 |
+| アプリケーション層             | SSH, SSL-Telnet, PETなど遠隔ログイン, PGP, S/MIMEなど暗号化メール |
+| セッション層・トランスポート層 | SSL/TLS, SOCKSv5の暗号化                                          |
+| ネットワーク層                 | IPSec                                                             |
+| データリンク層                 | Ethernet, WANの暗号化装置, PPTP                                   |
+
 ## IPSec/VPN
 - VPN(Virtual Private Netowork) - 仮想的な私的ネットワーク
 - IPSec - VPNの構築に用いられるIP拡張
