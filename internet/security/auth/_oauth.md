@@ -14,7 +14,7 @@
 - ユーザーの同意なしに`client_id`と`client_secret`を使用してアクセスできるようにするフロー
 
 #### Device Code Grant
-- パスワード入力用のキーボードがないような組み込み危機向けのフロー
+- パスワード入力用のキーボードがないような組み込み機器向けのフロー
 
 #### Resource Owener Password Credentials Grant
 - 認可サーバーに信頼されているクライアントが使用するフロー
