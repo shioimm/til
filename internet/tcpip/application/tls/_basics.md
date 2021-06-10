@@ -36,6 +36,30 @@
 6. AlertによってSSL/TLSの終了を伝え、SSL/TLSセッションを終了する
 7. TCPコネクションを切断する
 
+```
+クライアント -> サーバー
+  Handshake: ClientHello
+
+サーバー -> クライアント
+  Handshake: ServerHello
+  Handshake:Certificate
+  Handshake: ServerHelloDone
+
+クライアント -> サーバー
+  Handshake: ClientKeyExchange
+  ChangeCipherSpec
+  Handshake: Finished
+
+サーバー -> クライアント
+  ChangeCipherSpec
+  Handshake: Finished
+
+  アプリケーションデータの交換
+
+クライアント -> サーバー
+  Alert: `warning`, `close_notify`
+```
+
 ## HTTP/2における仕様
 - TLS1.2以上
 - TLS SNIのサポート
