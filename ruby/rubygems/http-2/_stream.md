@@ -11,7 +11,7 @@
 - フレームタイプ別の処理とイベントコール
 - `Stream#complete_transition`
 
-#### フレームタイプ
+### フレームタイプ
 - `:data`
   - `FlowBuffer#update_local_window`
   - `FlowBuffer#calculate_window_update`
@@ -25,14 +25,23 @@
 - `:altsvc`
 - `:blocked`
 
-### `#send`
+## `#send`
 - `Stream#process_priority`
 - フレームタイプ別の処理とイベントコール
 
-#### フレームタイプ
+### フレームタイプ
 - `:data`
   - `FlowBuffer#send_data`
 - `:window_update`
   - `Stream#manage_state`(ローカルウィンドウサイズのインクリメント・イベントコール)
 - その他
   - `Stream#manage_state`(イベントコール)
+
+## `#headers`
+- オプション`end_headers`、`end_stream`を`flags`に格納
+- HEADERフレームの送信 `send(type: :headers, flags: flags, payload: headers)`
+
+## `data`
+- オプション`end_stream`を`flags`に格納
+- DATAフレームの送信 `send(type: :data, flags: flags, payload: payload)`
+  - `payload.bytesize > max_size`の場合はデータをチャンク化する
