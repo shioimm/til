@@ -2,14 +2,14 @@
 - [`http-2/lib/http/2/stream.rb`](https://github.com/igrigorik/http-2/blob/master/lib/http/2/stream.rb)
 
 ## `#initialize`
-  - インスタンス変数の初期化
-  - 優先度の設定
-  - `:window` / `:local_window`イベントの購読
+1. インスタンス変数の初期化
+2. 優先度の設定
+3. `:window` / `:local_window`イベントの購読
 
 ## `#receive`
-- `Stream#transition`
-- フレームタイプ別の処理とイベントコール
-- `Stream#complete_transition`
+1. `Stream#transition`
+2. フレームタイプ別の処理とイベントコール
+3. `Stream#complete_transition`
 
 ### フレームタイプ
 - `:data`
@@ -26,8 +26,8 @@
 - `:blocked`
 
 ## `#send`
-- `Stream#process_priority`
-- フレームタイプ別の処理とイベントコール
+1. `Stream#process_priority`
+2. フレームタイプ別の処理とイベントコール
 
 ### フレームタイプ
 - `:data`
@@ -38,10 +38,10 @@
   - `Stream#manage_state`(イベントコール)
 
 ## `#headers`
-- オプション`end_headers`、`end_stream`を`flags`に格納
-- HEADERフレームの送信 `send(type: :headers, flags: flags, payload: headers)`
+1. オプション`end_headers`、`end_stream`を`flags`に格納
+2. HEADERフレームの送信 `send(type: :headers, flags: flags, payload: headers)`
 
 ## `data`
-- オプション`end_stream`を`flags`に格納
-- DATAフレームの送信 `send(type: :data, flags: flags, payload: payload)`
-  - `payload.bytesize > max_size`の場合はデータをチャンク化する
+1. オプション`end_stream`を`flags`に格納
+2. DATAフレームの送信 `send(type: :data, flags: flags, payload: payload)`
+    - `payload.bytesize > max_size`の場合はデータをチャンク化する
