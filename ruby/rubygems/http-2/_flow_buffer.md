@@ -8,5 +8,5 @@
   - `@remote_window`が不十分な場合: フロー制御ウィンドウが更新されるまでデータをバッファリング
 
 ## `#process_window_update`
-1. `@remote_window`をインクリメント
-2. `FlowBuffer#send_data`
+- `@remote_window`をインクリメント
+- `FlowBuffer#send_data`
