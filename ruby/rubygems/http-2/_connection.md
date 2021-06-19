@@ -1,6 +1,6 @@
 # Connection
 - [`http-2/lib/http/2/connection.rb`](https://github.com/igrigorik/http-2/blob/master/lib/http/2/connection.rb)
-- Client、Serverへ継承
+- Client、Serverのスーパークラス
 
 ## `#new_stream`
 - `Connection#activate_stream`
@@ -10,16 +10,16 @@
 - `@state == :waiting_magic` - TCP接続の合意 -> connection prefaceの送信
   - [HTTP/2 Connection Prefaceの理由と経緯](https://asnokaze.hatenablog.com/entry/20150226/1424962551)
   - `@state = :waiting_connection_preface` -> `Connection#settings`
-- フレームを読み出し、後続の処理を行う `while (frame = @framer.parse(@recv_buffer))`
+- 受信フレームを読み出し、後続の処理を行う `while (frame = @framer.parse(@recv_buffer))`
   - `emit(:frame_received, frame)`
-  - `@continuation`にフレームが含まれている場合の処理 `unless @continuation.empty?`
+  - `@continuation`に受信フレームが含まれている場合の処理 `unless @continuation.empty?`
     - フレームのペイロードをバイナリエンコーディングでラップする
     - フレームのフラグに`:end_headers`を立てる
-  - 接続フレームの場合: `connection_management`
-  - それ以外の場合: フレームタイプに応じた処理 -> 内部で`Stream#receive`にフレームを渡す
+  - 接続フレームの場合: `Connection#connection_management`
+  - それ以外の場合: 受信フレームタイプに応じた処理 -> 内部で`Stream#receive`にフレームを渡す
     - `HEADERS` - 内部処理 -> `Stream#receive`↲
     - `PUSH_PROMISE` - 内部処理 -> `Stream#receive`
-    - `@streams`にフレームのストリーム番号が含まれる場合:
+    - `@streams`に受信フレームのストリーム番号が含まれる場合:
       - `Stream#receive`
       - `DATA` - `FlowBuffer#update_local_window` -> `FlowBuffer#calculate_window_update`
     - それ以外の場合:
@@ -35,7 +35,7 @@
   - それ以外の場合: 送信するフレームをバイナリエンコーディングし、フレームごとに`:frame`イベントを発信
     - 実際に送信する操作はユーザーアプリケーションに書く
 
-## `Connection#activate_stream`
+## `#activate_stream`
 - `stream = Stream.new`
 - `stream.once` - `:active` / `:close`イベントの購読
 - `stream.on` - `:promise` / `:frame`イベントの購読
