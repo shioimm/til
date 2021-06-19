@@ -43,7 +43,7 @@
 ## `#transition`
 - `@state`の状態別の処理
 
-### フレームタイプ
+### `@state`の状態
 - `:idle`
 - `:reserved_local`
 - `:reserved_remote`
