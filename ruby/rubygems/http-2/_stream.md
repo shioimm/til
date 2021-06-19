@@ -56,7 +56,7 @@
 ## `#complete_transition`
 - `@state`の状態別の処理
 
-| フレーム          | 処理                                          |
+| 状態              | 処理                                          |
 | -                 | -                                             |
 | `:closing`        | `@state`の変更 -> `:close`イベントコール      |
 | `:half_closing`   | `@state`の変更 -> `:half_close`イベントコール |
@@ -65,7 +65,22 @@
 1. オプション`:end_headers`、`:end_stream`をフラグに格納
 2. HEADERフレームの送信 `send(type: :headers, flags: flags, payload: headers)`
 
-## `data`
+## `#data`
 1. オプション`:end_stream`をフラグに格納
 2. DATAフレームの送信 `send(type: :data, flags: flags, payload: payload)`
     - `payload.bytesize > max_size`の場合はデータをチャンク化する
+
+## `#event`
+- 引数`newstate`別の処理を実行
+
+| 状態                  | 処理                                               |
+| -                     | -                                                  |
+| `:open`               | `@state = newstate` -> `active`イベントの発信      |
+| `:reserved_local`     | `@state = newstate` -> `reserved`イベントの発信    |
+| `:reserved_remote`    | `@state = newstate` -> `reserved`イベントの発信    |
+| `:half_closed_local`  | `active`イベントの発信 -> `@state = :half_closing` |
+| `:half_closed_remote` | `active`イベントの発信 -> `@state = :half_closing` |
+| `:local_closed`       | `@state = :closing`                                |
+| `:remote_closed`      | `@state = :closing`                                |
+| `:local_rst`          | `@state = :closing`                                |
+| `:remote_rst`         | `@state = :closing`                                |
