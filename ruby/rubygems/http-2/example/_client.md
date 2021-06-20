@@ -35,13 +35,12 @@
 9. GETの場合 - HEADERフレームの送信 / POSTの場合 - HEADERフレーム・DATAフレームの送信
 10. ループ処理の開始(ソケットがEOFに至るまで、またはクローズするまで)
 11. レスポンスのうち1024バイトをノンブロッキングで読み込み
-12. [begin]コネクションによる受信処理(`Client#receive`)
-    - `:frame_received`イベントの発信
+12. [begin]コネクションによる受信処理(`Client#receive(frame)`)
     - 読み込んだデータ(`@recv_buffer`)から9バイトずつフレームを読み出す
     - フレームタイプ別の処理
 13. [rescue]ソケットの切断
 
-## `Client#receive`以降の動作
+## `Client#receive(frame)`以降の動作
 - `Client#send_connection_preface`
 ```ruby
 def send_connection_preface
@@ -58,7 +57,7 @@ def send_connection_preface
 end
 ```
 
-- `Connection#settings`
+- `Connection#settings(payload)`
 ```ruby
 def settings(payload)
   payload = payload.to_a
@@ -69,19 +68,63 @@ def settings(payload)
 end
 ```
 
-- `Connection#send`
-```
+- `Connection#send(frame)`
+```ruby
 def send(frame)
   emit(:frame_sent, frame)
-  # frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
+  # :frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
   # ...
   frames = encode(frame)
   frames.each { |f| emit(:frame, f) } # 逐次実行になっている?
-  # frameイベント -> SETTINGSフレームをソケットへの書き込み
+  # frameイベント -> ソケットへの書き込み
 end
+
+# Sent frame: {:type=>:settings, :stream=>0, :payload=>[[:settings_max_concurrent_streams, 100]]}
 ```
 
-- レスポンスデータ(1024バイト)を`@recv_buffer`に格納
-- ループ処理の開始: `@recv_buffer`からフレームを切り出してパース
-- `:frame_received`イベントの発信 -> `puts "Received frame: #{frame.inspect}"`
-- SETTINGSフレームに対して`#connection_management`
+- `Connection#receive(frame)`
+```ruby
+def receive(data)
+  @recv_buffer << data
+  #...
+  while (frame = @framer.parse(@recv_buffer))
+    emit(:frame_received, frame)
+    # :frame_received`イベント -> puts "Received frame: #{frame.inspect}"
+    # ...
+    if connection_frame?(frame)
+      connection_management(frame)
+```
+
+- `Connection#connection_management(frame)`
+```ruby
+def connection_management(frame)
+  case @state
+  # ...
+  when :connected
+    case frame[:type]
+    when :settings
+      connection_settings(frame)
+```
+
+- `Connection#connection_settings(frame)`
+```ruby
+def connection_settings(frame)
+  # ...
+  # @remote_settings[:settings_max_concurrent_streams] = 100
+  # ...
+  send(type: :settings, stream: 0, payload: [], flags: [:ack])
+```
+
+- `Connection#send(frame)`
+```ruby
+def send(frame)
+  emit(:frame_sent, frame)
+  # :frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
+  # ...
+  frames = encode(frame)
+  frames.each { |f| emit(:frame, f) } # 逐次実行になっている?
+  # frameイベント -> ソケットへの書き込み
+end
+
+# Sent frame: {:type=>:settings, :stream=>0, :payload=>[], :flags=>[:ack]}
+```
