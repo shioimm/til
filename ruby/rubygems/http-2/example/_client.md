@@ -40,7 +40,115 @@
     - フレームタイプ別の処理
 13. [rescue]ソケットの切断
 
-## `Client#receive(frame)`以降の動作
+## 4. `stream = conn.new_stream`以降の動作
+- `Connection#new_stream`
+```ruby
+def new_stream(**args)
+  # ...
+  stream = activate_stream(id: @stream_id, **args)
+  @stream_id += 2 # 奇数はクライアント・偶数はサーバー
+
+  stream
+end
+```
+
+- `Connection#activate_stream`
+```ruby
+def activate_stream(id: nil, **args)
+  # ...
+  stream = Stream.new(**{ connection: self, id: id }.merge(args))
+  # ...
+  stream.once(:active) { @active_stream_count += 1 }
+  stream.once(:close) do
+    @active_stream_count -= 1
+    # ...
+    @streams_recently_closed[id] = Time.now.to_i
+    cleanup_recently_closed
+  end
+
+  # ...
+  stream.on(:frame,   &method(:send)) # Streamの:frameイベント時にConnection#sendが呼ばれる
+
+  @streams[id] = stream
+end
+```
+
+## 9. `stream.headers(head, end_stream: true)`以降の動作
+- `Stream#headers(head, end_headers: true)`
+
+```ruby
+def headers(headers, end_headers: true, end_stream: false)
+  flags = []
+  flags << :end_headers if end_headers
+  flags << :end_stream  if end_stream
+
+  send(type: :headers, flags: flags, payload: headers)
+end
+```
+
+- `Stream#send(type: :headers, flags: flags, payload: headers)`
+```ruby
+def send(frame)
+  # ...
+  manage_state(frame) do
+    emit(:frame, frame)
+  end
+end
+```
+
+- `Stream#manage_state(frame)`
+```ruby
+def manage_state(frame)
+  transition(frame, true)
+  frame[:stream] ||= @id
+  yield
+  # emit(:frame, frame) -> Streamの:frameイベント -> Connection#send
+  complete_transition(frame)
+end
+```
+
+- `Stream#transition(frame, true)`
+```ruby
+def transition(frame, sending)
+  # ...
+  event(:half_closed_local)
+```
+
+- `Connection#send`
+```ruby
+def send(frame)
+  emit(:frame_sent, frame)
+  # :frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
+  # ...
+  frames = encode(frame)
+  frames.each { |f| emit(:frame, f) }
+  # Connectionの:frameイベント -> ソケットへの書き込み
+
+# Sent frame: {:type=>:headers, :flags=>[:end_headers, :end_stream], :payload=>{":scheme"=>"https", ":method"=>"GET", ":authority"=>"localhost:8080", ":path"=>"/", "accept"=>"*/*"}, :stream=>1}
+```
+
+- `Stream#event(:half_closed_local)`
+```ruby
+def event(newstate)
+  # ...
+  @closed = newstate # @closed = :half_closed_local
+  emit(:active) unless @state == :open
+  # ...
+  @state = :half_closing
+```
+
+- `Stream#complete_transition(frame)`
+```ruby
+def complete_transition(frame)
+  # ...
+  @state = @closed # :half_closed_local
+  emit(:half_close)
+  # :half_closeイベント -> log.info 'closing client-end of the stream'
+
+# [Stream 1]: closing client-end of the stream
+```
+
+## 12. `conn << data`以降の動作
 - `Client#send_connection_preface`
 ```ruby
 def send_connection_preface
@@ -54,7 +162,6 @@ def send_connection_preface
   # SPEC_DEFAULT_CONNECTION_SETTINGS: SETTINGSフレームのデフォルト値(Hash)
 
   settings(payload)
-end
 ```
 
 - `Connection#settings(payload)`
@@ -65,66 +172,7 @@ def settings(payload)
   @pending_settings << payload
   send(type: :settings, stream: 0, payload: payload)
   @pending_settings << payload
-end
 ```
 
 - `Connection#send(frame)`
-```ruby
-def send(frame)
-  emit(:frame_sent, frame)
-  # :frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
-  # ...
-  frames = encode(frame)
-  frames.each { |f| emit(:frame, f) } # 逐次実行になっている?
-  # frameイベント -> ソケットへの書き込み
-end
-
-# Sent frame: {:type=>:settings, :stream=>0, :payload=>[[:settings_max_concurrent_streams, 100]]}
-```
-
-- `Connection#receive(frame)`
-```ruby
-def receive(data)
-  @recv_buffer << data
-  #...
-  while (frame = @framer.parse(@recv_buffer))
-    emit(:frame_received, frame)
-    # :frame_received`イベント -> puts "Received frame: #{frame.inspect}"
-    # ...
-    if connection_frame?(frame)
-      connection_management(frame)
-```
-
-- `Connection#connection_management(frame)`
-```ruby
-def connection_management(frame)
-  case @state
-  # ...
-  when :connected
-    case frame[:type]
-    when :settings
-      connection_settings(frame)
-```
-
-- `Connection#connection_settings(frame)`
-```ruby
-def connection_settings(frame)
-  # ...
-  # @remote_settings[:settings_max_concurrent_streams] = 100
-  # ...
-  send(type: :settings, stream: 0, payload: [], flags: [:ack])
-```
-
-- `Connection#send(frame)`
-```ruby
-def send(frame)
-  emit(:frame_sent, frame)
-  # :frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
-  # ...
-  frames = encode(frame)
-  frames.each { |f| emit(:frame, f) } # 逐次実行になっている?
-  # frameイベント -> ソケットへの書き込み
-end
-
-# Sent frame: {:type=>:settings, :stream=>0, :payload=>[], :flags=>[:ack]}
-```
+WIP
