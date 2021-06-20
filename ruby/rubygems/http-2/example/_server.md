@@ -13,21 +13,27 @@
     - コネクションの作成
 5. コネクションの作成
     - `HTTP2::Server`インスタンスを生成
+      - `@stream_id = 2`
+      - `@state = :waiting_magic`
+      - `@local_role = :server`
+      - `@remote_role = :client`
 6. コネクションによるイベントの購読を登録
     - `:frame(frame)`
+      - ソケットへの書き込み
     - `:frame_sent(frame)`
     - `:frame_received(frame)`
     - `:stream(stream)`
       - ロガーの生成
-      - `:active(引数なし)`
-      - `:close(frame[:error])`
-      - `:headers(frame[:payload])`
-      - `:data(frame[:payload])`
-        - インメモリに`frame[:payload]`を格納する
-      - `:half_close(引数なし)`
-        - HEADERフレームの送信
-        - サーバープッシュの実行
-        - DATAフレーム(レスポンス)の送信
+      - ストリームによるイベントの購読を登録
+        - `:active(引数なし)`
+        - `:close(frame[:error])`
+        - `:headers(frame[:payload])`
+        - `:data(frame[:payload])`
+          - インメモリに`frame[:payload]`を格納する
+        - `:half_close(引数なし)`
+          - HEADERフレームの送信
+          - サーバープッシュの実行
+          - DATAフレーム(レスポンス)の送信
 7. ループ処理の開始(接続ソケットがEOFに至るまで、またはクローズするまで)
 8. リクエストのうち1024バイトをノンブロッキングで読み込み
 9. [begin]コネクションによる受信処理(`Connection#receive`)
@@ -35,3 +41,47 @@
     - 読み込んだデータ(`@recv_buffer`)から9バイトずつフレームを読み出す
     - フレームタイプ別の処理
 10. [rescue]接続ソケットの切断
+
+## 9. `conn << data`以降の動作
+- `Connection#receive(frame)`
+```ruby
+def receive(data)
+  @recv_buffer << data
+  #...
+  while (frame = @framer.parse(@recv_buffer))
+    emit(:frame_received, frame)
+    # :frame_received`イベント -> puts "Received frame: #{frame.inspect}"
+    # ...
+    if connection_frame?(frame)
+      connection_management(frame)
+```
+
+- `Connection#connection_management(frame)`
+```ruby
+def connection_management(frame)
+  # ...
+  connection_settings(frame)
+```
+
+- `Connection#connection_settings(frame)`
+```ruby
+def connection_settings(frame)
+  # ...
+  # @remote_settings[:settings_max_concurrent_streams] = 100
+  # ...
+  send(type: :settings, stream: 0, payload: [], flags: [:ack])
+```
+
+- `Connection#send(frame)`
+```ruby
+def send(frame)
+  emit(:frame_sent, frame)
+  # :frame_sentイベント -> puts "Sent frame: #{frame.inspect}"
+  # ...
+  frames = encode(frame)
+  frames.each { |f| emit(:frame, f) } # 逐次実行になっている?
+  # frameイベント -> ソケットへの書き込み
+end
+
+# Sent frame: {:type=>:settings, :stream=>0, :payload=>[], :flags=>[:ack]}
+```
