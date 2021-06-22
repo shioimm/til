@@ -108,7 +108,7 @@ def complete_transition(frame)
 # [Stream 1]: closing client-end of the stream
 ```
 
-## 12. `conn << data`以降の動作
+## 12. `conn << data`以降の動作: SETTINGSフレームの送信
 - `Client#send_connection_preface`
 ```ruby
 def send_connection_preface
@@ -135,4 +135,179 @@ def settings(payload)
 ```
 
 - `Connection#send(frame)`
-WIP
+```ruby
+def send(frame)
+  emit(:frame_sent, frame)
+  # ...
+  frames = encode(frame)
+  frames.each { |f| emit(:frame, f) }
+  # frameイベント: ソケットへの書き込み
+```
+
+- `Connection#receive(data)`
+```ruby
+def receive(data)
+  @recv_buffer << data
+  # ...
+  while (frame = @framer.parse(@recv_buffer))
+    emit(:frame_received, frame)
+    # ...
+    connection_management(frame)
+```
+
+- `Connection#connection_management(frame)`
+```ruby
+# frame = {:length=>6, :type=>:settings, :flags=>[], :stream=>0, :payload=>[[:settings_max_concurrent_streams, 100]]}
+
+def connection_management
+  # ...
+  connection_settings(frame)
+```
+
+- `Connection#connection_settings(frame)`
+```ruby
+def connection_settings(frame)
+  # ...
+  # settings = [[:settings_max_concurrent_streams, 100]]
+  # side = :remote
+  # @remote_settings = {:settings_header_table_size=>4096, :settings_enable_push=>1, :settings_max_concurrent_streams=>100, :settings_initial_window_size=>65535, :settings_max_frame_size=>16384, :settings_max_header_list_size=>2147483647}
+
+  send(type: :settings, stream: 0, payload: [], flags: [:ack])
+```
+
+- `Connection#send(frame)`
+```ruby
+def send(frame)
+  emit(:frame_sent, frame)
+  # ...
+  frames = encode(frame)
+  frames.each { |f| emit(:frame, f) }
+  # frameイベント: ソケットへの書き込み
+```
+
+## 12. `conn << data`以降の動作: HEADERSフレームの受信
+- `Connection#receive(data)`
+```ruby
+def receive(data)
+  @recv_buffer << data
+
+  # ...
+  while (frame = @framer.parse(@recv_buffer))
+    emit(:frame_received, frame)
+    # ...
+    decode_headers(frame)
+    # ...
+    stream = @streams[frame[:stream]]
+    # ...
+    stream << frame
+```
+
+- `Stream#receive(frame)`
+```ruby
+# frame = {:length=>14, :type=>:headers, :flags=>[:end_headers], :stream=>1, :payload=>[[":status", "200"], ["content-length", "27"], ["content-type", "text/plain"]]}
+
+def receive(frame)
+  transition(frame, false) # => なにもしない
+  # ...
+  emit(:headers, frame[:payload]) unless frame[:ignore]
+  # headersイベント: log.info "response headers: #{h}"
+  # [Stream 1]: response headers: [[":status", "200"], ["content-length", "27"], ["content-type", "text/plain"]]
+
+  # ...
+  complete_transition(frame) # => なにもしない
+```
+
+## 12. `conn << data`以降の動作: DATAフレームの送信
+- `Connection#receive(data)`
+```ruby
+def receive(data)
+  @recv_buffer << data
+
+  # ...
+  while (frame = @framer.parse(@recv_buffer))
+    emit(:frame_received, frame)
+
+    # ...
+    if (stream = @streams[frame[:stream]])
+      stream << frame
+```
+
+- `Stream#receive(frame)`
+```ruby
+# 1回目: frame = {:length=>5, :type=>:data, :flags=>[], :stream=>1, :payload=>"Hello"}
+# 2回目: frame = {:length=>22, :type=>:data, :flags=>[:end_stream], :stream=>1, :payload=>" HTTP 2.0! GET request"}
+
+def receive(frame)
+  transition(frame, false)
+```
+
+- `Stream#transition`
+```ruby
+def transition
+  # ...
+  # => 2回目(:end_streamの場合)のみ
+  event(:remote_closed)
+```
+
+- `Stream#event(:remote_closed)`
+```ruby
+# 2回目
+
+def event(newstate)
+  # ...
+  @closed = newstate # => :remote_closed
+  @state  = :closing
+
+  # ...
+  @state
+```
+
+- `Stream#receive(frame)`(続き)
+```ruby
+# 1回目: frame = {:length=>5, :type=>:data, :flags=>[], :stream=>1, :payload=>"Hello"}
+# 2回目: frame = {:length=>22, :type=>:data, :flags=>[:end_stream], :stream=>1, :payload=>" HTTP 2.0! GET request"}
+
+def receive(frame)
+  # ...
+  update_local_window(frame)
+  # ...
+  emit(:data, frame[:payload]) unless frame[:ignore]
+  # dataイベント: log.info "response data chunk: <<#{d}>>"
+  # 1回目: [Stream 1]: response data chunk: <<Hello>>
+  # 2回目: [Stream 1]: response data chunk: << HTTP 2.0! GET request>>
+
+  calculate_window_update(@local_window_max_size)
+```
+
+- `FlowBuffer#update_local_window(frame)`
+```ruby
+def update_local_window(frame)
+  frame_size = frame[:payload].bytesize
+  frame_size += frame[:padding] || 0
+  @local_window -= frame_size
+end
+```
+
+- `FlowBuffer#calculate_window_update(@local_window_max_size)`
+```ruby
+def calculate_window_update(window_max_size)
+  return unless @local_window <= (window_max_size / 2) # => false
+  window_update(window_max_size - @local_window)
+```
+
+- `Stream#receive(data)`(続き)
+```ruby
+def receive(data)
+  # ...
+  complete_transition(frame)
+```
+
+- `Stream#complete_transition(frame)`
+```
+def complete_transition(frame)
+  # ...
+  @state = :closed
+  emit(:close, frame[:error])
+  # closeイベント: log.info 'stream closed'
+  # [Stream 1]: stream closed
+```
