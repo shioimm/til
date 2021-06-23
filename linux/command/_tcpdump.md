@@ -1,7 +1,4 @@
 # `tcpdump(1)`
-- 参照: Linuxプログラミングインターフェース 61章
-
-## TL;DR
 - インターネットトラフィックをリアルタイムで表示する(パケットキャプチャ)
 - TCPセグメント以外の全種類のネットワークパケットを表示可能
 - ソケットアプリケーション開発時のデバッグツールとして有効
@@ -81,4 +78,8 @@ $ networksetup -listallhardwareports
 
 # tcpdump(1)を実行
 $ sudo tcpdump -i ネットワークインターフェース名 -n
+$ sudo tcpdump -s0 -A host google.com
 ```
+
+## 参照
+- Linuxプログラミングインターフェース 61章
