@@ -1,15 +1,11 @@
 require 'socket'
 
-HOSTNAME = 'localhost'
-PATH = '/'
-
-MESSAGE = <<~MESSAGE
-Would you do me a favor?\n
-I would like to GET #{PATH}
-MESSAGE
+request_message = File.open(ARGV[0]) do |f|
+  f.read
+end
 
 sock = TCPSocket.new('localhost', 12345)
-sock.write(MESSAGE)
+sock.write(request_message)
 
 while !sock.closed? && !sock.eof?
   message = sock.read_nonblock(1024)
