@@ -6,7 +6,7 @@ module Ruby
       @parser = Ruby::Parser.new
     end
 
-    def receive(message)
+    def receive!(message)
       @message = @parser.parse(message)
     end
 

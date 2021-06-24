@@ -4,7 +4,7 @@ request_message = File.open(ARGV[0]) do |f|
   f.read
 end
 
-sock = TCPSocket.new('localhost', 12345)
+sock = TCPSocket.new('localhost', 9292)
 sock.write(request_message)
 
 while !sock.closed? && !sock.eof?
