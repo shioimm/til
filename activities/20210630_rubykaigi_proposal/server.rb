@@ -2,6 +2,7 @@ require 'socket'
 require "stringio"
 require_relative './rack/handler/server'
 require_relative './protocols/quack/server_protocol'
+require_relative './protocols/quack/const'
 require_relative './protocols/ruby/server_protocol'
 
 class Server
@@ -9,7 +10,7 @@ class Server
     @host, @port, @app = args
     @method = nil
     @path   = nil
-    @schema = nil
+    @scheme = 'http'
     @query  = nil
     @status = nil
     @header = nil
@@ -29,7 +30,7 @@ class Server
       'rack.multithread'  => false,
       'rack.multiprocess' => false,
       'rack.run_once'     => false,
-      'rack.url_scheme'   => @schema&.downcase&.slice(/http[a-z]*/) || 'http'
+      'rack.url_scheme'   => @scheme&.downcase&.slice(/http[a-z]*/) || 'http'
     }
   end
 
@@ -52,10 +53,10 @@ class Server
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
           protocol.receive!(request)
-          @method, path, @schema = protocol.method, protocol.path, 'http'
-          @path, @query = path.split('?')
+          @method = protocol.method
+          @path, @query = protocol.path.split('?')
 
-          puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@schema}"
+          puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@scheme}"
 
           @status, @header, @body = @app.call(env)
 
@@ -65,6 +66,7 @@ class Server
               #{body}
           MESSAGE
         rescue StandardError => e
+          client.write e.message
           puts "#{e.class} #{e.message} - closing socket."
           e.backtrace.each { |l| puts "\t" + l }
           server.close
@@ -76,7 +78,7 @@ class Server
   end
 
   def status
-    "#{@schema} 200 OK" if @status.eql? 200
+    "#{@scheme} #{@status} #{::Quack::HTTP_STATUS_CODES.fetch(@status) { 'CUSTOM' }}"
   end
 
   def header
