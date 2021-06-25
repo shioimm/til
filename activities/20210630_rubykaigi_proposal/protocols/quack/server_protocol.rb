@@ -1,4 +1,4 @@
-require_relative './parser.rb'
+require_relative './parser'
 
 module Quack
   class ServerProtocol
@@ -12,6 +12,8 @@ module Quack
 
     def receive!(message)
       message = @parser.parse!(message)
-      @method, @path = message[:method], message[:path]
+      @method = message[:method]
+      @path = message[:path]
+    end
   end
 end

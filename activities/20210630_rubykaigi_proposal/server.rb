@@ -4,17 +4,19 @@ require_relative './rack/handler/server'
 require_relative './protocols/quack/server_protocol'
 require_relative './protocols/quack/const'
 require_relative './protocols/ruby/server_protocol'
+require_relative './protocols/ruby/const'
 
 class Server
   def initialize(*args)
     @host, @port, @app = args
     @method = nil
     @path   = nil
-    @scheme = 'http'
+    @scheme = 'HTTP'
     @query  = nil
     @status = nil
     @header = nil
     @body   = nil
+    @protocol = ::Ruby::ServerProtocol.new
   end
 
   def env
@@ -35,7 +37,6 @@ class Server
   end
 
   def start
-    protocol = ::Quack::ServerProtocol.new
     server = TCPServer.new(@host, @port)
 
     puts <<~MESSAGE
@@ -52,9 +53,9 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          protocol.receive!(request)
-          @method = protocol.method
-          @path, @query = protocol.path.split('?')
+          @protocol.receive!(request)
+          @method = @protocol.method
+          @path, @query = @protocol.path.split('?')
 
           puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@scheme}"
 
@@ -66,7 +67,6 @@ class Server
               #{body}
           MESSAGE
         rescue StandardError => e
-          client.write e.message
           puts "#{e.class} #{e.message} - closing socket."
           e.backtrace.each { |l| puts "\t" + l }
           server.close
@@ -78,7 +78,7 @@ class Server
   end
 
   def status
-    "#{@scheme} #{@status} #{::Quack::HTTP_STATUS_CODES.fetch(@status) { 'CUSTOM' }}"
+    "#{@scheme} #{@status} #{::Ruby::HTTP_STATUS_CODES.fetch(@status) { 'CUSTOM' }}"
   end
 
   def header
