@@ -29,6 +29,9 @@ $ redis-cli
 127.0.0.1:xxxx> del  キー名  特定のキーを削除
 127.0.0.1:xxxx> monitor      リアルタイムモニタリング
 ```
+```
+127.0.0.1:xxxx> smembers キー名 setの値を取得
+```
 
 ## 参照
 - [Redis](https://redis.io/)

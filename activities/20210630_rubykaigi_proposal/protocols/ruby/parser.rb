@@ -1,6 +1,6 @@
 module Ruby
   class Parser
-    def parse(message)
+    def parse!(message)
       message.chomp!
       { method: method(message), path: path(message) }
     end

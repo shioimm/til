@@ -2,18 +2,21 @@ require 'socket'
 require "stringio"
 require_relative './rack/handler/server'
 require_relative './protocols/quack/server_protocol'
+require_relative './protocols/quack/const'
 require_relative './protocols/ruby/server_protocol'
+require_relative './protocols/ruby/const'
 
 class Server
   def initialize(*args)
     @host, @port, @app = args
     @method = nil
     @path   = nil
-    @schema = nil
+    @scheme = 'HTTP'
     @query  = nil
     @status = nil
     @header = nil
     @body   = nil
+    @protocol = ::Ruby::ServerProtocol.new
   end
 
   def env
@@ -29,12 +32,11 @@ class Server
       'rack.multithread'  => false,
       'rack.multiprocess' => false,
       'rack.run_once'     => false,
-      'rack.url_scheme'   => @schema&.downcase&.slice(/http[a-z]*/) || 'http'
+      'rack.url_scheme'   => @scheme&.downcase&.slice(/http[a-z]*/) || 'http'
     }
   end
 
   def start
-    protocol = ::Quack::ServerProtocol.new
     server = TCPServer.new(@host, @port)
 
     puts <<~MESSAGE
@@ -51,11 +53,11 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          protocol.receive!(request)
-          @method, path, @schema = protocol.method, protocol.path, 'http'
-          @path, @query = path.split('?')
+          @protocol.receive!(request)
+          @method = @protocol.method
+          @path, @query = @protocol.path.split('?')
 
-          puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@schema}"
+          puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@scheme}"
 
           @status, @header, @body = @app.call(env)
 
@@ -76,7 +78,7 @@ class Server
   end
 
   def status
-    "#{@schema} 200 OK" if @status.eql? 200
+    "#{@scheme} #{@status} #{::Ruby::HTTP_STATUS_CODES.fetch(@status) { 'CUSTOM' }}"
   end
 
   def header

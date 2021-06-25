@@ -1,4 +1,4 @@
-require_relative './parser.rb'
+require_relative './parser'
 
 module Quack
   class ServerProtocol
@@ -11,36 +11,9 @@ module Quack
     end
 
     def receive!(message)
-      message = @parser.parse(message)
-      @method, @path = message[:method], message[:path]
+      message = @parser.parse!(message)
+      @method = message[:method]
+      @path = message[:path]
     end
-
-    def response
-      if authorized?
-        "#{header}\r\n\r\n#{body}"
-      else
-        "HTTP/DUCK 600 YouAreTheUglyDuckling"
-      end
-    end
-
-    private
-
-      def authorized?
-        @message[:method] != 'OTHER'
-      end
-
-      def header
-        case @message[:method]
-        when "GET"
-          "HTTP/DUCK 200 OK"
-        end
-      end
-
-      def body
-        case @message[:method]
-        when "GET"
-          "You must to be a duck"
-        end
-      end
   end
 end
