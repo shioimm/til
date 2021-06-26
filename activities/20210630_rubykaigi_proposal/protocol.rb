@@ -20,22 +20,22 @@ class Protocol
 
   def self.request
     @@request ||= Class.new {
-      def self.path(message, &block)
-        @path = yield message
+      def self.path(&block)
+        @path = block
       end
 
-      def self.http_method(message, &block)
-        @http_method = yield message
+      def self.http_method(&block)
+        @http_method = block
       end
     }
   end
 
-  def self.path
-    request.instance_variable_get("@path")
+  def self.path(message)
+    request.instance_variable_get("@path").call(message)
   end
 
-  def self.http_method
-    request.instance_variable_get("@http_method")
+  def self.http_method(message)
+    request.instance_variable_get("@http_method").call(message)
   end
 
   def self.http_status_code(status)
@@ -47,4 +47,5 @@ class Protocol
     @status_codes[status]
   end
 end
+
 require_relative './config/protocols/rubylike'

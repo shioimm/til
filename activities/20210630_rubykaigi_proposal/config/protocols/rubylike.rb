@@ -1,5 +1,3 @@
-require_relative '../../protocol'
-
 module Config
   DEFINED_STATUS_CODES = {
     600 => 'Are you a Ruby programmer',
@@ -7,11 +5,11 @@ module Config
 end
 
 Protocol.define(:rubylike) do |protocol_name|
-  request.path('"/".get') do |message|
+  request.path do |message|
     message[/['"].+['"]/].gsub(/['"]/, '')
   end
 
-  request.http_method('"/".get') do |message|
+  request.http_method do |message|
     case message[/\.get/]
     when '.get' then 'GET'
     else 'OTHER'
@@ -30,7 +28,7 @@ Protocol.define(:rubylike) do |protocol_name|
       [
         600,
         { 'Content-Type' => 'text/html' },
-        ["Are you a Ruby programmer?"]
+        ["I'm afraid you are not a Ruby programmer..."]
       ]
     end
   end
