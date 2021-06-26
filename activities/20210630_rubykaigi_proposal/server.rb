@@ -1,21 +1,36 @@
 require 'socket'
+require 'rack/handler'
 require "stringio"
-require_relative './rack/handler/server'
 require_relative './protocols/quack/server_protocol'
 require_relative './protocols/quack/const'
 require_relative './protocols/ruby/server_protocol'
 require_relative './protocols/ruby/const'
 
+module Rack
+  module Handler
+    class Server
+      def self.run(app, options = {})
+        environment  = ENV['RACK_ENV'] || 'development'
+        default_host = environment == 'development' ? 'localhost' : '0.0.0.0'
+
+        host = options.delete(:Host) || default_host
+        port = options.delete(:Port) || 12345
+        args = [host, port, app]
+        ::Server.new(*args).start
+      end
+    end
+
+    register :server, Server
+  end
+end
+
 class Server
   def initialize(*args)
     @host, @port, @app = args
-    @method = nil
-    @path   = nil
-    @scheme = 'HTTP'
-    @query  = nil
-    @status = nil
-    @header = nil
-    @body   = nil
+    @method   = nil
+    @path     = nil
+    @query    = nil
+    @scheme   = 'HTTP'
     @protocol = ::Ruby::ServerProtocol.new
   end
 
@@ -32,7 +47,7 @@ class Server
       'rack.multithread'  => false,
       'rack.multiprocess' => false,
       'rack.run_once'     => false,
-      'rack.url_scheme'   => @scheme&.downcase&.slice(/http[a-z]*/) || 'http'
+      'rack.url_scheme'   => 'http'
     }
   end
 
@@ -45,10 +60,10 @@ class Server
     MESSAGE
 
     loop do
-      client = server.accept
+      socket = server.accept
 
-      while !client.closed? && !client.eof?
-        request = client.readpartial(1024)
+      while !socket.closed? && !socket.eof?
+        request = socket.readpartial(1024)
 
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
@@ -59,35 +74,37 @@ class Server
 
           puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@scheme}"
 
-          @status, @header, @body = @app.call(env)
+          status, headers, body = @app.call(env)
 
-          client.write <<~MESSAGE
-              #{status}
-              #{header}\r\n
-              #{body}
+          socket.write <<~MESSAGE
+              #{response_line(status)}
+              #{response_header(headers)}\r\n
+              #{response_body(body)}
           MESSAGE
         rescue StandardError => e
           puts "#{e.class} #{e.message} - closing socket."
           e.backtrace.each { |l| puts "\t" + l }
           server.close
         ensure
-          client.close
+          socket.close
         end
       end
     end
   end
 
-  def status
-    "#{@scheme} #{@status} #{::Ruby::HTTP_STATUS_CODES.fetch(@status) { 'CUSTOM' }}"
-  end
+  private
 
-  def header
-    @header.map { |k, v| "#{k}: #{v}" }.join(', ')
-  end
+    def response_line(status)
+      "#{@scheme} #{status} #{::Ruby::HTTP_STATUS_CODES[status]}"
+    end
 
-  def body
-    res_body = []
-    @body.each { |body| res_body << body }
-    res_body.join("\n")
-  end
+    def response_header(headers)
+      headers.map { |k, v| "#{k}: #{v}" }.join(', ')
+    end
+
+    def response_body(body)
+      rbody = []
+      body.each { |body| rbody << body }
+      rbody.join("\n")
+    end
 end

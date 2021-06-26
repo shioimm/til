@@ -3,13 +3,14 @@ require_relative './server'
 
 class App
   def call(env)
-    if env['REQUEST_METHOD'] != 'OTHER'
+    case env['REQUEST_METHOD']
+    when 'GET'
       [
         200,
         { 'Content-Type' => 'text/html' },
-        ["<div><h1>Hello</h1><p>This app is running on Ruby Protocol.</p></div>"]
+        ["Hello, This app is running on Ruby Protocol."]
       ]
-    else
+    when 'OTHER'
       [
         600,
         { 'Content-Type' => 'text/html' },
