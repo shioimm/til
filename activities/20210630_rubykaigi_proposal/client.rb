@@ -1,8 +1,6 @@
 require 'socket'
 
-request_message = File.open(ARGV[0]) do |f|
-  f.read
-end
+request_message = File.open(ARGV[0]) { |f| f.read }
 
 sock = TCPSocket.new('localhost', 9292)
 sock.write(request_message)
