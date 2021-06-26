@@ -8,7 +8,7 @@ class App
       [
         200,
         { 'Content-Type' => 'text/html' },
-        ["Hello, This app is running on Ruby Protocol."]
+        ["Hello, This app is running on Ruby like protocol."]
       ]
     when 'OTHER'
       [

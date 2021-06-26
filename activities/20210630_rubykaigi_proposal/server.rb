@@ -1,20 +1,18 @@
 require 'socket'
 require 'rack/handler'
 require "stringio"
-require_relative './protocols/quack/server_protocol'
-require_relative './protocols/quack/const'
-require_relative './protocols/ruby/server_protocol'
-require_relative './protocols/ruby/const'
+require_relative './server_protocol'
+require_relative './config/const'
 
 module Rack
   module Handler
     class Server
       def self.run(app, options = {})
         environment  = ENV['RACK_ENV'] || 'development'
-        default_host = environment == 'development' ? 'localhost' : '0.0.0.0'
+        default_host = environment == 'development' ? ::Config::LOCALHOST : ::Config::DEFAULT_HOST
 
         host = options.delete(:Host) || default_host
-        port = options.delete(:Port) || 12345
+        port = options.delete(:Port) || ::Config::DEFAULT_PORT
         args = [host, port, app]
         ::Server.new(*args).start
       end
@@ -31,15 +29,15 @@ class Server
     @path     = nil
     @query    = nil
     @scheme   = 'HTTP'
-    @protocol = ::Ruby::ServerProtocol.new
+    @protocol = ServerProtocol.new("RubyLike")
   end
 
   def env
     {
-      'PATH_INFO'         => @path   || '/',
-      'QUERY_STRING'      => @query  || '',
-      'REQUEST_METHOD'    => @method || 'GET',
-      'SERVER_NAME'       => 'SERVER',
+      'PATH_INFO'         => @path,
+      'QUERY_STRING'      => @query.to_s,
+      'REQUEST_METHOD'    => @method,
+      'SERVER_NAME'       => Config::SERVER_NAME,
       'SERVER_PORT'       => @port.to_s,
       'rack.version'      => Rack::VERSION,
       'rack.input'        => StringIO.new('').set_encoding('ASCII-8BIT'),
@@ -95,7 +93,7 @@ class Server
   private
 
     def response_line(status)
-      "#{@scheme} #{status} #{::Ruby::HTTP_STATUS_CODES[status]}"
+      "#{@scheme} #{status} #{@protocol.http_status_code(status)}"
     end
 
     def response_header(headers)

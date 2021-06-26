@@ -1,4 +1,17 @@
-module Quack
+module Config
+  HTTP_METHODS = {
+    'GET'     => 'GET',
+    'POST'    => 'POST',
+    'PUT'     => 'PUT',
+    'PATCH'   => 'PATCH',
+    'DELETE'  => 'DELETE',
+    'HEAD'    => 'HEAD',
+    'OPTIONS' => 'OPTIONS',
+    'LINK'    => 'LINK',
+    'UNLINK'  => 'UNLINK',
+    'TRACE'   => 'TRACE',
+  }
+
   HTTP_STATUS_CODES = {
     100 => 'Continue',
     101 => 'Switching Protocols',
@@ -60,6 +73,10 @@ module Quack
     508 => 'Loop Detected',
     510 => 'Not Extended',
     511 => 'Network Authentication Required',
-    600 => 'You are the ugly ducking'
   }
+
+  LOCALHOST    = 'localhost'
+  DEFAULT_HOST = '0.0.0.0'
+  DEFAULT_PORT = '9292'
+  SERVER_NAME = 'SERVER'
 end

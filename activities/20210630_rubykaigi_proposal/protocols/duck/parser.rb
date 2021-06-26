@@ -1,4 +1,4 @@
-module Quack
+module Duck
   class Parser
     def parse!(message)
       message.chomp!

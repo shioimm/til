@@ -1,4 +1,4 @@
-module Ruby
+module RubyLike
   class Parser
     def parse!(message)
       message.chomp!
