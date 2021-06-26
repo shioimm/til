@@ -1,7 +1,7 @@
 require 'socket'
 require 'rack/handler'
 require "stringio"
-require_relative './server_protocol'
+require_relative './protocol'
 require_relative './config/const'
 
 module Rack
@@ -28,7 +28,7 @@ class Server
     @request_method    = nil
     @path     = nil
     @query    = nil
-    @protocol = ServerProtocol.new
+    @protocol = ::Protocol
   end
 
   def env
@@ -65,8 +65,8 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          @protocol.receive!(request)
-          @request_method = @protocol.request_method
+          @protocol.instance_variable_set('@message', request)
+          @request_method = @protocol.http_method
           @path, @query = @protocol.path.split('?')
 
           puts "REQUEST MESSAGE has been translated: #{@request_method} #{@path} HTTP/1.1"

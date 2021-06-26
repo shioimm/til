@@ -1,23 +1,5 @@
 require 'rack'
 require_relative './server'
+require_relative './protocol'
 
-class App
-  def call(env)
-    case env['REQUEST_METHOD']
-    when 'GET'
-      [
-        200,
-        { 'Content-Type' => 'text/html' },
-        ["Hello, This app is running on Ruby like protocol."]
-      ]
-    when 'OTHER'
-      [
-        600,
-        { 'Content-Type' => 'text/html' },
-        ["Are you a Ruby programmer?"]
-      ]
-    end
-  end
-end
-
-run App.new
+run Protocol.app.new
