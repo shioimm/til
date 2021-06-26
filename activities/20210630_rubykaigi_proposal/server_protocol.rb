@@ -1,23 +1,28 @@
-require_relative './protocols/duck/parser'
-require_relative './protocols/rubylike/parser'
 require_relative './config/const'
+require_relative './config/protocol'
+require_relative './parser'
 
 class ServerProtocol
-  attr_reader :method, :path
+  attr_reader :request_method, :path
 
-  def initialize(protocol)
-    @parser = Object.const_get("#{protocol}::Parser").new
-    @method = nil
-    @path   = nil
-    @status_codes = nil
+  def initialize
+    @parser            = ::Parser.new
+    @request_method    = nil
+    @path              = nil
+    @http_status_codes = nil
+    @http_methods      = nil
 
+    initialize_http_methods!
     initialize_status_codes!
   end
 
   def receive!(message)
-    message = @parser.parse!(message)
-    @method = message[:method]
-    @path = message[:path]
+    @request_method = http_request_method(@parser.parse_request_method!(message))
+    @path           = @parser.parse_request_path!(message)
+  end
+
+  def http_request_method(method_name = nil)
+    @http_methods[method_name]
   end
 
   def http_status_code(status)
@@ -28,15 +33,15 @@ class ServerProtocol
 
     def initialize_status_codes!
       if @status_codes.nil?
-        adding_statuses = case @parser
-                          when Duck::Parser
-                            { 600 => 'You are the uggly duckling' }
-                          when RubyLike::Parser
-                            { 600 => 'Are you a Ruby programmer' }
-                          end
-
         @status_codes = Config::HTTP_STATUS_CODES.dup
-        @status_codes.merge!(adding_statuses)
+        @status_codes.merge!(Config::DEFINED_STATUS_CODES) if Config::DEFINED_STATUS_CODES
+      end
+    end
+
+    def initialize_http_methods!
+      if @http_methods.nil?
+        @http_methods = Config::HTTP_METHODS.dup
+        @http_methods.merge!(Config::DEFINED_REQUEST_METHODS) if Config::DEFINED_REQUEST_METHODS
       end
     end
 end

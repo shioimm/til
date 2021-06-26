@@ -25,18 +25,17 @@ end
 class Server
   def initialize(*args)
     @host, @port, @app = args
-    @method   = nil
+    @request_method    = nil
     @path     = nil
     @query    = nil
-    @scheme   = 'HTTP'
-    @protocol = ServerProtocol.new("RubyLike")
+    @protocol = ServerProtocol.new
   end
 
   def env
     {
       'PATH_INFO'         => @path,
       'QUERY_STRING'      => @query.to_s,
-      'REQUEST_METHOD'    => @method,
+      'REQUEST_METHOD'    => @request_method,
       'SERVER_NAME'       => Config::SERVER_NAME,
       'SERVER_PORT'       => @port.to_s,
       'rack.version'      => Rack::VERSION,
@@ -67,10 +66,10 @@ class Server
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
           @protocol.receive!(request)
-          @method = @protocol.method
+          @request_method = @protocol.request_method
           @path, @query = @protocol.path.split('?')
 
-          puts "REQUEST MESSAGE has been translated: #{@method} #{@path} #{@scheme}"
+          puts "REQUEST MESSAGE has been translated: #{@request_method} #{@path} HTTP/1.1"
 
           status, headers, body = @app.call(env)
 
@@ -93,7 +92,7 @@ class Server
   private
 
     def response_line(status)
-      "#{@scheme} #{status} #{@protocol.http_status_code(status)}"
+      "HTTP/1.1 #{status} #{@protocol.http_status_code(status)}"
     end
 
     def response_header(headers)
