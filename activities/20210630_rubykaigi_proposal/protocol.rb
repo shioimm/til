@@ -50,10 +50,14 @@ class Protocol
     request.instance_variable_get("@http_method").call(message)
   end
 
+  def self.define_status_codes(defined_status_codes)
+    @defined_status_codes = defined_status_codes
+  end
+
   def self.http_status_code(status)
     if @status_codes.nil?
-      @status_codes = Config::HTTP_STATUS_CODES.dup
-      @status_codes.merge!(Config::DEFINED_STATUS_CODES) if Config::DEFINED_STATUS_CODES
+      @status_codes = Config::DEFAULT_HTTP_STATUS_CODES.dup
+      @status_codes.merge!(@defined_status_codes) if @defined_status_codes
     end
 
     @status_codes[status]

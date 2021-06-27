@@ -1,18 +1,5 @@
 module Config
-  HTTP_METHODS = {
-    'GET'     => 'GET',
-    'POST'    => 'POST',
-    'PUT'     => 'PUT',
-    'PATCH'   => 'PATCH',
-    'DELETE'  => 'DELETE',
-    'HEAD'    => 'HEAD',
-    'OPTIONS' => 'OPTIONS',
-    'LINK'    => 'LINK',
-    'UNLINK'  => 'UNLINK',
-    'TRACE'   => 'TRACE',
-  }
-
-  HTTP_STATUS_CODES = {
+  DEFAULT_HTTP_STATUS_CODES = {
     100 => 'Continue',
     101 => 'Switching Protocols',
     102 => 'Processing',

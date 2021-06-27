@@ -1,10 +1,8 @@
-module Config
-  DEFINED_STATUS_CODES = {
+Protocol.define(:rubylike) do
+  define_status_codes(
     600 => 'Are you a Ruby programmer',
-  }
-end
+  )
 
-Protocol.define(:rubylike) do |protocol_name|
   request.path do |message|
     message[/['"].+['"]/].gsub(/['"]/, '')
   end

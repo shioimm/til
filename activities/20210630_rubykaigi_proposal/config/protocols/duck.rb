@@ -1,10 +1,8 @@
-module Config
-  DEFINED_STATUS_CODES = {
+Protocol.define(:duck) do
+  define_status_codes(
     600 => 'You are an ugly duckling',
-  }
-end
+  )
 
-Protocol.define(:duck) do |protocol_name|
   request.path do |message|
     message[/in .+/].delete('in ')
   end
