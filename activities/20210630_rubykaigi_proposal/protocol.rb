@@ -1,9 +1,21 @@
-#Dir['./config/protocols/*.rb'].sort.each { |f| require f }
 require_relative './config/const'
 
 class Protocol
-  def self.define(protocol_name, &block)
-    instance_eval(&block)
+  @@definements = {}
+  @@protocol_name = nil
+
+  def self.define(protocol_name = nil, &block)
+    @@definements[protocol_name] = block
+  end
+
+  def self.execute!
+    if block = @@definements[@@protocol_name]
+      instance_eval(&block)
+    end
+  end
+
+  def self.use(protocol_name)
+    @@protocol_name = protocol_name
   end
 
   def self.app
@@ -48,4 +60,4 @@ class Protocol
   end
 end
 
-require_relative './config/protocols/rubylike'
+Dir['./config/protocols/*.rb'].sort.each { |f| require f }
