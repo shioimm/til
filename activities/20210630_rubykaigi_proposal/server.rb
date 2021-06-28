@@ -65,7 +65,7 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          @protocol.execute!
+          @protocol.run!(request)
           @request_method = @protocol.http_method(request)
           @path, @query   = @protocol.path(request).split('?')
 
@@ -92,7 +92,7 @@ class Server
   private
 
     def response_line(status)
-      "HTTP/1.1 #{status} #{@protocol.http_status_code(status)}"
+      "HTTP/1.1 #{status} #{@protocol.status_message(status)}"
     end
 
     def response_header(headers)

@@ -4,12 +4,12 @@ Protocol.define(:rubylike) do
   )
 
   request.path do |message|
-    message[/['"].+['"]/].gsub(/['"]/, '')
+    /['"](?<path>.+)['"]/.match(message)[:path]
   end
 
   request.http_method do |message|
-    case message[/\.get/]
-    when '.get' then 'GET'
+    case /\.(?<method>[A-z]+)/.match(message)[:method]
+    when 'get' then 'GET'
     else 'OTHER'
     end
   end
