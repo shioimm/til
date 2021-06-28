@@ -4,7 +4,7 @@ Protocol.define(:duck) do
   )
 
   request.path do |message|
-    message[/in .+/].delete('in ')
+    /in (?<path>.+)/.match(message)[:path]
   end
 
   request.http_method do |message|
@@ -17,11 +17,20 @@ Protocol.define(:duck) do
   app.call do |env|
     case env['REQUEST_METHOD']
     when 'GET'
-      [
-        200,
-        { 'Content-Type' => 'text/html' },
-        ["Hello, This app is running on Duck protocol."]
-      ]
+      case env['PATH_INFO']
+      when '/posts'
+        [
+          200,
+          { 'Content-Type' => 'text/html' },
+          ["quack quack, quack quack, quack, quack"]
+        ]
+      when '/'
+        [
+          200,
+          { 'Content-Type' => 'text/html' },
+          ["Hello, This app is running on Ruby like protocol."]
+        ]
+      end
     when 'CRY'
       [
         600,
