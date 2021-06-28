@@ -65,7 +65,7 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          @protocol.execute!
+          @protocol.run!(request)
           @request_method = @protocol.http_method(request)
           @path, @query   = @protocol.path(request).split('?')
 

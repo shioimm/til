@@ -9,9 +9,9 @@ class Protocol
       @@definements[protocol_name] = block
     end
 
-    def execute!
+    def run!(message)
       if block = @@definements[@@protocol_name]
-        instance_eval(&block)
+        instance_exec(message, &block)
       end
     end
 
@@ -39,6 +39,10 @@ class Protocol
 
         def self.http_method(&block)
           @http_method = block
+        end
+
+        def self.parse(&block)
+          @parse = block
         end
       }
     end
