@@ -23,6 +23,12 @@ module Rack
 end
 
 class Server
+  TracePoint.new(:script_compiled) { |tp|
+    if tp.binding.receiver == Protocol && tp.method_id.to_s.match?(/(.*eval|.*exec|`.+|%x\(|system|open|require|load)/)
+      raise 'Disallowed method was executed'
+    end
+  }.enable
+
   def initialize(*args)
     @host, @port, @app = args
     @request_method    = nil

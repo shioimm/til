@@ -1,4 +1,17 @@
 module Config
+  DEFAULT_HTTP_REQUEST_METHODS = [
+    'GET',
+    'HEAD',
+    'POST',
+    'OPTIONS',
+    'PUT',
+    'DELETE',
+    'TRACE',
+    'PATCH',
+    'LINK',
+    'UNLINK',
+  ]
+
   DEFAULT_HTTP_STATUS_CODES = {
     100 => 'Continue',
     101 => 'Switching Protocols',
