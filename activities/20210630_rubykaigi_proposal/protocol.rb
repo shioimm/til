@@ -40,23 +40,42 @@ class Protocol
         def self.http_method(&block)
           @http_method = block
         end
-
-        def self.parse(&block)
-          @parse = block
-        end
       }
     end
 
     def path(message)
-      request.instance_variable_get("@path").call(message)
+      request_path = request.instance_variable_get("@path").call(message)
+
+      if request_path.size >= 2048
+        raise "This request path is too long"
+      elsif request_path.scan(/[\/\w\d\-\_]/).size < request_path.size
+        raise "This request path contains disallowed character"
+      else
+        request_path
+      end
     end
 
     def http_method(message)
-      request.instance_variable_get("@http_method").call(message)
+      if @http_methods.nil?
+        @http_methods = Config::DEFAULT_HTTP_REQUEST_METHODS.dup
+        @http_methods.concat @defined_request_methods if @defined_request_methods
+      end
+
+      request_method = request.instance_variable_get("@http_method").call(message)
+
+      if @http_methods.include? request_method
+        request_method
+      else
+        raise "This request method is undefined"
+      end
     end
 
-    def define_status_codes(defined_status_codes)
+    def define_status_codes(**defined_status_codes)
       @defined_status_codes = defined_status_codes
+    end
+
+    def define_request_methods(*defined_request_methods)
+      @defined_request_methods = defined_request_methods
     end
 
     def status_message(status)
