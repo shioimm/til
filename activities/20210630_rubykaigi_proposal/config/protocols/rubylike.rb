@@ -3,7 +3,7 @@ Protocol.define(:rubylike) do
     600 => 'Are you a Ruby programmer',
   )
 
-  define_request_methods 'OTHER'
+  additional_request_methods 'OTHER'
 
   request.path do |message|
     /['"](?<path>.+)['"]/.match(message)[:path]

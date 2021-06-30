@@ -1,26 +1,45 @@
 require_relative './config/const'
 
 class Protocol
-  @@definements = {}
-  @@protocol_name = nil
+  @definements   = {}
+  @protocol_name = nil
+  @http_status_codes    = Config::DEFAULT_HTTP_STATUS_CODES.dup
+  @http_request_methods = Config::DEFAULT_HTTP_REQUEST_METHODS.dup
+  @defined_status_codes = nil
+  @additional_request_methods = nil
 
   class << self
     def define(protocol_name = nil, &block)
-      @@definements[protocol_name] = block
+      @definements[protocol_name] = block
     end
 
     def run!(message)
-      if block = @@definements[@@protocol_name]
-        instance_exec(message, &block)
+      @request_message = message
+
+      if block = @definements[@protocol_name]
+        instance_eval(&block)
       end
     end
 
     def use(protocol_name)
-      @@protocol_name = protocol_name
+      @protocol_name ||= protocol_name
+    end
+
+    def define_status_codes(**defined_status_codes)
+      @defined_status_codes ||= defined_status_codes
+    end
+
+    def additional_request_methods(*additional_request_methods)
+      @additional_request_methods ||= additional_request_methods
+    end
+
+    def status_message(status)
+      @http_status_codes.merge!(@defined_status_codes) if @defined_status_codes
+      @http_status_codes[status]
     end
 
     def app
-      @@app ||= Class.new {
+      @app ||= Class.new {
         def self.call(&block)
           @call = block
         end
@@ -32,7 +51,7 @@ class Protocol
     end
 
     def request
-      @@request ||= Class.new {
+      @request ||= Class.new {
         def self.path(&block)
           @path = block
         end
@@ -43,8 +62,8 @@ class Protocol
       }
     end
 
-    def path(message)
-      request_path = request.instance_variable_get("@path").call(message)
+    def request_path
+      request_path = request.instance_variable_get("@path").call(request_message)
 
       if request_path.size >= 2048
         raise "This request path is too long"
@@ -55,37 +74,21 @@ class Protocol
       end
     end
 
-    def http_method(message)
-      if @http_methods.nil?
-        @http_methods = Config::DEFAULT_HTTP_REQUEST_METHODS.dup
-        @http_methods.concat @defined_request_methods if @defined_request_methods
-      end
+    def request_method
+      @http_request_methods.concat @additional_request_methods if @additional_request_methods
 
-      request_method = request.instance_variable_get("@http_method").call(message)
+      request_method = request.instance_variable_get("@http_method").call(request_message)
 
-      if @http_methods.include? request_method
+      if @http_request_methods.include? request_method
         request_method
       else
         raise "This request method is undefined"
       end
     end
 
-    def define_status_codes(**defined_status_codes)
-      @defined_status_codes = defined_status_codes
-    end
+    private
 
-    def define_request_methods(*defined_request_methods)
-      @defined_request_methods = defined_request_methods
-    end
-
-    def status_message(status)
-      if @status_codes.nil?
-        @status_codes = Config::DEFAULT_HTTP_STATUS_CODES.dup
-        @status_codes.merge!(@defined_status_codes) if @defined_status_codes
-      end
-
-      @status_codes[status]
-    end
+      attr_reader :request_message
   end
 end
 

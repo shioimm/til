@@ -23,12 +23,6 @@ module Rack
 end
 
 class Server
-  TracePoint.new(:script_compiled) { |tp|
-    if tp.binding.receiver == Protocol && tp.method_id.to_s.match?(/(.*eval|.*exec|`.+|%x\(|system|open|require|load)/)
-      raise 'Disallowed method was executed'
-    end
-  }.enable
-
   def initialize(*args)
     @host, @port, @app = args
     @request_method    = nil
@@ -71,9 +65,10 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          @protocol.run!(request)
-          @request_method = @protocol.http_method(request)
-          @path, @query   = @protocol.path(request).split('?')
+          tp_execute! { @protocol.run!(request) }
+
+          @request_method = @protocol.request_method
+          @path, @query   = @protocol.request_path.split('?')
 
           puts "REQUEST MESSAGE has been translated: #{@request_method} #{@path} HTTP/1.1"
 
@@ -109,5 +104,23 @@ class Server
       rbody = []
       body.each { |body| rbody << body }
       rbody.join("\n")
+    end
+
+    def tp
+      @tp ||= TracePoint.new(:script_compiled) { |tp|
+        if tp.binding.receiver == Protocol && tp.method_id.to_s.match?(disallowed_methods_regex)
+          raise 'Disallowed method was executed'
+        end
+      }
+    end
+
+    def tp_execute!
+      tp.enable
+      yield
+      tp.disable
+    end
+
+    def disallowed_methods_regex
+      /(.*eval|.*exec|`.+|%x\(|system|open|require|load)/
     end
 end
