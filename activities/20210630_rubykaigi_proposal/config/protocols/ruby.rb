@@ -1,4 +1,4 @@
-Protocol.define(:ruby) do |message|
+Protocol.define(:ruby) do
   using Module.new {
     refine String do
       def get
@@ -11,7 +11,8 @@ Protocol.define(:ruby) do |message|
     end
   }
 
-  instance_eval message
+  request_message = self.instance_variable_get :@request_message
+  instance_eval request_message
 
   app.call do |env|
     case env['REQUEST_METHOD']
