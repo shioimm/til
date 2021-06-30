@@ -72,8 +72,8 @@ class Server
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
           @protocol.run!(request)
-          @request_method = @protocol.http_method(request)
-          @path, @query   = @protocol.path(request).split('?')
+          @request_method = @protocol.request_method
+          @path, @query   = @protocol.request_path.split('?')
 
           puts "REQUEST MESSAGE has been translated: #{@request_method} #{@path} HTTP/1.1"
 
