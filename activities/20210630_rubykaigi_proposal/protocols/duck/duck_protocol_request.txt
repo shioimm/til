@@ -1,1 +1,1 @@
-quack, quack in /posts
+quack, quack /posts?user_id=1

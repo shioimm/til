@@ -56,6 +56,10 @@ class Protocol
           @path = block
         end
 
+        def self.query(&block)
+          @query = block
+        end
+
         def self.http_method(&block)
           @http_method = block
         end
@@ -83,6 +87,13 @@ class Protocol
         request_method
       else
         raise "This request method is undefined"
+      end
+    end
+
+    def query
+      if (parse_query_block = request.instance_variable_get("@query"))
+        query = parse_query_block.call(request_message)
+        URI.encode_www_form_component(query)
       end
     end
 

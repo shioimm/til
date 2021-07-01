@@ -1,4 +1,5 @@
 require 'socket'
+require 'uri'
 require 'rack/handler'
 require "stringio"
 require_relative './protocol'
@@ -68,7 +69,8 @@ class Server
           tp_execute! { @protocol.run!(request) }
 
           @request_method = @protocol.request_method
-          @path, @query   = @protocol.request_path.split('?')
+          @path  = @protocol.request_path
+          @query = @protocol.query
 
           puts "REQUEST MESSAGE has been translated: #{@request_method} #{@path} HTTP/1.1"
 
