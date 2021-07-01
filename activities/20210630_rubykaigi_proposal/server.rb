@@ -66,7 +66,7 @@ class Server
         begin
           puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
 
-          tp_execute! { @protocol.run!(request) }
+          safe_execution { @protocol.run!(request) }
 
           @request_method = @protocol.request_method
           @path  = @protocol.request_path
@@ -110,16 +110,14 @@ class Server
 
     def tp
       @tp ||= TracePoint.new(:script_compiled) { |tp|
-        if tp.binding.receiver == Protocol && tp.method_id.to_s.match?(disallowed_methods_regex)
+        if tp.binding.receiver == @protocol && tp.method_id.to_s.match?(disallowed_methods_regex)
           raise 'Disallowed method was executed'
         end
       }
     end
 
-    def tp_execute!
-      tp.enable
-      yield
-      tp.disable
+    def safe_execution
+      tp.enable { yield }
     end
 
     def disallowed_methods_regex
