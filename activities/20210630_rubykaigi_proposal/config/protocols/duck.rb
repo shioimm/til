@@ -4,7 +4,13 @@ Protocol.define(:duck) do
   )
 
   request.path do |message|
-    /in (?<path>.+)/.match(message)[:path]
+    /(?<path>\/\w*)/.match(message)[:path]
+  end
+
+  request.query do |message|
+    if query = /\?.+/.match(message)
+      query
+    end
   end
 
   request.http_method do |message|
@@ -19,6 +25,13 @@ Protocol.define(:duck) do
     when 'GET'
       case env['PATH_INFO']
       when '/posts'
+        if URI.decode_www_form_component(env['QUERY_STRING']) == "user_id=1"
+          return [
+            200,
+            { 'Content-Type' => 'text/html' },
+            ["quack quack, I am the No.1 duck"]
+          ]
+        end
         [
           200,
           { 'Content-Type' => 'text/html' },
