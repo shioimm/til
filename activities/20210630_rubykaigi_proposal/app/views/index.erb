@@ -1,0 +1,16 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+  </head>
+
+  <body>
+    <div>
+      <h1>This app is running on Safe Ruby protocol</h1>
+      <ul>
+        <% @posts.each do |post| %>
+          <li><%= "User<#{post.user_id}> #{post.body}" %></li>
+        <% end %>
+      </ul>
+    </div>
+  </body>
+</html>
