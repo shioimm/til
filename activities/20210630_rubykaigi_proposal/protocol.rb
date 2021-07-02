@@ -14,10 +14,10 @@ class Protocol
     end
 
     def run!(message)
-      @request_message = message
+      @request_message = message.chomp
 
       if block = @definements[@protocol_name]
-        instance_eval(&block)
+        instance_exec(@request_message, &block)
       end
     end
 
