@@ -1,4 +1,4 @@
-Protocol.define(:safe_ruby) do |message|
+Protocol.define(:safe_ruby_with_sinatra) do |message|
   PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
   QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
 
