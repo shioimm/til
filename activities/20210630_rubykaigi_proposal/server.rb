@@ -1,9 +1,21 @@
+require 'pathname'
+
+path = nil
+TracePoint.trace(:line) do |tp|
+  if tp.path.include? 'server'
+    path = tp.path; tp.disable
+  end
+end
+currentdir = Pathname(path).dirname
+
 require 'socket'
 require 'uri'
 require 'rack/handler'
 require "stringio"
 require_relative './protocol'
 require_relative './config/const'
+
+Dir["#{currentdir}/config/protocols/*.rb"].sort.each { |f| require f }
 
 module Rack
   module Handler

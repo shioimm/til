@@ -102,5 +102,3 @@ class Protocol
       attr_reader :request_message
   end
 end
-
-Dir['./config/protocols/*.rb'].sort.each { |f| require f }

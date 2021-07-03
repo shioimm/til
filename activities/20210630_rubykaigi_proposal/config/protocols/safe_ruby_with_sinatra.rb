@@ -1,7 +1,7 @@
-PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
-QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
+Protocol.define(:safe_ruby_with_sinatra) do |message|
+  PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
+  QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
 
-Protocol.define(:safe_ruby) do |message|
   parsed_message = PARSER_REGEX.match message
   path   = parsed_message[:path]
   method = parsed_message[:method]
