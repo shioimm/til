@@ -51,6 +51,10 @@ class Protocol
         def self.http_method(&block)
           @http_method = block
         end
+
+        def self.input(&block)
+          @input = block
+        end
       }
     end
 
@@ -81,6 +85,12 @@ class Protocol
     def query
       if (parse_query_block = request.instance_variable_get("@query"))
         parse_query_block.call(request_message)
+      end
+    end
+
+    def input
+      if (parsed_input_block = request.instance_variable_get("@input"))
+        parsed_input_block.call(request_message)
       end
     end
 

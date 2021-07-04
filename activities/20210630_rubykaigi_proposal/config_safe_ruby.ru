@@ -10,20 +10,30 @@ class App
     when 'GET'
       case env['PATH_INFO']
       when '/posts'
-        if URI.decode_www_form_component(env['QUERY_STRING']) == "user_id=2"
+        if env['QUERY_STRING'] == "user_id=2"
           [
             200,
             { 'Content-Type' => 'text/html' },
-            ["I love RubyKaigi"]
+            ["User<2> I love RubyKaigi!"]
           ]
         else
           [
             200,
             { 'Content-Type' => 'text/html' },
-            ["'I love Ruby', 'I love RubyKaigi'"]
+            ["User<1> I love Ruby!", "User<2> I love RubyKaigi!"]
           ]
         end
       end
+    when 'POST'
+      input   = env['rack.input'].gets
+      created = input[1..-2].split(',').map{ |q| q.split(':').map{ |str| str.strip! && str.gsub(/['"]/, '')} }.to_h
+      [
+        201,
+        { 'Content-Type' => 'text/html', 'Location' => '/posts' },
+        ["User<1> I love Ruby!",
+         "User<2> I love RubyKaigi!",
+         "User<#{created['user_id']}> #{created['body']}"]
+      ]
     end
   end
 end
