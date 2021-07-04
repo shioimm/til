@@ -38,18 +38,6 @@ class Protocol
       @http_status_codes[status]
     end
 
-    def app
-      @app ||= Class.new {
-        def self.call(&block)
-          @call = block
-        end
-
-        def call(env)
-          self.class.instance_variable_get("@call").call(env)
-        end
-      }
-    end
-
     def request
       @request ||= Class.new {
         def self.path(&block)
@@ -62,6 +50,10 @@ class Protocol
 
         def self.http_method(&block)
           @http_method = block
+        end
+
+        def self.input(&block)
+          @input = block
         end
       }
     end
@@ -92,8 +84,13 @@ class Protocol
 
     def query
       if (parse_query_block = request.instance_variable_get("@query"))
-        query = parse_query_block.call(request_message)
-        URI.encode_www_form_component(query)
+        parse_query_block.call(request_message)
+      end
+    end
+
+    def input
+      if (parsed_input_block = request.instance_variable_get("@input"))
+        parsed_input_block.call(request_message)
       end
     end
 

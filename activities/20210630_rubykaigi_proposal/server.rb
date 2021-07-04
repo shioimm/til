@@ -1,13 +1,5 @@
 require 'pathname'
 
-path = nil
-TracePoint.trace(:line) do |tp|
-  if tp.path.include? 'server'
-    path = tp.path; tp.disable
-  end
-end
-currentdir = Pathname(path).dirname
-
 require 'socket'
 require 'uri'
 require 'rack/handler'
@@ -15,7 +7,7 @@ require "stringio"
 require_relative './protocol'
 require_relative './config/const'
 
-Dir["#{currentdir}/config/protocols/*.rb"].sort.each { |f| require f }
+Dir["#{__dir__}/config/protocols/*.rb"].sort.each { |f| require f }
 
 module Rack
   module Handler
@@ -39,9 +31,10 @@ class Server
   def initialize(*args)
     @host, @port, @app = args
     @request_method    = nil
-    @path     = nil
-    @query    = nil
-    @protocol = ::Protocol
+    @path              = nil
+    @query             = nil
+    @input             = nil
+    @protocol          = ::Protocol
   end
 
   def env
@@ -52,7 +45,7 @@ class Server
       'SERVER_NAME'       => Config::SERVER_NAME,
       'SERVER_PORT'       => @port.to_s,
       'rack.version'      => Rack::VERSION,
-      'rack.input'        => StringIO.new('').set_encoding('ASCII-8BIT'),
+      'rack.input'        => StringIO.new(@input || '').set_encoding('ASCII-8BIT'),
       'rack.errors'       => $stderr,
       'rack.multithread'  => false,
       'rack.multiprocess' => false,
@@ -83,8 +76,10 @@ class Server
           @request_method = @protocol.request_method
           @path  = @protocol.request_path
           @query = @protocol.query
+          @input = @protocol.input
 
-          puts "REQUEST MESSAGE has been translated: #{@request_method} #{@path} HTTP/1.1"
+          path = "#{@path}#{'&' + @query if @query && !@query.empty?}"
+          puts "REQUEST MESSAGE has been translated: #{@request_method} #{path} HTTP/1.1"
 
           status, headers, body = @app.call(env)
 
