@@ -1,18 +1,14 @@
-Protocol.define(:safe_ruby) do |message|
-  module SafeRuby
-    PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
-    QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
-    INPUT_REGEX  = /input?.*(?<input>{.*\})/
-  end
+module SafeRuby
+  PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
+  QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
+  INPUT_REGEX  = /input?.*(?<input>{.*\})/
+end
 
-  parsed_message = SafeRuby::PARSER_REGEX.match message
-  path           = parsed_message[:path]
-  method         = parsed_message[:method]
-  parsed_query   = SafeRuby::QUERY_REGEX.match message
-  query          = parsed_query[:query].split(',').map{ |q| q.scan(/\w+/).join('=') }.join('&') if parsed_query
-  parsed_input   = SafeRuby::INPUT_REGEX.match message
-  input          = parsed_input[:input]
-  args           = {}
+Protocol.define(:safe_ruby) do |message|
+  path, method = SafeRuby::PARSER_REGEX.match(message) { |m| [m[:path], m[:method]] }
+  query = SafeRuby::QUERY_REGEX.match(message) { |m| m[:query].split(',').map{ |q| q.scan(/\w+/).join('=') }.join('&') }
+  input = SafeRuby::INPUT_REGEX.match(message) { |m| m[:input] }
+  args  = {}
 
   using Module.new {
     refine String do
