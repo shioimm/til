@@ -38,18 +38,6 @@ class Protocol
       @http_status_codes[status]
     end
 
-    def app
-      @app ||= Class.new {
-        def self.call(&block)
-          @call = block
-        end
-
-        def call(env)
-          self.class.instance_variable_get("@call").call(env)
-        end
-      }
-    end
-
     def request
       @request ||= Class.new {
         def self.path(&block)

@@ -15,21 +15,4 @@ Protocol.define(:rubylike) do
     else 'OTHER'
     end
   end
-
-  app.call do |env|
-    case env['REQUEST_METHOD']
-    when 'GET'
-      [
-        200,
-        { 'Content-Type' => 'text/html' },
-        ["Hello, This app is running on Ruby like protocol."]
-      ]
-    when 'OTHER'
-      [
-        600,
-        { 'Content-Type' => 'text/html' },
-        ["I'm afraid you are not a Ruby programmer..."]
-      ]
-    end
-  end
 end
