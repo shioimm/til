@@ -1,10 +1,10 @@
-module SafeRuby
-  PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
-  QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
-  INPUT_REGEX  = /input?.*(?<input>{.*\})/
-end
-
 Protocol.define(:safe_ruby) do |message|
+  module SafeRuby
+    PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
+    QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
+    INPUT_REGEX  = /input?.*(?<input>{.*\})/
+  end
+
   parsed_message = SafeRuby::PARSER_REGEX.match message
   path           = parsed_message[:path]
   method         = parsed_message[:method]
