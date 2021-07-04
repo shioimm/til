@@ -80,8 +80,7 @@ class Protocol
 
     def query
       if (parse_query_block = request.instance_variable_get("@query"))
-        query = parse_query_block.call(request_message)
-        URI.encode_www_form_component(query)
+        parse_query_block.call(request_message)
       end
     end
 

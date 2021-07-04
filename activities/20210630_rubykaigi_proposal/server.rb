@@ -84,7 +84,7 @@ class Server
           @path  = @protocol.request_path
           @query = @protocol.query
 
-          path = "#{@path}#{'&' + URI.decode_www_form_component(@query) if @query && !@query.empty?}"
+          path = "#{@path}#{'&' + @query if @query && !@query.empty?}"
           puts "REQUEST MESSAGE has been translated: #{@request_method} #{path} HTTP/1.1"
 
           status, headers, body = @app.call(env)
