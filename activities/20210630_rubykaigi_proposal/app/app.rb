@@ -18,8 +18,9 @@ class App < Sinatra::Base
 
   post '/posts' do
     Post.new(user_id: params[:user_id], body: params[:body])
+    @posts = Post.all
 
-    redirect to('/posts')
+    erb :index
   end
 
   run! if app_file == $0
