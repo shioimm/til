@@ -26,7 +26,7 @@ class App
       end
     when 'POST'
       input   = env['rack.input'].gets
-      created = input[1..-2].split(',').map{ |q| q.split(':').map{ |str| str.strip! && str.gsub(/['"]/, '')} }.to_h
+      created = input.split('&').map { |str| str.split('=') }.to_h
       [
         201,
         { 'Content-Type' => 'text/html', 'Location' => '/posts' },
