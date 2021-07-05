@@ -1,0 +1,1 @@
+'/posts'.post(input: { user_id: 1, body: "This is a post request" })

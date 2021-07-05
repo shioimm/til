@@ -1,0 +1,32 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+  </head>
+
+  <body>
+    <h1>This app is running on Safe Ruby protocol</h1>
+
+    <div>
+      <ul>
+        <% @posts.each do |post| %>
+          <li><%= "User<#{post.user_id}> #{post.body}" %></li>
+        <% end %>
+      </ul>
+    </div>
+
+    <div>
+      <form action='/posts' method='post'>
+        <div>
+          <label>User ID</label>
+          <input type="number" name="user_id">
+        </div>
+        <div>
+          <label>Content</label>
+          <input type="text" name="body">
+        </div>
+        <div>
+          <input type="submit" value="Post">
+        </div>
+      </form>
+  </body>
+</html>
