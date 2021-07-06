@@ -103,6 +103,19 @@ class Protoycol
   end
 
   private
+    def response_line(status)
+      "HTTP/1.1 #{status} #{@protocol.status_message(status)}"
+    end
+
+    def response_header(headers)
+      headers.map { |k, v| "#{k}: #{v}" }.join(', ')
+    end
+
+    def response_body(body)
+      rbody = []
+      body.each { |body| rbody << body }
+      rbody.join("\n")
+    end
 
     def tp
       @tp ||= TracePoint.new(:script_compiled) { |tp|
