@@ -1,57 +1,46 @@
-require 'pathname'
-
 require 'socket'
-require 'uri'
 require 'rack/handler'
-require "stringio"
+require 'rack/handler/puma'
+
 require_relative './protocol'
 require_relative './config/const'
 
 Dir["#{__dir__}/config/protocols/*.rb"].sort.each { |f| require f }
 
+UNIX_FILE_PARH = '/tmp/protoycol.socket'
+
 module Rack
   module Handler
-    class Server
+    class Protoycol
       def self.run(app, options = {})
-        environment  = ENV['RACK_ENV'] || 'development'
-        default_host = environment == 'development' ? ::Config::LOCALHOST : ::Config::DEFAULT_HOST
+        if child_pid = fork
+          Rack::Handler::Puma.run(app, { Host: UNIX_FILE_PARH })
+          Process.waitpid(child_pid)
+        else
+          environment  = ENV['RACK_ENV'] || 'development'
+          default_host = environment == 'development' ? ::Config::LOCALHOST : ::Config::DEFAULT_HOST
 
-        host = options.delete(:Host) || default_host
-        port = options.delete(:Port) || ::Config::DEFAULT_PORT
-        args = [host, port, app]
-        ::Server.new(*args).start
+          host = options.delete(:Host) || default_host
+          port = options.delete(:Port) || ::Config::DEFAULT_PORT
+          args = [host, port]
+
+          ::Protoycol.new(host, port).start
+        end
       end
     end
 
-    register :server, Server
+    register :protoycol, Protoycol
   end
 end
 
-class Server
+class Protoycol
   def initialize(*args)
-    @host, @port, @app = args
-    @request_method    = nil
-    @path              = nil
-    @query             = nil
-    @input             = nil
-    @protocol          = ::Protocol
-  end
-
-  def env
-    {
-      'PATH_INFO'         => @path,
-      'QUERY_STRING'      => @query.to_s,
-      'REQUEST_METHOD'    => @request_method,
-      'SERVER_NAME'       => Config::SERVER_NAME,
-      'SERVER_PORT'       => @port.to_s,
-      'rack.version'      => Rack::VERSION,
-      'rack.input'        => StringIO.new(@input || '').set_encoding('ASCII-8BIT'),
-      'rack.errors'       => $stderr,
-      'rack.multithread'  => false,
-      'rack.multiprocess' => false,
-      'rack.run_once'     => false,
-      'rack.url_scheme'   => 'http'
-    }
+    @host, @port    = args
+    @request_method = nil
+    @path           = nil
+    @query          = nil
+    @input          = nil
+    @protocol       = ::Protocol
   end
 
   def start
@@ -81,13 +70,27 @@ class Server
           path = "#{@path}#{'&' + @query if @query && !@query.empty?}"
           puts "REQUEST MESSAGE has been translated: #{@request_method} #{path} HTTP/1.1"
 
-          status, headers, body = @app.call(env)
+          # WIP
+          request_message = "GET /posts HTTP/1.1\r\nHost: unix:///tmp/socket\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\n\r\n"
+          UNIXSocket.open(UNIX_FILE_PARH) do |appserver|
+            appserver.write request_message
 
-          socket.write <<~MESSAGE
-              #{response_line(status)}
-              #{response_header(headers)}\r\n
-              #{response_body(body)}
-          MESSAGE
+            while !appserver.closed? && !appserver.eof?
+              message = appserver.read_nonblock(1024)
+              puts "Send request to app server"
+
+              begin
+                puts "app server responsed message\n#{message}"
+                socket.write message
+              rescue StandardError => e
+                puts "#{e.class} #{e.message} - closing socket."
+                e.backtrace.each { |l| puts "\t" + l }
+              ensure
+                appserver.close
+              end
+            end
+          end
+
         rescue StandardError => e
           puts "#{e.class} #{e.message} - closing socket."
           e.backtrace.each { |l| puts "\t" + l }
@@ -100,7 +103,6 @@ class Server
   end
 
   private
-
     def response_line(status)
       "HTTP/1.1 #{status} #{@protocol.status_message(status)}"
     end
