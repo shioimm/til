@@ -14,7 +14,8 @@ module Rack
     class Protoycol
       def self.run(app, options = {})
         if child_pid = fork
-          Rack::Handler::Puma.run(app, { Host: UNIX_FILE_PARH })
+          puts "Protoycol starts Puma in single mode, listening on unix://#{UNIX_FILE_PARH}"
+          Rack::Handler::Puma.run(app, { Host: UNIX_FILE_PARH, Silent: true })
           Process.waitpid(child_pid)
         else
           environment  = ENV['RACK_ENV'] || 'development'
@@ -34,8 +35,9 @@ module Rack
 end
 
 class Protoycol
-  def initialize(*args)
-    @host, @port    = args
+  def initialize(host, port)
+    @host           = host
+    @port           = port
     @request_method = nil
     @path           = nil
     @query          = nil
@@ -47,8 +49,8 @@ class Protoycol
     server = TCPServer.new(@host, @port)
 
     puts <<~MESSAGE
-        #{@app} is running on #{@host}:#{@port}
-        => Use Ctrl-C to stop
+      Protoycol is running on #{@host}:#{@port}
+      => Use Ctrl-C to stop
     MESSAGE
 
     loop do
@@ -58,32 +60,36 @@ class Protoycol
         request = socket.readpartial(1024)
 
         begin
-          puts "RECEIVED REQUEST MESSAGE: #{request.inspect.chomp}"
+          puts "[Protoycol] Received request message:" \
+               + "#{request.inspect.chomp}"
 
           safe_execution { @protocol.run!(request) }
 
           @request_method = @protocol.request_method
           @path  = @protocol.request_path
           @query = @protocol.query
+
+          # for POST message
           @input = @protocol.input
+          @content_length = @input&.bytesize
 
-          path = "#{@path}#{'&' + @query if @query && !@query.empty?}"
-          puts "REQUEST MESSAGE has been translated: #{@request_method} #{path} HTTP/1.1"
+          http_request_message = build_http_request_message
 
-          # WIP
-          request_message = "GET /posts HTTP/1.1\r\nHost: unix:///tmp/socket\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\n\r\n"
+          puts "[Protoycol] Request message has been translated to HTTP request message:" \
+               + http_request_message.inspect
+
           UNIXSocket.open(UNIX_FILE_PARH) do |appserver|
-            appserver.write request_message
+            appserver.write http_request_message
+            puts "[Protoycol] Successed to Send request message"
 
             while !appserver.closed? && !appserver.eof?
               message = appserver.read_nonblock(1024)
-              puts "Send request to app server"
+              puts "[Protoycol] Received response message: #{message.lines.first.inspect}"
 
               begin
-                puts "app server responsed message\n#{message}"
                 socket.write message
               rescue StandardError => e
-                puts "#{e.class} #{e.message} - closing socket."
+                puts "[Protoycol] #{e.class} #{e.message} - closing socket"
                 e.backtrace.each { |l| puts "\t" + l }
               ensure
                 appserver.close
@@ -131,5 +137,19 @@ class Protoycol
 
     def disallowed_methods_regex
       /(.*eval|.*exec|`.+|%x\(|system|open|require|load)/
+    end
+
+    def build_http_request_message
+      case @request_method
+      when "GET"
+        "#{@request_method} #{@path}#{'?' + @query if @query && !@query.empty?} HTTP/1.1\r\n" \
+        + "\r\n"
+      when "POST"
+        "#{@request_method} #{@path} HTTP/1.1\r\n" \
+        + "Content-Length: #{@content_length}\r\n" \
+        + "\r\n" \
+        + "#{@input}\r\n" \
+        + "\r\n"
+      end
     end
 end
