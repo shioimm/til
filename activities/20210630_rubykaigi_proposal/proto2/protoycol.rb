@@ -68,12 +68,12 @@ class Protoycol
           @request_method = @protocol.request_method
           @path  = @protocol.request_path
           @query = @protocol.query
-          @input = @protocol.input
 
-          path = "#{@path}#{'?' + @query if @query && !@query.empty?}"
-          http_request_message = "#{@request_method} #{path} HTTP/1.1\r\n\r\n" \
-                                 # + "Host: unix://#{UNIX_FILE_PARH}\r\n" \
-                                 # + "Accept: */*\r\n\r\n"
+          # for POST message
+          @input = @protocol.input
+          @content_length = @input&.bytesize
+
+          http_request_message = build_http_request_message
 
           puts "[Protoycol] Request message has been translated to HTTP request message:" \
                + http_request_message.inspect
@@ -137,5 +137,19 @@ class Protoycol
 
     def disallowed_methods_regex
       /(.*eval|.*exec|`.+|%x\(|system|open|require|load)/
+    end
+
+    def build_http_request_message
+      case @request_method
+      when "GET"
+        "#{@request_method} #{@path}#{'?' + @query if @query && !@query.empty?} HTTP/1.1\r\n" \
+        + "\r\n"
+      when "POST"
+        "#{@request_method} #{@path} HTTP/1.1\r\n" \
+        + "Content-Length: #{@content_length}\r\n" \
+        + "\r\n" \
+        + "#{@input}\r\n" \
+        + "\r\n"
+      end
     end
 end
