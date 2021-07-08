@@ -1,8 +1,8 @@
 require 'sinatra/base'
 require 'sinatra/reloader'
 require_relative 'post'
-require_relative '../rack/handler/protoycol'
-require_relative '../protoycol//protocol'
+
+require_relative '../protoycol'
 
 Protoycol::Protocol.use(:safe_ruby_with_sinatra)
 

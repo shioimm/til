@@ -1,9 +1,5 @@
-require 'socket'
 require 'rack/handler'
 require 'rack/handler/puma'
-
-require_relative '../../protoycol'
-require_relative '../../protoycol/config/const'
 
 module Rack
   module Handler
