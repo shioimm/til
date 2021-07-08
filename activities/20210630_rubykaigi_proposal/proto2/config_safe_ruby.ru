@@ -1,8 +1,8 @@
 require 'rack'
-require_relative './server'
-require_relative './protocol'
+require_relative './rack/handler/protoycol'
+require_relative './protoycol/protocol'
 
-Protocol.use(:safe_ruby)
+Protoycol::Protocol.use(:safe_ruby)
 
 class App
   def call(env)
