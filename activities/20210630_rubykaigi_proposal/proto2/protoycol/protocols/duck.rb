@@ -1,4 +1,4 @@
-Protocol.define(:duck) do
+Protoycol::Protocol.define(:duck) do
   define_status_codes(
     600 => 'You are an ugly duckling',
   )
@@ -9,9 +9,7 @@ Protocol.define(:duck) do
   end
 
   request.query do |message|
-    if query = /\?.+/.match(message)
-      query
-    end
+    /\?(?<query>.+)/.match(message) { |m| m[:query] }
   end
 
   request.http_method do |message|

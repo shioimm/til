@@ -1,8 +1,8 @@
 require 'rack'
-require_relative './server'
-require_relative './protocol'
+require_relative './rack/handler/protoycol'
+require_relative './protoycol/protocol'
 
-Protocol.use(:duck)
+Protoycol::Protocol.use(:duck)
 
 class App
   def call(env)

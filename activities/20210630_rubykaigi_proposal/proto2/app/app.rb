@@ -1,10 +1,10 @@
 require 'sinatra/base'
 require 'sinatra/reloader'
 require_relative 'post'
-require_relative '../protoycol'
-require_relative '../protocol'
+require_relative '../rack/handler/protoycol'
+require_relative '../protoycol//protocol'
 
-Protocol.use(:safe_ruby_with_sinatra)
+Protoycol::Protocol.use(:safe_ruby_with_sinatra)
 
 class App < Sinatra::Base
   set :server, :protoycol

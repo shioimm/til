@@ -1,20 +1,20 @@
-module SafeRubyWithSinatra
+module SafeRuby
   PARSER_REGEX = /["'](?<path>\/.*)["']\.(?<method>[A-z]+)/
   QUERY_REGEX  = /query?.*\{(?<query>.*)\}/
-  INPUT_REGEX  = /input?.*\{(?<input>.*)\}/
+  INPUT_REGEX  = /input?.*(?<input>{.*\})/
 end
 
-Protocol.define(:safe_ruby_with_sinatra) do |message|
+Protoycol::Protocol.define(:safe_ruby) do |message|
   using Module.new {
     refine String do
       def get(options = {})
-        Protocol.request.query { options[:query] } if options[:query]
-        Protocol.request.http_method { 'GET' }
+        Protoycol::Protocol.request.query { options[:query] } if options[:query]
+        Protoycol::Protocol.request.http_method { 'GET' }
       end
 
       def post(options = {})
-        Protocol.request.input { options[:input] } if options[:input]
-        Protocol.request.http_method { 'POST' }
+        Protoycol::Protocol.request.input { options[:input] } if options[:input]
+        Protoycol::Protocol.request.http_method { 'POST' }
       end
 
       def parse_as_queries
