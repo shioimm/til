@@ -75,23 +75,6 @@ module Protoycol
 
     private
 
-      NEWLINE = "\r\n"
-      private_constant :NEWLINE
-
-      def response_line(status)
-        "HTTP/1.1 #{status} #{@protocol.status_message(status)}"
-      end
-
-      def response_header(headers)
-        headers.map { |k, v| "#{k}: #{v}" }.join(', ')
-      end
-
-      def response_body(body)
-        rbody = []
-        body.each { |body| rbody << body }
-        rbody.join("\n")
-      end
-
       def tp
         @tp ||= TracePoint.new(:script_compiled) { |tp|
           if tp.binding.receiver == @protocol && tp.method_id.to_s.match?(disallowed_methods_regex)
@@ -107,6 +90,9 @@ module Protoycol
       def disallowed_methods_regex
         /(.*eval|.*exec|`.+|%x\(|system|open|require|load)/
       end
+
+      NEWLINE = "\r\n"
+      private_constant :NEWLINE
 
       def build_http_request_message
         request_message = "#{request_line}" + "#{request_header}" + "#{NEWLINE}"
@@ -132,3 +118,11 @@ module Protoycol
       end
   end
 end
+
+# メモ ---
+# Puma::Server#run
+# -> Puma::ThreadPoo.new
+# -> Puma::Server#process_client
+# -> Puma::Server#handle_request
+# リクエストメソッドはPumaで検査されずアプリケーションへ渡される
+# アプリケーションが返すレスポンスのステータスコードもPumaでは検査しない
