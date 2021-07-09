@@ -1,5 +1,3 @@
-require_relative './config/const'
-
 module Protoycol
   class Protocol
     @definements   = {}

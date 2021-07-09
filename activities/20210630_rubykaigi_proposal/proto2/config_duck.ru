@@ -1,6 +1,5 @@
 require 'rack'
-require_relative './rack/handler/protoycol'
-require_relative './protoycol/protocol'
+require_relative 'protoycol'
 
 Protoycol::Protocol.use(:duck)
 
