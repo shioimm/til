@@ -2,6 +2,8 @@ require 'socket'
 
 module Protoycol
   class Proxy
+    include Helper
+
     def initialize(host, port)
       @host           = host
       @port           = port
@@ -21,6 +23,8 @@ module Protoycol
       MESSAGE
 
       loop do
+        trap(:INT) { shutdown }
+
         socket = server.accept
 
         while !socket.closed? && !socket.eof?
@@ -75,22 +79,6 @@ module Protoycol
 
     private
 
-      def tp
-        @tp ||= TracePoint.new(:script_compiled) { |tp|
-          if tp.binding.receiver == @protocol && tp.method_id.to_s.match?(disallowed_methods_regex)
-            raise 'Disallowed method was executed'
-          end
-        }
-      end
-
-      def safe_execution
-        tp.enable { yield }
-      end
-
-      def disallowed_methods_regex
-        /(.*eval|.*exec|`.+|%x\(|system|open|require|load)/
-      end
-
       NEWLINE = "\r\n"
       private_constant :NEWLINE
 
@@ -115,6 +103,11 @@ module Protoycol
 
       def request_header
         "Content-Length: #{@content_length}\r\n"
+      end
+
+      def shutdown
+        puts "[Protoycol] Catched SIGINT -> Stop to server"
+        exit
       end
   end
 end
