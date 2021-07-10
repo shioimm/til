@@ -1,0 +1,10 @@
+require 'fileutils'
+
+namespace :protoycol do
+  desc 'create template for new protocol'
+  task :new_protocol do
+    if Dir.glob("protoycol/protocols").empty?
+      # WIP
+    end
+  end
+end
