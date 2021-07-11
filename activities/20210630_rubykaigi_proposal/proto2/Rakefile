@@ -1,10 +1,16 @@
-require 'fileutils'
+require_relative 'protoycol/generator'
 
 namespace :protoycol do
   desc 'create template for new protocol'
-  task :new_protocol do
-    if Dir.glob("protoycol/protocols").empty?
-      # WIP
-    end
+  task :new_protocol, %i[name] do |_task, args|
+    puts "Generating new protocol and app..."
+
+    Protoycol::Generator.execute!(:protocol, name: args.name, dir: __dir__)
+    Protoycol::Generator.execute!(:app, name: args.name, dir: __dir__)
+
+    puts "Successed to generate:"
+
+    puts Dir.glob("./protocols/*.rb")
+    puts Dir.glob("./config_#{args.name.to_s}.ru")
   end
 end
