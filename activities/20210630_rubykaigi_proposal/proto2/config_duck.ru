@@ -9,7 +9,7 @@ class App
     when 'GET'
       case env['PATH_INFO']
       when '/posts'
-        if URI.decode_www_form_component(env['QUERY_STRING']) == "user_id=1"
+        if env['QUERY_STRING'] == "user_id=1"
           return [
             200,
             { 'Content-Type' => 'text/html' },
@@ -25,14 +25,14 @@ class App
         [
           200,
           { 'Content-Type' => 'text/html' },
-          ["Hello, This app is running on Ruby like protocol."]
+          ["Hello, This app is running on Sample duck protocol."]
         ]
       end
     when 'CRY'
       [
         600,
         { 'Content-Type' => 'text/html' },
-        ["You are an ugly duckling"]
+        ["Sorry, this application is only for ducks..."]
       ]
     end
   end
