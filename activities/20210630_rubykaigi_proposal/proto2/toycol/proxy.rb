@@ -1,6 +1,6 @@
 require 'socket'
 
-module Protoycol
+module Toycol
   class Proxy
     include Helper
 
@@ -11,14 +11,14 @@ module Protoycol
       @path           = nil
       @query          = nil
       @input          = nil
-      @protocol       = ::Protoycol::Protocol
+      @protocol       = ::Toycol::Protocol
     end
 
     def start
       server = TCPServer.new(@host, @port)
 
       puts <<~MESSAGE
-      Protoycol is running on #{@host}:#{@port}
+      Toycol is running on #{@host}:#{@port}
       => Use Ctrl-C to stop
       MESSAGE
 
@@ -31,7 +31,7 @@ module Protoycol
           request = socket.readpartial(1024)
 
           begin
-            puts "[Protoycol] Received request message: " \
+            puts "[Toycol] Received request message: " \
                  + "#{request.inspect.chomp}"
 
             safe_execution { @protocol.run!(request) }
@@ -44,21 +44,21 @@ module Protoycol
 
             http_request_message = build_http_request_message
 
-            puts "[Protoycol] Request message has been translated to HTTP request message: " \
+            puts "[Toycol] Request message has been translated to HTTP request message: " \
                  + http_request_message.inspect
 
             UNIXSocket.open(Config::UNIX_SOCKET_PATH) do |appserver|
               appserver.write http_request_message
-              puts "[Protoycol] Successed to Send request message"
+              puts "[Toycol] Successed to Send request message"
 
               while !appserver.closed? && !appserver.eof?
                 message = appserver.read_nonblock(1024)
-                puts "[Protoycol] Received response message: #{message.lines.first.inspect}"
+                puts "[Toycol] Received response message: #{message.lines.first.inspect}"
 
                 begin
                   socket.write message
                 rescue StandardError => e
-                  puts "[Protoycol] #{e.class} #{e.message} - closing socket"
+                  puts "[Toycol] #{e.class} #{e.message} - closing socket"
                   e.backtrace.each { |l| puts "\t" + l }
                 ensure
                   appserver.close
@@ -106,7 +106,7 @@ module Protoycol
       end
 
       def shutdown
-        puts "[Protoycol] Catched SIGINT -> Stop to server"
+        puts "[Toycol] Catched SIGINT -> Stop to server"
         exit
       end
   end

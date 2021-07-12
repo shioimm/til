@@ -1,4 +1,4 @@
-Protoycol::Protocol.define(:rubylike) do
+Toycol::Protocol.define(:rubylike) do
   define_status_codes(
     600 => 'Are you a Ruby programmer',
   )

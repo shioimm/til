@@ -1,7 +1,7 @@
 require 'rack'
-require_relative 'protoycol'
+require_relative 'toycol'
 
-Protoycol::Protocol.use(:ruby)
+Toycol::Protocol.use(:ruby)
 
 class App
   def call(env)

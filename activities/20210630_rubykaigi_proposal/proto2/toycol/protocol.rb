@@ -1,9 +1,9 @@
-module Protoycol
+module Toycol
   class Protocol
     @definements   = {}
     @protocol_name = nil
-    @http_status_codes    = Protoycol::Config::DEFAULT_HTTP_STATUS_CODES.dup
-    @http_request_methods = Protoycol::Config::DEFAULT_HTTP_REQUEST_METHODS.dup
+    @http_status_codes    = Toycol::Config::DEFAULT_HTTP_STATUS_CODES.dup
+    @http_request_methods = Toycol::Config::DEFAULT_HTTP_REQUEST_METHODS.dup
     @defined_status_codes = nil
     @additional_request_methods = nil
 

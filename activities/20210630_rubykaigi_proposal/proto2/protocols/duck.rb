@@ -1,4 +1,4 @@
-Protoycol::Protocol.define(:duck) do
+Toycol::Protocol.define(:duck) do
   define_status_codes(
     600 => 'You are an ugly duckling',
   )

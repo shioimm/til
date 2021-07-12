@@ -1,12 +1,12 @@
-require_relative 'protoycol/generator'
+require_relative 'toycol/generator'
 
-namespace :protoycol do
+namespace :toycol do
   desc 'create template for new protocol'
   task :new_protocol, %i[name] do |_task, args|
     puts "Generating new protocol and app..."
 
-    Protoycol::Generator.execute!(:protocol, name: args.name, dir: __dir__)
-    Protoycol::Generator.execute!(:app, name: args.name, dir: __dir__)
+    Toycol::Generator.execute!(:protocol, name: args.name, dir: __dir__)
+    Toycol::Generator.execute!(:app, name: args.name, dir: __dir__)
 
     puts "Successed to generate:"
 

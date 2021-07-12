@@ -1,6 +1,6 @@
 require 'fileutils'
 
-module Protoycol
+module Toycol
   class Generator
     class << self
       def execute!(type, name:, dir:)
@@ -46,7 +46,7 @@ module Protoycol
 
       def protocol_template_text
         <<~TEXT
-          Protoycol::Protocol.define(:#{name}) do
+          Toycol::Protocol.define(:#{name}) do
             # You can define your additional request methods:
             # additional_request_methods <YOUR ORIGINAL METHODS>
 
@@ -76,10 +76,10 @@ module Protoycol
       def app_template_text
         <<~TEXT
           require 'rack'
-          require_relative './protoycol'
+          require_relative './toycol'
 
           # You specify the protocol in your app
-          Protoycol::Protocol.use(:#{name})
+          Toycol::Protocol.use(:#{name})
 
           class App
             def call(env)

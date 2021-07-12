@@ -1,4 +1,4 @@
-module Protoycol
+module Toycol
   module Config
     DEFAULT_HTTP_REQUEST_METHODS = [
       'GET',
