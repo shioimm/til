@@ -4,17 +4,17 @@ module SafeRuby
   INPUT_REGEX  = /input?.*(?<input>{.*\})/
 end
 
-Protoycol::Protocol.define(:safe_ruby) do |message|
+Toycol::Protocol.define(:safe_ruby) do |message|
   using Module.new {
     refine String do
       def get(options = {})
-        Protoycol::Protocol.request.query { options[:query] } if options[:query]
-        Protoycol::Protocol.request.http_method { 'GET' }
+        Toycol::Protocol.request.query { options[:query] } if options[:query]
+        Toycol::Protocol.request.http_method { 'GET' }
       end
 
       def post(options = {})
-        Protoycol::Protocol.request.input { options[:input] } if options[:input]
-        Protoycol::Protocol.request.http_method { 'POST' }
+        Toycol::Protocol.request.input { options[:input] } if options[:input]
+        Toycol::Protocol.request.http_method { 'POST' }
       end
 
       def parse_as_queries

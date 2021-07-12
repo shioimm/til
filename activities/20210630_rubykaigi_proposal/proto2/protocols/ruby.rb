@@ -1,4 +1,4 @@
-Protoycol::Protocol.define(:ruby) do
+Toycol::Protocol.define(:ruby) do
   using Module.new {
     refine String do
       def get
