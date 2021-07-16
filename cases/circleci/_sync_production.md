@@ -15,7 +15,7 @@
     - `HEROKU_API_KEY`を設定することにより`heroku login`なしで`heroku`コマンドが打てる
   - `STAGING_APP_NAME` - Herokuステージング環境アプリケーション名
     - 動作確認のため環境変数で管理しておく
-  - `AWS_ACCESS_KEY_ID` -AWS  IAMのS3アクセス用パラメータ
+  - `AWS_ACCESS_KEY_ID` - AWS IAMのS3アクセス用パラメータ
   - `AWS_SECRET_ACCESS_KEY` - AWS IAMのS3アクセス用パラメータ
   - `AWS_DEFAULT_REGION` - AWS IAMのS3アクセス用パラメータ
 - Herokuステージング環境のDBプランをアップグレード(standard-0)
