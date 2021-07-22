@@ -1,5 +1,7 @@
 # 新規gem
 - [bundle gem](https://bundler.io/man/bundle-gem.1.html)
+- [SPECIFICATION REFERENCE](https://guides.rubygems.org/specification-reference/)
+
 ```
 $ bundle gem GEM_NAME --test=minitest --ci=github
 ```
@@ -18,6 +20,11 @@ Gem::Specification.new do |spec|
   # ...
   # 以下の行を消す
   spec.metadata['allowed_push_host'] = "TODO: Set to 'http://mygemserver.com'"
+
+  spec.bindir        = "exe" # ユーザーの実行コマンドはexeに置く
+  spec.executables   = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
+  # CLIを追加する場合はspec.executables << "command_name"
+  spec.require_paths = ["lib"]
 ```
 
 ```
