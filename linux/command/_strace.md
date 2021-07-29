@@ -1,10 +1,5 @@
-# straceコマンド
-- 参照: [Strace](https://wiki.ubuntu.com/Strace)
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section013
-
-## TL;DR
-- プログラム中で使用されているシステムコールをトレースし、
-  表示したり集計したりするユーティリティコマンド
+# `strace(1)`
+- プログラム中で使用されているシステムコールをトレースし、表示したり集計したりするユーティリティコマンド
 
 ## Getting Started
 ```
@@ -71,3 +66,7 @@ $ strace -c -w トレースするプログラムの実行
 ```
 $ strace -o 出力先ファイル名 トレースするプログラムの実行
 ```
+
+## 参照
+- [Strace](https://wiki.ubuntu.com/Strace)
+- Webで使えるmrubyシステムプログラミング入門 Section013
