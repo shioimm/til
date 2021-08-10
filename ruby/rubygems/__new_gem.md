@@ -1,4 +1,4 @@
-# 新規gem
+# 新しいgemをつくる
 - [bundle gem](https://bundler.io/man/bundle-gem.1.html)
 - [SPECIFICATION REFERENCE](https://guides.rubygems.org/specification-reference/)
 
