@@ -6,11 +6,15 @@
 $ bundle gem GEM_NAME --test=minitest --ci=github
 ```
 
-```
+```ruby
 # GEM_NAME.gemspecを編集
 
 Gem::Specification.new do |spec|
-  # ...
+  spec.name          = "GEM_NAME"
+  spec.version       = GEM_NAME::VERSION
+  spec.authors       = ["AUTHOR_NAME"]
+  spec.email         = ["AUTHOR_EMAIL"]
+
   spec.summary       = %q{TODO: Write a short summary, because RubyGems requires one.}
   spec.description   = %q{TODO: Write a longer description or delete this line.}
   spec.homepage      = "TODO: Put your gem's website or public repo URL here."
@@ -22,9 +26,15 @@ Gem::Specification.new do |spec|
   spec.metadata['allowed_push_host'] = "TODO: Set to 'http://mygemserver.com'"
 
   spec.bindir        = "exe" # ユーザーの実行コマンドはexeに置く
+
+  # CLIを追加する場合はspec.executables << "COMMAND_NAME"にする
   spec.executables   = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
-  # CLIを追加する場合はspec.executables << "command_name"
+
   spec.require_paths = ["lib"]
+
+  # 必要があれば
+  # spec.add_dependency "DEPENDENCY", "VERSION"
+end
 ```
 
 ```
