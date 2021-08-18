@@ -1,7 +1,7 @@
 # コンフリクト解消
 ## Gemfile.lock
 ```
-$ git rebase master # Gemfile.lockでコンフリクト発生
+$ git rebase main # Gemfile.lockでコンフリクト発生
 
 # mainのGemfile.lockを採用し、bundle installし直す
 $ git checkout --theirs Gemfile.lock
@@ -14,7 +14,7 @@ $ git rebase --continue
 
 ## db/schema.rb
 ```
-$ git rebase master # db/schema.rbでコンフリクト発生
+$ git rebase main # db/schema.rbでコンフリクト発生
 
 # mainのdb/schema.rbを採用し、rails db:migrateし直す
 $ git checkout --theirs db/schema.rb
