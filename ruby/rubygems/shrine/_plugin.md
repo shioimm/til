@@ -1,5 +1,3 @@
-# shrine
-## Plugin
 ### `determine_mime_type`
 - [Determine MIME Type](https://shrinerb.com/docs/plugins/determine_mime_type)
 - バイナリに含まれた情報を解析し、ファイルの実際のMIMEタイプを決定して保存する
