@@ -19,3 +19,11 @@ $ aws configure
 - `~/.aws/credentials` - 認証鍵の情報
 - `~/.aws/config` - AWS CLI の設定
 - 環境変数`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_DEFAULT_REGION`に指定された値の方が優先される
+
+#### 操作
+- [AWS CLI での高レベル (S3) コマンドの使用](https://docs.aws.amazon.com/ja_jp/cli/latest/userguide/cli-services-s3-commands.html)
+- 実行時に`--profile`オプション、`--region`オプションをつける
+
+```
+$ aws s3 mb "s3://${bucketName}" --profile sample-aws-user --region ap-northeast-1
+```
