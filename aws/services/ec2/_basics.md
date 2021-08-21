@@ -8,8 +8,15 @@
 
 ## AMI
 - Amazon Machine Image
+- OSに相当する概念であり、ベースとなるOSを選択できる他、
+  各種プログラムがインストール済みのAMIも定義することもできる
 - OSの起動に利用するイメージ(初期設定済みのサーバーのHDD)
-- 誰でも作成・共有可能
+- AWS公式のAMI以外にサードパーティーから提供されているAMIもある
+
+```
+# AMIのリストを取得
+$ aws ec2 describe-images --owners amazon --profile プロファイル名 --region リージョン
+```
 
 ## 状態
 - Running - 実行中
@@ -54,25 +61,9 @@
 - 一段大きくなると、vCPUとメモリサイズが倍になる
   - nano/micro/small/medium/large/xlarge/2xlarge/4xlarge
 
-## Get Started
-1. AMIの選択
-    - Amazon Machine Image - コンピューティング環境のテンプレート(OS)
-2. インスタンスタイプの選択
-3. インスタンスの詳細の設定
-4. ストレージの追加
-    - EBSのボリュームの種類・サイズ
-    - EBS - EC2で使用する外部ストレージである
-5. タグの追加
-    - インスタンスを分類するために使用する
-6. セキュリティグループの設定
-    - セキュリティグループ - ファイアウォールの設定
-7. 確認
-8. キーペアのダウンロード
-    - キーペア - サーバーに入るための鍵-鍵穴
-9. 作成したインスタンスに名前をつける
-
 ## 参照
 - [Amazon EC2](https://aws.amazon.com/jp/ec2/?nc2=h_ql_prod_fs_ec2)
 - AWSをはじめよう　～AWSによる環境構築を1から10まで～
 - サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
 - [4. Hands-on #1: 初めてのEC2インスタンスを起動する](https://tomomano.github.io/learn-aws-by-coding/#sec_first_ec2)
+- [6. Hands-on #2: AWS でディープラーニングを実践](https://tomomano.github.io/learn-aws-by-coding/#sec_jupyter_and_deep_learning)
