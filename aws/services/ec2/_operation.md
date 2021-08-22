@@ -27,7 +27,8 @@ $ ssh -i ~/.ssh/キー名.pem ec2-user@<IP address>
 $ cdk destroy --profile プロファイル名 --region リージョン名
 ```
 
-## GUI操作によるEC2の作成
+## GUI操作
+### EC2インスタンス作成
 1. AMIの選択
     - Amazon Machine Image - コンピューティング環境のテンプレート(OS)
 2. インスタンスタイプの選択
