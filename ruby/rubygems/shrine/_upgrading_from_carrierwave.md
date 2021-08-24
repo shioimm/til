@@ -12,14 +12,17 @@
 - 対象のテーブルにShrineアップローダー用のカラムを追加
 
 #### 2. データ移行準備
-- DBデータ移行タスクを追加
-- メタデータ付与タスクを追加
+- DBデータ移行タスクを追加 - Shrineアップローダー用のカラムに値を入れる
+- メタデータ更新タスクを追加 - Shrineアップローダーの設定に応じてメタデータを書き換える
 
-#### 3. DBデータ移行作業
-- DBデータ移行タスクを実行 - Shrineアップローダー用のカラムに値が入る
-  - Shrineが参照するパスとCarrierWaveが実際にデータをアップロードしているパスが異なる可能性があり、
-    その場合はShrineの参照先に実データをコピーしないと、切り替え時に`Shrine::FileNotFound`が発生する
-  - [オブジェクトのコピー](https://docs.aws.amazon.com/ja_jp/cli/latest/userguide/cli-services-s3-commands.html#using-s3-commands-managing-objects-copy)
+#### 3. データ移行作業
+- DBデータ移行タスクを実行
+  - CarrierWaveが実際にデータをアップロードしているパス(`uploads/`以下)と
+    Shrineがデータを参照するパス(`store/`以下)が異なる可能性があり、
+    その場合はShrineの参照する先にS3上の実データをコピーする必要がある
+    - [オブジェクトのコピー](https://docs.aws.amazon.com/ja_jp/cli/latest/userguide/cli-services-s3-commands.html#using-s3-commands-managing-objects-copy)
+- メタデータ更新用のタスクを実行
+  - 上記の参照先パスの相違を解消していないと`refresh_metadata!`呼び出し時に`Shrine::FileNotFound`が発生する
 
 #### 4. アップローダーの切り替え
 - 対象のモデルにShrineアップローダーを`include`
@@ -28,9 +31,6 @@
   - 画像の保存前に`_derivatives!`でderivativeを作成する
 - このPRをマージすることでShrineが実データをpromoteできるようになる
 
-#### 5. メタデータ付与作業
-- メタデータ付与用のタスクを実行
-
-#### 6. 後始末
+#### 5. 後始末
 - モデルから`CarrierwaveShrineSynchronization`のincludeを削除
 - 対象のテーブルからCarrierWaveアップローダー用のカラムを削除
