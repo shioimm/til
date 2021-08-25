@@ -1,13 +1,8 @@
 # Rake
-## 事例
-### Rakeタスクの中でRakeタスクを呼ぶ
-```ruby
-Rake::Task["実行したいRakeタスク"].invoke
-```
-
 ### RailsにおけるRakeタスク
-- 参考: [rakeタスクを定義するときのおまじない :environment がやっていること](https://qiita.com/vivid_muimui/items/5ef9dfa31f5168190278)
+- [rakeタスクを定義するときのおまじない :environment がやっていること](https://qiita.com/vivid_muimui/items/5ef9dfa31f5168190278)
 - `:environment`はRailsアプリケーションの`config/environment.rb`
+
 ```ruby
 namespace :namespace do
   desc 'description'
@@ -28,6 +23,7 @@ end
 // Before
 $ rake namespace:taskname[args]
 ```
+
 ```
 // After
 $ rake namespace:taskname\[args\]
@@ -46,6 +42,20 @@ namespace :namespace do
   end
 end
 ```
+
 ```
 $ be rake namespace:task_name\[1,2\] // => user_ids = ["1", "2"]
 ```
+
+### Rakeタスクの中でRakeタスクを呼ぶ
+```ruby
+Rake::Task["実行したいRakeタスク"].invoke
+```
+
+### Rakeタスクの中で`return`を呼ぶ
+- [How do I return early from a rake task?](https://stackoverflow.com/questions/2316475/how-do-i-return-early-from-a-rake-task)
+- `return`の代わりに`next`を使用する
+
+### Rakeタスクの中で`gets`を呼ぶ
+- [How do I use “gets” on a rake task?](https://stackoverflow.com/questions/576799/how-do-i-use-gets-on-a-rake-task)
+- `Kernel.#gets`の代わりに`STDIN.gets`を使用する
