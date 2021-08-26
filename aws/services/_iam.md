@@ -1,6 +1,8 @@
 # AWS IAM
-- ユーザーアクセスと暗号化キーの管理
-- AWSにおけるアカウントは特定個人単位ではなく取引単位で管理される
+- 「あるリソースが他のリソースに対してどのような権限をもっているか」を規定するもの
+  - AWSリソースが他のAWSリソースを操作する際の権限管理
+  - ユーザーアクセスと暗号化キーの管理
+    - AWSにおけるアカウントは特定個人単位ではなく取引単位で管理される
 
 ## IAMによる管理対象
 #### アカウントルートユーザー
@@ -30,3 +32,4 @@
 ## 参照
 - [AWSome Day](https://aws.amazon.com/jp/about-aws/events/awsomeday/)
 - サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
+- [13. Hands-on #6: Bashoutter](https://tomomano.github.io/learn-aws-by-coding/#sec_bashoutter)
