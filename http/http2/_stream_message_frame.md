@@ -29,41 +29,31 @@
 - ストリームID 0以外のストリームは状態を持つ
 - ストリームの状態はidleから始まり、フレームの送受信によって遷移する
 
-### 状態
-#### idle
-- 遷移先 - open / reserved(local) / reserved (remote)
-- 送信可能フレーム - `HEADERS` / `PUSH_PROMISE`(予約ID)
-- 受信可能フレーム - `HEADERS` / `PRIORITY`
+### クライアントの状態
+#### リクエスト送信時
+1. idle
+2. open - `HEADERS`フレーム送信 -> `END_STREAM`フラグ送信
+3. half closed(ローカル) - `RST_STREAM`フレーム送信
+4. closed
 
-#### open
-- 遷移先 - half closed(local) / half closed(remote) / closed
-- 送信可能フレーム - `HEADERS(END_STREAM)` / `RST_STREAM`
-- 受信可能フレーム - `PUSH_PROMISE`以外
+#### サーバプッシュ受信時
+1. idle
+2. reserved(リモート) - `PUSH_PROMISE`フレーム受信 -> `HEADERS`フレーム受信
+3. half closed(ローカル) - `END_STREAM`フラグ受信
+4. closed
 
-#### half closed(local)
-- 遷移先 - closed
-- 送信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
-- 受信可能フレーム - 全て可能
+### サーバーの状態
+#### リクエスト受信時
+1. idle
+2. open - `HEADERS`フレーム受信 -> `END_STREAM`フラグ受信
+3. half closed(リモート) - `RST_STREAM`フレーム受信
+4. closed
 
-#### half closed(remote)
-- 遷移先 - closed
-- 送信可能フレーム - `HEADERS(END_STREAM)` / `RST_STREAM`
-- 受信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
-
-#### close
-- 遷移先 - reserved
-- 送信可能フレーム - `PRIORITY`
-- 受信可能フレーム - `WINDOW_UPDATE`(加算する必要あり)
-
-#### reserved(local)
-- 遷移先 - half closed(remote) / closed
-- 送信可能フレーム - `HEADERS` / `RST_STREAM` / `PRIORITY`
-- 受信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
-
-#### reserved(remote)
-- 遷移先 - half closed(remote) / closed
-- 送信可能フレーム - `RST_STREAM` / `PRIORITY` / `WINDOW_UPDATE`
-- 受信可能フレーム - `HEADERS` / `RST_STREAM` / `PRIORITY`
+#### サーバプッシュ送信時
+1. idle
+2. reserved(ローカル) - `PUSH_PROMISE`フレーム送信 -> `HEADERS`フレーム送信
+3. half closed(リモート) - `END_STREAM`フラグ送信
+4. closed
 
 ## フレーム
 - ストリーム内の各データの最小単位
