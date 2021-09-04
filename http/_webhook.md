@@ -1,10 +1,4 @@
-# Webhook
-- 参照: [Webhook](https://en.wikipedia.org/wiki/Webhook)
-- 参照: [Webhookとは？](https://sendgrid.kke.co.jp/blog/?p=1851)
-- 参照: [Webhook](https://jp.twilio.com/docs/glossary/what-is-a-webhook)
-- alias: Webコールバック、HTTPプッシュAPI
-
-## TL;DR
+# Webhook(Webコールバック、HTTPプッシュAPI)
 - ユーザー定義のHTTPコールバック
 - 何らかのイベントにトリガーし、アプリケーションの動作を拡張、変更する仕組み
 - 別のアプリケーションやサードパーティーのAPIとの統合を容易にする
@@ -16,3 +10,8 @@
   - リクエストはPOSTメソッドで処理される
   - フォーマットは通常JSONを使用する
 - HTTPリクエストを受信して返信できるプラッットフォームであればサーバーレスフレームワークでも使用可能
+
+## 参照
+- [Webhook](https://en.wikipedia.org/wiki/Webhook)
+- [Webhookとは？](https://sendgrid.kke.co.jp/blog/?p=1851)
+- [Webhook](https://jp.twilio.com/docs/glossary/what-is-a-webhook)
