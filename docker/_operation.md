@@ -13,23 +13,24 @@
 12. どのコンテナからも利用されていない全イメージを破棄
 
 ```
-$ docker container run REPOSITORY:TAG --name NAME その他オプション
-  # $ docker image     pull   REPOSITORY:TAG
-  # $ docker container create --name NAME その他オプション
-  # $ docker container start  --name NAME
+$ docker container run -dit --name web01 -v "$PWD":/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
+  # $ docker image     pull   httpd:2.4
+  # $ docker container create --name web01 -v "$PWD":/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
+  # $ docker container start  web01
 
 $ docker container ls
-$ docker container logs  NAME
-$ docker container stop  NAME
-$ docker container start NAME
-$ docker container stop  NAME
+$ docker container logs  web01
+$ docker container stop  web01
+$ docker container start web01
+$ docker container stop  web01
 $ docker container ls    -a
-$ docker container rm    NAME
+$ docker container rm    web01
 $ docker container prune
 $ docker image     ls
-$ docker image     rm    REPOSITORY:TAG
+$ docker image     rm    httpd:2.4
 $ docker image     prune
 ```
+- [httpd](https://hub.docker.com/_/httpd)
 
 ### コンテナの操作
 - 起動・実行コマンドの引数に`/bin/sh` or `/bin/bash`を渡す
@@ -38,10 +39,10 @@ $ docker image     prune
 
 ```
 # 起動前のコンテナの操作(runコマンド終了時、シェルとコンテナが終了する)
-$ docker run -it --name NAME その他のオプション /bin/bash
+$ docker run -it --name web01 httpd:2.4 /bin/bash
 
 # 起動中のコンテナの操作(execコマンド終了時、シェルのみが終了する)
-$ docker exec -it NAME /bin/bash
+$ docker exec -it web01 /bin/bash
 ```
 
 ### ホスト <-> コンテナ間のファイルコピー
@@ -63,7 +64,7 @@ $ docker cp (container)NAME:path/to/filename (host)path/to/directory
   - ホストの作業ディレクトリの変更を即座にコンテナから参照する場合
 
 ```
-$ docker run -dit --name NAME -v (host)path/to/directory:(container)path/to/directory -p 8080:80 httpd:2.4
+$ docker run -dit --name web01 --mount type=bind,src="$PWD",dst=/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
 ```
 
 #### ボリュームマウント
@@ -73,15 +74,24 @@ $ docker run -dit --name NAME -v (host)path/to/directory:(container)path/to/dire
   - ボリュームプラグインをインストールすることでAWS S3ストレージなどネットワークストレージを用いることが可能
   - コンテナが扱うデータをブラックボックスとして扱い永続化する場合(DBのデータなど)
 1. Docker Engine上にボリュームを作成
-2. ボリュームを削除
-3. ボリューム一覧を確認
-4. 全ボリュームを破棄
+2. ボリューム一覧を確認
+3. ボリュームをマウントするコンテナを作成
+4. コンテナを停止
+5. コンテナを削除
+6. ボリュームの場所を確認
+7. ボリュームを削除
+8. 全ボリュームを破棄
 ```
-$ docker volume create
-$ docker volume ls
-$ docker volume rm
+$ docker volume    create --name mysqlvolume
+$ docker volume    ls
+$ docker container run --name db01 -dit --mount type=volume,src=mysqlvolume,dst=/var/lib/mysql -e MYSQL_ROOT_PASSWORD=mypassword mysql:5.7
+$ docker container stop    db01
+$ docker container rm      db01
+$ docker volume    inspect mysqlvolume
+$ docker volume    rm      mysqlvolume
 $ docker volume prune
 ```
+- [mysql](https://hub.docker.com/_/mysql)
 
 ## オプション
 - `-d`
@@ -99,7 +109,7 @@ $ docker volume prune
   - 実行終了時にコンテナを破棄する
 - `-t`
   - 疑似端末を有効化
-- `-v ホストのディレクトリ:コンテナのディレクトリ`
+- `-v ホストのディレクトリ:コンテナのディレクトリ` / `--mount type=タイプ,src=マウント元,dst=マウント先`
   - ホストのディレクトリをコンテナのディレクトリにマウントする
 - `-w DIRECTORY`
   - コンテナ内のプログラムを実行する際の作業ディレクトリ
