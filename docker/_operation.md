@@ -31,14 +31,56 @@ $ docker image     rm    REPOSITORY:TAG
 $ docker image     prune
 ```
 
-- ホスト <-> コンテナ間のファイルコピー
-  - パーミッション・ディレクトリ構造もコピーされる
-  - コンテナ内に置かれたファイルはコンテナ停止時は削除されないが、コンテナ削除時は削除される
+### コンテナの操作
+- 起動・実行コマンドの引数に`/bin/sh` or `/bin/bash`を渡す
+  - `-it`オプションを渡さないとシェルを操作できない
+  - Ctrl + p -> Ctrl + qでホストに戻り、`$ docker atach NAME`で再度シェルに入る
+
+```
+# 起動前のコンテナの操作(runコマンド終了時、シェルとコンテナが終了する)
+$ docker run -it --name NAME その他のオプション /bin/bash
+
+# 起動中のコンテナの操作(execコマンド終了時、シェルのみが終了する)
+$ docker exec -it NAME /bin/bash
+```
+
+### ホスト <-> コンテナ間のファイルコピー
+- パーミッション・ディレクトリ構造もコピーされる
+- コンテナ内に置かれたファイルはコンテナ停止時は削除されないが、コンテナ削除時は削除される
+
 ```
 # $ docker cp オプション コピー元 コピー先
 
-$ docker cp path/to/filename NAME:path/to/directory
-$ docker cp NAME:path/to/filename path/to/directory
+$ docker cp (host)path/to/filename (container)NAME:path/to/directory
+$ docker cp (container)NAME:path/to/filename (host)path/to/directory
+```
+
+### ファイルの永続化
+#### バインドマウント
+- 予めホストに永続化したいファイルを置くためのディレクトリを用意し、コンテナにマウントする
+  - バインドマウントはホストから変更できる
+  - 設定ファイルの受け渡しをする場合
+  - ホストの作業ディレクトリの変更を即座にコンテナから参照する場合
+
+```
+$ docker run -dit --name NAME -v (host)path/to/directory:(container)path/to/directory -p 8080:80 httpd:2.4
+```
+
+#### ボリュームマウント
+- 予めDocker Engine上に永続化したいファイルを置くための領域(データボリューム)を確保し、コンテナにマウントする
+  - Docker Engineがボリュームを管理するため、物理的な保存場所について意識する必要がなくなる
+  - ボリュームマウントはホストから変更できない
+  - ボリュームプラグインをインストールすることでAWS S3ストレージなどネットワークストレージを用いることが可能
+  - コンテナが扱うデータをブラックボックスとして扱い永続化する場合(DBのデータなど)
+1. Docker Engine上にボリュームを作成
+2. ボリュームを削除
+3. ボリューム一覧を確認
+4. 全ボリュームを破棄
+```
+$ docker volume create
+$ docker volume ls
+$ docker volume rm
+$ docker volume prune
 ```
 
 ## オプション
@@ -61,19 +103,6 @@ $ docker cp NAME:path/to/filename path/to/directory
   - ホストのディレクトリをコンテナのディレクトリにマウントする
 - `-w DIRECTORY`
   - コンテナ内のプログラムを実行する際の作業ディレクトリ
-
-## コンテナの操作
-- 起動・実行コマンドの引数に`/bin/sh` or `/bin/bash`を渡す
-  - `-it`オプションを渡さないとシェルを操作できない
-  - Ctrl + p -> Ctrl + qでホストに戻り、`$ docker atach NAME`で再度シェルに入る
-
-```
-# 起動前のコンテナの操作(runコマンド終了時、シェルとコンテナが終了する)
-$ docker run -it --name NAME その他のオプション /bin/bash
-
-# 起動中のコンテナの操作(execコマンド終了時、シェルのみが終了する)
-$ docker exec -it NAME /bin/bash
-```
 
 ## 参照
 - さわって学ぶクラウドインフラ docker基礎からのコンテナ構築
