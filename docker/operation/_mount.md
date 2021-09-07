@@ -35,7 +35,7 @@ $ docker run -dit --name web01 --mount type=bind,src="$PWD",dst=/usr/local/apach
 11. ボリュームを作成
 12. ボリュームにバックアップファイルをリストア
 13. ボリュームをマウントするコンテナを作成
-14. 全ボリュームを破棄
+14. マウントされていない全ボリュームを破棄
 
 ```
 $ docker volume    create --name mysqlvolume
