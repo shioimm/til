@@ -1,4 +1,8 @@
 # ネットワーク
+- bridgeネットワークに接続されたDockerホスト・Dockerコンテナ同士はIPアドレスで通信可能
+- 任意のネットワークに接続されたDockerコンテナ同士はコンテナ名で通信可能
+
+## 操作
 1. 現在のネットワークの確認
 2. httpdコンテナを立ち上げる
 3. httpdコンテナのIPアドレスを確認
@@ -48,10 +52,26 @@ $ docker network connect    mydockernet web01
 $ docker network disconnect mydockernet web01
 ```
 
-#### bridgeネットワーク
+## bridgeネットワーク
+- DockerホストとDockerコンテナがデフォルトで接続されるネットワーク
 - Dockerホスト(Docker Engine)・Dockerコンテナには独立したIPアドレスが割り当てられる
-- Dockerホスト(Docker Engine)・Dockerコンテナにはbridgeネットワークに接続される
 - bridgeネットワークはIPマスカレードを使って構成されている
+  (-pオプションを指定する)
+
+## hostネットワーク(あまり使われない)
+- DockerコンテナがIPマスカレードを使わずにDockerホストのIPアドレスを共有するネットワーク
+  (-pオプションを指定できない)
+- DockerホストのすべてのポートがDockerコンテナ側に流れる
+- Dockerコンテナは個別のIPアドレスを持たず、DockerホストのIPアドレスを共有する
+```
+$ docker run ... --net host
+```
+
+## noneネットワーク(あまり使われない)
+- コンテナをネットワークに接続しない設定
+```
+$ docker run ... --net none
+```
 
 ## 参照
 - さわって学ぶクラウドインフラ docker基礎からのコンテナ構築
