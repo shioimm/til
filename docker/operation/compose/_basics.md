@@ -1,6 +1,9 @@
 # Docker Compose
 - Docker ComposeはDocker Engineの一部ではなくDocker操作の補佐をするPython製のツール
   - Docker Engineとは別にインストールする必要がある
+- 操作時点でのdocker-compose.ymlの記述に沿って実行される
+  - Docker Composeで起動したコンテナがある状況でdocker-compose.ymlを編集すると
+    次会操作時に編集後の内容が適用される
 
 ## 操作
 #### Docker Composeなし
@@ -24,7 +27,7 @@ $ docker volume rm wordpress_db_volume
 ```
 
 #### Docker Composeあり
-```
+```yml
 # docker-compose.yml
 
 version: "3"
@@ -35,7 +38,7 @@ services:
     networks:
       - wordpressnet
     volumes:
-      - wordpress_db_volume:/ver/lib/mysql
+      - wordpress_db_volume:/var/lib/mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: myrootpassword
@@ -54,15 +57,28 @@ services:
     restart: always
     environment:
       WORDPRESS_DB_HOST: wordpress-db
-      WORDPRESS_DB_NAME: wordpress-db
+      WORDPRESS_DB_NAME: wordpressdb
       WORDPRESS_DB_USER: wordpressuser
       WORDPRESS_DB_PASSWORD: wordpresspass
 
 networks:
+
   wordpressnet:
 
 volumes:
   wordpress_db_volume:
+```
+
+1. コンテナを作成、デタッチモードで起動
+2. コンテナ一覧を表示
+3. コンテナを停止、破棄
+    - デフォルトではボリュームは削除されず、次回`$ docker compose up`時にマウントされる
+4. コンテナ一覧を確認
+```
+$ docker-compose up -d
+$ docker-compose ps
+$ docker-compose down
+$ docker container ps -a
 ```
 
 ## 参照
