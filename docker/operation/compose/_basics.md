@@ -71,12 +71,19 @@ volumes:
 
 1. コンテナを作成、デタッチモードで起動
 2. コンテナ一覧を表示
-3. コンテナを停止、破棄
+3. 特定のコンテナをインタラクティブモードで操作
+4. 特定のコンテナを停止
+5. 特定のコンテナを再起動
+6. コンテナを停止、破棄
     - デフォルトではボリュームは削除されず、次回`$ docker compose up`時にマウントされる
-4. コンテナ一覧を確認
+7. コンテナ一覧を確認
 ```
 $ docker-compose up -d
 $ docker-compose ps
+$ docker-compose exec wordpress-app /bin/bash
+root@9ed1e51a3708:/var/www/html# exit
+$ docker-compose stop wordpress-db
+$ docker-compose start wordpress-db
 $ docker-compose down
 $ docker container ps -a
 ```
