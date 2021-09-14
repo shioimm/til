@@ -16,6 +16,35 @@ $ docker history mycustomed_httpd
   - イメージに含めないファイルは当該ディレクトリに置かない
     - あるいは`.dockerigrore`で指定する
 
+```
+FROM httpd # ベースとなるイメージ
+COPY index.html /usr/local/apache2/htdocs/
+```
+
+1. Dockerfileを置いたディレクトリでイメージをビルド
+2. イメージ一覧を表示
+3. 作成したイメージでコンテナを起動
+
+```
+$ docker build -t myimage01 .
+$ docker image ls
+$ docker run -dit --name webcontent_docker -p 8080:80 myimage01
+```
+
+### Dockerfile書式
+#### コマンドの実行
+- RUN - イメージ作成時にコマンドを実行(イメージ作成時)
+  - パッケージのインストールやファイルのコピー、変更など
+  - 複数のコマンドを実行する際も一つのRUNコマンドで済ませるようにする
+- ENTRYPOINT - コンテナ実行時にコマンドを実行
+  - `$ docker run`に渡す最後のコマンド
+- CMD - コンテナ実行時にコマンドを実行
+  - `$ docker run`に渡す最後のコマンドのデフォルト値を変更する
+
+#### ポート番号・ボリュームの指定
+- EXPOSE - 公開するポート番号の指定
+- VOLUME - ボリュームの指定
+
 ### ベストプラクティス
 - [Dockerfile のベストプラクティス](https://docs.docker.jp/engine/articles/dockerfile_best-practice.html)
   - 1コンテナ1プロセス
