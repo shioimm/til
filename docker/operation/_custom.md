@@ -16,9 +16,25 @@ $ docker history mycustomed_httpd
   - イメージに含めないファイルは当該ディレクトリに置かない
     - あるいは`.dockerigrore`で指定する
 
+```php
+<html>
+  <body>
+    Your IP <?php echo$_SERVER['REMOTE_ADDR']?>
+  </body>
+</html>
 ```
-FROM httpd # ベースとなるイメージ
-COPY index.html /usr/local/apache2/htdocs/
+
+```
+FROM debian
+EXPOSE 80
+RUN apt update \
+&& apt install -y apache2 php libapache2-mod-php \
+&& apt clean \
+&& rm -rf /var/lib/apt/lists/* \
+&& rm /var/www/html/index.html
+COPY index.php /var/www/html
+CMD /usr/sbin/apachectl -DFOREGROUND
+STOPSIGNAL SIGWINCH
 ```
 
 1. Dockerfileを置いたディレクトリでイメージをビルド
@@ -26,9 +42,27 @@ COPY index.html /usr/local/apache2/htdocs/
 3. 作成したイメージでコンテナを起動
 
 ```
-$ docker build -t myimage01 .
+$ docker build . -t myphpimage
 $ docker image ls
-$ docker run -dit --name webcontent_docker -p 8080:80 myimage01
+$ docker run -dit --name myphp -p 8080:80 myphpimage
+```
+
+- キャッシュを利用せずにイメージを生成
+```
+$ docker build . -t myphpimage --no-cache
+```
+
+1. イメージをファイルとして保存
+2. ファイルサイズを確認
+3. 内容を確認
+4. ファイルからイメージを読み込み
+5. イメージ一覧を確認
+```
+$ docker save -o saved.tar myphpimage
+$ ls -la saved.tar
+$ tar tvf saved.tar
+$ docker load -i saved.tar
+$ docker image ls
 ```
 
 ### Dockerfile書式
