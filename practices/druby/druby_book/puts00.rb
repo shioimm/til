@@ -1,4 +1,4 @@
-# dRubyによる分散・Webプログラミング
+# 参照: dRubyによる分散・Webプログラミング
 require 'drb/drb'
 
 class Puts
