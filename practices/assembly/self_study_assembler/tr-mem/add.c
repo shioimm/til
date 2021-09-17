@@ -1,4 +1,6 @@
 // 独習アセンブラ
+volatile int i, j;
+
 int main(void) {
   register int i, j;
   i = 123;
