@@ -1,5 +1,19 @@
 	.file	"add.c"
 	.text
+	.globl	i
+	.bss
+	.align 4
+	.type	i, @object
+	.size	i, 4
+i:
+	.zero	4
+	.globl	j
+	.align 4
+	.type	j, @object
+	.size	j, 4
+j:
+	.zero	4
+	.text
 	.globl	main
 	.type	main, @function
 main:
