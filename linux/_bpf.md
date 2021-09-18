@@ -1,7 +1,4 @@
 # Berkeley Packet Filter(BPF)
-- 参照・引用: [Berkeley Packet Filter（BPF）入門（1）](https://www.atmarkit.co.jp/ait/articles/1811/21/news010.html)
-
-## TL;DR
 - ユーザーランドで作成したコードをカーネル内で安全に実行する枠組み
   - Linuxには諸々のイベントに対してBPFのプログラムをアタッチする仕組みがある
   - ユーザーは目的のBPFプログラムを作成することにより、カーネルの再コンパイルなしに
@@ -62,3 +59,9 @@
 - BPFプログラムローダー
   - LLVM/Clangを用いてBPF CのASTを解析/変更した上でBPFプログラムにコンパイルし、カーネルにロードする
 - BPFマップへアクセスするための関数
+
+
+## 参照・引用
+- [Berkeley Packet Filter（BPF）入門（1）](https://www.atmarkit.co.jp/ait/articles/1811/21/news010.html)
+
+## TL;DR
