@@ -1,9 +1,4 @@
 # GNU Cライブラリ(glibc)
-- 参照: [The GNU C Library (glibc)](https://www.gnu.org/software/libc/)
-- 参照: [Glibc](https://ossfinder.linuxfoundation.jp/glossary/glibc)
-- 参照: [glibc](https://xtech.nikkei.com/it/article/Keyword/20070308/264222/)
-
-## TL;DR
 - GNUプロジェクトにおける標準Cライブラリ実装
 - GNUシステム、GNU/Linuxシステム、Linuxをカーネルとして使用するその他のシステムのためのコアライブラリ
   - 多くのプログラミング言語においてglibcは間接的に使用される
@@ -24,3 +19,8 @@
 
 ### libc
 - C言語の標準ライブラリ名
+
+## 参照
+-  [The GNU C Library (glibc)](https://www.gnu.org/software/libc/)
+- [Glibc](https://ossfinder.linuxfoundation.jp/glossary/glibc)
+- [glibc](https://xtech.nikkei.com/it/article/Keyword/20070308/264222/)
