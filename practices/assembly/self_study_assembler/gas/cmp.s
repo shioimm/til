@@ -23,6 +23,6 @@ L2:
     movl  $1,%eax
     int   $0x80
 
-    .data
+    .data # dataセクションを開始
 msg_eq: .ascii  "equal\n"
 msg_neq: .ascii  "not equal\n"
