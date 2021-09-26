@@ -44,8 +44,7 @@ class ReminderPage
     anchor(cgi, { 'cmd' => 'delete', 'key' => key })
   end
 
-  def erb_src
-    <<EOS
+  @erb_src = <<EOS
 <% bg = BGColor.new %>
 <table border="0" cellspacing="0">
 <% @reminder.to_a.each do |k, v| %>
@@ -65,9 +64,8 @@ class ReminderPage
 </form>
 </table>
 EOS
-  end
 
-  ERB.new(erb_src).def_method(self, 'build_page(cgi)')
+  ERB.new(@erb_src).def_method(self, 'build_page(cgi)')
 
   def to_html(cgi)
     build_page(cgi)
