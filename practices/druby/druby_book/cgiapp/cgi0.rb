@@ -17,7 +17,7 @@ class UnknownErrorPage
     <<EOS
 <p><%= h @error %> = <%= h @error.class %></p>
 <ul>
-<% info.each do |line| %>
+<% @info.each do |line| %>
 <li><%= h line %></li>
 <% end %>
 </ul>
@@ -36,7 +36,7 @@ def main
 
   begin
     reminder.do_request(cgi)
-    content = reminder.do_request_and_build_page(cgi)
+    content = reminder.to_html(cgi)
   rescue
     content = UnknownErrorPage.new($!, $@).to_html
   end
