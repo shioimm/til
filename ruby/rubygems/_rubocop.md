@@ -29,4 +29,8 @@ $ rubocop -l
 - `rubocop_todo.yml`の生成
 ```
 $ rubocop --auto-gen-config
+
+# Layout/LineLengthのMax値を
+# プロジェクト内の最大値ではなく.rubocop.ymlに指定の値へ統合する場合のワンライナー
+$ rubocop --auto-gen-config --auto-gen-only-exclude --exclude-limit 99999
 ```
