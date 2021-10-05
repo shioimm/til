@@ -28,7 +28,7 @@ ELF Header:
   Type:                              REL (Relocatable file)
   Machine:                           Advanced Micro Devices X86-64
   Version:                           0x1
-  Entry point address:               0x0
+  Entry point address:               0x0  # プログラムのエントリポイント
   Start of program headers:          0 (bytes into file)
   Start of section headers:          896 (bytes into file)
   Flags:                             0x0

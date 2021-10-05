@@ -1,4 +1,5 @@
 require 'rack'
+require 'rack-timeout'
 require_relative 'rack_timeup'
 
 class App
@@ -8,5 +9,6 @@ class App
   end
 end
 
-use RackTimeup
+# use RackTimeup
+use Rack::Timeout
 run App.new
