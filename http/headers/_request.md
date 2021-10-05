@@ -29,18 +29,32 @@
 - [Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cookie)
 - サーバーから設定されたCookieのパラメータ
 
+## ETag
+- [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag)
+- 条件付リクエストに使用する
+- 指定のエンティティタグと一致しない場合、リソースを再要求する
+- Last-Modifiedの方が優先される
+
+### 強い検証と弱い検証
+- 強い検証 - 一文字も変更がないことを保証する
+- 弱い検証 - データとしては別物でも内容的に同一であることを保証する
+  - エンティティタグの先頭に`W/`がつく
+
 ## Host
 - [Host](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Host)
 - リクエスト先のホスト・ポート番号
 
-## If-Modified-Since
-- [If-Modified-Since](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-Modified-Since)
+## Last-Modified
 - 条件付リクエストに使用する
+- 最終更新日以降更新がある場合、リソースを再要求する
+- ETagの方が優先される
+
+### If-Modified-Since
+- [If-Modified-Since](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-Modified-Since)
 - 最後に取得した時刻以降に更新がある場合、リソースを再要求する
 
-## If-None-Match
+### If-None-Match
 - [If-None-Match](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-None-Match)
-- 条件付リクエストに使用する
 - 指定したETagのバージョン以降に更新がある場合、リソースを再要求する
 
 ## Range
