@@ -1,6 +1,6 @@
 require 'rack'
 require 'rack-timeout'
-require_relative 'rack_timeup'
+#require_relative 'rack_timeup'
 
 class App
   def call(env)
@@ -10,5 +10,5 @@ class App
 end
 
 # use RackTimeup
-use Rack::Timeout
+use Rack::Timeout, service_timeout: 5
 run App.new
