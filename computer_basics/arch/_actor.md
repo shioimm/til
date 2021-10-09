@@ -1,9 +1,4 @@
 # アクターモデル
-- 参照: [アクターモデル](https://ja.wikipedia.org/wiki/%E3%82%A2%E3%82%AF%E3%82%BF%E3%83%BC%E3%83%A2%E3%83%87%E3%83%AB)
-- 参照: [Vaughn Vernon氏が語る、アクターモデルとドメイン駆動設計](https://www.infoq.com/jp/news/2013/06/actor-model-ddd/)
-- [アクターモデルについて](https://www.slideshare.net/TakamasaMitsuji/ss-13626473)
-
-## TL;DR
 - 並行計算の数学的モデルの一種
 - 「全てのものはアクターである」
   - アクター - アクターモデルにおける計算実体
@@ -40,3 +35,8 @@
 - 個々のアクターは独立している
   - アクターは自身の状態をカプセル化しており、アクター同士は状態を共有しない
 - アクターはイミュータブルな方法を使ってデータを返す
+
+## 参照
+- [アクターモデル](https://ja.wikipedia.org/wiki/%E3%82%A2%E3%82%AF%E3%82%BF%E3%83%BC%E3%83%A2%E3%83%87%E3%83%AB)
+- [Vaughn Vernon氏が語る、アクターモデルとドメイン駆動設計](https://www.infoq.com/jp/news/2013/06/actor-model-ddd/)
+- [アクターモデルについて](https://www.slideshare.net/TakamasaMitsuji/ss-13626473)
