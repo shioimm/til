@@ -79,9 +79,12 @@
 | 3    | Window Scale            | ウィンドウサイズの最大サイズを拡張                                  |
 | 4    | Selective ACK Permitted | Selective ACK (選択的確認応答)に対応                                |
 | 5    | Selective ACK           | Selective ACKに対応している場合、すでに受信したシーケンス番号を通知 |
-| 8    | Timestamps              | パケットの往復遅延位j間を計測するタイムスタンプに対応               |
+| 8    | Timestamps              | パケットの往復遅延時間を計測するタイムスタンプに対応                |
 
 - オプションリストの各要素は種別・オプション長・オプションデータから構成される
+- Maximum Segment Size - デフォルトでは`MTU - 40バイト(IP + TCPヘッダ長)
+- Selective ACK - シーケンス番号が一部のみ欠けた場合に欠けたセグメントのみを再送する仕組み
+- Timestamps - RTTを計測したりシーケンス番号の重複確認(PAWS)のために利用する
 
 ## 通信の確立
 - 通信前に通信チャネルを確立する
