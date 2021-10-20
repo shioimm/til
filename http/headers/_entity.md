@@ -1,20 +1,44 @@
 # エンティティヘッダ
-## Content-Encoding
-- [Content-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Encoding)
-- コンテンツのボディの圧縮アルゴリズム(コンテントネゴシエーション)
+- リクエストとレスポンスに含まれるメッセージボディに関連する制御情報
 
-## Content-Language
-- [Content-Language](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Language)
-- コンテンツのボディの表示言語(コンテントネゴシエーション)
+#### Allow
+- サーバーがクライアントに対して対応しているメソッドを通知
 
-## Content-Length
-- [Content-Length](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Length)
-- 受信者に送信されるコンテンツ本文のデータ長(バイト単位)
+#### Content-Encoding (サーバー) / Accept-Encoding (クライアント)
+- コンテントネゴシエーション
+- サーバーが実行したボディの圧縮アルゴリズム
 
-## Content-Type
-- [Content-Type](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Content-Type)
-- コンテンツの文字のキャラクターセット / MIMEタイプ(コンテントネゴシエーション)
+#### Content-Language
+- コンテントネゴシエーション
+- コンテンツのボディの言語セット
+
+#### Content-Length
+- コンテントネゴシエーション
+- コンテンツのボディのデータ長(バイト単位)
+
+#### Content-Locatioin
+- コンテントネゴシエーション
+- コンテンツのボディのURI
+
+#### Content-MD5
+- コンテントネゴシエーション
+- コンテンツのボディに対するMD5ハッシュ値
+
+#### Content-Range
+- コンテントネゴシエーション
+- Rangeリクエストに対するレスポンスのために使用
+
+#### Content-Type
+- コンテントネゴシエーション
+- コンテンツのMIMEタイプ
+
+#### Expires
+- リソースの有効期限
+
+#### Last-Modified
+- リソースが最後に更新された日時
 
 ## 参照
 - よくわかるHTTP/2の教科書P29/38-39/41
 - Real World HTTP 第2版
+- パケットキャプチャの教科書

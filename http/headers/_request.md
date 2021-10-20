@@ -1,82 +1,96 @@
 # Request
-## プリフライトリクエストに使用されるヘッダ
-- Access-Control-Request-Method - 通信を許可してもらいたいメソッドのリスト
-- Access-Control-Request-Headers - 通信を許可してもらいたいリクエストヘッダのリスト
-- Origin - 通信元のWebページのドメイン名
+#### Accept
+- コンテントネゴシエーション
+- クライアントが受け付けるMIMEタイプ
 
-## Accept
-- [Accept](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept)
-- クライアントが受け付けるMIMEタイプ(コンテントネゴシエーション)
-
-## Accept-Language
-- [Accept-Language](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Language)
-- クライアントが受け付ける表示言語(コンテントネゴシエーション)
-
-## Accept-Encoding
-- [Accept-Encoding](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Encoding)
-- クライアントが受け付けるボディの圧縮アルゴリズム(コンテントネゴシエーション)
-
-## Accept-Charset
-- 参照: [Accept-Charset](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Accept-Charset)
-- クライアントが受け付ける文字のキャラクターセット(コンテントネゴシエーション)
+#### Accept-Charset
+- コンテントネゴシエーション
+- クライアントが受け付けるキャラクタセット
 - モダンブラウザでは全キャラクラーセットのエンコーダーが内包されているため送信されていない
 
-## Authorization
-- [Authorization](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Authorization)
-- 認証が要求されるページに送信される認証情報
+## Accept-Encoding
+- コンテントネゴシエーション
+- クライアントが受け付けるボディの圧縮アルゴリズム
 
-## Cookie
-- [Cookie](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cookie)
+#### Accept-Language
+- コンテントネゴシエーション
+- クライアントが受け付ける言語セット
+
+#### Authorization
+- ユーザーの認証情報 (認証が要求されるページで送信される)
+
+#### Cookie
 - サーバーから設定されたCookieのパラメータ
 
-## ETag
-- [ETag](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/ETag)
+#### ETag
 - 条件付リクエストに使用する
 - 指定のエンティティタグと一致しない場合、リソースを再要求する
 - Last-Modifiedの方が優先される
-
-### 強い検証と弱い検証
 - 強い検証 - 一文字も変更がないことを保証する
 - 弱い検証 - データとしては別物でも内容的に同一であることを保証する
   - エンティティタグの先頭に`W/`がつく
 
-## Host
-- [Host](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Host)
-- リクエスト先のホスト・ポート番号
+#### Expect
+- リクエストボディが大きいとき、サーバーが受け取ることができるか確認する
 
-## Last-Modified
-- 条件付リクエストに使用する
-- 最終更新日以降更新がある場合、リソースを再要求する
-- ETagの方が優先される
+#### From
+- ユーザーのメールアドレス
 
-### If-Modified-Since
-- [If-Modified-Since](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-Modified-Since)
-- 最後に取得した時刻以降に更新がある場合、リソースを再要求する
+#### Host
+- リクエストを実行するURI
 
-### If-None-Match
-- [If-None-Match](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/If-None-Match)
-- 指定したETagのバージョン以降に更新がある場合、リソースを再要求する
+#### If-Match
+- 条件付きリクエスト
+- リクエストに含まれるETagヘッダの値がサーバー上の特定のリソースに紐づくETagの値と一致する場合
+  レスポンスを返すようサーバーに要求する
 
-## Range
-- 引用: Webを支える技術 山本陽平・著
-- [Range](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Range)
-- 部分的GETでリソースの一部を取得する際、バイト単位で示される取得の範囲
+#### If-Modified-Since
+- 条件付きリクエスト
+- この日以降に更新されたリソースに対するリクエストである場合
+  レスポンスを返すようサーバーに要求する
+
+#### If-None-Match
+- 条件付きリクエスト
+- リクエストに含まれるETagヘッダの値がサーバー上の特定のリソースに紐づくETagの値と一致しない場合
+  レスポンスを返すようサーバーに要求する
+
+#### If-Range
+- 条件付きリクエスト
+- Rangeヘッダと一緒に利用する
+- 値としてETagか更新日時が入る
+- 値がサーバー上の特定のリソースと一致する場合
+  Rangeヘッダを処理するようサーバーに要求する
+
+#### If-Unmodified-Since
+- 条件付きリクエスト
+- この日以降に更新されていないリソースに対するリクエストである場合
+  レスポンスを返すようサーバーに要求する
+
+#### Max-Forwards
+- TRACE / OPTIONSリクエストにおいて転送を許可するサーバーの最大数
+
+#### Proxy-Authorization
+- プロキシサーバーに対する認証情報
+
+#### Range
+- リソースの一部を取得する際に示される取得の範囲(バイト単位)
 - 一つのRangeヘッダーで複数の部分を一度に要求でき、
   サーバーは範囲をマルチパートドキュメントで送り返すことができる
 
-## Referer
-- [Referer](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referer)
+#### Referer
 - リンク元のURLを示す
 - URLが秘密情報(セッションID)を含んでいる場合、脆弱性になりうる
 
-## Referrer-Policy
-- [Referrer-Policy](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Referrer-Policy)
+#### TE
+- Webブラウザが受け入れることができるメッセージボディの分割のタイプ
+
+#### Referrer-Policy
 - Refererの情報をリクエストにどれだけ含めるかを制御する
 
-## User-Agent
-- [User-Agent](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/User-Agent)
+#### User-Agent
 - クライアントを表す識別子
 
 ## 参照
 - よくわかるHTTP/2の教科書P29/38-39/41
 - Real World HTTP 第2版
+- パケットキャプチャの教科書

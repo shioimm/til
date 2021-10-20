@@ -1,29 +1,45 @@
 # 一般ヘッダ
-## Cache-Control
-- 参照: [Cache-Control](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Cache-Control)
-- クライアントがどのようにリソースをキャッシュするかを指定する
+#### Cache-Control
+- クライアントにどのようにリソースをキャッシュさせるかを指定する
 
-### ディレクティブ
-- no-store -> リソースを保存してはいけない
-- no-cache -> サーバーへの確認なしにリソースを保存してはいけない
-- private -> リソースを受け取った本人だけがキャッシュできる
-- public -> 複数のユーザーがリソースを再利用できる(キャッシュサーバーなどへの指示)
-- max-age -> 有効期限(秒)だけキャッシュできる
+| ディレクティブ | 意味                                                                   |
+| -              | -                                                                      |
+| no-store       | リソースを保存してはいけない                                           |
+| no-cache       | サーバーへの確認なしにリソースを保存してはいけない                     |
+| private        | リソースを受け取った本人だけがキャッシュできる                         |
+| public         | 複数のユーザーがリソースを再利用できる(キャッシュサーバーなどへの指示) |
+| max-age        | 有効期限(秒)だけキャッシュできる                                       |
 
-## Connection
-- [Connection](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Connection)
+#### Connection /  Keep-Alive
+- TCP/IPの通信を高速化するKeep-Alive機能の設定を操作するためのヘッダ
 - トランザクション完了後もネットワーク接続を開いたままにするかどうかを制御
+- `Connection: Keep-Alive`で有効化される
+- HTTP/2ではKeep-Aliveは常に有効であるためKeep-Aliveヘッダの使用は禁止されている
 
-## Date
-- [Date](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Date)
+#### Date
 - リソースが生成された日時
 
-## Keep-Alive
-- [Keep-Alive](https://developer.mozilla.org/ja/docs/Web/HTTP/Headers/Keep-Alive)
-- TCP/IPの通信を高速化するKeep-Alive機能の設定を操作するためのヘッダ
-- Keep-Alive機能は`Connection: Keep-Alive`で有効化される
-- HTTP/2では常に有効であるため使用は禁止されている
+#### Pragma
+- キャッシュに関してHTTP/1.0との後方互換のために使用
+
+#### Trailer
+- メッセージボディの後ろに記述するHTTPヘッダを通知
+- チャンク転送エンコーディングを使用しているときに使用可能
+
+#### Transfer-Encoding
+- メッセージボディの転送コーディングのタイプ
+
+#### Upgrade
+- 他のプロトコル・バージョン
+に切り替える
+
+#### Via
+- 経由したプロキシサーバーを追記
+
+#### Warning
+- HTTPメッセージに反映されないステータスやメッセージの変化についての追加情報
 
 ## 参照
 - よくわかるHTTP/2の教科書P29/38-39/41
 - Real World HTTP 第2版
+- パケットキャプチャの教科書
