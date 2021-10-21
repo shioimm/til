@@ -1,9 +1,9 @@
 # 参照: dRubyによる分散・Webプログラミング
-require 'drb/drb'
+require 'rinda/ring'
 require 'rinda/tuplespace'
 
 DRb.start_service
 
-ts = Rinda::TupleService.new
+ts = Rinda::TupleSpace.new
 place = Rinda::RingServer.new(ts)
 DRb.thread.join
