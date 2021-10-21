@@ -1,4 +1,12 @@
 # 公開鍵証明書
+- デジタル証明書を受け取った受信者はデジタル署名を認証局の公開鍵 (CA証明書) で復号し、
+  署名前証明書のハッシュ値と比較検証する
+
+#### 構成要素
+- 署名前証明書 (サーバーやサーバーの所有者の情報)
+- デジタル署名のアルゴリズム (デジタル署名で使用するハッシュ関数: 署名前証明書に含まれる)
+- デジタル署名
+
 ## 分類
 #### サーバー証明書
 - サーバーを識別する証明書
@@ -73,3 +81,4 @@ $ openssl req -new -key xxx.key -out xxx.csr
 - プロフェッショナルSSL/TLS
 - [OCSP (Online Certificate Status Protocol)](https://www.cybertrust.co.jp/sureserver/support/glossary/ocsp.html)
 - マスタリングTCP/IP 情報セキュリティ編
+- パケットキャプチャの教科書
