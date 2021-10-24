@@ -1,4 +1,4 @@
-# 参照: dRubyによる分散・Webプログラミング
+# 参照: drubyによる分散・webプログラミング
 require 'drb/drb'
 
 class DumbIdConv < DRb::DRbIdConv
