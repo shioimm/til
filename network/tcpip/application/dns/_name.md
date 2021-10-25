@@ -13,7 +13,7 @@ example.co.jp
 - サブドメイン
   - co.jp(jpのサブドメイン)
   - example.co.jp(jpのサブドメイン)
-  - example.co.jp(cojpのサブドメイン)
+  - example.co.jp(co.jpのサブドメイン)
 - ラベル
   - jp / co / example
 - ドメイン名
