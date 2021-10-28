@@ -1,9 +1,9 @@
 # 環境構築
-## Ubuntu
+## UbuntuにDocker提供パッケージをインストールする
 1. Ubuntuのパッケージをアップデート
 2. DockerEngineの実行に必要なパッケージをインストール
-3. DockerのオフィシャルGPGキーを追加する
-4. Dockerダウンロードサイトをaptリポジトリに追加する
+3. DockerのオフィシャルGPGキー (ファイルが改竄されていないことを確認するために使用する鍵) を追加
+4. Dockerダウンロードサイトをaptリポジトリに追加
 5. Ubuntuのパッケージをアップデート
 6. DockerEngine一式をインストール
 7. 一般ユーザーにDockerの利用権限を付与する
@@ -19,7 +19,7 @@ $ sudo add-apt-repository \
 > stable"
 $ sudo apt update
 $ sudo apt install -y docker-ce docker-ce-cli containerd.io
-$ sudo gpasswd -a ubuntu docker
+$ sudo gpasswd -a ubuntu docker # リモートホストの場合はここで一旦exitしてsshで再接続する
 $ docker --version
 ```
 
