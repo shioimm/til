@@ -19,7 +19,8 @@ $ cdk deploy -c key_name="キー名" --profile プロファイル名 --region �
 
 #### SSHログイン
 ```
-$ ssh -i ~/.ssh/キー名.pem ec2-user@<IP address>
+# Ubuntuでイメージを作成した場合
+$ ssh -i ~/.ssh/キー名.pem ubuntu@<IP address>
 ```
 
 #### Cloudformationスタックを削除
