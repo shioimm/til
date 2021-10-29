@@ -1,13 +1,20 @@
 # コンテナの操作
-- 起動・実行コマンドの引数に`/bin/sh` or `/bin/bash`を渡す
+- 起動・実行コマンドの引数に`/bin/sh` or `/bin/bash`を渡すことでシェルに入ることができる
   - `-it`オプションを渡さないとシェルを操作できない
-  - Ctrl + p -> Ctrl + qでホストに戻り、`$ docker atach NAME`で再度シェルに入る
+  - Ctrl + p -> Ctrl + qでデタッチモードに切り替え (ホストに戻る)
+  - `$ docker atach NAME`でアタッチモードに切り替え (コンテナに入る)
 
 ```
-# 起動前のコンテナの操作(runコマンド終了時、シェルとコンテナが終了する)
-$ docker run -it --name web01 httpd:2.4 /bin/bash
+# コンテナが停止中または起動前の場合
+# (runコマンド終了時、シェルとコンテナが終了する)
 
-# 起動中のコンテナの操作(execコマンド終了時、シェルのみが終了する)
+$ docker run -it --name web01 httpd:2.4 /bin/bash
+```
+
+```
+# コンテナが起動中の場合
+# (execコマンド終了時、シェルのみが終了する)
+
 $ docker exec -it web01 /bin/bash
 ```
 
