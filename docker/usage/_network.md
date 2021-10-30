@@ -1,74 +1,80 @@
 # ネットワーク
 - bridgeネットワークに接続されたDockerホスト・Dockerコンテナ同士はIPアドレスで通信可能
-- 任意のネットワークに接続されたDockerコンテナ同士はコンテナ名で通信可能
+- 任意に作成されたDockerネットワークに接続されたDockerコンテナ同士はコンテナ名で通信可能
 
-## 操作
-1. 現在のネットワークの確認
-2. httpdコンテナを立ち上げる
-3. httpdコンテナのIPアドレスを確認
-4. ネットワークに接続されている全コンテナのIPアドレスを確認
-5. ホストのIPアドレスを確認(規定のネットワークインターフェース名: docker0)
-6. ホストからIPパケットフィルタルールのnatテーブルを確認
+## ネットワークの確認
 ```
-$ docker network   ls
+$ docker network ls
+```
+
+## コンテナに割り当てられたIPアドレスの確認
+1. httpdコンテナを立ち上げる
+2. httpdコンテナのIPアドレスを確認
+    - フォーマット書式: `{{ .項目名 }}`
+
+```
 $ docker container run -dit --name web01 -p 8080:80 httpd:2.4
 $ docker container inspect --format="{{.NetworkSettings.IPAddress}}" web01
-$ docker network   inspect bridge
-$ ifconfig
-$ sudo iptables --list -t nat -n
 ```
 
-## 任意のネットワークの作成
+#### ネットワークに接続されているコンテナのIPアドレス一覧を確認
+
+```
+$ docker network inspect --format='{{ range $host, $conf := .Containers }}{{ $conf.Name }}->{{ $conf.IPv4Address }}{{ "\n" }}{{ end }}' bridge
+```
+
+## 任意のDockerネットワークの作成
 - 任意のDockerネットワークを作成し、作成したネットワークにDockerコンテナを参加させる
   - 通信先にコンテナ名を指定して通信することができるようになる
     - 規定のネットワークの場合: 通信時にIPアドレスを指定する必要がある
 - Dockerホスト上には作成したDockerネットワークのネットワークインターフェースが追加される
   - ネットワークインターフェース名: `br-DockerネットワークIDの先頭`
 
-### 操作
-1. 新しいネットワークを作成
-2. 現在のネットワークの確認
-3. ネットワークのIPアドレスを確認(`IPAM` > `Config` > `Subnet`)
-4. ネットワークに接続するコンテナを作成
-5. コンテナがネットワークに接続していることを確認
-6. コンテナを停止
-7. コンテナを削除
 ```
-$ docker network create  mydockernet
-$ docker network ls
-$ docker network inspect mydockernet
+$ docker network create mydockernet
+$ docker network ls # ネットワーク一覧を確認
+$ docker network inspect mydockernet # 作成したネットワークのIPアドレス (IPAM > Config > Subnet) を確認
+```
+
+## 任意のDockerネットワークに参加するコンテナを作る
+1. ネットワークに接続するコンテナを作成
+2. コンテナがネットワークに接続していることを確認
+
+```
 $ docker run -dit --name web01 -p 8080:80 --net mydockernet httpd:2.4
 $ docker container inspect --format="{{.NetworkSettings}}" web01
-$ docker container stop web01
-$ docker container rm   web01
-$ docker network   rm   mydockernet
 ```
 
-### 既存のコンテナへの操作
-1. コンテナをネットワークに接続する
-2. コンテナをネットワークから切断する
+#### コンテナ名で通信できることを確認する
 ```
-$ docker network connect    mydockernet web01
-$ docker network disconnect mydockernet web01
+$ docker run --rm -it --net mydockernet ubuntu /bin/bash
+/# apt install -y iproute2 iputils-ping curl
+/# ping -c 4 web01
+/# curl http://web01/
 ```
 
-## bridgeネットワーク
-- DockerホストとDockerコンテナがデフォルトで接続されるネットワーク
-- Dockerホスト(Docker Engine)・Dockerコンテナには独立したIPアドレスが割り当てられる
-- bridgeネットワークはIPマスカレードを使って構成されている
-  (-pオプションを指定する)
+## ネットワークへの接続・切断
+1. コンテナをbridgeネットワークから切断
+2. コンテナを任意のDockerネットワークに接続
 
-## hostネットワーク(あまり使われない)
-- DockerコンテナがIPマスカレードを使わずにDockerホストのIPアドレスを共有するネットワーク
-  (-pオプションを指定できない)
-- DockerホストのすべてのポートがDockerコンテナ側に流れる
-- Dockerコンテナは個別のIPアドレスを持たず、DockerホストのIPアドレスを共有する
+```
+$ docker network disconnect bridge web01
+$ docker network connect mydockernet web01
+```
+
+## ネットワークを削除
+```
+$ docker network rm mydockernet
+```
+
+## hostネットワークでの接続
+
 ```
 $ docker run ... --net host
 ```
 
-## noneネットワーク(あまり使われない)
-- コンテナをネットワークに接続しない設定
+## noneネットワークでの接続
+
 ```
 $ docker run ... --net none
 ```
