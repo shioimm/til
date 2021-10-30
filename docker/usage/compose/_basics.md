@@ -1,44 +1,29 @@
 # Docker Compose
-- Docker ComposeはDocker Engineの一部ではなくDocker操作の補佐をするPython製のツール
-  - Docker Engineとは別にインストールする必要がある
-- 操作時点でのdocker-compose.ymlの記述に沿って実行される
-  - Docker Composeで起動したコンテナがある状況でdocker-compose.ymlを編集すると
-    次会操作時に編集後の内容が適用される
+- e.g. WordPress + MySQL
 
-## 操作
-#### Docker Composeなし
-- WordPress + MySQL
+## インストール
+
 ```
-$ docker network create wordpressnet
-$ docker volume create wordpress_db_volume
-$ docker run --name wordpress-db -dit -v wordpress_db_volume:/var/lib/mysql \
-> -e MYSQL_ROOT_PASSWORD=myrootpassword -e MYSQL_DATABASE=wordpressdb \
-> -e MYSQL_USER=wordpressuser -e MYSQL_PASSWORD=wordpresspass \
-> --net wordpressnet mysql:5.7
-$ docker run --name wordpress-app -dit -p 8080:80 \
-> -e WORDPRESS_DB_HOST=wordpress-db -e WORDPRESS_DB_NAME=wordpressdb \
-> -e WORDPRESS_DB_USER=wordpressuser -e WORDPRESS_DB_PASSWORD=wordpresspass \
-> --net wordpressnet wordpress
-
-$ docker stop wordpress-db wordpress-app
-$ docker rm wordpress-db wordpress-app
-$ docker network rm wordpressnet
-$ docker volume rm wordpress_db_volume
+$ sudo apt install -y python3 python3-pip
+$ sudo pip3 install docker-compose
+$ docker compose --version
 ```
 
-#### Docker Composeあり
+## docker-compose.yml
+- services (コンテナ)、networks (コンテナが参加するネットワーク)、volumes (ボリューム) を定義する
+
 ```yml
-# docker-compose.yml
-
 version: "3"
 
 services:
-  wordpress-db:
+  wordpress-db: # DBコンテナの定義
     image: mysql:5.7
     networks:
       - wordpressnet
     volumes:
-      - wordpress_db_volume:/var/lib/mysql
+      - type: volume
+      - source: wordpress_db_volume
+      - target: /var/lib/mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: myrootpassword
@@ -46,7 +31,7 @@ services:
       MYSQL_USER: wordpressuser
       MYSQL_PASSWORD: wordpresspass
 
-  wordpress-app:
+  wordpress-app: # アプリケーションコンテナの定義
     depends_on:
       - wordpress-db
     image: wordpress
@@ -69,23 +54,58 @@ volumes:
   wordpress_db_volume:
 ```
 
-1. コンテナを作成、デタッチモードで起動
-2. コンテナ一覧を表示
-3. 特定のコンテナをインタラクティブモードで操作
-4. 特定のコンテナを停止
-5. 特定のコンテナを再起動
-6. コンテナを停止、破棄
-    - デフォルトではボリュームは削除されず、次回`$ docker compose up`時にマウントされる
-7. コンテナ一覧を確認
+## コンテナを作成・起動
+- 通常はデタッチモードで起動する
+
 ```
 $ docker-compose up -d
 $ docker-compose ps
+```
+
+- コンテナ・ネットワーク・ボリュームが作成され、コンテナが起動する
+- コンテナ名は`作業用ディレクトリ_コンテナ名_N`として命名される
+
+## コンテナの停止・削除
+- コンテナ・ネットワークは削除される
+- ボリュームは削除されず (デフォルト) 、次回`$ docker-compose up`時にマウントされる
+
+```
+$ docker-compose down
+$ docker-compose psa
+```
+
+## 特定のコンテナの操作
+- docker-compose(1)コマンドの操作にはdocker-compose.ymlが必要
+- docker-compose(1)コマンドでは操作するコンテナのservice名を指定する
+- docker-compose(1)コマンドではコンテナの依存関係が考慮される
+1. 特定のコンテナをインタラクティブモードで操作
+2. 特定のコンテナを停止
+3. 特定のコンテナを再起動
+
+```
 $ docker-compose exec wordpress-app /bin/bash
-root@9ed1e51a3708:/var/www/html# exit
+root@xxxxxxxxxxxx:/var/www/html# exit
 $ docker-compose stop wordpress-db
 $ docker-compose start wordpress-db
-$ docker-compose down
-$ docker container ps -a
+```
+
+## Docker Composeを使用しない場合の操作
+```
+$ docker network create wordpressnet
+$ docker volume create wordpress_db_volume
+$ docker run --name wordpress-db -dit -v wordpress_db_volume:/var/lib/mysql \
+> -e MYSQL_ROOT_PASSWORD=myrootpassword -e MYSQL_DATABASE=wordpressdb \
+> -e MYSQL_USER=wordpressuser -e MYSQL_PASSWORD=wordpresspass \
+> --net wordpressnet mysql:5.7
+$ docker run --name wordpress-app -dit -p 8080:80 \
+> -e WORDPRESS_DB_HOST=wordpress-db -e WORDPRESS_DB_NAME=wordpressdb \
+> -e WORDPRESS_DB_USER=wordpressuser -e WORDPRESS_DB_PASSWORD=wordpresspass \
+> --net wordpressnet wordpress
+
+$ docker stop wordpress-db wordpress-app
+$ docker rm wordpress-db wordpress-app
+$ docker network rm wordpressnet
+$ docker volume rm wordpress_db_volume
 ```
 
 ## 参照
