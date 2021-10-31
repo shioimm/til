@@ -1,28 +1,12 @@
-# カスタムイメージ
-## 既存のイメージをカスタマイズする
-1. 新しいコンテナを起動
-2. ローカルのファイルをコンテナ内へコピー
-3. コンテナからイメージを生成
-4. イメージへの操作ログを表示
-```
-$ docker run -dit --name webcontent -p 8080:80 httpd:2.4
-$ docker cp      /tmp/index.html  webcontent:/usr/local/apache2/htdocs
-$ docker commit  webcontent mycustomed_httpd
-$ docker history mycustomed_httpd
-```
-
-## Dockerfileからイメージを生成する
+# Dockerfileからカスタムイメージを作る
 - イメージに含めたいファイルとDockerfileを同じディレクトリに置き、`$ docker build`する
   - イメージに含めないファイルは当該ディレクトリに置かない
     - あるいは`.dockerigrore`で指定する
 
-```php
-<html>
-  <body>
-    Your IP <?php echo$_SERVER['REMOTE_ADDR']?>
-  </body>
-</html>
-```
+#### 用途
+- イメージの配布
+
+## Dockerfile
 
 ```
 FROM debian
@@ -37,6 +21,16 @@ CMD /usr/sbin/apachectl -DFOREGROUND
 STOPSIGNAL SIGWINCH
 ```
 
+```
+$ cat index.php
+<html>
+  <body>
+    Your IP <?php echo$_SERVER['REMOTE_ADDR']?>
+  </body>
+</html>
+```
+
+## Dockerfileからイメージをビルド
 1. Dockerfileを置いたディレクトリでイメージをビルド
 2. イメージ一覧を表示
 3. 作成したイメージでコンテナを起動
