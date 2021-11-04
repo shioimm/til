@@ -77,8 +77,8 @@ IP 8.8.8.8 > xxx.xxx.xxx.xxx: ICMP echo reply,   id 5, seq 1, length 64
 $ networksetup -listallhardwareports
 
 # tcpdump(1)を実行
-$ sudo tcpdump -i ネットワークインターフェース名 -n
-$ sudo tcpdump -s0 -A host google.com
+$ sudo tcpdump -i ネットワークインターフェース -s 0 -B 524288 -w ~/Desktop/DumpFile01.pcap
+$ tcpdump -s 0 -n -e -x -vvv -r ~/Desktop/DumpFile01.pcap
 ```
 
 ## 参照
