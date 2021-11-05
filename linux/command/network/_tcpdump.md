@@ -63,15 +63,22 @@ IP 8.8.8.8 > xxx.xxx.xxx.xxx: ICMP echo reply,   id 5, seq 1, length 64
 ```
 
 ## オプション
-- `-t` - 時刻に関する情報を出力しない
-- `-n` - IPアドレスを名前解決しない
-- `-i` - パケットキャプチャを行う対象のネットワークインターフェース
-- `-e` - Ethernetのヘッダ情報を表示する
-- `-l` - Network Namespaceで`tcpdump(1)`を使用する際に指定する
-- `-A` - キャプチャした内容をASCII文字列として表示させる
+- -e - Ethernetのヘッダ情報を表示する
+- -i - パケットキャプチャを行う対象のネットワークインターフェース
+- -l - Network Namespaceで`tcpdump(1)`を使用する際に指定する
+- -n - IPアドレスを名前解決しない
+- -r - 読み込み先のファイル名
+- -s - 出力するバイト数
+- -t - 時刻に関する情報を出力しない
+- -w - 書き込み先のファイル名
+- -x - パケットを16進数で表示
+- -xxx - 詳細に出力
+- -A - キャプチャした内容をASCII文字列として表示させる
+- -B - バッファサイズ
 
 ## MacOSでパケットトレースを行う場合
 - [Recording a Packet Trace](https://developer.apple.com/documentation/network/recording_a_packet_trace#//apple_ref/doc/uid/DTS10001707-CH1-SECNOTES)
+
 ```
 # ネットワークインターフェース名を取得
 $ networksetup -listallhardwareports

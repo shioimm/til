@@ -1,6 +1,6 @@
 require 'drb'
 
-DRb.start_service("druby://#{ENV['YOURHOST']}:8081")
+DRb.tart_service("druby://#{ENV['YOURHOST']}:8081")
 uri = ARGV.shift
 
 puts '[LOG] kvs = DRbObject.new_with_uri(uri)'
