@@ -1,5 +1,5 @@
-# Request Timeoutの原因
-- Puma Pool Usageが逼迫している場合はリクエスト数に対してプロビジョニングが足りていないため、
+# Request Timeout
+- [Heroku] Puma Pool Usageが逼迫している場合はリクエスト数に対してプロビジョニングが足りていないため、
   Dynoの台数を増やすことを検討する
   - [Puma Pool Usage](https://devcenter.heroku.com/articles/language-runtime-metrics-ruby#puma-pool-usage)
 - そうでない場合はDBアクセスまたは外部のIOアクセスに原因がある可能性がある
