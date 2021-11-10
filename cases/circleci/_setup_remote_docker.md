@@ -1,5 +1,5 @@
 # Dockerデーモンが利用できない
-- Rerun job with SSHでコンテナに入った際、Dockerデーモンを操作できない
+- Rerun job with SSHでコンテナ (CircleCIが立ち上げたコンテナ) 内に入った際、Dockerデーモンを操作できない
 
 ```
 Cannot connect to the Docker daemon at unix:///var/run/docker.sock.
