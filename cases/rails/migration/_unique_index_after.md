@@ -1,8 +1,8 @@
-# Tips
-### 既に存在するインデックスに対して一意制約を追加したい
-```sh
+# 既に存在するインデックスに対して一意制約を追加したい
+```
 $ rails g migration change_users_email
 ```
+
 ```ruby
 class ChangeUsersEmail < ActiveRecord::Migration[6.0]
   def change
@@ -20,4 +20,5 @@ class ChangeUsersEmail < ActiveRecord::Migration[6.0]
   end
 end
 ```
+
 - reversibleにしないとrollback時にActiveRecord::IrreversibleMigrationが発生する
