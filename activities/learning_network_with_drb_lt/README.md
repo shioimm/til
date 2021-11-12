@@ -1,22 +1,27 @@
-1.ファイルをリモートホストへコピーする
+# 実行方法
+1. ホストマシンにそれぞれ環境変数`LOCAL_HOST_ADDRESS` / `REMOTE_HOST_ADDRESS`を設定
+2. ping(ping6)で疎通確認
+3. プログラムを実行 (`$ ruby server/server.rb` -> `$ ruby client/client.rb`)
+
+### Dockerfileを使う場合
+1.ホストマシンにそれぞれ環境変数`LOCAL_HOST_ADDRESS` / `REMOTE_HOST_ADDRESS`を設定
+
+2.サーバー側・クライアント側でそれぞれDockerイメージをビルド
 ```
-$ scp server/Dockerfile.rb USERNAME@IPアドレス:/path/to/dir
-$ scp server/server.rb USERNAME@IPアドレス:/path/to/dir
+$ cd /path/to/server
+$ docker build -t drb/server .
 ```
 
-2.リモートホストでDockerイメージをビルド
-
 ```
-$ cd /path/to/dir
-$ docker build -t drb/kvs .
+$ cd /path/to/client
+$ docker build -t drb/client .
 ```
 
-3.リモートホストでDockerを実行
+3.サーバー側・クライアント側でそれぞれDockerを実行 (環境変数を渡す / サーバー -> クライアント)
 ```
-$ docker run --rm -it -p 8080:8080 drb/kvs
+$ docker run --rm -it -e LOCAL_HOST_ADDRESS= -e REMOTE_HOST_ADDRESS= -p 8080:8080 drb/server
 ```
 
-4.ローカルホストでクライアントプログラムを実行
 ```
-$ ruby client/client.rb druby://リモートホストのパブリックIPアドレス:8080
+$ docker run --rm -it -e LOCAL_HOST_ADDRESS= -e REMOTE_HOST_ADDRESS= -p 8080:8080 drb/client
 ```
