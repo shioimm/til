@@ -1,5 +1,4 @@
 # Webpacker
-- 参照: [rails/webpacker](https://github.com/rails/webpacker)
 ## Webpakcerが追加するファイル一覧
 - `bin/webpack` -> コンパイルを実行するためのバイナリ
 - `bin/webpack-dev-server` -> コード変更時にホットリロードを実行するためのバイナリ
@@ -29,3 +28,6 @@
   - Webpacker管理下のパス(/pack)配下へアクセスした場合、webpack-dev-serverの起動状態を確認する
   - webpack-dev-serverが起動している場合webpack-dev-server以下のファイルを、
     起動していない場合public/packs配下のファイルを返す
+
+## 参照
+- [rails/webpacker](https://github.com/rails/webpacker)
