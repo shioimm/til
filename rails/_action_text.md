@@ -1,7 +1,4 @@
 # ActionText
-- 参照: パーフェクトRuby on Rails[増補改訂版] P254-260
-
-## TL;DR
 - Railsが標準で提供するリッチテキスト機能
 
 ### ActionTextが提供する機能
@@ -39,3 +36,6 @@ def index
   # with_rich_text_xxx - ActiveStorageのモデルに対してeager_loadを行う
 end
 ```
+
+## 参照
+- パーフェクトRuby on Rails[増補改訂版] P254-260
