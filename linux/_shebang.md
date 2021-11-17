@@ -1,6 +1,4 @@
 # 解釈実行ファイル(shebang)
-- 参照: [作業の自動化、謎のおまじない shebang（シバン）、PATH を設定する](https://fjord.jp/kuroigamen/8.html)
-- 参照: 詳解UNIXプログラミング第3版 8. プロセスの制御
 - `#!`から始まるテキストファイル
   - `#!`の後に引数として渡したファイルを実行する
   - `/usr/local/bin/`ディレクトリなどに置く(パスを通しておく: `$ export PATH=$PATH:~/bin`)
@@ -34,7 +32,12 @@ Hello
 
 #### Rubyスクリプトの場合
 ```sh
-#!/usr/bin/ruby
+#!/usr/bin/env ruby
+# envコマンドを使用することでPATHからRubyインタープリタを探索する
 
 puts 'Hello'
 ```
+
+## 参照
+- [作業の自動化、謎のおまじない shebang（シバン）、PATH を設定する](https://fjord.jp/kuroigamen/8.html)
+- 詳解UNIXプログラミング第3版 8. プロセスの制御
