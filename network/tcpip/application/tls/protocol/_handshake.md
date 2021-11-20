@@ -31,11 +31,11 @@ master_secret = PRF(pre_master_secret, "master secret", client_random + server_r
 
 - マスターシークレットから鍵ブロック(通鍵暗号の鍵・MACの鍵・初期化ベクトル)を生成する
   - 共通鍵暗号の鍵(クライアント -> サーバー)
-  - 共通鍵暗号の鍵(サーバー -> クライアント)
+  - 共通鍵暗号の鍵(クライアント <- サーバー)
   - MACの鍵(クライアント -> サーバー)
-  - MACの鍵(サーバー -> クライアント)
+  - MACの鍵(クライアント <- サーバー)
   - GCMモードやCCMモードで用いる初期化ベクトルの一部(クライアント -> サーバー)
-  - GCMモードやCCMモードで用いる初期化ベクトルの一部(サーバー -> クライアント)
+  - GCMモードやCCMモードで用いる初期化ベクトルの一部(クライアント <- サーバー)
 
 ```
 key_block = PRF(master_secret, "key expansion", server_random + client_random)
