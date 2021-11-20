@@ -1,4 +1,4 @@
-# Berkeley Packet Filter(BPF)
+# Berkeley Packet Filter (BPF)
 - ユーザーランドで作成したコードをカーネル内で安全に実行する枠組み
   - Linuxには諸々のイベントに対してBPFのプログラムをアタッチする仕組みがある
   - ユーザーは目的のBPFプログラムを作成することにより、カーネルの再コンパイルなしに
@@ -28,9 +28,9 @@
   - システムコールフィルタリング
 
 ## BPFを利用したプロジェクト
-- BCC(BPF Compiler Collection)
+- BCC (BPF Compiler Collection)
 - bpftrace、ply
-- XDP(eXpress Data Path)
+- XDP (eXpress Data Path)
 - Katran
 - Cilium
 - Landlock
@@ -38,30 +38,11 @@
 
 ## cBPF / eBPF
 - 従来BPFはカーネル内のパケットフィルタリング機構として利用されてきた
-  - cBPF(classic BPF)
+  - cBPF (classic BPF)
 - 現在のLinuxのBPFはパケットフィルタリング以外にも
   様々な箇所でカーネル内の操作をフックしてプログラムを実行するための手法として用いられる
-  - eBPF(extend BPF)
+  - eBPF (extend BPF)
   - 命令セットが一新され、使用可能なレジスタ数が増え、ヘルパー関数呼び出しの機能が追加された
-
-## BCC(BPF Compiler Collection)
-- 参照: [iovisor/bcc](https://github.com/iovisor/bcc)
-- 参照・引用: [BCC（BPF Compiler Collection）によるBPFプログラムの作成](https://www.atmarkit.co.jp/ait/articles/1912/17/news006.html)
-- 効率的なカーネルトレースと操作プログラムを作成するためのツールキット
-  - eBPFを使用している
-  - パフォーマンス解析やネットワークトラフィック制御などの用途に適している
-- C(LLVMによるCラッパーを含む)によるカーネルインストルメンテーションと
-  Python・luaによるフロントエンドにより、 BPFプログラムをより簡単に書くことができる
-
-### BCCの機能
-- BPFプログラムを簡単に記述するためのModified C(BPF C)
-- BPF Cのコンパイル機能
-- BPFプログラムローダー
-  - LLVM/Clangを用いてBPF CのASTを解析/変更した上でBPFプログラムにコンパイルし、カーネルにロードする
-- BPFマップへアクセスするための関数
-
 
 ## 参照・引用
 - [Berkeley Packet Filter（BPF）入門（1）](https://www.atmarkit.co.jp/ait/articles/1811/21/news010.html)
-
-## TL;DR
