@@ -4,16 +4,16 @@
 ## コネクションの確立 (1-RTTハンドシェイク)
 1. クライアント -> サーバー: Initialパケットの送信
     - `CRYPTO`フレーム [ClientHello]
-2. サーバー -> クライアント: Handshakeパケットの送信
+2. クライアント <- サーバー: Handshakeパケットの送信
     - `CRYPTO`フレーム [ServerHello]
     - `CRYPTO`フレーム [EncryptedExtensions, Certificate, Certificateverify, Finished]
 3. クライアント -> サーバー: Handshakeパケットの送信
     - `CRYPTO`フレーム [Finished] - クライアント側としてQUICコネクションの確立が完了
 4. クライアント -> サーバー: 1-RTTパケットの送信
     - `STREAM`フレーム - アプリケーションデータの送信を開始
-5. サーバー -> クライアント: Handshakeパケットの送信
+5. クライアント <- サーバー: Handshakeパケットの送信
     - `HANDSHAKE_DONE`フレーム - サーバー側としてQUICコネクションの確立が完了
-6. サーバー -> クライアント: 1-RTTパケットの送信
+6. クライアント <- サーバー: 1-RTTパケットの送信
     - `STREAM`フレーム - アプリケーションデータの送信を開始
 
 ### トランスポートパラメータ(`quic_transport_parameters`)
@@ -57,7 +57,7 @@
 #### コネクションマイグレーションの確立
 1. クライアント -> サーバー
     - `PATH_CHALLENGE`フレーム
-2. サーバー -> クライアント
+2. クライアント <- サーバー
     - `PATH_RESPONSE`フレーム
 3. 新しい経路で通信できることを確認できたら通信を開始し、古い経路の通信を中止する
     - 通信回線に依存する輻輳制御の状態などはリセットされる

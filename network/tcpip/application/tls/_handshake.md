@@ -1,11 +1,11 @@
 # TLSハンドシェイク
-## フルハンドシェイク
+## TLS 1.2 フルハンドシェイク
 - クライアント・サーバーがそれ以前にセッションを確立したことがない場合に実行する認証を伴うハンドシェイク
 
 ### フロー
 1. クライアント -> サーバー
     - ClientHello
-2. サーバー -> クライアント
+2. クライアント <- サーバー
     - ServerHello
     - Certificate
     - CertificateRequest (optional)
@@ -17,7 +17,7 @@
     - CertificateVerify (optional)
     - ChangeCipherSpec
     - Finished
-4. サーバー -> クライアント
+4. クライアント <- サーバー
     - ChangeCipherSpec
     - Finished
 5. アプリケーションデータプロトコルへ移行
@@ -104,7 +104,6 @@ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 verify_data = PRF(master_secret, finished_label, Hash(handshake_messages))
 ```
 
-
 ## セッションリザンプション
 - 一意のSession IDを使うことによって前回のセッションを再開する
 - Session IDはサーバーからクライアントへ、ServerHelloを利用して送信される
@@ -113,7 +112,7 @@ verify_data = PRF(master_secret, finished_label, Hash(handshake_messages))
 ### フロー
 1. クライアント -> サーバー
     - ClientHello
-2. サーバー -> クライアント
+2. クライアント <- サーバー
     - ServerHello
     - ChangeCipherSpec
     - Finished
@@ -140,6 +139,24 @@ verify_data = PRF(master_secret, finished_label, Hash(handshake_messages))
 
 #### Finished (クライアント)
 - 送信および受信したハンドシェイクメッセージのMACを送信
+
+## TLS 1.3 ハンドシェイク
+1. クライアント -> サーバー
+    - SYN
+2. クライアント <- サーバー
+    - ACK + SYN
+3. クライアント -> サーバー
+    - ACK
+    - ClientHello
+4. クライアント <- サーバー
+    - ServerHello
+    - EncryptedExtensions
+    - Certificate
+    - CertificateVerify
+    - Finished
+5. クライアント -> サーバー
+    - Finished
+    - アプリケーションデータ
 
 ## 参照
 - プロフェッショナルSSL/TLS
