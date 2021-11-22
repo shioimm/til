@@ -19,3 +19,6 @@
   - ff = only
 - [rerere] # reuse recorded resolution
   - enabled = true
+
+#### ~/.gitconfig
+- `$HOME`に.gitconfigを置くとgitコマンドが使える全てのディレクトリに対してconfigを有効化できる
