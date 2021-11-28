@@ -17,3 +17,13 @@ Klass.new
 Klass.new(:arg1, :arg2)
 # => ArgumentError (wrong number of arguments (given 2, expected 1))
 ```
+
+#### `:keyword_init`
+
+```ruby
+Klass = Struct.new(:x, :y) # => Klass
+Klass.new(1, 2)
+
+Klass = Struct.new(:x, :y, keyword_init: true) # => Klass(keyword_init: true)
+Klass.new(x: 1, y: 2)
+```
