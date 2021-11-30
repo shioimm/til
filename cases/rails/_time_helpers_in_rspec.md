@@ -1,4 +1,4 @@
-# RSpecでActiveSupport::Testing::TimeHelpersを使用する
+# Timecopの代わりにActiveSupport::Testing::TimeHelpersを使用する
 - [ActiveSupport::Testing::TimeHelpers](https://api.rubyonrails.org/classes/ActiveSupport/Testing/TimeHelpers.html)
 
 ```ruby
@@ -18,3 +18,14 @@ after do
   travel_back
 end
 ```
+
+```ruby
+before do
+  freeze_time
+end
+```
+
+```ruby
+after do
+  unfreeze_time
+end
