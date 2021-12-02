@@ -1,16 +1,16 @@
-## constant Object::ARGV
-- https://docs.ruby-lang.org/ja/2.6.0/method/Object/c/ARGV.htmlO
+# 組み込み定数
+## ARGV
+- [constant Object::ARGV](https://docs.ruby-lang.org/ja/3.0.0/method/Object/c/ARGV.html)
 - Rubyスクリプトを呼び出す時、引数として与えられる配列
+
 ```ruby
 # コマンドライン引数をチェックする
 ARGV.include?('--hoge')
 ```
 
-## object ENV
-- https://docs.ruby-lang.org/ja/2.6.0/class/ENV.html
-- 環境変数を表すオブジェクト
-- 環境 == システム環境
-- 次の2つは同じ処理を示している
+## ENV
+- [object ENV](https://docs.ruby-lang.org/ja/3.0.0/class/ENV.html)
+- システム環境変数を表すオブジェクト
 
 ```
 # シェルで環境変数を設定する
@@ -22,8 +22,9 @@ $ HOGE='fuga'
 ENV['MESSAGE'] = 'fuga'
 ```
 
-- 環境変数はハッシュと同様のインターフェースを持つが、実際にはハッシュではない
+- ENVはハッシュと同様のインターフェースを持つが、実際にはハッシュではない
   - ハッシュのメソッドは一部使える
+
 ```
 irb(main):001:0> pp ENV
 {"FOO"=>"bar",

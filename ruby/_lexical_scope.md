@@ -1,6 +1,7 @@
 ## レキシカルスコープ(見たままのスコープ)
+```rb
+# hoge.rb
 
-```val.rb
 class Hoge
   def initialize(&block)
     @block = block
