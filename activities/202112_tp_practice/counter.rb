@@ -12,7 +12,7 @@ files.each do |file|
     Timeout.timeout(5) {
       trace.enable { eval f.read }
     }
-  rescue Timeout::Error
+  rescue Timeout::Error, LoadError
   end
 
   f.close
@@ -20,6 +20,9 @@ end
 
 $stdout = STDOUT
 
-pp counter.sort_by { |_method, count| count }.reverse.to_h
+most_used_methods_20 = counter.sort_by { |_method, count| count }.reverse.first(20)
+
+pp most_used_methods_20.to_h
+puts "#{most_used_methods_20.first}、本年は大変お世話になりました。\n来年もよろしくお願いします。"
 
 # find ./ -name *.rb -newermt '20210101' | xargs ruby ~/til/activities/202112_tp_practice/counter.rb
