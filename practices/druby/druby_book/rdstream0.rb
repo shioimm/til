@@ -2,7 +2,7 @@
 require 'rinda/tuplespace'
 
 class RDStream
-  def initialize(ts = Rinda::Tuplespace.new, n, name = nil)
+  def initialize(ts = Rinda::Tuplespace.new, name = nil)
     @ts = ts
     @name = name
     @head = 0

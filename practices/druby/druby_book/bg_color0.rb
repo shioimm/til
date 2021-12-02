@@ -11,5 +11,5 @@ class BGColor
     @count = 0 if @colors.size <= @count
     "bgcolor='#{@colors[@count]}'"
   end
-  alias :to_s, :next_bgcolor
+  alias :to_s :next_bgcolor
 end

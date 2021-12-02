@@ -5,7 +5,7 @@ require 'rinda/tuplespace'
 class Sem
   include DRbUndumped
 
-  def initialize(ts = Rinda::Tuplespace.new, n, name = nil)
+  def initialize(ts = Rinda::Tuplespace.new, n = 0, name = nil)
     @ts = ts
     @name = name || self
     n.times { up }
