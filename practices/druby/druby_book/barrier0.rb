@@ -2,7 +2,7 @@
 require 'rinda/tuplespace'
 
 class Barrier
-  def initialize(ts = Rinda::Tuplespace.new, n, name = nil)
+  def initialize(ts = Rinda::Tuplespace.new, n = 0, name = nil)
     @ts = ts
     @name = name
     @ts.write([key, n])

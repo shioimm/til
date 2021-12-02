@@ -2,7 +2,7 @@
 require 'rinda/tuplespace'
 
 class TSStruct
-  def initialize(ts = Rinda::Tuplespace.new, n, struct = nil)
+  def initialize(ts = Rinda::Tuplespace.new, name = nil, struct = nil)
     @ts = ts
     @name = name || self
 
@@ -31,4 +31,3 @@ class TSStruct
     @ts.write(tuple) if tuple
   end
 end
-  end
