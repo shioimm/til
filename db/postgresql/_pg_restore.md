@@ -1,7 +1,8 @@
-# ダンプファイルをローカルにリストアする
+# `pg_restore`
 - [`pg_dump`](https://www.postgresql.jp/document/12/html/app-pgdump.html)
+
 ```
-$ pg_restore --verbose --data-only --no-owner --no-acl --disable-triggers -h localhost -d xxxx_development -U username -p 5432 ../latest.dump
+$ pg_restore --verbose --data-only --no-owner --no-acl --disable-triggers -h localhost -d xxxx_development -U username -p 5432 ../DUMPFILE_NAME.dump
 ```
 
 - `--verbose` - 冗長モード
