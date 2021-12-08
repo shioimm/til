@@ -1,5 +1,4 @@
 # library benchmark
-- Rubyプログラムのベンチマークを取るライブラリ
 
 ```ruby
 require 'benchmark'
@@ -47,13 +46,5 @@ end
 - total  -> 合計時間(utime + stime + cutime + cstime)
 - utime  -> User CPU time
 
-# ActiveSupport::Benchmarkable.#benchmark
-- Railsに実装されているベンチマークツール
-```ruby
-benchmark "Benchmarking" do
-  # ベンチマークしたい処理
-end
-```
-
 ## 参照
-- [library benchmark](https://docs.ruby-lang.org/ja/2.6.0/library/benchmark.html)
+- [library benchmark](https://docs.ruby-lang.org/ja/3.0.0/library/benchmark.html)
