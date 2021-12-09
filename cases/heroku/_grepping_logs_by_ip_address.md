@@ -6,5 +6,5 @@
 $ heroku logs -t --app アプリケーション名 | grep IPアドレス
 
 # 自分のIPアドレスはアプリケーションの操作時にログに出力される
-# fwd="xxx.xxx.xxx.xxx"
+# fwd="***.***.***.***"
 ```
