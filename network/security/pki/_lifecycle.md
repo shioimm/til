@@ -1,14 +1,14 @@
 # 運用
 ## 証明書の発行
-1. 秘密鍵・公開鍵の作成(SSLライブラリを使用する)
+1. 秘密鍵・公開鍵の作成 (SSLライブラリを使用する)
     - 暗号化アルゴリズム・鍵の長さを選択
     - 秘密鍵にはパスワードをかけ、公開しないようにする
     - 公開鍵は秘密鍵と同時に作成されたり、CSR作成時に作成されたりする
 2. CSRの作成
-    - Certificate Signing Request(証明書署名要求)
+    - Certificate Signing Request (証明書署名要求)
     - 証明したい情報を入力する
 3. 証明書の作成
-    -  CSRを登録局に送付し、証明書の発行を待つ
+    - CSRを登録局に送付し、証明書の発行を待つ
     - 登録局は主体者の本人性を確認し、認証局へCSRを送付する
     - 認証局は証明書を作成・署名し、所有者に渡す
     - 証明書は認証局からも配布される
@@ -26,31 +26,16 @@
 ## 証明書の失効
 - 証明書は対応する秘密鍵が危殆化した場合や、すでに必要がなくなった場合に失効する
 - 証明書は自身が失効したかどうかを確かめる方法を証明書自身に内包する
-  - CRLモデル(Certificate Revocation List: 証明書失効リスト)
-  - OCSPモデル(Online Certificate Status Protocol: オンライン証明書状態プロトコル)
+  - CRLモデル (Certificate Revocation List: 証明書失効リスト)
+  - OCSPモデル (Online Certificate Status Protocol: オンライン証明書状態プロトコル)
 
 ### CRLモデル
 - Certificate Revocation List
-- CAが管理する証明書の失効情報(シリアル番号と失効日)リスト
-- まだ期限切れになっていないが失効済みの証明書の情報が記載される
-- CRLのURLは証明書のCRL配布点(CRL Distribution Points)拡張として格納される
-
-#### 動作フロー
-1. CRLに対応ブラウザから証明書が設定されたWebサイトへアクセスを行う際、CRLのURLへ自動的にアクセスを行い、
-   CRLをダウンロードする
-2. ブラウザは取得したCRLの全シリアル番号とWebサーバーから送信された証明書のシリアル番号を照合する
+- CAが管理する証明書の失効情報 (シリアル番号と失効日) リスト
 
 ### OCSPモデル
 - Online Certificate Status Protocol
-- X.509公開鍵証明書の失効状態をリアルタイムで取得するための通信プロトコル
-- CAのOCSPレスポンダ(OCSPサーバー)はCAのCRLを保存している
-- OCSPレスポンダのURLは証明書のAuthority Information Access拡張のオンライン証明書状態プロトコル項目に格納される
-- OCSPステープリング - 各サーバーがOCSPレスポンスをTLSハンドシェイクに埋め込めるようにする機能
-
-#### 動作フロー
-1. OCSP対応ブラウザから証明書が設定されたWebサイトへアクセスを行う際、OCSPレスポンダのURLへ自動的にアクセスを行う
-2. OCSPレスポンダは自身が保存するCRLの全シリアル番号とWebサーバーから送信された証明書のシリアル番号を照合し、
-   ブラウザへ確認結果を送信する
+- CAのOCSPレスポンダ (OCSPサーバー) はCAのCRLを保存している
 
 ## 参照
 - SSLをはじめよう ～「なんとなく」から「ちゃんとわかる！」へ～
@@ -59,5 +44,4 @@
 - サーバ／インフラエンジニアの基本がこれ1冊でしっかり身につく本 3.6
 - 食べる！SSL！　―HTTPS環境構築から始めるSSL入門
 - プロフェッショナルSSL/TLS
-- [OCSP (Online Certificate Status Protocol)](https://www.cybertrust.co.jp/sureserver/support/glossary/ocsp.html)
 - マスタリングTCP/IP 情報セキュリティ編
