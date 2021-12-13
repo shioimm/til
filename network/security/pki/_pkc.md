@@ -28,9 +28,12 @@
 - クライアントはいずれもルート証明書に含まれる公開鍵で検証を行う
 
 ## 種類
-- DV - 被証明者のドメイン証明
-- OV - 被証明者のドメイン証明、被証明者の法的な実在証明
-- EV - 被証明者のドメイン証明、被証明者の法的な実在証明、被証明者の物理的な実在証明
+- DV (Domain Validated certificate)
+  - 被証明者のドメイン証明
+- OV (Organizatioon Validation / 企業認証)
+  - 被証明者のドメイン証明、被証明者の法的な実在証明
+- EV (Extended Validation)
+  - 被証明者のドメイン証明、被証明者の法的な実在証明、被証明者の物理的な実在証明
 
 ## 発行元
 - 自己認証
@@ -50,17 +53,8 @@
 
 ## 証明書発行手順
 1. OpenSSLで秘密鍵を生成
-```
-$ openssl genrsa -out ./xxx.key 2048`
-$ chmod 600 ./xxx.key
-```
-
 2. 秘密鍵からCSR(証明書署名リクエスト)を作成
-```
-$ openssl req -new -key xxx.key -out xxx.csr
-```
 3. 認証局にCSRを提出しSSL証明書の発行を依頼
-  - FujiSSL
 4. CAによる審査・証明書の発行
 5. CAから発行される値でネームサーバー上にTXTレコードを作りDNS認証
 6. SSL証明書・中間CA証明書が届く
@@ -72,6 +66,12 @@ $ openssl req -new -key xxx.key -out xxx.csr
 8. Webサーバー上にHTTPSのバーチャルホストを作成
     - 秘密鍵・SSL証明書 + 中間CA証明書・暗号スイート・TLSプロトコルバージョンを指定
 
+## 証明書の透明性 (CT: Certificate Transparency)
+- 証明書発行を監視する仕組み
+- サーバーが認証局に証明書の発行を依頼すると、認証局はCTのログサーバーに発行する証明書を登録する
+- 認証局はログサーバーから署名付きのSCT (Signed Certificate Timestamp) を受け取ってサーバーに返す
+- ユーザーはログサーバーにアクセスし、証明書の発行履歴を確認する
+
 ## 参照
 - SSLをはじめよう ～「なんとなく」から「ちゃんとわかる！」へ～
 - [図解で学ぶネットワークの基礎：SSL編](https://xtech.nikkei.com/it/article/COLUMN/20071002/283518/)
@@ -82,3 +82,4 @@ $ openssl req -new -key xxx.key -out xxx.csr
 - [OCSP (Online Certificate Status Protocol)](https://www.cybertrust.co.jp/sureserver/support/glossary/ocsp.html)
 - マスタリングTCP/IP 情報セキュリティ編
 - パケットキャプチャの教科書
+- 図解即戦力　暗号と認証のしくみと理論がこれ1冊でしっかりわかる教科書
