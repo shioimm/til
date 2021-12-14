@@ -57,10 +57,12 @@ struct {
 - 以降のハンドシェイクで、クライアントは以前のハンドシェイクのFinished メッセージの`verify_data`を送信する
   サーバーはクライアントの`verify_data`および自分自身の`verify_data`を送信する
 
-## SNI(Server Name Indication)
-- 接続したいサーバーをクライアントが指定できるようにする拡張
+## SNI (Server Name Indication)
+- ClientHelloの中に接続したいサーバーの名前を記述する拡張
+  - ホストに対してバーチャルホストのドメイン名を指定するために利用される
   - `server_name`拡張によって実装される
-- 一つのホストが複数のドメイン名を持つ時、ドメイン単位でサーバー証明書を利用することができる
+- SNIを暗号化する規格はESNI (Encrypted SNI)
+  - ECHはClientHello自体を暗号化する
 
 ### フロー
 1. クライアント -> サーバー
