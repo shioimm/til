@@ -1,17 +1,24 @@
 # Alertプロトコル
-- 異常通知・接続終了のためのプロトコル
-- 通信中の相手に例外的な状況を伝える
+- 通信中の相手に例外的な状況を伝える通知のためのプロトコル
+  - 異常通知・接続終了
 
-## Alertレコード定義
+## Alertレコードフォーマット
 
 ```c
 struct {
-  AlertLevel level;
-  AlertDescription description;
+  AlertLevel level; // アラートの深刻度 warning or fatal
+  AlertDescription description; // アラートの内容
 } Alert;
 
-// 接続終了時はどちらかのピアがclose_notifyアラートを送信する
 ```
+
+- `fatal` - 現在の接続を即刻中断してセッションを無効化する
+- `warning` - アラートの送信側は接続を終了しない。アラートの受信側が`fatal`アラートで応じることは可能
+
+## 接続終了
+1. どちらかのピアが`close_notify`アラートを送信する
+2. アラートの受信側は書き込み中の内容を破棄して自身の`close_notify`を送信
+    - アラートを送信した後に届いたメッセージはすべて無視する
 
 ## 参照
 - プロフェッショナルSSL/TLS

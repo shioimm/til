@@ -89,35 +89,6 @@ verify_data = PRF(master_secret, finished_label, Hash(handshake_messages))
 // Hash - PRFで定義されているものと同じハッシュ関数
 ```
 
-#### 暗号スイート
-- 認証の種類
-- 鍵交換の種類
-- 暗号化アルゴリズム
-- 暗号鍵の長さ
-- 暗号化利用モード(適用可能な場合)
-- MACアルゴリズム(適用可能な場合)
-- 擬似乱数生成器
-- Finished メッセージで使うハッシュ関数
-- `verify_data`構造体の長さ
-
-```
-TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-
-// TLS_鍵交換_認証_WITH_アルゴリズム_長さ_暗号化モード_MACまたは擬似乱数生成器
-```
-
-#### プリマスターシークレット
-- マスターシークレットの素
-- マスターシークレットを生成するためにクライアント - サーバー間で共有される
-
-#### マスターシークレット
-- 共通鍵の素
-- サーバーとクライアントはプリマスターシークレット、
-  ClientHelloで得られるclient random、
-  ServerHelloで得られるserver randomを素にしてセッション鍵とMAC鍵を生成する
-  - セッション鍵 - アプリケーションデータの暗号化に使用する共通鍵
-  - MAC鍵 - ハッシュ化に使用する共通鍵
-
 #### `verify_data`
 - クライアントとサーバがそれぞれ受信したハンドシェイクメッセージのすべてをハッシュ化したもの、
   `finished_label`(クライアントは`client finished`、サーバーは`server finished`)、
