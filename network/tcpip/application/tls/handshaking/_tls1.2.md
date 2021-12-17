@@ -37,23 +37,32 @@
 
 #### Certificate (サーバー)
 - X.509証明書チェーンを送信 (X.509証明書以外の形式でも可)
-- チェーンの先頭はサーバー証明書、その次に中間証明書、末尾にルート証明書
+  - チェーンの先頭はサーバー証明書、その次に中間証明書、末尾にルート証明書
   - ルート証明書は不要であるため省くべき
 - クライアントはX.509証明書チェーンを検証する
 
 #### CertificateRequest (サーバー: optional)
 - クライアント認証を行う場合、サーバーが理解できる証明書のタイプ・認証局の名前一覧を送信
 
+```c
+struct {
+  ClientCertificateType certificate_types;
+  SignatureAndHashAlgorithm supported_signature_algorithms;
+  DistinguishedName certificate_authorities;
+} CertificateRequest;
+```
+
 #### ServerKeyExchange (サーバー: optional)
-- 使用する暗号スイートの内容によって必要な場合、追加の情報を送信
-- ServerHelloDone
+- 鍵交換のためのメッセージ
+- 使用する暗号スイートの内容によって必要な場合、追加の情報を送信 (鍵交換)
 
 #### Certificate (クライアント: optional)
 - クライアント認証を行う場合、証明書を送信
 - サーバーは証明書を検証する
 
 #### ClientKeyExchange (クライアント)
-- 暗号スイートがRSAを用いる場合、暗号化したプリマスターシークレット(乱数)を送信
+- 鍵交換のためのメッセージ
+- 暗号スイートがRSAを用いる場合、暗号化したプリマスターシークレット (乱数) を送信
 - 暗号スイートがDH鍵交換を用いる場合、Diffie-Hellman公開値を送信
 - サーバーとクライアントはプリマスターシークレットを用いてマスターシークレットを計算
 - サーバーとクライアントマスターシークレットを用いて共通鍵暗号の鍵・MACの鍵・初期化ベクトルの一部を作成
@@ -61,9 +70,24 @@
 #### CertificateVerify (クライアント: optional)
 - クライアント認証を行う場合、クライアント証明書の秘密鍵を持っていることを通知
 
+```c
+struct {
+  Signature handshake_messages_signature;
+} CertificateVerify;
+```
+
 #### Finished (サーバー・クライアント)
 - メッセージは暗号化されており、ネゴシエーション済みのMACによって真正性が保証されている
-- `verify_data`フィールドを含む
+- クライアントとサーバのそれぞれが受信したハンドシェイクメッセージのすべてをハッシュ化し、
+  その値とマスターシークレットを組み合わせて計算したデータ (`verify_data`フィールド) を含む
+
+```
+verify_data = PRF(master_secret, finished_label, Hash(handshake_messages))
+
+// PRF - 疑似乱数生成器
+// finished_label - クライアント: client finished / サーバー: server finished
+// Hash - PRFで定義されているものと同じハッシュ関数
+```
 
 #### 暗号スイート
 - 認証の種類
@@ -84,6 +108,7 @@ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 
 #### プリマスターシークレット
 - マスターシークレットの素
+- マスターシークレットを生成するためにクライアント - サーバー間で共有される
 
 #### マスターシークレット
 - 共通鍵の素
@@ -139,6 +164,50 @@ verify_data = PRF(master_secret, finished_label, Hash(handshake_messages))
 
 #### Finished (クライアント)
 - 送信および受信したハンドシェイクメッセージのMACを送信
+
+## 鍵交換
+- ServerKeyExchange (optional) とClientKeyExchangeによって
+  クライアント - サーバー間で共有するマスターシークレットの素材となる
+  プリマスターシークレットの生成に必要なパラメータの交換を行う
+
+```c
+struct {
+  select (KeyExchangeAlgorithm) {
+    case dh_anon:
+        ServerDHParams   params;
+    case dhe_rsa:
+        ServerDHParams   params;
+        Signature        params_signature;
+    case ecdh_anon:
+        ServerECDHParams params;
+    case ecdhe_rsa:
+    case ecdhe_ecdsa:
+        ServerECDHParams params;
+      Signature
+    case rsa:
+    case dh_rsa:
+  };
+} ServerKeyExchange
+
+// アルゴリズムによってはパラメータが不要
+```
+
+```c
+struct {
+  select (KeyExchangeAlgorithm) {
+    case rsa:
+      EncryptedPreMasterSecret;
+    case dhe_dss:
+    case dhe_rsa:
+    case dh_dss:
+    case dh_rsa:
+    case dh_anon:
+      ClientDiffieHellmanPublic;
+    case ecdhe:
+      ClientECDiffieHellmanPublic;
+  } exchange_keys;
+} ClientKeyExchange;
+```
 
 ## 参照
 - プロフェッショナルSSL/TLS
