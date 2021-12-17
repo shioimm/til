@@ -1,5 +1,14 @@
 # プロトコルの階層
-- TLS Record + TLS Handshake(Handshake + ChangeCipherSpec + Alert + アプリケーションデータプロトコル)
+- TLS Record + TLS Handshake (Handshake + ChangeCipherSpec + Alert + Application Data)
+
+#### メインプロトコル
+- TLS Record
+
+#### サブプロトコル
+- Handshake
+- Change Cipher Spec
+- Application Data
+- Alert
 
 ## 参照
 - プロフェッショナルSSL/TLS
