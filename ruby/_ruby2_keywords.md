@@ -13,7 +13,7 @@ foo(arg: 1) # => { arg: 1 }
 # 呼び出し先: ハッシュオブジェクト
 # => ハッシュオブジェクトからキーワード引数への自動変換が行われる
 
-def foo(arg: 1); arg; end
+def foo(**arg); arg; end
 
 foo({ arg: 1 }) # => 1
 ```
@@ -32,12 +32,23 @@ foo(arg: 1) # => { arg: 1 }
 # 呼び出し先: ハッシュオブジェクト
 # => キーワード引数を渡すべきところにハッシュオブジェクトが渡ったためArgumentErrorが発生
 
-def foo(arg: 1) = arg
+def foo(**arg) = arg
 
 foo({ arg: 1 }) # => :in `foo': wrong number of arguments (given 1, expected 0) (ArgumentError)
 
 # 呼び出し側が渡す引数のハッシュオブジェクトを明示的にキーワード引数へ展開することで回避できる
 foo(**{ arg: 1 }) # => 1
+```
+
+```
+def foo(*args, **kwargs)
+  [args, kwargs]
+end
+
+foo(bar: 1)       # => [[], {:bar=>1}]
+foo({ bar: 1 })   # => [[{:bar=>1}], {}]
+foo({ bar: 1 })   # => [[{:bar=>1}], {}]
+foo(**{ bar: 1 }) # => [[], {:bar=>1}]
 ```
 
 ### メソッドの委譲
