@@ -42,11 +42,7 @@ Extension extensions;
     - ProtocolName - 選択したプロトコル
 
 #### `signed_certificate_timestamp`拡張
-- CT (Certificate Transparency: 証明書の透明性) は公開のログサーバーに対して
-  CAが自身の証明書を登録することでサーバー証明書の透明性を担保する仕組み
-- ログサーバーはSCT (Signed Certificate Timestamp: 署名済み証明書のタイムスタンプ) をCAに返送し、
-  最終的には末端の利用者が使っているツール上でSCTの検証が行われる
-- `signed_certificate_timestamp`TLS拡張を利用してSCTの転送を行う
+- SCTの転送を行うためのTLS拡張
 
 #### `elliptic_curves`拡張
 - クライアントで利用可能な楕円曲線について、
