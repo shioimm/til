@@ -1,8 +1,4 @@
 # コマンドライン
-- 参照: 例解UNIX/Linuxプログラミング教室 システムコールを使いこなすための12講 P11
-- 参照: 詳解UNIXプログラミング第3版 8. プロセスの制御
-- 参照: Linuxプログラミングインターフェース 2章
-
 ## シェル
 - シェル = コマンドインタプリタ
   - ユーザーが入力したコマンドを読み取り、プログラムを実行するプログラム
@@ -15,8 +11,6 @@
   - スクリプトファイル(ex: シェルスクリプト、Rubyスクリプト)
 
 ## コマンド探索パス
-- 参照: [PATHを通すとは？ (Mac OS X)](https://qiita.com/soarflat/items/09be6ab9cd91d366bf71)
-- 参照: [PATHを通すために環境変数の設定を理解する (Mac OS X)](https://qiita.com/soarflat/items/d5015bec37f8a8254380)
 - PATH = コマンド検索パス
   - シェルがコマンド実行ファイルを探しに行くパス
   - PATHを通す -> コマンド探索パスを追加する
@@ -59,6 +53,9 @@ $ which ruby
 $ echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 ```
 
+- 参照: [PATHを通すとは？ (Mac OS X)](https://qiita.com/soarflat/items/09be6ab9cd91d366bf71)
+- 参照: [PATHを通すために環境変数の設定を理解する (Mac OS X)](https://qiita.com/soarflat/items/d5015bec37f8a8254380)
+
 ## `bin`がつくコマンドとつかないコマンドの違い
 ```
 $ which bin/yarn
@@ -81,3 +78,8 @@ $ which yarn
 - `/usr/local/bin`
   - シングルユーザモードで利用しないコマンド
   - パッケージ管理システムによってシステムに管理されないコマンドやプログラム(自作のスクリプトなど)
+
+## 参照
+- 例解UNIX/Linuxプログラミング教室 システムコールを使いこなすための12講 P11
+- 詳解UNIXプログラミング第3版 8. プロセスの制御
+- Linuxプログラミングインターフェース 2章

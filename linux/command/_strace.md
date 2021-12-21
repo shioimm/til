@@ -1,12 +1,9 @@
 # strace(1)
 - プログラム中で使用されているシステムコールをトレースし、表示したり集計したりするユーティリティコマンド
 
-## Getting Started
 ```
 $ apt-get install strace
-```
 
-```
 $ strace トレースするプログラムの実行
 ```
 

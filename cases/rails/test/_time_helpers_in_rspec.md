@@ -23,9 +23,8 @@ end
 before do
   freeze_time
 end
-```
 
-```ruby
 after do
   unfreeze_time
 end
+```

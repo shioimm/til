@@ -28,24 +28,6 @@ m = Dec(c)
 1. 平文のハッシュ値と決まった個数の0などから作った認証の情報を平文の前に追加し、その後にRSAで暗号化する
 2. 復号時、RSAで復号した後で先頭に正しい認証の情報が現れなければ認証エラーを返す
 
-## OpenSSLによるRSA暗号鍵
-```
-// 2048ビットのRSA暗号の秘密鍵ファイルを作成
-$ openssl genrsa 2048 > sec-test-key.txt
-
-// 作成した秘密鍵に対応する公開鍵ファイルを作成
-$ openssl rsa -pubout < sec-test-key.txt > pub-test-key.txt
-
-// 作成した公開鍵を人間にわかりやすくフォーマットして出力
-// Modules = 割る数n
-// Exponent = 冪乗する値e
-$ openssl rsa -text -pubin -noout < pub-test-key.txt
-
-// 作成した秘密鍵を人間にわかりやすくフォーマットして出力
-// privateExponent = 秘密鍵d
-$ openssl rsa -text -noout < sec-test-key.txt
-```
-
 ## 参照
 - 食べる！SSL！　―HTTPS環境構築から始めるSSL入門
 - プロフェッショナルSSL/TLS
