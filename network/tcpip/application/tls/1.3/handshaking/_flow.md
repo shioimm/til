@@ -1,4 +1,4 @@
-# TLS 1.3 ハンドシェイク
+# フロー
 1. クライアント -> サーバー
     - SYN
 2. クライアント <- サーバー
@@ -19,12 +19,47 @@
 
 #### ClientHello (クライアント)
 - DH鍵共有のための秘密鍵情報 (KS: Key Share) 、事前鍵共有 (PSK: Pre Shared Key) を送信 (optional)
+- クライアントから1つもしくは複数の異なる鍵交換の手法を提案し、
+  鍵交換アルゴリズムに必要なパラメータをすべてサーバに送信する
+  - TLS1.2でClientHelloの後、サーバーが鍵交換の種類を選択していた
+
+```c
+uint16 ProtocolVersion;
+opaque Random[32];
+uint8 CipherSuite[2];    // Cryptographic suite selector
+
+struct {
+  ProtocolVersion legacy_version = 0x0303;    // TLS v1.2
+  Random random; // 32バイトの暗号学的にランダムなデータを格納
+  opaque legacy_session_id<0..32>;
+  CipherSuite cipher_suites<2..2^16-2>;
+  opaque legacy_compression_methods<1..2^8-1>;
+  Extension extensions<8..2^16-1>;
+} ClientHello;
+```
 
 #### ServerHello (サーバー)
+- クライアントから提案された接続のためのパラメータに合意できればServerHelloメッセージで応答
 - DH鍵共有のための秘密鍵情報 (KS: Key Share) 、事前鍵共有 (PSK: Pre Shared Key) を送信
 - 秘密鍵の共有が完了し移行暗号化通信へ移行
 
+```c
+struct {
+  ProtocolVersion legacy_version = 0x0303;    // TLS v1.2
+  Random random;
+  opaque legacy_session_id_echo<0..32>;
+  CipherSuite cipher_suite;
+  uint8 legacy_compression_method = 0;
+  Extension extensions<6..2^16-1>;
+} ServerHello;
+```
+
+#### HelloRetryRequest (サーバー)
+- クライアントから提案された鍵交換アルゴリズムに対応できなかった場合、
+  ハンドシェイクが失敗した旨をクライアントに伝える
+
 #### EncryptedExtensions (サーバー)
+- サーバー拡張の利用
 - 暗号化したサーバーパラメータを送信
 
 #### Certificate (サーバー)
@@ -35,12 +70,6 @@
 
 #### Finished (サーバー・クライアント)
 - 暗号化されたFinishedメッセージを送信
-
-## 鍵導出関数 HKDF (HMAC-based Key Derivation Function)
-- TLS1.3でハンドシェイク時に共有される秘密鍵を導出するアルゴリズムが新たに設計された
-- HKDFは短いシードや補助入力から秘密鍵として利用できる複数の安全な疑似乱数を取得する関数
-  - HKDF-Extract
-  - HKDF-Expand
 
 ## 参照
 - プロフェッショナルSSL/TLS
