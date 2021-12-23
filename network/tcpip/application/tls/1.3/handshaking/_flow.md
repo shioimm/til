@@ -62,14 +62,85 @@ struct {
 - サーバー拡張の利用
 - 暗号化したサーバーパラメータを送信
 
-#### Certificate (サーバー)
-- 暗号化したサーバー証明書を送信
+#### CertificateRequest (サーバー)
+- クライアント認証の要求
+
+```c
+struct {
+  opaque certificate_request_context<0..2^8-1>; // 特定の証明書を要求することを一意に特定する
+  Extension extensions<2..2^16-1>;
+} CertificateRequest;
+```
+
+#### Certificate (サーバー・クライアント(オプショナル))
+- 暗号化した証明書を送信
+- 複数の証明書を格納することも可能
+- 個々の証明書に対して任意の拡張を付与することが可能
+  - OCSPの失効情報、SCTなど
+
+```c
+enum {
+  X509(0),
+  RawPublicKey(2),
+  (255)
+} CertificateType;
+
+struct {
+  select (certificate_type) {
+    case RawPublicKey:
+      opaque ASN1_subjectPublicKeyInfo<1..2^24-1>; // From RFC 7250 ASN.1_subjectPublicKeyInfo
+    case X509:
+      opaque cert_data<1..2^24-1>;
+  };
+  Extension extensions<0..2^16-1>;
+} CertificateEntry;
+
+struct {
+  opaque certificate_request_context<0..2^8-1>;
+  CertificateEntry certificate_list<0..2^24-1>;
+} Certificate;
+```
+
+#### CertificateVerify (サーバー・クライアント(オプショナル))
+- ハンドシェイクで送信済の証明書に対する秘密鍵を持っていることを証明する
+
+```c
+struct {
+  SignatureScheme algorithm; // 署名アルゴリズムについての指示
+  opaque signature<0..2^16-1>; // デジタル署名: ハンドシェイクと証明書を関連付けるもの
+} CertificateVerify;
+
+// signature:
+//   64個のスペース (0x20) からなる文字列
+//   + 署名の目的を表す文字列 ('TLS 1.3, server CertificateVerify' || 'TLS 1.3, client CertificateVerify')
+//   + 1バイトのゼロ (0x00)
+//   + トランスクリプトハッシュ
+// に署名したもの
+```
 
 #### アプリケーションデータ (サーバー・クライアント)
-- 認証処理が終わり次第暗号化されたアプリケーションデータを送信
+- 認証処理が終わり次第、暗号化されたアプリケーションデータを送信
 
 #### Finished (サーバー・クライアント)
 - 暗号化されたFinishedメッセージを送信
+- ハンドシェイクの完全性を検証するため、クライアントとサーバーは
+  それぞれ交換したデータに対する署名を送信する
+
+```c
+struct {
+  opaque verify_data[Hash.length]; // トランスクリプトハッシュから計算したHMAC値
+} Finished;
+```
+
+```
+verify_data = HMAC(finished_key, Transcript-Hash(Handshake Context, Certificate*, CertificateVerify*))
+```
+
+#### Post-Handshake Authentication (クライアント)
+- ハンドシェイク後の認証に対応しているクライアントは`post_handshake_auth`拡張にて
+  サーバーにその旨を伝える
+- サーバーは最初のハンドシェイクを完了した後の任意の段階でCertificateRequestメッセージを送信し、
+  クライアントに対して認証を求めることができる
 
 ## 参照
 - プロフェッショナルSSL/TLS
