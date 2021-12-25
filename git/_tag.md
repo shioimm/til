@@ -1,12 +1,12 @@
-## git tag
-- tag一覧を表示
+# tag
 
-#### tagへcheckout
 ```
-git checkout refs/tags/タグ番号
-``
+# tag一覧を表示
+$ git tag
 
-- ブランチを切る場合
-```
-git checkout -b tag refs/tags/タグ番号
+# tagへcheckout
+git checkout refs/tags/TAGNUMBER
+
+# tagへcheckoutし、新しいブランチを切る
+git checkout -b tag refs/tags/TAGNUMBER
 ``
