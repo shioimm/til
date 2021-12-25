@@ -5,9 +5,9 @@
     - ACK + SYN
 3. クライアント -> サーバー
     - ACK
-    - ClientHello
+    - ClientHello [`key_share`]
 4. クライアント <- サーバー
-    - ServerHello
+    - ServerHello [`key_share`]
     - EncryptedExtensions
     - Certificate
     - CertificateVerify
@@ -22,6 +22,7 @@
   - TLS1.2でClientHelloの後、サーバーが鍵交換の種類を選択していた
 - クライアントは`key_share`拡張を利用して鍵交換アルゴリズムに必要なパラメータをすべて送信可能
   - パラメータ: DH鍵共有のための秘密鍵情報 (KS: Key Share) 、事前鍵共有 (PSK: Pre Shared Key)
+  - `key_share`拡張はTLS1.2のClientKeyExchangeと同じ
 
 ```c
 uint16 ProtocolVersion;
@@ -40,11 +41,12 @@ struct {
 
 #### ServerHello (サーバー)
 - クライアントから提案された鍵交換方式に合意できればServerHelloメッセージで応答
+- `key_share`拡張を利用して鍵交換アルゴリズムに必要なパラメータをすべて送信可能
+  - パラメータ: DH鍵共有のための秘密鍵情報 (KS: Key Share) 、事前鍵共有 (PSK: Pre Shared Key)
+  - `key_share`拡張はTLS1.2のServerKeyExchangeと同じ
 - 秘密鍵の共有が完了し暗号化通信へ移行
 - クライアントが提案した選択肢に合意できない場合、
   `supported_groups`拡張を利用して1つもしくは複数の異なる鍵交換の手法を提案する
-  - 併せて`key_share`拡張を利用して鍵交換アルゴリズムに必要なパラメータをすべて送信
-  - パラメータ: DH鍵共有のための秘密鍵情報 (KS: Key Share) 、事前鍵共有 (PSK: Pre Shared Key)
 
 ```c
 struct {
@@ -149,3 +151,4 @@ verify_data = HMAC(finished_key, Transcript-Hash(Handshake Context, Certificate*
 - プロフェッショナルSSL/TLS
 - 暗号技術入門 第3版
 - パケットキャプチャの教科書
+- [TLS v1.3の仕組み ~Handshakeシーケンス,暗号スイートをパケットキャプチャで覗いてみる~](https://milestone-of-se.nesuke.com/nw-basic/tls/tls-version-1-3/)
