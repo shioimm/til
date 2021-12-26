@@ -1,19 +1,20 @@
-# フロー
+# フルハンドシェイク
 1. クライアント -> サーバー
     - SYN
 2. クライアント <- サーバー
     - ACK + SYN
 3. クライアント -> サーバー
     - ACK
+4. クライアント -> サーバー
     - ClientHello [`key_share`]
-4. クライアント <- サーバー
+5. クライアント <- サーバー
     - ServerHello [`key_share`]
     - EncryptedExtensions
     - Certificate
     - CertificateVerify
     - Finished
     - アプリケーションデータ
-5. クライアント -> サーバー
+6. クライアント -> サーバー
     - Finished
     - アプリケーションデータ
 

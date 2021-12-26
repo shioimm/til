@@ -1,22 +1,28 @@
-# TLS 1.2 フルハンドシェイク
+# フルハンドシェイク
 1. クライアント -> サーバー
-    - ClientHello
+    - SYN
 2. クライアント <- サーバー
+    - ACK + SYN
+3. クライアント -> サーバー
+    - ACK
+4. クライアント -> サーバー
+    - ClientHello
+5. クライアント <- サーバー
     - ServerHello
     - Certificate
     - CertificateRequest (optional)
     - ServerKeyExchange (optional)
     - ServerHelloDone
-3. クライアント -> サーバー
+6. クライアント -> サーバー
     - Certificate (optional)
     - ClientKeyExchange
     - CertificateVerify (optional)
     - ChangeCipherSpec
     - Finished
-4. クライアント <- サーバー
+7. クライアント <- サーバー
     - ChangeCipherSpec
     - Finished
-5. アプリケーションデータプロトコルへ移行
+8. アプリケーションデータプロトコルへ移行
     - アプリケーションデータをMAC鍵でハッシュ化、セッション鍵で暗号化してアプリケーションレコードで転送
 6. Alertによって`close_notify`の発生を通信相手に通知する
 7. AlertによってSSL/TLSの終了を伝え、SSL/TLSセッションを終了する
