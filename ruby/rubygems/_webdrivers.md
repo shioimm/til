@@ -1,12 +1,13 @@
 # webdrivers
-- [titusfortner / webdrivers](https://github.com/titusfortner/webdrivers)
-- Seleniumでブラウザを起動する際、自動的にドライバーをダウンロード/更新する
+- Seleniumでブラウザを起動する際、自動的にWebDriverをインストール・アップデートする
 
-### 使い所
-- チーム内のChromeDriverのバージョンを揃える場合
 ```ruby
+# チーム内のChromeDriverのバージョンを揃える
 # spec/rails_helper.rb
 
 # Some specs fail with version 79
 Webdrivers::Chromedriver.required_version = '78.0.3904.105'
 ```
+
+## 参照
+- [titusfortner / webdrivers](https://github.com/titusfortner/webdrivers)
