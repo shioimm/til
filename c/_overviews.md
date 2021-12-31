@@ -1,15 +1,15 @@
 # C文法
 
 ```c
-/* sample.c */
+// sample.c
 
-/* 標準入出力を行うためのヘッダファイルを読み込む */
+// 標準入出力を行うためのヘッダファイルを読み込む
 #include <stdio.h>
 
 int main() {
-  int   x = 10;    /* %d */
-  float y = 1.0; /* %f */
-  char  z = 'a';  /* %c */
+  int   x = 10;  // %d
+  float y = 1.0; // %f
+  char  z = 'a'; // %c
 
   printf("x = %d, y = %f, z = %c\n", x, y, z);
 
@@ -143,26 +143,6 @@ int main() {
   printHello();
 
   return 0; // 慣習的に0を返す
-}
-```
-
-## 静的変数
-```c
-#include <stdio.h>
-
-void plusOne(void) {
-  // 静的変数として宣言 -> 二回めの呼び出し以降、変数定義が無視される
-  static int x = 0;
-  x++;
-  printf("x = %d\n", x);
-}
-
-int main() {
-  plusOne; // -> 1
-  plusOne; // -> 2
-  plusOne; // -> 3
-
-  return 0;
 }
 ```
 
