@@ -13,3 +13,9 @@
 - RClass構造体: ruby/internal/class.h
 - `st-table`: ruby/include/ruby/st.h -> ruby/st.c
   - ハッシュテーブル
+- `NEWOBJ`マクロ: ruby/include/ruby/internal/newobj.h
+  - Rubyオブジェクトを生成する際のマクロ
+  - R~構造体を割り当てる
+- `OBJSETUP`マクロ: ruby/include/ruby/internal/newobj.h
+  - Rubyオブジェクトを生成する際のマクロ
+  - RBasicのbasic.klassとbasic.flagsを初期化
