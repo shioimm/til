@@ -8,7 +8,8 @@
   - Rubyレベルのデータ型として`::rb_cSymbol`が用意されている
 - 特殊変数: ruby/include/ruby/internal/`special_consts.h`
 - RVALUE構造体: ruby/gc.c
-  - Rubyオブジェクトを表すメモリ管理の単位
+  - Rubyオブジェクトに対するメモリ操作を行う際にラッパーとなる構造体
+  - `rb_newobj`はRVALUEをfreelistから一つ外して返すための関数
 - RBasic構造体: ruby/include/ruby/internal/core/rbasic.h
 - RClass構造体: ruby/internal/class.h
 - `st-table`: ruby/include/ruby/st.h -> ruby/st.c
