@@ -6,12 +6,18 @@
   - 下位2~3bitが立っている場合 (および0) は即値として扱われる
 - ID型: ruby/unclude/ruby/internal/value.h
   - Rubyレベルのデータ型として`::rb_cSymbol`が用意されている
-- 特殊変数: ruby/include/ruby/internal/`special_consts.h`
 - RVALUE構造体: ruby/gc.c
   - Rubyオブジェクトに対するメモリ操作を行う際にラッパーとなる構造体
   - `rb_newobj`はRVALUEをfreelistから一つ外して返すための関数
 - RBasic構造体: ruby/include/ruby/internal/core/rbasic.h
 - RClass構造体: ruby/internal/class.h
+  - `rb_classext_struct`構造体: internal/class.h
+    - RClass構造体と1:1で使用する
+- 特殊変数: ruby/include/ruby/internal/`special_consts.h`
+- `rb_global_tbl`構造体: variable.c
+  - グローバル変数を格納するテーブル
+  - `global_entry`構造体 (グローバル変数のエントリ)
+  - `global_variable`構造体 (グローバル変数の実体)
 - `st-table`: ruby/include/ruby/st.h -> ruby/st.c
   - ハッシュテーブル
 - `NEWOBJ`マクロ: ruby/include/ruby/internal/newobj.h
