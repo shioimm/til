@@ -9,15 +9,20 @@
 - WASMは特定のプロセッサ・アーキテクチャではなくブラウザ (あるいはWASMを解釈する機構) に対応する
 
 ## WebアプリケーションとしてのWASMコード実行
-1. C/C++、Rust、TypeScriptなどでアプリケーションプログラムを記述する
-2. アプリケーションプログラムをLLVMベースのコンパイラ基盤でコンパイルし、
+1. C/C++、Rust、TypeScriptなどでソースプログラムを記述する
+2. ソースプログラムをLLVMベースのコンパイラ基盤 (LLVMからJavaScriptへのコンパイラ) でコンパイルし、
    WebAssemblyバイトコード (WASMコード) を生成する
-   - C/C++ -> Emscripten
+   - C/C++ -> Emscripten (emcc: Emscriptenコンパイラのフロントエンド)
    - Rust -> rustc
 3. WASMコードをWebアプリケーションにロードする
 4. WebブラウザがWASMを解釈し実行する
     - JSと並行して動作する
     - JSからWASMを呼び出したりWASMからJSを呼び出すこともできる
+
+## Binaryen
+- [Binaryen](https://github.com/WebAssembly/binaryen)
+- WASM向けのコンパイラ/ツールチェインインフラストラクチャ
+- LLVMによる出力をWASMにコンパイルする
 
 ## 参照
 - [WebAssembly: 「なぜ」と「どうやって」 翻訳記事](https://dev.to/nabbisen/webassembly--3385)

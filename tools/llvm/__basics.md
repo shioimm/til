@@ -1,7 +1,7 @@
 # LLVM
 - [LLVM Core](https://llvm.org/doxygen/group__LLVMCCore.html)
 - [Clang](http://clang.llvm.org/)
-  - C言語ファミリー向けのコンパイラフロントエンド(<-> gcc)
+  - C言語ファミリーのLLVMフロントエンド (<-> gcc)
 - [LLDB](http://lldb.llvm.org/)
 - [libc++](http://libcxx.llvm.org/) / [libc++ ABI](http://libcxxabi.llvm.org/)
   - 標準C++ライブラリ
