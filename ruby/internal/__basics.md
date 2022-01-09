@@ -26,3 +26,4 @@
 - `OBJSETUP`マクロ: ruby/include/ruby/internal/newobj.h
   - Rubyオブジェクトを生成する際のマクロ
   - RBasicのbasic.klassとbasic.flagsを初期化
+- VMの命令シーケンスの定義: ruby/insns.def
