@@ -42,5 +42,16 @@ puts RubyVM::InstructionSequence.compile(source).disasm
   - argc - 引数数
 - 行番号
 
+### コンパイルオプション
+- `:inline_const_cache` - - 定数インラインキャッシュを利用する (デフォルトで有効)
+- `:instructions_unification` - スタックキャッシングを行う
+- `:operands_unification` - オペランド融合を行う
+- `:peephole_optimization` - ピープホール最適化を行う (デフォルトで有効)
+- `:specialized_instruction` - 特化命令を利用する (デフォルトで有効)
+- `:stack_caching` - スタックキャッシングを行う
+- `:tailcall_optimization`
+- `:trace_instruction`
+
 ## 参照
 - [YARVアーキテクチャ](http://www.atdot.net/yarv/yarvarch.ja.html)
+- [YARV Maniacs 【第 8 回】 命令列のシリアライズ](https://magazine.rubyist.net/articles/0015/0015-YarvManiacs.html)
