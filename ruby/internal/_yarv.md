@@ -52,6 +52,13 @@ puts RubyVM::InstructionSequence.compile(source).disasm
 - `:tailcall_optimization`
 - `:trace_instruction`
 
+## Rubyファイルの実行フロー
+1. 実行ファイルの読み込み
+2. 字句解析
+3. 構文解析
+4. YARV命令列の生成
+5. YARV命令列の実行
+
 ## 参照
 - [YARVアーキテクチャ](http://www.atdot.net/yarv/yarvarch.ja.html)
 - [YARV Maniacs 【第 8 回】 命令列のシリアライズ](https://magazine.rubyist.net/articles/0015/0015-YarvManiacs.html)
