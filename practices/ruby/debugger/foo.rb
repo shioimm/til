@@ -4,3 +4,6 @@ def foo(a, b)
 end
 
 p foo(1, 2)
+
+# デバッグ対象となるホスト $ rdbg -O --host $LOCAL_HOST_ADDRESS --port $PORT practices/ruby/debugger/foo.rb
+# デバッガにアタッチするホスト $ rdbg -A --host $REMOTE_HOST_ADDRESS --port $PORT
