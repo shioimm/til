@@ -6,6 +6,25 @@
 #### 基本構成
 - MIMEヘッダ + 空行 + 本文
 
+```
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MSG_boundary"
+
+message
+--MSG_boundary
+Content-Type: text/plain; charset=US-ASCII
+
+message
+
+--MSG_boundary
+Content-Type: application/octet-stream
+Content-Transfer-Encoding: base64
+
+**********************************
+
+--MSG_boundary--
+```
+
 #### 複数コンテンツの指定
 - アプリケーションヘッダのContent-Typeに`Multipart/Mixed`を指定し、
   `boundary=`オプションに区切り文字を指定する
