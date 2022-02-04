@@ -9,6 +9,21 @@ $ make -n
 ```
 
 ## Makefile
+#### 記述項目
+```
+# ターゲット: ターゲットが依存するファイル群
+#   ターゲットを生成するための一連の命令
+
+prog.o: prog.c prog.h lib.h
+  gcc -c prog.c
+
+lib.o: lib.c lib.h
+  gcc -c lib.c
+
+prog: prog.o lib.o
+  gcc prog.o lib.o -o prog
+```
+
 #### よく使われるユーザー変数
 | 変数名   | 説明                    |
 | -        | -                       |
