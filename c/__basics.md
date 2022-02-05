@@ -1,4 +1,20 @@
 # C
+## 代入
+- 代入はデータのコピーを行う
+
+```c
+int a = 1;
+int b = a;   // aの値1のコピー
+int *c = &a;
+int *d = c;  // aのアドレスのコピー
+
+printf("%i\n", a); // 1
+printf("%i\n", b); // 1
+printf("%p\n", c); // 0x7ffc22dd5d28
+printf("%p\n", d); // 0x7ffc22dd5d28
+```
+
+## コンパイル
 ```
 $ gcc prog.c -o prog # ソースファイルから実行ファイルを生成
 $ gcc -c prog.c      # オブジェクトファイル (prog.o) を生成
