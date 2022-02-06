@@ -16,57 +16,17 @@ printf("%p\n", d); // 0x7ffc22dd5d28
 
 ## 関数ポインタ
 ```c
-// 返り値の型 (*関数ポインタ変数)(引数の型);
-char** (*names_fns)(char*, int);
+int func(int);
+
+// 関数の返り値の型 (*関数ポインタ変数)(引数の型);
+int (*fn)(int);
 ```
 
-## コンパイル
-```
-$ gcc prog.c -o prog # ソースファイルから実行ファイルを生成
-$ gcc -c prog.c      # オブジェクトファイル (prog.o) を生成
-$ gcc prog.o -o prog # オブジェクトファイルから実行ファイルを生成 (リンク)
-$ gcc -g proc.c      # ソースファイルからデバッグ情報を追加した実行ファイルを生成
-```
+#### 関数ポインタの配列
+```c
+int func1(int);
+int func2(int);
 
-#### 複数ソースファイルのコンパイル
-```
-$ ls
-lib.c   lib.h   prog.c
-
-$ gcc prog.c lib.c -o prog
-
-$ ./prog
-```
-
-#### 複数オブジェクトファイルのリンク
-```
-$ ls
-lib.c   lib.h   prog.c
-
-# オブジェクトファイルの生成
-$ gcc -c prog.c lib.c
-
-# オブジェクトファイルのリンク
-$ gcc prog.o lib.o -o prog
-
-$ ./prog
-```
-
-#### makeによる実行ファイルの生成
-```
-prog.o: prog.c lib.h
-  gcc -c prog.c
-
-lib.o: lib.c lib.h
-  gcc -c lib.c
-
-prog: prog.o lib.o
-  gcc prog.o lib.o -o prog
-```
-
-```
-$ ls
-lib.c   lib.h   prog.c
-
-$ make prog
+// 各関数の返り値の型(*関数ポインタ変数[])(引数の型)
+int (*fns[])(int) = { fn1, fn2 }
 ```
