@@ -14,6 +14,12 @@ printf("%p\n", c); // 0x7ffc22dd5d28
 printf("%p\n", d); // 0x7ffc22dd5d28
 ```
 
+## 関数ポインタ
+```c
+// 返り値の型 (*関数ポインタ変数)(引数の型);
+char** (*names_fns)(char*, int);
+```
+
 ## コンパイル
 ```
 $ gcc prog.c -o prog # ソースファイルから実行ファイルを生成
