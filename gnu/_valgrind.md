@@ -3,22 +3,22 @@
   - メモリの割り当て、メモリ解放のタイミングetc
 - プログラム終了時に、ヒープ領域中に確保されたブロックがroot-setから辿れるかどうかをチェックする
 
-## Usage
 ```
-$ valgrind --leak-check=full ./実行するバイナリ
+# 実行ファイルにデバッグ情報を付加しておく ($ gcc -g prog.c -o prog)
+$ valgrind --leak-check=full ./prog
 ```
 
-### LEAK SUMMARY
-- `definitely lost`
+#### LEAK SUMMARY
+- definitely lost
   - 直接アクセスできる未解放の領域がある
-- `indirectly lost`
+- indirectly lost
   - 直接アクセスできる未解放の領域があり、更にその先にもまだ未解放の領域がある
-- `possibly lost`
-  - malloc/newで確保された領域の内の先頭以外のアドレスが参照されているということ
-- `still reachable`
+- possibly lost
+  - malloc/newで確保された領域の内の先頭以外のアドレスが参照されている
+- still reachable
   - 解放されるべきメモリが何かしらの理由でされていない
-- `suppressed`
-  - リークエラーが抑制されていること
+- suppressed
+  - リークエラーが抑制されている
 
 ## 参照
 - [Valgrind](https://valgrind.org/)
