@@ -5,4 +5,4 @@ checksum.o: p352_checksum.c
 libsecurity.a: encrypt.o checksum.o
 	ar -rcs libsecurity.a encrypt.o checksum.o
 main: p352_main.c libsecurity.a
-	gcc p352_main.c -I . -L . -lsecurity -o main
+	gcc p352_main.c -L . -lsecurity -o main
