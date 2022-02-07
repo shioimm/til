@@ -14,6 +14,7 @@ $ gcc prog -fno-pic  # 位置非依存のコードを生成しない
 $ gcc prog -fpic     # 位置非依存のコードを生成する
 $ gcc prog -fomit-frame-pointer # フレームポインタを管理するコードを生成しない
 $ gcc prog # 冗長
+$ gcc -I/path/to/lib.o prog.c /path/to/lib.o -o prog # ヘッダファイルの格納場所を追加で指定
 ```
 
 #### 複数ソースファイルのコンパイル
