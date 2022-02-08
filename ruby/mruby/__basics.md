@@ -1,11 +1,4 @@
 # mruby
-- 参照: [mruby/mruby](https://github.com/mruby/mruby)
-- 参照: [オープンソースの言語／mrubyとは](https://www.ossnews.jp/oss_info/mruby)
-- 参照: [ここまで来た開発言語　mruby・mruby/cの最新情報　“本当に使える”IoTプラットフォーム](https://www.slideshare.net/shimane-itoc/mrubymrubyciot)
-- 参照: [mrubyをとりあえず動かしてみただけ](https://dojineko.hateblo.jp/entry/2016/02/11/204349)
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section007
-
-## TL;DR
 - 組み込みシステム向けの軽量なRuby言語処理系
 - mruby VMを持ち、mruby VM上で動作する
   - Rubyスクリプトを動的にバイトコードに変換し、mruby VM上で実行する
@@ -40,18 +33,19 @@
 6. アーカイブファイル`libmruby.a`をリンクした実行可能なバイナリの生成
 
 ## mrubyが使用するバイナリ
-### `bin/mruby`
+#### `bin/mruby`
 - `mruby`コマンド(`$ ruby`に相当)
 - `libmruby.a`を組み込んで任意のRubyスクリプトを実行できるようにしたバイナリ
-```sh
+
+```
 $ echo 'p Hello.' > sample.rb
 $ bin/mruby sample.rb # sample.rbを実行
 Hello
 ```
 
-### `bin/mirb`
+#### `bin/mirb`
 - 対話型mrubyシェル(`$ irb`に相当)
-```sh
+```
 $ bin/mirb
 mirb - Embeddable Interactive Ruby Shell
 
@@ -59,17 +53,18 @@ mirb - Embeddable Interactive Ruby Shell
  => "Hello."
 ```
 
-### `bin/mrbc`
+#### `bin/mrbc`
 - バイトコードコンパイラ
   - ソースコードをmruby VM上で実行できるようなバイトコードへコンパイルする
-```ruby
+
+```
 $ bin/mrbc sample.rb      # Rubyスクリプトsample.rb -> オブジェクトファイルsample.mrb
 $ bin/mruby -b sample.mrb # sample.mrbを実行
 
 Hello
 ```
 
-### `mrbc`の特徴
+#### `mrbc`の特徴
 - 純粋なバイナリ形式のバイトコードを生成することができる
 - Cのデータの配列形式のバイトコードを生成することができる
   - -> 他のCソースコードから読み込み可能
@@ -82,6 +77,7 @@ Hello
 - mrubyをビルドするための設定ファイル
 - 依存mgemを宣言すると、mgem内部のプログラムをすべて読み込んだmrubyをビルドすることができる
   - `require`なしでmgemを利用できる
+
 ```ruby
 MRuby::Build.new do |conf| # confはMRuby::Buildのインスタンス
   toolchain           # どのツールチェインでビルドするか
@@ -99,3 +95,10 @@ end
 
 ## 関連プロジェクト
 - [Related Projects](https://github.com/mruby/mruby/wiki/Related-Projects)
+
+## 参照
+- [mruby/mruby](https://github.com/mruby/mruby)
+- [オープンソースの言語／mrubyとは](https://www.ossnews.jp/oss_info/mruby)
+- [ここまで来た開発言語　mruby・mruby/cの最新情報　“本当に使える”IoTプラットフォーム](https://www.slideshare.net/shimane-itoc/mrubymrubyciot)
+- [mrubyをとりあえず動かしてみただけ](https://dojineko.hateblo.jp/entry/2016/02/11/204349)
+- Webで使えるmrubyシステムプログラミング入門 Section007

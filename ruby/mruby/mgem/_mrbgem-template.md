@@ -1,8 +1,4 @@
 # mrbgem-template
-- 参照: [mruby-mrbgem-template](https://github.com/matsumotory/mruby-mrbgem-template)
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section019
-
-## TL;DR
 - mgemの雛形を生成するコマンド
 
 ## Getting Started
@@ -133,3 +129,7 @@ void mrb_mgemの名前_gem_final(mrb_state *mrb)
 {
 }
 ```
+
+## 参照
+- [mruby-mrbgem-template](https://github.com/matsumotory/mruby-mrbgem-template)
+- Webで使えるmrubyシステムプログラミング入門 Section019
