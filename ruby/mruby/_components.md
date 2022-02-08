@@ -1,6 +1,4 @@
 # mrbgem-template
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section019
-
 ### `mrb_state`構造体
 - mruby VMの状態や各種変数などを格納した構造体
 - `mrb_state`構造体の変数を引き回すことによってmrubyはプログラムを実行する
@@ -52,3 +50,6 @@ typedef struct mrb_value {
   enum mrb_type         tt;
 } mrb_value;
 ```
+
+## 参照
+- Webで使えるmrubyシステムプログラミング入門 Section019

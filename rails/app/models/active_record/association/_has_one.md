@@ -1,5 +1,6 @@
 # `has_one`
 - 新しいオブジェクトのbuildで古いオブジェクトがdestroyされる
+
 ```ruby
 [1] pry(main)> current_use.build_profile(name: 'name').save
   User Load (0.5ms)  SELECT "users".* FROM "users" ORDER BY "users"."id" DESC LIMIT $1  [["LIMIT", 1]]
@@ -19,5 +20,9 @@
    (0.3ms)  COMMIT
 => true
 ```
+
 - `build_association`を使用すると発生する
 - 代わりに`new`や`find_or_initialize_by`を使用する
+
+#### `autosave: true`
+- 関連先のレコードが存在する場合でも上書きする

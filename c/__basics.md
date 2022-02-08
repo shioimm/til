@@ -30,24 +30,3 @@ int func2(int);
 // 各関数の返り値の型(*関数ポインタ変数[])(引数の型)
 int (*fns[])(int) = { fn1, fn2 }
 ```
-
-## リンク
-#### スタティックライブラリ
-```
-# オブジェクトファイルをアーカイブファイルにまとめる
-$ ar -rcs liblib.a lib.o
-
-# ヘッダファイルの格納場所とアーカイブファイルの格納場所を指定
-$ gcc prog.c -I /path/to/header -L /path/to/archive -llib -o prog
-```
-
-#### ダイナミックリンク
-```
-# オブジェクトファイルを共有ファイルにする
-$ gcc -shared lib.o -o /path/to/liblib.so
-
-$ gcc prog.c -L/path/to/ -llib -o main
-
-# Linuxの場合
-# $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to
-```

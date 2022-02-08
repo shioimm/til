@@ -1,7 +1,4 @@
 # mruby/c
-- 参照・引用: [mruby／c](https://www.s-itoc.jp/activity/research/mrubyc/)
-
-## TL;DR
 - 小型・省電力デバイス向けのmruby実装
 - 従来のmrubyを更に軽量化
 
@@ -22,3 +19,6 @@
 - OSの利用
   - mruby -> OSありを想定
   - mruby/c -> OSなしを想定
+
+## 参照・引用:
+- [mruby／c](https://www.s-itoc.jp/activity/research/mrubyc/)

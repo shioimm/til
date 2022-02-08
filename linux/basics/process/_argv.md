@@ -1,7 +1,4 @@
 # コマンドラインパラメータ
-- 参照: Linuxプログラミングインターフェース 6章
-
-## TL;DR
 - `main()`関数が受け取る引数
   - `int argc` - 引数の数
   - `char *argv[]` - 引数の配列の先頭ポインタ
@@ -15,3 +12,6 @@
 - (glibc)`main()`を実行したプログラム自身の名前は
   `program_inovation_name` / `program_inovation_short_name`でアクセスできる
   - 機能検査マクロ`_GNU_SOURCE`の定義が必要
+
+## 参照
+- Linuxプログラミングインターフェース 6章

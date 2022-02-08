@@ -1,8 +1,4 @@
 # `mod_mruby`
-- 参照: [matsumotory/mod_mruby](https://github.com/matsumotory/mod_mruby)
-- 参照: Webで使えるmrubyシステムプログラミング入門 Section026
-
-## TL;DR
 - Apache httpd上にRubyでApacheモジュールを実装するためのWebサーバー拡張機構
 - 高速でメモリ効率が良いことが特徴
 
@@ -79,3 +75,7 @@ $ ldd /usr/lib/apache2/modules/mod_mruby.so # ビルドがうまくいってい�
 ```
 $ sudo systemctl apache2 restart
 ```
+
+## 参照
+- [matsumotory/`mod_mruby`](https://github.com/matsumotory/mod_mruby)
+- Webで使えるmrubyシステムプログラミング入門 Section026
