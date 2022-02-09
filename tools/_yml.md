@@ -1,6 +1,4 @@
 # YAMLファイル
-- 参照・引用: CitrcleCI実践入門 2.3
-
 ## リスト
 - 配列形式のデータ構造
 ```yml
@@ -66,3 +64,6 @@ workflows:
           branches:
             only: /master/
 ```
+
+## 参照・引用
+- CitrcleCI実践入門 2.3
