@@ -30,6 +30,15 @@ lib.c   lib.h   prog.c  Makefile
 $ make prog
 ```
 
+```
+# 変数のインライン化
+
+CFLAGS = -Wall -Wextra -v
+
+prog: prog.c
+  gcc prog.c $(CFLAGS) -o prog
+```
+
 #### makeが保持する特殊変数
 | 変数名   | 説明                                                                           |
 | -        | -                                                                              |

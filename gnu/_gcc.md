@@ -10,10 +10,12 @@ $ gcc -c prog.c      # オブジェクトファイル (prog.o) を生成 (リン
 $ gcc prog.o -o prog # オブジェクトファイルから実行ファイルを生成 (リンク)
 $ gcc -g proc.c      # ソースファイルからデバッグ情報を追加した実行ファイルを生成
 
+$ gcc prog.c -v      # 冗長
+$ gcc prog,c -Wall   # 警告を表示
+
 $ gcc prog -fno-pic  # 位置非依存のコードを生成しない
 $ gcc prog -fpic     # 位置非依存のコードを生成する
 $ gcc prog -fomit-frame-pointer # フレームポインタを管理するコードを生成しない
-$ gcc prog # 冗長
 $ gcc -I/path/to/lib.o prog.c /path/to/lib.o -o prog # ヘッダファイルの格納場所を追加で指定
 ```
 
