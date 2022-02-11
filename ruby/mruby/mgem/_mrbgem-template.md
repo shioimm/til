@@ -1,16 +1,15 @@
 # mrbgem-template
 - mgemの雛形を生成するコマンド
 
-## Getting Started
 ```
-# コマンドのインストール
+# mrbgem-templateのインストール
 $ brew tap mrbgems/mrbgem-template
 $ brew install mrbgem-template
 
 # 雛形の生成
 $ mrbgem-template -m mrubyのバージョン 作成するmgemの名前
 
-# バイナリも一緒に生成する場合
+# (バイナリも一緒に生成する場合)
 $ mrbgem-template -m mrubyのバージョン --bin-name バイナリの名前 作成するmgemの名前
 # -> バイナリの名前.cファイルが生成され、作成するバイナリのスタートポイントになる
 
@@ -24,28 +23,29 @@ $ rake
 
 ## 生成されるファイル群
 - `Rakefile`
-  - テスト、ビルド用
+  - テスト、ビルド用 (デフォルトのまま使用する)
 - `mrbgem.rake`
-  - mgemのビルドに必要な情報を記述する(`build_config.rb`のようなもの)
+  - mgemのビルドに必要な情報を記述する (mgem用の`build_config.rb`のようなもの)
 - `作成したmgemの名前.gem`
   - 作成したmgemの説明をYAML形式で記述する
   - mgemのインストールにあたって内部で利用する
   - mgem-listに公開される
 - `mruby/`
-  - 動作確認のためmrubyのソースコードをチェックアウトするディレクトリ
-  - `$ rake`コマンドを実行することで自動的にmrubyのソースコードをダウンロードする
+  - 動作確認用のmrubyのソースコードをチェックアウトするディレクトリ
+  - mgemをビルドする際の`$ rake`コマンド実行時に自動的にmrubyのソースコードをダウンロードする
 - `mrblib/`
-  - Rubyで書かれたmgemのソースコードを配置するディレクトリ
+  - mgemのソースコード (Ruby) を配置するディレクトリ
   - `mrblib`配下のファイルは自動で辞書順に全て読み込まれる
 - `src/`
-  - Cで書かれたmgemのソースコードを配置するディレクトリ
+  - mgemのソースコード (C) を配置するディレクトリ
 - `test/`
   - テストコードを配置するディレクトリ
 - `tools/`
   - 作成したmgemに添付するコマンドラインツールを配置する
 
-## Rubyスクリプト用ファイルテンプレート
+#### Rubyスクリプト用ファイルテンプレート
 - `mgemの名前/mrblib/mgemの名前.rb`
+
 ```ruby
 class mgemの名前
   def bye
@@ -59,8 +59,10 @@ class mgemの名前
   end
 end
 ```
-## C用ファイルテンプレート
+
+#### C用ファイルテンプレート
 - `mgemの名前/src/mrb_mgemの名前.c`
+
 ```c
 #include "mruby.h"
 #include "mruby/data.h"
