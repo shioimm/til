@@ -1,4 +1,4 @@
-# mrbgem-template
+# mruby
 ### `mrb_state`構造体
 - mruby VMの状態や各種変数などを格納した構造体
 - `mrb_state`構造体の変数を引き回すことによってmrubyはプログラムを実行する
