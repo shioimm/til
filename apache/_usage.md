@@ -1,5 +1,5 @@
 # Usage
-- `apachectl` / `apache2ctl`(Ubuntu)
+- `apachectl` / `apache2ctl` / `systemctl`
 
 ```
 # Apacheの起動
