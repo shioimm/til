@@ -16,12 +16,42 @@
 
 ## mrubyのソースコードから作成されるバイナリ
 ### `bin/mruby`
-- `mruby`コマンド(`$ ruby`に相当)
+- `mruby`コマンド (`$ ruby`に相当)
 - `libmruby.a`を組み込んで任意のRubyスクリプトを実行できるようにしたバイナリ
 
 ```
 $ echo 'p Hello.' > sample.rb
-$ bin/mruby sample.rb # sample.rbを実行
+$ bin/mruby sample.rb
+Hello
+```
+
+### `bin/mrbc`
+- `mrbc`コマンド (バイトコードコンパイラ)
+
+```
+# 純粋なバイナリ形式のバイトコードを生成する
+$ bin/mrbc sample.rb   # => sample.mrb (バイトコード)
+$ bin/mruby sample.mrb # sample.mrbを実行
+Hello
+
+# Cのデータの配列形式のバイトコードを生成する
+$ bin/mrbc -Bsample sample.rb # => sample.c (バイトコード)
+$ echo -e "\
+#include <mruby.h>\
+#include <mruby/irep.h>\
+#include "sample.c"\
+\
+int main()\
+{\
+  mrb_state *mrb = mrb_open();\
+  if (!mrb) { /* handle error */ }\
+  mrb_load_irep(mrb, mruby_in_c);\
+  mrb_close(mrb);\
+  return 0;\
+}\
+" > main.c
+$ gcc -std=c99 -Imruby/include main.c -o main mruby/build/host/lib/libmruby.a -lm
+$ ./main
 Hello
 ```
 
@@ -36,31 +66,10 @@ mirb - Embeddable Interactive Ruby Shell
  => "Hello."
 ```
 
-### `bin/mrbc`
-- バイトコードコンパイラ
-  - ソースコードをmruby VM上で実行できるようなバイトコードへコンパイルする
-
-```
-$ bin/mrbc sample.rb      # Rubyスクリプトsample.rb -> オブジェクトファイルsample.mrb
-$ bin/mruby -b sample.mrb # sample.mrbを実行
-
-Hello
-```
-
-#### `mrbc`の特徴
-- 純粋なバイナリ形式のバイトコードを生成することができる
-- Cのデータの配列形式のバイトコードを生成することができる
-  - -> 他のCソースコードから読み込み可能
-  - -> Cのコンパイラに渡すことが可能
-  - mrubyのビルドパイプラインにおいては、Cのデータの配列形式のバイトコードから
-    オブジェクトファイルを生成し、まとめてリンクする戦略を取っている
-
 ## 関連プロジェクト
 - [Related Projects](https://github.com/mruby/mruby/wiki/Related-Projects)
 
 ## 参照
 - [mruby/mruby](https://github.com/mruby/mruby)
-- [オープンソースの言語／mrubyとは](https://www.ossnews.jp/oss_info/mruby)
-- [ここまで来た開発言語　mruby・mruby/cの最新情報　“本当に使える”IoTプラットフォーム](https://www.slideshare.net/shimane-itoc/mrubymrubyciot)
-- [mrubyをとりあえず動かしてみただけ](https://dojineko.hateblo.jp/entry/2016/02/11/204349)
+- [Executing Ruby code with mruby](https://mruby.org/docs/articles/executing-ruby-code-with-mruby.html)
 - Webで使えるmrubyシステムプログラミング入門 Section007
