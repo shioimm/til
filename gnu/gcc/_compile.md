@@ -1,8 +1,3 @@
-# gcc
-- GNUプロジェクトが開発・公開しているコンパイラ
-- 標準でC、C++、Objective-C、Fortran、Java、Ada、Goのコンパイラを同梱
-- `gcc` -> gcc内のCコンパイラの名称および実行ファイル名
-
 ## コンパイル
 ```
 $ gcc prog.c -o prog # ソースファイルから実行ファイルを生成
@@ -29,18 +24,5 @@ $ gcc prog.c lib.c -o prog
 $ ./prog
 ```
 
-#### 複数オブジェクトファイルのリンク
-```
-$ ls
-lib.c   lib.h   prog.c
-
-# オブジェクトファイルの生成
-$ gcc -c prog.c lib.c
-
-# オブジェクトファイルのリンク
-$ gcc prog.o lib.o -o prog
-
-$ ./prog
-```
 ## 参照
 - [gcc  【 GNU Compiler Collection 】  GNU C Compilier](http://e-words.jp/w/gcc.html)
