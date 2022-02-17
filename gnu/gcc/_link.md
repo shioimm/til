@@ -15,25 +15,43 @@ $ ./prog
 
 #### アーカイブファイルとのスタティックリンク
 ```
-# オブジェクトファイルをアーカイブファイルにまとめる
-$ ar -rcs liblib.a lib.o
+# オブジェクトファイルとをアーカイブファイルにまとめる
+# lib1.o + lib2.o -> liblib.a
+$ ar -rcs liblib.a lib1.o lib2.o
 
-# ヘッダファイルの格納場所とアーカイブファイルの格納場所を指定
-$ gcc prog.c -I /path/to/header -L /path/to/archive -llib -o prog
+# prog.c + liblib.a -> prog
+$ gcc prog.c -llib -o prog
+
+# (アーカイブファイル/path/to/archivesの格納場所を指定)
+$ gcc prog.c -L/path/to/archives -llib -o prog
+
+# (ヘッダファイルの格納場所/path/to/headersとアーカイブファイル/path/to/archivesの格納場所を指定)
+$ gcc prog.c -I/path/to/headers -L/path/to/archives -llib -o prog
+
+# 実行
+$ ./prog
 ```
 
-#### 共有ファイルとのダイナミックリンク
+#### 共有オブジェクトファイルとのダイナミックリンク
 ```
-# ヘッダファイルの格納場所を指定してオブジェクトファイルを作成
-# gcc -I/path/to/header -c lib.c -o lib.o
+# 位置独立なオブジェクトファイルを作成 (デフォルト)
+# lib.c -> lib.o
+# gcc (-fPIC) -c lib.c -o lib.o
 
-# オブジェクトファイルから共有ファイルを作成
-$ gcc -shared lib.o -o /path/to/liblib.so
+# オブジェクトファイルから共有オブジェクトファイルを作成
+# lib.o -> /path/to/liblib.so
+$ gcc -shared lib.o -o /path/to/liblib.so    # Linuxの場合
+$ gcc -shared lib.o -o /path/to/liblib.dylib # macOSの場合
 
-$ gcc prog.c -L/path/to/ -llib -o main
+# コンパイル
+# prog.c + /path/to/liblib.so (.dylib) -> prog
+$ gcc prog.c -L/path/to/ -llib -o prog
 
 # Linuxの場合
 # $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to
+
+# 実行
+$ ./prog
 ```
 
 ## 参照
