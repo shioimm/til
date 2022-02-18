@@ -1,14 +1,4 @@
-# Homebrew
-- Mac用パッケージマネージャー
-- コマンドラインツールのインストールに使用する
-- ex. vim, ruby-build, heroku
-
-#### Homebrew-Cask
-- Homebrewの拡張
-- GUIアプリケーションのインストールに使用する
-- ex. chromedriver, visual-studio-code
-
-## コマンド
+# Udage
 #### `$ brew link xx` / `$ brew unlink xx`
 - インストール済みバージョンの切り替え
 

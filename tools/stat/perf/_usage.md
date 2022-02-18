@@ -37,6 +37,13 @@ $ sudo perf stat -a sleep 10 # 所定の時間の間計測する
 $ sudo perf top 計測したいプログラム --stdio
 ```
 
+#### top
+- 実行中のプログラムの統計情報をリアルタイムで表示する
+
+```
+$ sudo perf top -a --stdio
+```
+
 #### record / report
 - record - イベントを記録し`perf.data`に出力・表示する
 - report - プロセスや関数によりイベントを分解す
@@ -46,6 +53,9 @@ $ sudo perf top 計測したいプログラム --stdio
 $ sudo perf record 計測したいプログラム
 
 # perf.dataを出力する
+$ sudo perf report --stdio
+
+# (コールグラフを表示)
 $ sudo perf report -g --stdio
 ```
 
@@ -54,13 +64,6 @@ $ sudo perf report -g --stdio
 2. `perf`で計測を開始する (`$ sudo perf stat -p 対象のpid`)
 3. Apache Benchでワークロードを発生させる (`$ ab -n 20000 -c 10 対象のホスト名`)
 4. `2`で計測していたパフォーマンスカウンタの集計結果を確認
-
-## インストール
-- カーネルのバージョンを含むパッケージを指定してインストールする必要がある
-
-```
-$ sudo apt install linux-tools-common linux-tools-$(uname -r)
-```
 
 ## 参照・引用
 - [perf　パフォーマンス測定　その１](https://ameblo.jp/softwaredeveloper/entry-11967982906.html)

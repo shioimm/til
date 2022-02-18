@@ -1,12 +1,20 @@
 # valgrind
 - メモリに関するプログラムの挙動をトレースするデバッグツール
-  - メモリの割り当て、メモリ解放のタイミングetc
 - プログラム終了時に、ヒープ領域中に確保されたブロックがroot-setから辿れるかどうかをチェックする
 
+### Memcheck
 ```
-# 実行ファイルにデバッグ情報を付加しておく ($ gcc -g prog.c -o prog)
+# 実行ファイルにデバッグ情報を付加しておく
+$ gcc -g prog.c -o prog
+
 $ valgrind --leak-check=full ./prog
 ```
+
+- メモリの解放忘れ
+- 不正なメモリの読み書き
+- 初期化していない値の利用
+- 操作対象のメモリ領域のオーバーラップ
+- メモリアロケーションと解放のミスマッチ (C++)
 
 #### LEAK SUMMARY
 - definitely lost
@@ -19,6 +27,30 @@ $ valgrind --leak-check=full ./prog
   - 解放されるべきメモリが何かしらの理由でされていない
 - suppressed
   - リークエラーが抑制されている
+
+### cachegrind
+- プログラムのCPUの例や別のキャッシュヒット率を分析する
+
+```
+$ valgrind --tool=cachegrind ./prog
+```
+
+### helgrind
+- マルチスレッドプログラムのエラーを分析する
+
+```
+$ valgrind --tool=helgrind ./prog
+```
+
+## massif
+- ヒープの利用状況を分析する
+
+```
+$ valgrind --tool=massif ./prog # => massif.out.<pid>ファイルが出力される
+
+# 分析結果を出力
+$ ms_print massif.out.<pid>
+```
 
 ## 参照
 - [Valgrind](https://valgrind.org/)
