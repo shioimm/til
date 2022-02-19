@@ -14,6 +14,13 @@
 - Uprobes(dynamic tracing)
   - ユーザ空間のアプリケーションにおけるブレークポイント
 
+## インストール
+- `linux-tools-common` + `linux-tools-$(uname -r)` (カーネルのバージョンを指定) をインストール
+
+```
+$ sudo apt install linux-tools-common linux-tools-$(uname -r)
+```
+
 ## 参照
 - [perf: Linux profiling with performance counters](https://perf.wiki.kernel.org/index.php/Main_Page)
 - Webで使えるmrubyシステムプログラミング入門
