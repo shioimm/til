@@ -1,4 +1,4 @@
-# `#include <mruby/error.h>`
+# `#include <mruby/string.h>`
 #### `mrb_str_new_cstr`
 - C言語の文字列からRubyのStringオブジェクトを作る
 

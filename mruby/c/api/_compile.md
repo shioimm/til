@@ -1,6 +1,6 @@
 # `#include <mruby/compile.h>`
-#### `mrb_define_class`
-- 文字列`s`をRubyスクリプトとしてmruby VMに読み込ませる
+#### `mrb_load_string`
+- 文字列`s`をRubyスクリプトとしてパースし、バイトコードへ変換し、mruby VM上で実行して結果を返す
 
 ```c
 MRB_API mrb_value
