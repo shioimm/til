@@ -121,6 +121,14 @@ MRB_API mrb_value
 mrb_inspect(mrb_state *mrb);
 ```
 
+#### `mrb_p`
+- `mrb_value`の示す値を表示する
+
+```c
+MRB_API void
+mrb_p(mrb_state*, mrb_value);
+```
+
 ## マクロ
 #### `DATA_PTR(self)`
 - インスタンスが持つCレベルのデータへのアクセス
