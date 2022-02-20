@@ -1,4 +1,25 @@
 # `#include <mruby/value.h>`
+#### `mrb_int_value` / `mrb_fixnum_value`
+- 数値をRubyのIntegerインスタンスへ変換する
+
+```c
+MRB_INLINE mrb_value
+mrb_int_value(struct mrb_state *mrb, mrb_int i);
+```
+
+```c
+MRB_INLINE mrb_value
+mrb_fixnum_value(mrb_int i);
+```
+
+#### `mrb_float_value`
+- 数値をRubyのFloatインスタンスへ変換する
+
+```c
+MRB_INLINE mrb_value
+mrb_float_value(struct mrb_state *mrb, mrb_float f);
+```
+
 #### `mrb_bool_value`
 - ブール値をRubyのtrue / falseへ変換する
 
