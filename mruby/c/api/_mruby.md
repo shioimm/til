@@ -129,15 +129,22 @@ MRB_API void
 mrb_p(mrb_state*, mrb_value);
 ```
 
-## マクロ
-#### `DATA_PTR(self)`
+#### `DATA_PTR` (マクロ)
 - インスタンスが持つCレベルのデータへのアクセス
   - `RData`構造体`data`メンバへのアクセス
 
-#### `DATA_TYPE(self)`
+```c
+DATA_PTR(self)
+```
+
+#### `DATA_TYPE` (マクロ)
 - インスタンスが持つCレベルのデータを解放する方法
   - `RData`構造体`type`メンバへのアクセス
 - インスタンス一つ一つのデータ解放の振る舞いにアクセスする
+
+```c
+DATA_TYPE(self)
+```
 
 ## 参照
 - webで使えるmrubyシステムプログラミング入門 section019 / 022 / 033 / 034
