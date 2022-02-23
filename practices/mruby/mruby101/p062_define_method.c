@@ -1,3 +1,4 @@
+// 入門mruby
 #include <mruby.h>
 #include <mruby/compile.h>
 #include <mruby/class.h>
