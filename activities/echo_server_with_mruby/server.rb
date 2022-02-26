@@ -9,6 +9,5 @@ Socket.tcp_server_loop(12345) { |sock, _client_addr_info|
     puts '--- Received ---'
     puts msg
     sock.puts msg
-    puts '----------------'
   end
 }
