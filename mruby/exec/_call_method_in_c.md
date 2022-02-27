@@ -8,7 +8,7 @@
 ```ruby
 # prog.rb
 def hello(name)
-  p "Hello #{name}"
+  "Hello #{name}"
 end
 ```
 
@@ -21,17 +21,18 @@ end
 
 int main()
 {
-  mrb_state* mrb;
-  int n;
-  FILE* f;
-  mrb_value ret;
+  mrb_state *mrb = mrb_open();
 
-  mrb = mrb_open();
-  f = fopen("prog.rb", "r");
+  FILE *f = fopen("hello.rb", "r");
   mrb_load_file(mrb, f);
   fclose(f);
 
-  mrb_funcall(mrb, mrb_top_self(mrb), "hello", 1, mrb_str_new_cstr(mrb, "mruby") );
+  mrb_value ret;
+  ret = mrb_funcall(mrb, mrb_top_self(mrb), "hello", 1, mrb_str_new_cstr(mrb, "mruby") );
+
+  mrb_p(mrb, ret);
+
+  mrb_close(mrb);
 
   return 0;
 }
