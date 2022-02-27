@@ -10,27 +10,27 @@
 #define HOST "localhost"
 #define PORT 12345
 #define NQUEUESIZE 5
-#define MSGBUFSIZE 1024
+#define MAXMSGSIZE 1024
 
 int main()
 {
   // サーバーアドレス情報設定
-  struct addrinfo hints, *res;
+  struct addrinfo server_addr_hints, *server_addr;
   int addrinfoerr;
 
-  memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_family   = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags    = AI_PASSIVE;
+  memset(&server_addr_hints, 0, sizeof(struct addrinfo));
+  server_addr_hints.ai_family   = AF_INET;
+  server_addr_hints.ai_socktype = SOCK_STREAM;
+  server_addr_hints.ai_flags    = AI_PASSIVE;
 
-  if ((addrinfoerr = getaddrinfo(NULL, "12345", &hints, &res)) < 0) {
+  if ((addrinfoerr = getaddrinfo(NULL, "12345", &server_addr_hints, &server_addr)) < 0) {
     gai_strerror(addrinfoerr);
   }
 
   // サーバーソケットの作成
-  int server_sock;
+  int listener;
 
-  if ((server_sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0) {
+  if ((listener = socket(server_addr->ai_family, server_addr->ai_socktype, server_addr->ai_protocol)) < 0) {
     perror("socket(2)");
     exit(1);
   }
@@ -38,70 +38,65 @@ int main()
   // サーバーアドレス再利用設定
   int reuse = 1;
 
-  if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+  if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
     perror("setsockopt(2)");
     exit(1);
   }
 
   // bind
-  if (bind(server_sock, res->ai_addr, res->ai_addrlen) < 0) {
+  if (bind(listener, server_addr->ai_addr, server_addr->ai_addrlen) < 0) {
     perror("bind(2)");
     exit(1);
   }
 
   // アドレス情報を解放
-  freeaddrinfo(res);
+  freeaddrinfo(server_addr);
 
   // listen
-  if (listen(server_sock, NQUEUESIZE) < 0) {
+  if (listen(listener, NQUEUESIZE) < 0) {
     perror("listen(2)");
     exit(1);
   }
 
-  int client_sock;
+  int conn;
   struct sockaddr_storage client_addr;
   socklen_t client_addr_len = sizeof(client_addr);
 
-  char msg[MSGBUFSIZE];
-  int  msg_size;
+  char received_msg[MAXMSGSIZE];
+  int  received_msg_size;
 
   for (;;) {
     // accept
-    if ((client_sock = accept(server_sock, (struct sockaddr *)&client_addr, &client_addr_len)) < 0) {
+    if ((conn = accept(listener, (struct sockaddr *)&client_addr, &client_addr_len)) < 0) {
       perror("accept(2)");
       exit(1);
     }
 
     // read / write
-    if ((msg_size = read(client_sock, msg, MSGBUFSIZE)) < 0) {
+    if ((received_msg_size = read(conn, received_msg, MAXMSGSIZE)) < 0) {
       perror("read(2)");
       exit(1);
     }
 
     puts("--- Received ----");
 
-    while (msg_size > 0) {
-      if (write(client_sock, msg, msg_size) != msg_size) {
+    while (received_msg_size > 0) {
+      if (write(conn, received_msg, received_msg_size) != received_msg_size) {
         perror("write(2)");
         exit(1);
       }
 
-      puts(msg);
+      printf("%.*s", received_msg_size, received_msg);
+      memset(received_msg, 0, received_msg_size);
 
-      if ((msg_size = read(client_sock, msg, MSGBUFSIZE)) < 0) {
+      if ((received_msg_size = read(conn, received_msg, MAXMSGSIZE)) < 0) {
         perror("read(2)");
         exit(1);
       }
     }
 
-    // shutdown
-    if (shutdown(client_sock, SHUT_RDWR) < 0) {
-      perror("shutdown(2)");
-      exit(1);
-    }
-
     // close(2)
-    if (close(client_sock) < 0) {
+    if (close(conn) < 0) {
       perror("close");
       exit(1);
     }
@@ -109,3 +104,4 @@ int main()
 
   return 0;
 }
+
