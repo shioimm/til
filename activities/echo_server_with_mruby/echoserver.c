@@ -58,9 +58,20 @@ int main()
   // WIP
   mrb_value port = mrb_funcall(mrb, addr, "ip_port",  0);
   char *ip_address = mrb_str_to_cstr(mrb, mrb_funcall(mrb, addr, "ip_address",  0));
-  //unsigned int ip_address;
-  mrb_value a = mrb_load_string(mrb, "IPAddr.new('0.0.1.0').to_s");
-  mrb_p(mrb, a);
+  //htonlにunsigned intを渡さないといけない
+
+  FILE *addr2info_src = fopen("addr2integer.rb", "r");
+  mrb_load_file(mrb, addr2info_src);
+
+  struct RClass *addr2integer = mrb_class_get(mrb, "Addr2Integer");
+
+  // WIP
+  mrb_value addr2integer_klass = mrb_obj_value(addr2integer);
+  mrb_p(mrb, addr2integer_klass);
+  // undefined method 'convert' (NoMethodError)になる
+  mrb_value inaddr = mrb_funcall(mrb, addr2integer_klass, "convert", 1, "127.0.0,1");
+  mrb_p(mrb, inaddr);
+  fclose(addr2info_src);
 
   struct sockaddr_in saddr;
   saddr.sin_family      = mrb_integer(domain);
