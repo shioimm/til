@@ -9,7 +9,10 @@
 
 #include <mruby.h>
 #include <mruby/irep.h>
+#include <mruby/class.h>
 #include <mruby/string.h>
+#include <mruby/compile.h>
+#include <mruby/proc.h>
 #include "addrinfo.c"
 
 #define HOST "localhost"
@@ -22,22 +25,24 @@ int main()
   mrb_state *mrb = mrb_open();
 
   // サーバーアドレス情報設定
-  struct addrinfo server_addr_hints, *server_addr;
-  int addrinfoerr;
-
-  memset(&server_addr_hints, 0, sizeof(struct addrinfo));
-  server_addr_hints.ai_family   = AF_INET;
-  server_addr_hints.ai_socktype = SOCK_STREAM;
-  server_addr_hints.ai_flags    = AI_PASSIVE;
-
-  if ((addrinfoerr = getaddrinfo(NULL, "12345", &server_addr_hints, &server_addr)) < 0) {
-    gai_strerror(addrinfoerr);
-  }
-
   mrb_value addr = mrb_load_irep(mrb, addrinfo);
   mrb_value domain   = mrb_funcall(mrb, addr, "afamily",  0);
   mrb_value socktype = mrb_funcall(mrb, addr, "socktype", 0);
   mrb_value protocol = mrb_funcall(mrb, addr, "protocol", 0);
+  mrb_value port     = mrb_funcall(mrb, addr, "ip_port",  0);
+  mrb_value address  = mrb_funcall(mrb, addr, "ip_address",  0);
+
+  FILE *addr2int_src = fopen("addr2int.rb", "r");
+  mrb_load_file(mrb, addr2int_src);
+  fclose(addr2int_src);
+
+  mrb_value addr2int_klass = mrb_obj_value(mrb_class_get(mrb, "Addr2Int"));
+  mrb_value inaddr         = mrb_funcall(mrb, addr2int_klass, "convert", 1, address);
+
+  struct sockaddr_in saddr;
+  saddr.sin_family      = mrb_integer(domain);
+  saddr.sin_addr.s_addr = htonl(mrb_integer(inaddr));
+  saddr.sin_port        = htons(mrb_integer(port));
 
   // サーバーソケットの作成
   int listener;
@@ -55,37 +60,11 @@ int main()
     exit(1);
   }
 
-  // WIP
-  mrb_value port = mrb_funcall(mrb, addr, "ip_port",  0);
-  char *ip_address = mrb_str_to_cstr(mrb, mrb_funcall(mrb, addr, "ip_address",  0));
-  //htonlにunsigned intを渡さないといけない
-
-  FILE *addr2info_src = fopen("addr2integer.rb", "r");
-  mrb_load_file(mrb, addr2info_src);
-
-  struct RClass *addr2integer = mrb_class_get(mrb, "Addr2Integer");
-
-  // WIP
-  mrb_value addr2integer_klass = mrb_obj_value(addr2integer);
-  mrb_p(mrb, addr2integer_klass);
-  // undefined method 'convert' (NoMethodError)になる
-  mrb_value inaddr = mrb_funcall(mrb, addr2integer_klass, "convert", 1, "127.0.0,1");
-  mrb_p(mrb, inaddr);
-  fclose(addr2info_src);
-
-  struct sockaddr_in saddr;
-  saddr.sin_family      = mrb_integer(domain);
-  saddr.sin_addr.s_addr = htonl(INADDR_ANY); // WIP
-  saddr.sin_port        = htons(mrb_integer(port));
-
   // bind
   if (bind(listener, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
     perror("bind(2)");
     exit(1);
   }
-
-  // アドレス情報を解放
-  freeaddrinfo(server_addr);
 
   // listen
   if (listen(listener, NQUEUESIZE) < 0) {
