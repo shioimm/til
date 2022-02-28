@@ -23,7 +23,7 @@ int main()
 {
   mrb_state *mrb = mrb_open();
 
-  FILE *f = fopen("hello.rb", "r");
+  FILE *f = fopen("prog.rb", "r");
   mrb_load_file(mrb, f);
   fclose(f);
 

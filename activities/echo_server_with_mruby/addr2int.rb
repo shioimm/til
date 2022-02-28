@@ -1,6 +1,6 @@
 # ref: https://github.com/ruby/ipaddr/blob/683706cc618748365037243b620e5ad79b46ccfd/lib/ipaddr.rb#L645
 
-class Addr2Integer
+class Addr2Int
   RE_IPV4ADDRLIKE = %r{
     \A
     (\d+) \. (\d+) \. (\d+) \. (\d+)
