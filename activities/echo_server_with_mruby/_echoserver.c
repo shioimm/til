@@ -8,32 +8,44 @@
 #include <unistd.h>     // read(2), write(2)
 
 #define HOST "localhost"
-#define PORT 12345
+#define PORT "12345"
 #define NQUEUESIZE 5
 #define MAXMSGSIZE 1024
 
 int main()
 {
   // サーバーアドレス情報設定
-  struct addrinfo server_addr_hints, *server_addr;
+  struct addrinfo server_addr_hints, *server_addr, *server_addr_tmp;
   int addrinfoerr;
 
   memset(&server_addr_hints, 0, sizeof(struct addrinfo));
-  server_addr_hints.ai_family   = AF_INET;
+  server_addr_hints.ai_family   = AF_INET; // 便宜上AF_INETにする (AF_UNSPECにするとプロトコル独立)
   server_addr_hints.ai_socktype = SOCK_STREAM;
   server_addr_hints.ai_flags    = AI_PASSIVE;
 
-  if ((addrinfoerr = getaddrinfo(NULL, "12345", &server_addr_hints, &server_addr)) < 0) {
+  if ((addrinfoerr = getaddrinfo(HOST, PORT, &server_addr_hints, &server_addr)) < 0) {
     gai_strerror(addrinfoerr);
   }
 
-  // サーバーソケットの作成
   int listener;
 
-  if ((listener = socket(server_addr->ai_family, server_addr->ai_socktype, server_addr->ai_protocol)) < 0) {
-    perror("socket(2)");
-    exit(1);
+  for (server_addr_tmp = server_addr; server_addr_tmp; server_addr_tmp = server_addr_tmp->ai_next) {
+    // サーバーソケットの作成
+    listener = socket(server_addr_tmp->ai_family, server_addr_tmp->ai_socktype, server_addr_tmp->ai_protocol);
+
+    if (listener < 0) {
+      continue;
+    }
+
+    // bind
+    if (bind(listener, server_addr_tmp->ai_addr, server_addr_tmp->ai_addrlen) < 0) {
+      close(listener);
+      continue;
+    }
   }
+
+  // アドレス情報を解放
+  freeaddrinfo(server_addr);
 
   // サーバーアドレス再利用設定
   int reuse = 1;
@@ -42,15 +54,6 @@ int main()
     perror("setsockopt(2)");
     exit(1);
   }
-
-  // bind
-  if (bind(listener, server_addr->ai_addr, server_addr->ai_addrlen) < 0) {
-    perror("bind(2)");
-    exit(1);
-  }
-
-  // アドレス情報を解放
-  freeaddrinfo(server_addr);
 
   // listen
   if (listen(listener, NQUEUESIZE) < 0) {
