@@ -15,8 +15,6 @@
 #include <mruby/proc.h>
 #include "addrinfo.c"
 
-#define HOST "localhost"
-#define PORT 12345
 #define NQUEUESIZE 5
 #define MAXMSGSIZE 1024
 
@@ -52,17 +50,17 @@ int main()
     exit(1);
   }
 
+  // bind
+  if (bind(listener, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
+    perror("bind(2)");
+    exit(1);
+  }
+
   // サーバーアドレス再利用設定
   int reuse = 1;
 
   if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
     perror("setsockopt(2)");
-    exit(1);
-  }
-
-  // bind
-  if (bind(listener, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
-    perror("bind(2)");
     exit(1);
   }
 
