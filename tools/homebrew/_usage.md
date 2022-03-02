@@ -1,10 +1,16 @@
 # Udage
 #### `$ brew link xx` / `$ brew unlink xx`
-- インストール済みバージョンの切り替え
+- インストール済みバージョンを切り替える
 
 ```
 $ brew unlink xx
 $ brew link xx@VERSION
+```
+
+```
+# switchは削除済み
+$ brew switch xx VERSION
+Error: Unknown command: switch
 ```
 
 #### `$ brew search xx`
