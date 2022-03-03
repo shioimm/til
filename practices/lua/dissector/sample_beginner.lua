@@ -38,9 +38,9 @@ function proto.dissector(buffer, pinfo, tree)
 
   -- proto(original) サブツリーに original_data_Fを追加
   -- bufferの4byte目から4byte分をoriginal_data_Fのフォーマットで表示
-  subtree:add(original_size_F, buffer(4, 4))
+  subtree:add(original_data_F, buffer(4, 4))
 end
 
 -- 定義したプロトコルProto:originalをTCPポート番号を指定して既存のTCPのDissectorに紐づける
 tcp_table = DissectorTable.get("tcp.port") -- 既存のTCP dissector
-tcp_table:add(3333, proto) -- 既存のTCP dissectorにproto(Proto:original)を紐付け
+tcp_table:add(12345, proto) -- 既存のTCP dissectorにproto(Proto:original)を紐付け
