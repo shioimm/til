@@ -1,9 +1,8 @@
-# stdlib
+# `#include <stdlib.h>`
 #### `malloc` / `free`
 ```c
-void free(void *ptr);
-
 void* malloc(size_t size);
+void  free(void *ptr);
 ```
 
 #### `getenv`
@@ -13,7 +12,7 @@ void* malloc(size_t size);
 char* getenv(const char *name);
 ```
 
-##### qsort
+#### qsort
 - 渡された配列の先頭から二つの要素を繰り返し比較し、ソートする
 
 ```c

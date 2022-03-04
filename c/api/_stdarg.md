@@ -1,4 +1,5 @@
-# stdarg
+# `#include <stdarg.h>`
+- 可変長引数を取り扱う
 
 ```c
 #include <stdarg.h>
