@@ -1,4 +1,5 @@
-# signal
+# `#include <signal.h>`
+
 ```c
 #include <stdio.h>
 #include <signal.h>
