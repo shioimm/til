@@ -1,6 +1,8 @@
-# Lex
-- 字句解析器自動生成ツール
+# Lex / Flex
+- 字句解析器ジェネレータ
+- テキスト中の字句のパターンを認識しトークンを割り出すためのプログラムを生成する
 - `$ lex FILENAME`コマンドで`lex.yy.c`ファイルを生成する
+- FlexはLexの性能を改善した上位互換
 
 ## 文法ファイル
 ```
@@ -26,3 +28,4 @@
 
 ## 参照
 - コンパイラ入門 構文解析の原理とlex/yacc, C言語による実装
+- [westes/flex: The Fast Lexical Analyser](https://github.com/westes/flex)

@@ -10,6 +10,7 @@
     - Configure - CMakeにCMakeLists.txtを実行させ、ビルドに必要な情報を収集する
     - Generate - Configureで集めた情報を基に開発環境に合わせたプロジェクトファイルを生成する
 4. プロジェクトファイルを利用しプロジェクトをビルド
+    - ビルドツールの指定も可能 (e.g. Ninja)
 
 ## 参照
 - [CMake](gitlab.kitware.com/cmake/cmake)
