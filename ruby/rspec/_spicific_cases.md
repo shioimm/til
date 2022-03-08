@@ -1,5 +1,6 @@
 # 特定の条件で実行する
 #### 失敗するスペックだけ実行する
+
 ```ruby
 # spec_helper.rb
 # 指定のパスに実行結果を保存しておく
@@ -20,11 +21,13 @@ $ rspec --fail-fast
 ```
 
 #### 指定したスペックだけ実行する
-```sh
+
+```
 $ rspec --example '実行したいexample / deescribe名(一部)'
 ```
 
 #### フォーカス中のスペックだけ実行する
+
 ```ruby
 # spec_helper.rb
 
