@@ -117,3 +117,6 @@ int main()
 
   return 0;
 }
+
+// $ ../mruby/bin/mrbc -Baddrinfo addrinfo.rb
+// $ gcc -std=c99 -I../mruby/include echoserver.c -o echoserver ../mruby/build/host/lib/libmruby.a  -lm
