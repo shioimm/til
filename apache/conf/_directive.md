@@ -1,45 +1,4 @@
-# 設定
-### RedHat系OS
-#### `/etc/httpd`以下
-
-| ファイル名     | 説明                                                               |
-| -              | -                                                                  |
-| conf           | 起動時に最初に読み込まれる設定ファイル`http.cong`を含むファイル群  |
-| conf.d         | 追加の設定ファイル群                                               |
-| conf.modules.d | モジュール関連の設定ファイル群                                     |
-| logs           | `/var/log/httpd`へのシンボリックリンク                             |
-| modules        | `/usr/lib64/httpd/modules`へのシンボリックリンク                   |
-| run            | `run/httpd`へのシンボリックリンク                                  |
-
-### Debian系OS
-#### `/etc/apache2/`以下
-
-| ファイル名       | 説明                                                                 |
-| -                | -                                                                    |
-| apache2.conf     | 起動時に最初に読み込まれる設定ファイル                               |
-| conf-available/  | 利用可能な一般的な設定ファイルを配置(文字コードやセキュリティなど)   |
-| conf-enabled/    | 現在有効な`conf-available/`内の各設定ファイルへのシンボリックリンク  |
-| mods-available/  | 利用可能なモジュールに関するロード設定・基本的な設定ファイルを配置   |
-| mods-enabled/    | 現在有効な`mods-available/`内の各設定ファイルへのシンボリックリンク  |
-| sites-available/ | 利用可能なWebサイト設定に関するファイルを配置                        |
-| sites-enabled/   | 現在有効な`/sites-available`内の各設定ファイルへのシンボリックリンク |
-| ports.conf       | どのIP/ポートで待ち受けるかに関する設定ファイル                      |
-| envvars          | 他の設定ファイル内部腕使われる環境変数を指定するファイル             |
-| magic            | MimeTypeについての情報を指定するファイル                             |
-
-#### `/usr/lib/apache2/`
-
-| ファイル名 | 説明                     |
-| -          | -                        |
-| modules    | モジュール本体を配置する |
-
-#### `/var/log`
-
-| ファイル名 | 説明           |
-| -          | -              |
-| apache2    | ログを配置する |
-
-## 設定ファイルの書き方
+# ディレクティブ
 ```
 # 設定名 設定値
 
