@@ -1,10 +1,14 @@
 // ref: https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
 
 // プロトコルハンドル static int proto_foo
-//   プロトコルを参照したりプロトコルのdissectorへのハンドルを取得するために用いる
+//   プロトコルを参照したりディセクタハンドルを取得するために用いるハンドル
+//
+// ディセクタハンドル static dissector_handle_t foo_handle;
+//   プロトコルとディセクタ関数に関連付けられるハンドル
 //
 // レジスタルーチン proto_register_foo
 //   Wiresharkにプロトコルを登録する
+//   Wiresharkの起動時に呼び出される
 //
 // ハンドオフルーチン proto_reg_handoff_foo(void)
 //   プロトコルハンドルとプロトコルのトラフィックを関連付ける
@@ -19,12 +23,13 @@
 #include "config.h"
 #include <epan/packet.h>
 
-#define FOO_PORT 1234
+#define FOO_PORT 30000
 
 static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
-  //  WiresharkのProtocolカラムを"FOO"に設定
+  // col_set_str - WiresharkのProtocolカラムを"FOO"に設定
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "FOO");
+  // col_clear - INFOカラムのデータを消去
   col_clear(pinfo->cinfo,COL_INFO);
 
   return tvb_captured_length(tvb);
@@ -47,10 +52,8 @@ void proto_reg_handoff_foo(void)
 
   // Wiresharkがポート1234上のUDPトラフィックを受信するとディセクタ関数dissect_foo()を呼び出す
   foo_handle = create_dissector_handle(dissect_foo, proto_foo);
-  dissector_add_uint("udp.port", FOO_PORT, foo_handle);
+  dissector_add_uint("tcp.port", FOO_PORT, foo_handle);
 }
 
-// wireshark/plugins/epan/foo/packet-foo.c
-// wireshark/plugins/epan/foo/CMakeLists.txt (epan/gryphon/CMakeLists.txtを参考にする)
-// wireshark/CMakeListsCustom.txt
-//   set(CUSTOM_PLUGIN_SRC_DIR plugins/epan/foo)
+// wireshark/build/ でビルドすると
+// run/Wireshark.app/Contents/PlugIns/wireshark/VERSION/epan/内に共有ライブラリが作成される

@@ -43,4 +43,7 @@ end
 
 -- 定義したプロトコルProto:originalをTCPポート番号を指定して既存のTCPのDissectorに紐づける
 tcp_table = DissectorTable.get("tcp.port") -- 既存のTCP dissector
-tcp_table:add(12345, proto) -- 既存のTCP dissectorにproto(Proto:original)を紐付け
+tcp_table:add(30000, proto) -- 既存のTCP dissectorにproto(Proto:original)を紐付け
+
+-- 00000008 576f6f6f (サイズ: 8 / データ: Wooo)
+-- [0x00, 0x00, 0x00, 0x08, 0x57, 0x6f, 0x6f, 0x6f].pack("C*") をソケットに書き込む

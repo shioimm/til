@@ -1,0 +1,2 @@
+# ref: https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+set(CUSTOM_PLUGIN_SRC_DIR plugins/epan/foo)
