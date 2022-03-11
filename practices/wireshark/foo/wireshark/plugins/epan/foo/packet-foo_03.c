@@ -4,9 +4,6 @@
 #include <epan/packet.h>
 
 #define FOO_PORT 30000
-#define FOO_START_FLAG      0x01
-#define FOO_END_FLAG        0x02
-#define FOO_PRIORITY_FLAG   0x04
 
 static int proto_foo = -1;
 
@@ -15,35 +12,14 @@ static int hf_foo_flags      = -1;
 static int hf_foo_sequenceno = -1;
 static int hf_foo_initialip  = -1;
 
-static int hf_foo_startflag    = -1;
-static int hf_foo_endflag      = -1;
-static int hf_foo_priorityflag = -1;
-
 static gint ett_foo = -1;
-
-static const value_string packettypenames[] = {
-  { 1, "Initialise" },
-  { 2, "Terminate" },
-  { 3, "Data" },
-  { 0, NULL }
-};
 
 static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
-  guint8 packet_type = tvb_get_guint8(tvb, 0);
-
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "FOO");
   col_clear(pinfo->cinfo,COL_INFO);
-  col_add_fstr(pinfo->cinfo,
-               COL_INFO,
-               "Type %s",
-               val_to_str(packet_type, packettypenames, "Unknown (0x%02x)"));
 
   proto_item *ti = proto_tree_add_item(tree, proto_foo, tvb, 0, -1, ENC_NA);
-  proto_item_append_text(ti,
-                         ", Type %s",
-                         val_to_str(packet_type, packettypenames, "Unknown (0x%02x)"));
-
   proto_tree *foo_tree = proto_item_add_subtree(ti, ett_foo);
 
   gint offset = 0;
@@ -56,28 +32,29 @@ static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, 
   proto_tree_add_item(foo_tree, hf_foo_initialip,  tvb, offset, 4, ENC_BIG_ENDIAN);
   offset += 4;
 
-  static int* const bits[] = {
-    &hf_foo_startflag,
-    &hf_foo_endflag,
-    &hf_foo_priorityflag,
-    NULL
-  };
-
-  proto_tree_add_bitmask(foo_tree, tvb, offset, hf_foo_flags, ett_foo, bits, ENC_BIG_ENDIAN);
-  offset += 1;
-
   return tvb_captured_length(tvb);
 }
 
 void proto_register_foo(void)
 {
+  // ヘッダフィールド (hf) 情報
   static hf_register_info hf[] = {
+    // {
+    //   ノードのインデックス,
+    //   { 項目のラベル,
+    //     表示フィルタの項目名 (省略),
+    //     項目のタイプ,
+    //     整数型の扱い (BASE_OCT | BASE_DEC | BASE_HEX),
+    //     ...,
+    //     ...,
+    //     ...,
+    //     ..., } }
     { &hf_foo_pdu_type,
       { "FOO PDU Type",
         "foo.type",
         FT_UINT8,
         BASE_DEC,
-        VALS(packettypenames),
+        NULL,
         0x0,
         NULL,
         HFILL } },
@@ -108,35 +85,9 @@ void proto_register_foo(void)
         0x0,
         NULL,
         HFILL } },
-    { &hf_foo_startflag,
-      { "FOO PDU Start Flags",
-        "foo.flags.start",
-        FT_BOOLEAN,
-        8,
-        NULL,
-        FOO_START_FLAG,
-        NULL,
-        HFILL } },
-    { &hf_foo_endflag,
-      { "FOO PDU End Flags",
-        "foo.flags.end",
-        FT_BOOLEAN,
-        8,
-        NULL,
-        FOO_END_FLAG,
-        NULL,
-        HFILL } },
-    { &hf_foo_priorityflag,
-      { "FOO PDU Priority Flags",
-        "foo.flags.priority",
-        FT_BOOLEAN,
-        8,
-        NULL,
-        FOO_PRIORITY_FLAG,
-        NULL,
-        HFILL } },
   };
 
+  // サブツリーのノードの拡張を制御
   static gint *ett[] = { &ett_foo };
 
   proto_foo = proto_register_protocol (

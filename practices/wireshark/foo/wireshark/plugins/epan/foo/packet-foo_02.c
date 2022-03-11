@@ -1,3 +1,5 @@
+// ref: https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+
 #include "config.h"
 #include <epan/packet.h>
 
@@ -10,7 +12,7 @@ static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "FOO");
   col_clear(pinfo->cinfo,COL_INFO);
 
-  // proto_tree_add_item - サブツリーの追加
+  // proto_tree_add_item - デコード結果を格納するサブツリーの追加
   proto_item *ti = proto_tree_add_item(tree, proto_foo, tvb, 0, -1, ENC_NA);
 
   return tvb_captured_length(tvb);
