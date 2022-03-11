@@ -55,5 +55,5 @@ void proto_reg_handoff_foo(void)
   dissector_add_uint("tcp.port", FOO_PORT, foo_handle);
 }
 
-// wireshark/build/ でビルドすると
+// wireshark/build/ でビルド ($ cmake .. -> $ make) すると
 // run/Wireshark.app/Contents/PlugIns/wireshark/VERSION/epan/内に共有ライブラリが作成される

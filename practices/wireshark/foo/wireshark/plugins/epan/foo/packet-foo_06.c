@@ -34,12 +34,14 @@ static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, 
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "FOO");
   col_clear(pinfo->cinfo,COL_INFO);
+  // col_add_fstr -パケットリスト欄 Infoに文字を追加する
   col_add_fstr(pinfo->cinfo,
                COL_INFO,
                "Type %s",
                val_to_str(packet_type, packettypenames, "Unknown (0x%02x)"));
 
   proto_item *ti = proto_tree_add_item(tree, proto_foo, tvb, 0, -1, ENC_NA);
+  // proto_item_append_text - パケット詳細欄 ラベルに文字を追加する
   proto_item_append_text(ti,
                          ", Type %s",
                          val_to_str(packet_type, packettypenames, "Unknown (0x%02x)"));

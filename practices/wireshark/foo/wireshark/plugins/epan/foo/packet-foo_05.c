@@ -4,6 +4,8 @@
 #include <epan/packet.h>
 
 #define FOO_PORT 30000
+
+// フラグマスク
 #define FOO_START_FLAG      0x01
 #define FOO_END_FLAG        0x02
 #define FOO_PRIORITY_FLAG   0x04
@@ -30,20 +32,10 @@ static const value_string packettypenames[] = {
 
 static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
-  guint8 packet_type = tvb_get_guint8(tvb, 0);
-
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "FOO");
   col_clear(pinfo->cinfo,COL_INFO);
-  col_add_fstr(pinfo->cinfo,
-               COL_INFO,
-               "Type %s",
-               val_to_str(packet_type, packettypenames, "Unknown (0x%02x)"));
 
   proto_item *ti = proto_tree_add_item(tree, proto_foo, tvb, 0, -1, ENC_NA);
-  proto_item_append_text(ti,
-                         ", Type %s",
-                         val_to_str(packet_type, packettypenames, "Unknown (0x%02x)"));
-
   proto_tree *foo_tree = proto_item_add_subtree(ti, ett_foo);
 
   gint offset = 0;
@@ -63,6 +55,7 @@ static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, 
     NULL
   };
 
+  // ビットマスクの追加
   proto_tree_add_bitmask(foo_tree, tvb, offset, hf_foo_flags, ett_foo, bits, ENC_BIG_ENDIAN);
   offset += 1;
 
@@ -112,7 +105,7 @@ void proto_register_foo(void)
       { "FOO PDU Start Flags",
         "foo.flags.start",
         FT_BOOLEAN,
-        8,
+        8, // 8ビット分のビットマスク
         NULL,
         FOO_START_FLAG,
         NULL,
