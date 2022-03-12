@@ -1,5 +1,10 @@
 # CMakeLists.txt
+#### ディレクトリ構造
+- pj
+  - CMakeLists.txt
+  - main.cpp
 
+#### pj/CMakeLists.txt
 1. CMakeのバージョン`3.1`を指定
 2. プロジェクト名`pj`とプロジェクトで使用するプログラム言語`CXX`を指定
 3. ビルドする実行ファイル (ターゲット) 名`main_app`とそれを構成するソースファイル`main.cpp`を指定
