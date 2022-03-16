@@ -1,5 +1,4 @@
-# Wireshark拡張
-#### `wireshark/cmake/modules/Find<PackageName>.cmake`
+# `wireshark/cmake/modules/Find<PackageName>.cmake`
 
 ```txt
 find_path(
@@ -33,29 +32,3 @@ set(<PackageName>_INCLUDE_DIRS ${<PackageName>_INCLUDE_DIR} )
 
 mark_as_advanced(<PackageName>_INCLUDE_DIRS <PackageName>_LIBRARIES)
 ```
-
-#### `wireshark/CMakeOptions.txt`
-```txt
-option(ENABLE_<PackageName>  "<Help Text>" ON)
-```
-
-#### `wireshark/CMakeLists.txt`
-
-```txt
-ws_find_package(<PackageName> ENABLE_<PackageName> HAVE_<PackageName>)↲
-
-# ...
-
-target_link_libraries(epan
-    # ...
-    ${<PackageName>_LIBRARIES}
-
-# ...
-
-target_include_directories(epan
-    #
-    ${<PackageName>_INCLUDE_DIRS}
-```
-
-## 参照
-- [勝手に作るCMake入門 その4 外部ライブラリを利用する](https://kamino.hatenablog.com/entry/cmake_tutorial4)
