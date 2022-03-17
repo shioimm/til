@@ -5,6 +5,18 @@
 ws_find_package(<PackageName> ENABLE_<PackageName> HAVE_<PackageName>)
 ```
 
+#### `wireshark/CMakeOptions.txt`
+
+```txt
+option(ENABLE_<PackageName>  "<Help Text>" ON)
+```
+
+#### cmakeconfig.h.in
+
+```txt
+#cmakedefine HAVE_<PackageName> 1
+```
+
 #### plugins/epan/`<PluginName>`/CMakeLists.txt
 
 ```txt
