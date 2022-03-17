@@ -20,6 +20,10 @@ option(ENABLE_<PackageName>  "<Help Text>" ON)
 #### `wireshark/epan/CMakeLists.txt`
 
 ```txt
+add_subdirectory(ws<PackageName>)
+
+# ...
+
 target_link_libraries(epan
     # ...
     ${<PackageName>_LIBRARIES}
@@ -27,7 +31,7 @@ target_link_libraries(epan
 # ...
 
 target_include_directories(epan
-    #
+    # ...
     ${<PackageName>_INCLUDE_DIRS}
 ```
 
