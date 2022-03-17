@@ -1,20 +1,20 @@
 # Epan
-#### `wireshark/CMakeOptions.txt`
-
-```txt
-option(ENABLE_<PackageName>  "<Help Text>" ON)
-```
-
 #### `wireshark/CMakeLists.txt`
 
 ```txt
 ws_find_package(<PackageName> ENABLE_<PackageName> HAVE_<PackageName>)
 ```
 
+#### `wireshark/CMakeOptions.txt`
+
+```txt
+option(ENABLE_<PackageName>  "<Help Text>" ON)
+```
+
 #### cmakeconfig.h.in
 
 ```txt
-#cmakedefine HAVE_MRUBY 1
+#cmakedefine HAVE_<PackageName> 1
 ```
 
 #### `wireshark/epan/CMakeLists.txt`
