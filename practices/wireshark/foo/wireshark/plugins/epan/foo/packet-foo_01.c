@@ -50,7 +50,7 @@ void proto_reg_handoff_foo(void)
 {
   static dissector_handle_t foo_handle;
 
-  // Wiresharkがポート1234上のUDPトラフィックを受信するとディセクタ関数dissect_foo()を呼び出す
+  // Wiresharkがポート30000上のTCPトラフィックを受信するとディセクタ関数dissect_foo()を呼び出す
   foo_handle = create_dissector_handle(dissect_foo, proto_foo);
   dissector_add_uint("tcp.port", FOO_PORT, foo_handle);
 }
