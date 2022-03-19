@@ -1,5 +1,5 @@
 # プロトコル定義
-## 自作関数
+## 関数・定数定義
 ```c
 // プロトコルハンドル
 static int proto_foo = -1;
@@ -34,8 +34,8 @@ proto_register_protocol(
 ```c
 // ディセクタハンドルの作成 (プロトコルとディセクタハンドルの関連付け)
 create_dissector_handle(
-  dissect_foo, // ディセクタハンドル
-  proto_foo    // プロトコルハンドル
+  dissect_foo, // ディセクタハンドル (static dissector_handle_t foo_handle)
+  proto_foo    // プロトコルハンドル (static int proto_foo)
 );
 
 // ディセクタハンドラ関数の登録 (トラフィックとディセクタハンドルの関連付け)
