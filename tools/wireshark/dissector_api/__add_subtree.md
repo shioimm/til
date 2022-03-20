@@ -20,7 +20,7 @@ static hf_register_info hf[] = {
       "foo.type",     // 要素の短縮名 (フィルタ用)
       FT_UINT8,       // 要素のタイプ (8ビット符号なし整数)
       BASE_DEC,       // 整数型の扱い (BASE_OCT | BASE_DEC | BASE_HEX)
-      NULL,
+      NULL,           // 要素のフォーマット (NULL可)
       0x0,
       NULL,
       HFILL } },
@@ -81,7 +81,7 @@ proto_tree_add_item(
   tree,       // アイテム追加先のツリー (proto_tree *tree)
   proto_foo,  // 追加するアイテムのハンドル (static int proto_foo, hf_foo_pdu_type ...)
   tvb,        // パケットデータ (tvbuff_t *tvb)
-  0,          // オフセット
+  0,          // オフセット (gint offset | 0)
   -1,         // 読み込むパケットデータサイズ (-1: 最後まで)
   ENC_NA      // エンコーディング (ENC_NA | ENC_BIG_ENDIAN | ENC_LITTLE_ENDIAN)
 );
@@ -89,7 +89,7 @@ proto_tree_add_item(
 // ツリーに対するノードの追加
 proto_item_add_subtree(
   ti,     // ノード追加先のツリー (proto_item *ti)
-  ett_foo // ノードのオープン/クローズ状態を保持するハンドル
+  ett_foo // ノードのオープン/クローズ状態を保持するハンドル (static gint ett_foo)
 );
 ```
 
