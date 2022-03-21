@@ -122,12 +122,13 @@ mrb_inspect(mrb_state *mrb);
 ```
 
 #### `mrb_p`
-- `mrb_value`の示す値を表示する
+- `mrb_value`の値を標準出力
 
 ```c
 MRB_API void
-mrb_p(mrb_state*, mrb_value);
+mrb_p(mrb_state *mrb, mrb_value);
 ```
+
 
 #### `DATA_PTR` (マクロ)
 - インスタンスが持つCレベルのデータへのアクセス

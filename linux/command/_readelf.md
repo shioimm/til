@@ -2,12 +2,60 @@
 - ELFファイルの各種情報を表示する
 
 ```
-# ヘッダ情報の表示
-#   ELFヘッダ        - ELF全体の情報、プログラムヘッダとセクションヘッダの情報
-#   プログラムヘッダ - 実行開始時にメモリにマップされるべきデータについての情報
-#     Ex. プログラムコード、初期化済みグローバル変数の領域
-#   セクションヘッダ - プログラムを実行する時に必要なオブジェクトファイルの論理的な構造に関する情報
+# ELFヘッダの表示
+$ readelf -e <File Name>
 
+# プログラムヘッダの表示
+$ readelf -l <File Name>
+
+# セクションヘッダの表示
+$ readelf -S <File Name>
+
+# セクションヘッダの表示
+$ readelf -S <File Name>
+
+# シンボルテーブルの表示
+$ readelf -s <File Name>
+```
+
+#### ELFヘッダ
+
+```c
+typedef struct {
+  unsigned char e_ident[EI_NIDENT]; // マジック、クラス、データ、バージョン、OS/ABI、ABIバージョン
+  Elf64_Half    e_type;             // ファイルタイプ
+  Elf64_Half    e_machine;          // マシン
+  Elf64_Word    e_version;          // バージョン
+  Elf64_Addr    e_entry;            // エントリポイントアドレス
+  Elf64_Off     e_phoff;            // プログラムヘッダ始点
+  Elf64_Off     e_shoff;            // セクションヘッダ始点
+  Elf64_Word    e_flags;            // フラグ
+  Elf64_Half    e_ehsize;           // このヘッダのサイズ
+  Elf64_Half    e_phentsize;        // プログラムのヘッダサイズ
+  Elf64_Half    e_phnum;            // プログラムヘッダ数
+  Elf64_Half    e_shentsize;        // セクションヘッダサイズ
+  Elf64_Half    e_shnum;            // セクションヘッダ数
+  Elf64_Half    e_shstrndx;         // セクション名のストリングテーブル
+} Elf64_Ehdr;
+```
+
+#### プログラムヘッダ
+
+```c
+typedef struct {
+  Elf64_Word  p_type;   // セグメントタイプ
+  Elf64_Word  p_flags;  // セグメントフラグ (Flag)
+  Elf64_Off   p_offset; // セグメントオフセット
+  Elf64_Addr  p_vaddr;  // 仮想Addr
+  Elf64_Addr  p_paddr;  // 物理Addr
+  Elf64_Xword p_filesz; // ファイルサイズ (FileSiz)
+  Elf64_Xword p_memsz;  // メモリサイズ (MemSiz)
+  Elf64_Xword p_align;  // アライメント (Align)
+} Elf64_Phdr;
+
+```
+
+```
 $ ar xv /usr/lib/x86_64-linux-gnu/libc.a printf.o
 $ readelf -e printf.o
 
