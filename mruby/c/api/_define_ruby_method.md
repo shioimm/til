@@ -1,7 +1,7 @@
 # メソッド定義
 
 ```c
-typedef mrb_value (*mrb_func_t)(struct mrb_state *mrbb, mrb_value self);
+typedef mrb_value (*mrb_func_t)(struct mrb_state *mrb, mrb_value self);
 
 MRB_API void
 mrb_define_method(
