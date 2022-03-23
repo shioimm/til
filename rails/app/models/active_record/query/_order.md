@@ -23,6 +23,6 @@ Book.out_of_print.reorder(published_at: :desc) # => published_at: :desc
 ```
 
 - 関連レコードの数が多い順に並び替える
-```
+```ruby
 Book.left_joins(:chapters).group('books.id').order('count(chapters.book_id) desc')
 ```
