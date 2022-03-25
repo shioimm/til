@@ -1,25 +1,4 @@
 # データ型
-#### `mrb_state`構造体
-- mruby VMの状態や各種変数などを格納した構造体
-- `mrb_state`構造体の変数を引き回すことによってmrubyはプログラムを実行する
-- `#include <mruby.h>`
-
-#### `mrb_value`共用体
-- mrubyのすべてのオブジェクトを表現するための型
-
-```c
-union mrb_value_union {
-  void    *p; // RData構造体へのポインタ
-  mrb_int  i;
-  mrb_sym  sym;
-};
-
-typedef struct mrb_value {
-  union mrb_value_union value;
-  enum  mrb_type        tt;
-} mrb_value;
-```
-
 #### `RData`構造体
 - 実際のデータを管理するための構造体
 - mrubyレベルでオブジェクトのデータを管理する場合は`mrb_value`経由で使用される
