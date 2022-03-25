@@ -1,16 +1,32 @@
 # gdb
+#### デバッグ
 1. 起動 (デバッグする対象のバイナリをフルパスで指定)
-2. ブレークポイントを設定
-3. コードを実行
-4. gdbを終了
+2. コードを実行
+3. バックトレースを表示
+4. 周辺のコードを表示
+5. `<変数名>`の値を出力
+6. gdbを終了
 
 ```
 $ gdb /usr/bin/ruby
 
-(gdb) break rb_inspect
 (gdb) run -e 'p hello'
-(gdb) quit
+(gdb) bt
+(gdb) l
+(gdb) p <変数名>
+(gdb) q
 ```
+
+#### 不具合がないことを検証
+
+```
+$ gdb /usr/bin/ruby
+
+(gdb) b <関数名>
+(gdb) run -e 'p hello'
+```
+
+## 操作
 
 | 操作                    | 意味                                                               |
 | -                       | -                                                                  |
