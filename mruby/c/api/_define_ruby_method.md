@@ -24,6 +24,21 @@ mrb_define_module_function(
 );
 ```
 
+```c
+static mrb_value mrb_my_func(mrb_state *mrb, mrb_value self)
+{
+  mrb_p(mrb, self):
+  return ret;
+}
+
+int main()
+{
+  struct RClass *firstc;
+  klass = mrb_define_class(mrb, "Prog", mrb->object_class);
+  mrb_define_class_method(mrb, klass, "my_func", mrb_my_func, MRB_ARGS_NONE());
+}
+```
+
 | aspec (メソッドが取りうる引数の種類) | 意味                                               |
 | -                                    | -                                                  |
 | `MRB_ARGS_NONE()`                    | 引数を取らない                                     |
