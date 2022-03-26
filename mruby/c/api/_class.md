@@ -46,14 +46,6 @@ MRB_API void
 mrb_include_module(mrb_state *mrb, struct RClass *klass, struct RClass *module);
 ```
 
-#### `MRB_SET_INSTANCE_TT` (マクロ)
-- 当該クラス`c`のインスタンス一般についてのデータタイプを指定する
-- 特定のクラスに所属するインスタンス全体についてのmrubyでの扱いを指定する
-
-```c
-MRB_SET_INSTANCE_TT(struct RClass *c, enum mrb_vtype tt)
-```
-
 #### クラス変数
 
 ```c

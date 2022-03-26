@@ -24,5 +24,13 @@
 - 関数の実行中にCレベルで確保されたメモリがGCされないよう、
   オブジェクトの一時的な退避場所 (arena) が必要
 
+## API
+#### `MRB_SET_INSTANCE_TT` (マクロ)
+- Cのデータをバックエンドに持ち、特定のクラスに所属するインスタンスについてデータタイプを指定する
+
+```c
+MRB_SET_INSTANCE_TT(struct RClass *c, enum mrb_vtype tt)
+```
+
 ## 参照
 - 入門mruby

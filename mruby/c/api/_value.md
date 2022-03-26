@@ -1,16 +1,17 @@
 # 値
-#### Rubyレベルオブジェクト -> `mrb_value`
+#### RVALUE構造体 -> `mrb_value`
+- RVALUE構造体 - `mrb_value`に紐付けられた実際のデータを管理する構造体
 
 ```c
 MRB_INLINE mrb_value
 mrb_obj_value(void *p);
 ```
 
-#### `mrb_value` -> Rubyレベルオブジェクト
+#### `mrb_value` -> RVALUE構造体
 
 ```c
 struct RString*
-mrb_atr_ptr(mrb_value val);
+mrb_str_ptr(mrb_value val);
 
 struct RArray*
 mrb_ary_ptr(mrb_value val);
