@@ -4,8 +4,7 @@
 #include <mruby/numeric.h>
 #include <mruby/variable.h>
 #include <mruby/value.h>
-
-#include <string.h>
+#include <mruby/string.h>
 
 static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 {
@@ -46,22 +45,12 @@ static mrb_value mrb_plugin_get_port(mrb_state *mrb, mrb_value self)
   return mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
 }
 
-int main()
+void mrb_plugin_gem_init(mrb_state *mrb)
 {
-  mrb_state *mrb = mrb_open();
-
   struct RClass *plugin_klass = mrb_define_class(mrb, "Plugin", mrb->object_class);
   mrb_define_method(mrb, plugin_klass, "initialize",   mrb_plugin_init,            MRB_ARGS_REQ(3));
   mrb_define_method(mrb, plugin_klass, "name",         mrb_plugin_get_name,        MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "filter_name",  mrb_plugin_get_filter_name, MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "protocol",     mrb_plugin_get_protocol,    MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "port",         mrb_plugin_get_port,        MRB_ARGS_NONE());
-
-  FILE *plugin_src = fopen("plugin.rb", "r");
-  mrb_load_file(mrb, plugin_src);
-  fclose(plugin_src);
-
-  mrb_close(mrb);
-
-  return 0;
 }
