@@ -1,17 +1,4 @@
-# mrubyランタイムのビルド
-## ビルドワークフロー
-1. `$ git clone --depth=1 git://github.com/mruby/mruby.git`
-2. `./mruby/build_config.rb`の編集
-3. `$ cd mruby && rake`
-
-#### Cの実行ファイルとしてコンパイル
-1. アーカイブファイル`./mruby/build/host/lib/libmruby.a`と
-   実行ファイルに組み込むCソースファイルをコンパイルし
-   共有ライブラリ`.so`を作成する
-2. 実行ファイルのベースとなるCソースファイルと共有ライブラリ`.so`をコンパイルし
-   実行ファイルを作成する
-
-#### `build_config.rb`
+# `build_config.rb`
 - mrubyをビルドするための設定ファイル
 - 依存mgemを宣言すると、mgem内部のプログラムをすべて読み込んだmrubyをビルドすることができる
   - `require`なしでmgemを利用できる
@@ -44,20 +31,15 @@ MRuby::Build.new do |conf| # confはMRuby::Buildのインスタンス
 end
 ```
 
-## ビルドパイプライン
-1. (前提) mrubyのビルド用Rakefileはmruby (`/path/to/mruby/`直下) に同梱されており、
-   `$ rake`コマンドの実行によりビルドを開始する
-    - mrubyのビルドタスク実行のためにCRubyが必要
-2. 設定ファイル`build_config.rb`の読み込み
-3. 依存mgemのダウンロード
-4. mrubyに必要な最低限の部分と`mrbc`実行ファイルのビルド
-    - `mrbc`バイナリは後続のビルドのために必要
-4. ソースコードをバイトコード化 -> オブジェクトファイルへコンパイル
-    - C -> オブジェクトファイル
-    - Ruby -> バイトコード (Cによるデータの配列) -> オブジェクトファイル
-4. 依存mgemのビルド -> バイトコード化 -> オブジェクトファイルへコンパイル
-5. オブジェクトファイルをアーカイブし`libmruby.a`を作成
-6. アーカイブファイル`libmruby.a`をリンクした`mruby`実行ファイル / `mirb`実行ファイルを作成
+```ruby
+# デバッグ情報の付与
+conf.cc.flags << '-fPIC -O0 -g -fno-omit-frame-pointer'
+
+# -fPIC - 位置独立
+# -O0   - 最適化レベル0 (最適化を行わない)
+# -g    - バイナリにデバッグ情報を生成
+# -fno-omit-frame-pointer - フレームポインタを表示できるように最適化を抑制
+```
 
 ## 参照
 - [mruby/mruby](https://github.com/mruby/mruby)
