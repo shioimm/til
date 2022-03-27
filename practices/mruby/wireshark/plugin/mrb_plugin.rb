@@ -1,4 +1,4 @@
-plugin =  Plugin.new('FOO', :tcp, 30000)
+plugin = Plugin.new('FOO', :tcp, 30000)
 p plugin
 p plugin.name
 p plugin.filter_name
