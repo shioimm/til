@@ -11,7 +11,7 @@
     - システムコール、TCP/IPイベント、ファイルシステム操作など
 - Kprobes
   - 実行中のカーネルにおけるブレークポイント
-- Uprobes(dynamic tracing)
+- Uprobes (dynamic tracing)
   - ユーザ空間のアプリケーションにおけるブレークポイント
 
 ## インストール
