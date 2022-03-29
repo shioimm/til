@@ -11,6 +11,12 @@
 
 static int phandle = -1;
 
+typedef struct {
+  int port;
+} mrb_protocol_t;
+
+static mrb_protocol_t mrb_protocol;
+
 static mrb_value mrb_protocol_init(mrb_state *mrb, mrb_value self)
 {
   mrb_value name;
@@ -84,6 +90,8 @@ static mrb_value mrb_protocol_enable(mrb_state *mrb, mrb_value protocol)
 {
   _register_protocol(mrb, protocol);
   _register_handoff(mrb, protocol);
+
+  mrb_protocol.port = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
 
   return mrb_nil_value();
 }
