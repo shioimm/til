@@ -16,11 +16,9 @@ void proto_reg_handoff_foo(void)
   mrb_state *mrb = mrb_open();
 
   mrb_protocol_gem_init(mrb);
-  mrb_value proto = mrb_load_string(mrb, "Protocol.new('FOO', :tcp, 30000)");
-  mrb_p(mrb, proto);
-
-  mrb_register_protocol(proto);
-  mrb_register_handoff(proto);
+  mrbc_context *cxt = mrbc_context_new(mrb);
+  mrb_load_string_cxt(mrb, "proto = Protocol.new('FOO', :tcp, 30000)", cxt);
+  mrb_load_string_cxt(mrb, "proto.enable", cxt);
 
   mrb_close(mrb);
 }
