@@ -9,13 +9,22 @@
 #include <mruby/value.h>
 #include <mruby/string.h>
 
+#include <stdlib.h>
+
 static int phandle = -1;
 
 typedef struct {
+  const char *name;
+  const char *filter_name;
+  const char *tprotocol;
   int port;
 } mrb_protocol_t;
 
 static mrb_protocol_t mrb_protocol;
+
+char _name[100];
+char _filter_name[100];
+char _tprotocol[4];
 
 static mrb_value mrb_protocol_init(mrb_state *mrb, mrb_value self)
 {
@@ -58,7 +67,7 @@ static mrb_value mrb_protocol_get_port(mrb_state *mrb, mrb_value self)
 
 static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
-  col_set_str(pinfo->cinfo, COL_PROTOCOL, "FOO");
+  col_set_str(pinfo->cinfo, COL_PROTOCOL, mrb_protocol.name);
   col_clear(pinfo->cinfo, COL_INFO);
 
   return tvb_captured_length(tvb);
@@ -88,10 +97,43 @@ static void _register_handoff(mrb_state *mrb, mrb_value protocol)
 
 static mrb_value mrb_protocol_enable(mrb_state *mrb, mrb_value protocol)
 {
+  mrb_value proto_name = mrb_funcall(mrb, mrb_protocol_get_name(mrb, protocol), "to_s", 0);
+  const char *tmp_proto_name = mrb_string_cstr(mrb, proto_name);
+
+  if (sizeof(*tmp_proto_name) > sizeof(_name)) {
+    fprintf(stderr, "too long name");
+    exit(1);
+  } else {
+    strcpy(_name, tmp_proto_name);
+  }
+
+  mrb_value proto_filter_name = mrb_funcall(mrb, mrb_protocol_get_filter_name(mrb, protocol), "to_s", 0);
+  const char *tmp_proto_filter_name = mrb_string_cstr(mrb, proto_filter_name);
+
+  if (sizeof(*tmp_proto_filter_name) > sizeof(_filter_name)) {
+    fprintf(stderr, "too long filter name");
+    exit(1);
+  } else {
+    strcpy(_filter_name, tmp_proto_filter_name);
+  }
+
+  mrb_value proto_tprotocol = mrb_funcall(mrb, mrb_protocol_get_tprotocol(mrb, protocol), "to_s", 0);
+  const char *tmp_proto_tprotocol = mrb_string_cstr(mrb, proto_tprotocol);
+
+  if (sizeof(*tmp_proto_tprotocol) > sizeof(_tprotocol)) {
+    fprintf(stderr, "too long transport protocol");
+    exit(1);
+  } else {
+    strcpy(_tprotocol, tmp_proto_tprotocol);
+  }
+
+  mrb_protocol.name = _name;
+  mrb_protocol.filter_name = _filter_name;
+  mrb_protocol.tprotocol = _tprotocol;
+  mrb_protocol.port = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
+
   _register_protocol(mrb, protocol);
   _register_handoff(mrb, protocol);
-
-  mrb_protocol.port = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
 
   return mrb_nil_value();
 }
