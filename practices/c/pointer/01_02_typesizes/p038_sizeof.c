@@ -1,4 +1,5 @@
 // 新・標準プログラマーズライブラリ C言語 ポインタ完全制覇 P38
+
 #include <stdio.h>
 
 int main(void)
