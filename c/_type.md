@@ -43,6 +43,14 @@ int (*foo)(int x);
 
 // foo is array[5] of pointer to function(int x) returning int
 int (*foo[5])(int x);
+
+// atexit is function(void (*func)(void)) returning int
+//   func is pointer to function(void) returning void
+int atexit(void (*func)(void));
+
+// signal is function(int sig, void (*func)(int)) returning pointer to void
+//   func is pointer to function(int) returning void
+void (*signal(int sig, void (*func)(int)))(int);
 ```
 
 ## 参照
