@@ -1,15 +1,22 @@
 # `#include <stdlib.h>`
-#### `malloc` / `free`
+#### `malloc` / `realloc` / `free`
 ```c
-void* malloc(size_t size);
+void *malloc(size_t size);
+void *realloc(void *ptr, size_t size);
 void  free(void *ptr);
+```
+
+```c
+int *i = malloc(sizeof(int));
+*i = 5;
+free(i);
 ```
 
 #### `getenv`
 - 環境変数を読み取る
 
 ```c
-char* getenv(const char *name);
+char *getenv(const char *name);
 ```
 
 #### qsort

@@ -1,25 +1,4 @@
-# キーワード
-#### `const`
-- 読み出し専用
-
-```c
-// c is pointer to read-only char
-const char *c;
- c = NULL; // コンパイルエラーにならない
-*c = NULL; // コンパイルエラーになる
-
-// c is read-only pointer to char
-char * const c;
- c = NULL; // コンパイルエラーになる
-*c = NULL; // コンパイルエラーにならない
-
-
-// c is read-only pointer to read-only char
-const char * const c;
- c = NULL; // コンパイルエラーになる
-*c = NULL; // コンパイルエラーになる
-```
-
+# 指定子
 #### `extern`
 - 外部のファイルで定義済み
 
