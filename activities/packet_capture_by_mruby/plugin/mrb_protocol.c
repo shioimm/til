@@ -9,8 +9,6 @@
 #include <mruby/value.h>
 #include <mruby/string.h>
 
-#include <stdlib.h>
-
 static int phandle = -1;
 
 typedef struct {
@@ -22,9 +20,9 @@ typedef struct {
 
 static mrb_protocol_t mrb_protocol;
 
-char _name[100];
-char _filter_name[100];
-char _tprotocol[4];
+static char _mrb_protocol_name[100];
+static char _mrb_protocol_filter_name[100];
+static char _mrb_protocol_tprotocol[4];
 
 static mrb_value mrb_protocol_init(mrb_state *mrb, mrb_value self)
 {
@@ -97,40 +95,42 @@ static void _register_handoff(mrb_state *mrb, mrb_value protocol)
 
 static mrb_value mrb_protocol_enable(mrb_state *mrb, mrb_value protocol)
 {
-  mrb_value proto_name = mrb_funcall(mrb, mrb_protocol_get_name(mrb, protocol), "to_s", 0);
-  const char *tmp_proto_name = mrb_string_cstr(mrb, proto_name);
+  mrb_value mrb_tmp_str;
 
-  if (sizeof(*tmp_proto_name) > sizeof(_name)) {
+  mrb_tmp_str = mrb_funcall(mrb, mrb_protocol_get_name(mrb, protocol), "to_s", 0);
+  const char *tmp_cstr_name = mrb_string_cstr(mrb, mrb_tmp_str);
+
+  if (sizeof(*tmp_cstr_name) > sizeof(_mrb_protocol_name)) {
     fprintf(stderr, "too long name");
     exit(1);
   } else {
-    strcpy(_name, tmp_proto_name);
+    strcpy(_mrb_protocol_name, tmp_cstr_name);
   }
 
-  mrb_value proto_filter_name = mrb_funcall(mrb, mrb_protocol_get_filter_name(mrb, protocol), "to_s", 0);
-  const char *tmp_proto_filter_name = mrb_string_cstr(mrb, proto_filter_name);
+  mrb_tmp_str = mrb_funcall(mrb, mrb_protocol_get_filter_name(mrb, protocol), "to_s", 0);
+  const char *tmp_cstr_filter_name = mrb_string_cstr(mrb, mrb_tmp_str);
 
-  if (sizeof(*tmp_proto_filter_name) > sizeof(_filter_name)) {
+  if (sizeof(*tmp_cstr_filter_name) > sizeof(_mrb_protocol_filter_name)) {
     fprintf(stderr, "too long filter name");
     exit(1);
   } else {
-    strcpy(_filter_name, tmp_proto_filter_name);
+    strcpy(_mrb_protocol_filter_name, tmp_cstr_filter_name);
   }
 
-  mrb_value proto_tprotocol = mrb_funcall(mrb, mrb_protocol_get_tprotocol(mrb, protocol), "to_s", 0);
-  const char *tmp_proto_tprotocol = mrb_string_cstr(mrb, proto_tprotocol);
+  mrb_tmp_str = mrb_funcall(mrb, mrb_protocol_get_tprotocol(mrb, protocol), "to_s", 0);
+  const char *tmp_cstr_tprotocol = mrb_string_cstr(mrb, mrb_tmp_str);
 
-  if (sizeof(*tmp_proto_tprotocol) > sizeof(_tprotocol)) {
+  if (sizeof(*tmp_cstr_tprotocol) > sizeof(_mrb_protocol_tprotocol)) {
     fprintf(stderr, "too long transport protocol");
     exit(1);
   } else {
-    strcpy(_tprotocol, tmp_proto_tprotocol);
+    strcpy(_mrb_protocol_tprotocol, tmp_cstr_tprotocol);
   }
 
-  mrb_protocol.name = _name;
-  mrb_protocol.filter_name = _filter_name;
-  mrb_protocol.tprotocol = _tprotocol;
-  mrb_protocol.port = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
+  mrb_protocol.name        = _mrb_protocol_name;
+  mrb_protocol.filter_name = _mrb_protocol_filter_name;
+  mrb_protocol.tprotocol   = _mrb_protocol_tprotocol;
+  mrb_protocol.port        = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
 
   _register_protocol(mrb, protocol);
   _register_handoff(mrb, protocol);
