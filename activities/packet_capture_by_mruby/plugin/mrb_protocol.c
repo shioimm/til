@@ -12,17 +12,13 @@
 static int phandle = -1;
 
 typedef struct {
-  const char *name;
-  const char *filter_name;
-  const char *tprotocol;
+  char name[100];
+  char filter_name[100];
+  char tprotocol[4];
   int port;
 } mrb_protocol_t;
 
 static mrb_protocol_t mrb_protocol;
-
-static char _mrb_protocol_name[100];
-static char _mrb_protocol_filter_name[100];
-static char _mrb_protocol_tprotocol[4];
 
 static mrb_value mrb_protocol_init(mrb_state *mrb, mrb_value self)
 {
@@ -100,37 +96,34 @@ static mrb_value mrb_protocol_enable(mrb_state *mrb, mrb_value protocol)
   mrb_tmp_str = mrb_funcall(mrb, mrb_protocol_get_name(mrb, protocol), "to_s", 0);
   const char *tmp_cstr_name = mrb_string_cstr(mrb, mrb_tmp_str);
 
-  if (sizeof(*tmp_cstr_name) > sizeof(_mrb_protocol_name)) {
+  if (sizeof(*tmp_cstr_name) > sizeof(mrb_protocol.name)) {
     fprintf(stderr, "too long name");
     exit(1);
   } else {
-    strcpy(_mrb_protocol_name, tmp_cstr_name);
+    strcpy(mrb_protocol.name, tmp_cstr_name);
   }
 
   mrb_tmp_str = mrb_funcall(mrb, mrb_protocol_get_filter_name(mrb, protocol), "to_s", 0);
   const char *tmp_cstr_filter_name = mrb_string_cstr(mrb, mrb_tmp_str);
 
-  if (sizeof(*tmp_cstr_filter_name) > sizeof(_mrb_protocol_filter_name)) {
+  if (sizeof(*tmp_cstr_filter_name) > sizeof(mrb_protocol.filter_name)) {
     fprintf(stderr, "too long filter name");
     exit(1);
   } else {
-    strcpy(_mrb_protocol_filter_name, tmp_cstr_filter_name);
+    strcpy(mrb_protocol.filter_name, tmp_cstr_filter_name);
   }
 
   mrb_tmp_str = mrb_funcall(mrb, mrb_protocol_get_tprotocol(mrb, protocol), "to_s", 0);
   const char *tmp_cstr_tprotocol = mrb_string_cstr(mrb, mrb_tmp_str);
 
-  if (sizeof(*tmp_cstr_tprotocol) > sizeof(_mrb_protocol_tprotocol)) {
+  if (sizeof(*tmp_cstr_tprotocol) > sizeof(mrb_protocol.tprotocol)) {
     fprintf(stderr, "too long transport protocol");
     exit(1);
   } else {
-    strcpy(_mrb_protocol_tprotocol, tmp_cstr_tprotocol);
+    strcpy(mrb_protocol.tprotocol, tmp_cstr_tprotocol);
   }
 
-  mrb_protocol.name        = _mrb_protocol_name;
-  mrb_protocol.filter_name = _mrb_protocol_filter_name;
-  mrb_protocol.tprotocol   = _mrb_protocol_tprotocol;
-  mrb_protocol.port        = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
+  mrb_protocol.port = (unsigned int)mrb_fixnum(mrb_protocol_get_port(mrb, protocol));
 
   _register_protocol(mrb, protocol);
   _register_handoff(mrb, protocol);
