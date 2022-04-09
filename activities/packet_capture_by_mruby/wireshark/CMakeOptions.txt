@@ -1,0 +1,2 @@
+# 追加:L98
+option(ENABLE_MRUBY      "Build with mruby dissector support" ON)
