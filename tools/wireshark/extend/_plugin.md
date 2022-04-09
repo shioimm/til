@@ -11,13 +11,13 @@ ws_find_package(<PackageName> ENABLE_<PackageName> HAVE_<PackageName>)
 option(ENABLE_<PackageName>  "<Help Text>" ON)
 ```
 
-#### cmakeconfig.h.in
+#### `wireshark/cmakeconfig.h.in`
 
 ```txt
 #cmakedefine HAVE_<PackageName> 1
 ```
 
-#### plugins/epan/`<PluginName>`/CMakeLists.txt
+#### `plugins/epan/<PluginName>/CMakeLists.txt`
 
 ```txt
 target_link_libraries(<PluginName> epan ${<PackageName>_LIBRARIES})

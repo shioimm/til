@@ -1,0 +1,2 @@
+// 追加:L160
+#cmakedefine HAVE_MRUBY 1
