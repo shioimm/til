@@ -15,10 +15,9 @@ void proto_reg_handoff_foo(void)
 {
   mrb_state *mrb = mrb_open();
 
-  mrb_protocol_gem_init(mrb);
-  mrbc_context *cxt = mrbc_context_new(mrb);
-  mrb_load_string_cxt(mrb, "proto = Protocol.new('FOO', :tcp, 30000)", cxt);
-  mrb_load_string_cxt(mrb, "proto.enable", cxt);
+  mrb_plugin_gem_init(mrb);
+  FILE *plugin_src = fopen("../plugins/epan/foo/foo_plugin.rb", "r");
+  mrb_load_file(mrb, plugin_src);
 
   mrb_close(mrb);
 }
