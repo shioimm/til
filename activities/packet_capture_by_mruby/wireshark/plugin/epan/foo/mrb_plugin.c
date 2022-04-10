@@ -110,6 +110,13 @@ static mrb_value mrb_plugin_enable(mrb_state *mrb, mrb_value plugin)
 
   mrb_plugin.port = (unsigned int)mrb_fixnum(mrb_plugin_get_port(mrb, plugin));
 
+  mrb_value blk;
+  mrb_get_args(mrb, "|&", &blk);
+
+  if (!mrb_nil_p(blk)) {
+    mrb_yield(mrb, blk, plugin);
+  }
+
   _register_plugin(mrb, plugin);
   _register_handoff(mrb, plugin);
 
@@ -122,7 +129,7 @@ void mrb_plugin_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, plugin_klass, "initialize",  mrb_plugin_init,            MRB_ARGS_REQ(3));
   mrb_define_method(mrb, plugin_klass, "name",        mrb_plugin_get_name,        MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "filter_name", mrb_plugin_get_filter_name, MRB_ARGS_NONE());
-  mrb_define_method(mrb, plugin_klass, "protocol",   mrb_plugin_get_protocol,   MRB_ARGS_NONE());
+  mrb_define_method(mrb, plugin_klass, "protocol",    mrb_plugin_get_protocol,    MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "port",        mrb_plugin_get_port,        MRB_ARGS_NONE());
-  mrb_define_method(mrb, plugin_klass, "enable",      mrb_plugin_enable,          MRB_ARGS_NONE());
+  mrb_define_method(mrb, plugin_klass, "enable",      mrb_plugin_enable,          MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
 }
