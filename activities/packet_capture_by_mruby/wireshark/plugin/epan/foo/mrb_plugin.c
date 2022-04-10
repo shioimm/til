@@ -9,6 +9,8 @@
 #include <mruby/value.h>
 #include <mruby/string.h>
 
+#include "mrb_subtree.c"
+
 static int phandle = -1;
 
 typedef struct {
@@ -75,10 +77,13 @@ static mrb_value mrb_plugin_get_port(mrb_state *mrb, mrb_value self)
   return mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
 }
 
-static mrb_value mrb_plugin_add_subtree(mrb_state *_mrb, mrb_value _self)
+static mrb_value mrb_plugin_add_subtree(mrb_state *mrb, mrb_value self)
 {
+  mrb_value subtree = mrb_load_string(mrb, "SubTree.new");
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@subtree"), subtree);
+
   mrb_plugin.subtree = 1;
-  return mrb_true_value();
+  return subtree;
 }
 
 static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
@@ -134,28 +139,28 @@ static void _register_plugin(void)
   proto_register_subtree_array(ett, array_length(ett));
 }
 
-static void _register_handoff(mrb_state *mrb, mrb_value plugin)
+static void _register_handoff(mrb_state *mrb, mrb_value self)
 {
   static dissector_handle_t dhandle;
   dhandle = create_dissector_handle(_dissector, phandle);
-  mrb_value protocol = mrb_funcall(mrb, mrb_plugin_get_protocol(mrb, plugin), "to_s", 0);
+  mrb_value protocol = mrb_funcall(mrb, mrb_plugin_get_protocol(mrb, self), "to_s", 0);
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, protocol, ".port")),
                      mrb_plugin.port,
                      dhandle);
 }
 
-static mrb_value mrb_plugin_enable(mrb_state *mrb, mrb_value plugin)
+static mrb_value mrb_plugin_dissect(mrb_state *mrb, mrb_value self)
 {
   mrb_value blk;
   mrb_get_args(mrb, "|&", &blk);
 
   if (!mrb_nil_p(blk)) {
-    mrb_yield(mrb, blk, plugin);
+    mrb_yield(mrb, blk, self);
   }
 
   _register_plugin();
-  _register_handoff(mrb, plugin);
+  _register_handoff(mrb, self);
 
   return mrb_true_value();
 }
@@ -169,5 +174,7 @@ void mrb_plugin_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, plugin_klass, "protocol",    mrb_plugin_get_protocol,    MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "port",        mrb_plugin_get_port,        MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "add_subtree", mrb_plugin_add_subtree,     MRB_ARGS_NONE());
-  mrb_define_method(mrb, plugin_klass, "enable",      mrb_plugin_enable,          MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
+  mrb_define_method(mrb, plugin_klass, "dissect",     mrb_plugin_dissect,         MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
+  mrb_subtree_gem_init(mrb);
 }
+

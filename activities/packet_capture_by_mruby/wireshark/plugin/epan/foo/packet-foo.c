@@ -16,9 +16,8 @@ void proto_reg_handoff_foo(void)
   mrb_state *mrb = mrb_open();
 
   mrb_plugin_gem_init(mrb);
-  mrbc_context *cxt = mrbc_context_new(mrb);
-  mrb_load_string_cxt(mrb, "plugin = Plugin.new('FOO', :tcp, 30000)", cxt);
-  mrb_load_string_cxt(mrb, "plugin.enable { |plugin| plugin.add_subtree }", cxt);
+  FILE *plugin_src = fopen("../plugins/epan/foo/foo_plugin.rb", "r");
+  mrb_load_file(mrb, plugin_src);
 
   mrb_close(mrb);
 }
