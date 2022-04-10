@@ -21,6 +21,13 @@ typedef struct {
 
 static mrb_plugin_t mrb_plugin;
 
+static int hf_foo_pdu_type   = -1;
+static int hf_foo_flags      = -1;
+static int hf_foo_sequenceno = -1;
+static int hf_foo_initialip  = -1;
+
+static gint ett_foo  = -1;
+
 static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 {
   mrb_value name;
@@ -80,31 +87,61 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
   col_clear(pinfo->cinfo, COL_INFO);
 
   if (mrb_plugin.subtree == 1) {
+    gint offset = 0;
     proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+    proto_tree *foo_tree = proto_item_add_subtree(ti, ett_foo);
+    proto_tree_add_item(foo_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
+    offset += 1;
+    proto_tree_add_item(foo_tree, hf_foo_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset += 1;
+    proto_tree_add_item(foo_tree, hf_foo_sequenceno, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(foo_tree, hf_foo_initialip, tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4;
   }
 
   return tvb_captured_length(tvb);
 }
 
-static void _register_plugin(mrb_state *mrb, mrb_value plugin)
+static void _register_plugin(void)
 {
-  mrb_value name = mrb_plugin_get_name(mrb, plugin);
-  mrb_value filter_name = mrb_plugin_get_filter_name(mrb, plugin);
+  static hf_register_info hf[] = {
+    {
+      &hf_foo_pdu_type,
+      { "FOO PDU Type", "foo.type", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }
+    },
+    {
+      &hf_foo_flags,
+      { "FOO PDU Flags", "foo.flags", FT_UINT8, BASE_HEX, NULL, 0x0,  NULL, HFILL }
+    },
+    {
+      &hf_foo_sequenceno,
+      { "FOO PDU Sequence Number", "foo.seqn", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }
+    },
+    {
+      &hf_foo_initialip,
+      { "FOO PDU Initial IP", "foo.initialip", FT_IPv4, BASE_NONE, NULL, 0x0, NULL, HFILL }
+    },
+  };
 
-  phandle = proto_register_protocol(mrb_str_to_cstr(mrb, name),
-                                    mrb_str_to_cstr(mrb, name),
-                                    mrb_str_to_cstr(mrb, filter_name));
+  static gint *ett[] = { &ett_foo };
+
+  phandle = proto_register_protocol(mrb_plugin.name,
+                                    mrb_plugin.name,
+                                    mrb_plugin.filter_name);
+
+  proto_register_field_array(phandle, hf, array_length(hf));
+  proto_register_subtree_array(ett, array_length(ett));
 }
 
 static void _register_handoff(mrb_state *mrb, mrb_value plugin)
 {
   static dissector_handle_t dhandle;
   dhandle = create_dissector_handle(_dissector, phandle);
-  mrb_value port = mrb_plugin_get_port(mrb, plugin);
   mrb_value protocol = mrb_funcall(mrb, mrb_plugin_get_protocol(mrb, plugin), "to_s", 0);
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, protocol, ".port")),
-                     (unsigned int)mrb_fixnum(port),
+                     mrb_plugin.port,
                      dhandle);
 }
 
@@ -117,7 +154,7 @@ static mrb_value mrb_plugin_enable(mrb_state *mrb, mrb_value plugin)
     mrb_yield(mrb, blk, plugin);
   }
 
-  _register_plugin(mrb, plugin);
+  _register_plugin();
   _register_handoff(mrb, plugin);
 
   return mrb_true_value();
