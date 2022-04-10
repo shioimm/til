@@ -15,7 +15,8 @@ typedef struct {
   char name[100];
   char filter_name[100];
   char protocol[4];
-  int port;
+  unsigned int port;
+  unsigned int subtree;
 } mrb_plugin_t;
 
 static mrb_plugin_t mrb_plugin;
@@ -36,8 +37,13 @@ static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@name"),        name);
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@filter_name"), mrb_funcall(mrb, name, "downcase", 0));
-  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@protocol"),   mrb_symbol_value(protocol));
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@protocol"),    mrb_symbol_value(protocol));
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@port"),        mrb_int_value(mrb, port));
+
+  strcpy(mrb_plugin.name, mrb_string_cstr(mrb, name));
+  strcpy(mrb_plugin.filter_name, mrb_string_cstr(mrb, mrb_funcall(mrb, name, "downcase", 0)));
+  strcpy(mrb_plugin.protocol, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_symbol_value(protocol), "to_s", 0)));
+  mrb_plugin.port = (unsigned int)port;
 
   return self;
 }
@@ -62,10 +68,20 @@ static mrb_value mrb_plugin_get_port(mrb_state *mrb, mrb_value self)
   return mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
 }
 
+static mrb_value mrb_plugin_add_subtree(mrb_state *_mrb, mrb_value _self)
+{
+  mrb_plugin.subtree = 1;
+  return mrb_true_value();
+}
+
 static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
   col_set_str(pinfo->cinfo, COL_PROTOCOL, mrb_plugin.name);
   col_clear(pinfo->cinfo, COL_INFO);
+
+  if (mrb_plugin.subtree == 1) {
+    proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+  }
 
   return tvb_captured_length(tvb);
 }
@@ -94,22 +110,6 @@ static void _register_handoff(mrb_state *mrb, mrb_value plugin)
 
 static mrb_value mrb_plugin_enable(mrb_state *mrb, mrb_value plugin)
 {
-  mrb_value mrb_tmp_str;
-
-  mrb_tmp_str = mrb_funcall(mrb, mrb_plugin_get_name(mrb, plugin), "to_s", 0);
-  const char *tmp_cstr_name = mrb_string_cstr(mrb, mrb_tmp_str);
-  strcpy(mrb_plugin.name, tmp_cstr_name);
-
-  mrb_tmp_str = mrb_funcall(mrb, mrb_plugin_get_filter_name(mrb, plugin), "to_s", 0);
-  const char *tmp_cstr_filter_name = mrb_string_cstr(mrb, mrb_tmp_str);
-  strcpy(mrb_plugin.filter_name, tmp_cstr_filter_name);
-
-  mrb_tmp_str = mrb_funcall(mrb, mrb_plugin_get_protocol(mrb, plugin), "to_s", 0);
-  const char *tmp_cstr_protocol = mrb_string_cstr(mrb, mrb_tmp_str);
-  strcpy(mrb_plugin.protocol, tmp_cstr_protocol);
-
-  mrb_plugin.port = (unsigned int)mrb_fixnum(mrb_plugin_get_port(mrb, plugin));
-
   mrb_value blk;
   mrb_get_args(mrb, "|&", &blk);
 
@@ -131,5 +131,6 @@ void mrb_plugin_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, plugin_klass, "filter_name", mrb_plugin_get_filter_name, MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "protocol",    mrb_plugin_get_protocol,    MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "port",        mrb_plugin_get_port,        MRB_ARGS_NONE());
+  mrb_define_method(mrb, plugin_klass, "add_subtree", mrb_plugin_add_subtree,     MRB_ARGS_NONE());
   mrb_define_method(mrb, plugin_klass, "enable",      mrb_plugin_enable,          MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
 }
