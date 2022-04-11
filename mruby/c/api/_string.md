@@ -75,7 +75,7 @@ mrb_intern_lit(mrb_state *mrb, const char* name);
 
 ```c
 MRB_INLINE mrb_value
-mrb_synbol_value(mrb_sym i);
+mrb_symbol_value(mrb_sym i);
 ```
 
 #### 文字列 (`mrb_value`) -> シンボル (`mrb_sym`)

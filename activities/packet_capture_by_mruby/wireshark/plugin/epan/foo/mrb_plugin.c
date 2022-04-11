@@ -21,7 +21,13 @@ typedef struct {
   unsigned int subtree;
 } mrb_plugin_t;
 
-static mrb_plugin_t mrb_plugin;
+typedef struct {
+  unsigned int field_size;
+  int handles[100];
+} mrb_subtree_t;
+
+static mrb_plugin_t  mrb_plugin;
+static mrb_subtree_t mrb_subtree;
 
 static int hf_foo_pdu_type   = -1;
 static int hf_foo_flags      = -1;
@@ -81,6 +87,7 @@ static mrb_value mrb_plugin_add_subtree(mrb_state *mrb, mrb_value self)
 {
   mrb_value subtree = mrb_load_string(mrb, "SubTree.new");
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@subtree"), subtree);
+  mrb_iv_set(mrb, subtree, mrb_intern_lit(mrb, "@plugin"), self);
 
   mrb_plugin.subtree = 1;
   return subtree;
@@ -108,35 +115,40 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
   return tvb_captured_length(tvb);
 }
 
-static void _register_plugin(void)
+static void _register_plugin(mrb_state *mrb, mrb_value self)
 {
-  static hf_register_info hf[] = {
-    {
-      &hf_foo_pdu_type,
-      { "FOO PDU Type", "foo.type", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }
-    },
-    {
-      &hf_foo_flags,
-      { "FOO PDU Flags", "foo.flags", FT_UINT8, BASE_HEX, NULL, 0x0,  NULL, HFILL }
-    },
-    {
-      &hf_foo_sequenceno,
-      { "FOO PDU Sequence Number", "foo.seqn", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }
-    },
-    {
-      &hf_foo_initialip,
-      { "FOO PDU Initial IP", "foo.initialip", FT_IPv4, BASE_NONE, NULL, 0x0, NULL, HFILL }
-    },
-  };
-
-  static gint *ett[] = { &ett_foo };
-
   phandle = proto_register_protocol(mrb_plugin.name,
                                     mrb_plugin.name,
                                     mrb_plugin.filter_name);
 
-  proto_register_field_array(phandle, hf, array_length(hf));
-  proto_register_subtree_array(ett, array_length(ett));
+  if (mrb_plugin.subtree == 1) {
+    mrb_value subtree = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@subtree"));
+    mrb_subtree.field_size = (unsigned int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
+    mrb_p(mrb, mrb_funcall(mrb, subtree, "fields", 0));
+
+    hf_register_info _hf[mrb_subtree.field_size];
+
+    for (unsigned int i = 0; i < mrb_subtree.field_size; i++) {
+      mrb_subtree.handles[i] = -1;
+      // WIP: _hfに値を詰める
+    }
+
+    static hf_register_info hf[] = {
+      { &hf_foo_pdu_type,
+        { "FOO PDU Type",            "foo.type",      FT_UINT8,  BASE_DEC,  NULL, 0x0, NULL, HFILL } },
+      { &hf_foo_flags,
+        { "FOO PDU Flags",           "foo.flags",     FT_UINT8,  BASE_HEX,  NULL, 0x0, NULL, HFILL } },
+      { &hf_foo_sequenceno,
+        { "FOO PDU Sequence Number", "foo.seqn",      FT_UINT16, BASE_DEC,  NULL, 0x0, NULL, HFILL } },
+      { &hf_foo_initialip,
+        { "FOO PDU Initial IP",      "foo.initialip", FT_IPv4,   BASE_NONE, NULL, 0x0, NULL, HFILL } },
+    };
+
+    static gint *ett[] = { &ett_foo };
+
+    proto_register_field_array(phandle, hf, array_length(hf));
+    proto_register_subtree_array(ett, array_length(ett));
+  }
 }
 
 static void _register_handoff(mrb_state *mrb, mrb_value self)
@@ -156,10 +168,11 @@ static mrb_value mrb_plugin_dissect(mrb_state *mrb, mrb_value self)
   mrb_get_args(mrb, "|&", &blk);
 
   if (!mrb_nil_p(blk)) {
-    mrb_yield(mrb, blk, self);
+    mrb_value subtree = mrb_funcall(mrb, self, "add_subtree", 0);
+    mrb_yield(mrb, blk, subtree);
   }
 
-  _register_plugin();
+  _register_plugin(mrb, self);
   _register_handoff(mrb, self);
 
   return mrb_true_value();
@@ -177,4 +190,3 @@ void mrb_plugin_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, plugin_klass, "dissect",     mrb_plugin_dissect,         MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
   mrb_subtree_gem_init(mrb);
 }
-
