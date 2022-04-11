@@ -61,7 +61,7 @@ mrb_ary_push(mrb_state *mrb, mrb_value ary, mrb_value val);
 
 // Arrayオブジェクトから要素をpop
 MRB_API mrb_value
-mrb_ary_push(mrb_state *mrb, mrb_value ary);
+mrb_ary_pop(mrb_state *mrb, mrb_value ary);
 
 // Arrayオブジェクトから要素をshift
 MRB_API mrb_value
