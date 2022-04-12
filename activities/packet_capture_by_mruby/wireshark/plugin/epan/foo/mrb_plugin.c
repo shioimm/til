@@ -1,13 +1,16 @@
 #include "config.h"
 #include <epan/packet.h>
 
+#include <stdlib.h>
+#include <string.h>
+
 #include <mruby.h>
-#include <mruby/compile.h>
 #include <mruby/class.h>
+#include <mruby/compile.h>
 #include <mruby/numeric.h>
-#include <mruby/variable.h>
-#include <mruby/value.h>
 #include <mruby/string.h>
+#include <mruby/value.h>
+#include <mruby/variable.h>
 
 #include "mrb_subtree.c"
 
@@ -22,8 +25,7 @@ typedef struct {
 } mrb_plugin_t;
 
 typedef struct {
-  unsigned int field_size;
-  int handles[100];
+  int field_handles[100];
 } mrb_subtree_t;
 
 static mrb_plugin_t  mrb_plugin;
@@ -117,36 +119,66 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
 
 static void _register_plugin(mrb_state *mrb, mrb_value self)
 {
-  phandle = proto_register_protocol(mrb_plugin.name,
-                                    mrb_plugin.name,
-                                    mrb_plugin.filter_name);
+  phandle = proto_register_protocol(mrb_plugin.name, mrb_plugin.name, mrb_plugin.filter_name);
 
   if (mrb_plugin.subtree == 1) {
     mrb_value subtree = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@subtree"));
-    mrb_subtree.field_size = (unsigned int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
-    mrb_p(mrb, mrb_funcall(mrb, subtree, "fields", 0));
+    mrb_value fields  = mrb_funcall(mrb, subtree, "fields", 0);
+    int field_size    = (int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
 
-    hf_register_info _hf[mrb_subtree.field_size];
+    hf_register_info hf[field_size];
+    hf_register_info hf_tmp;
 
-    for (unsigned int i = 0; i < mrb_subtree.field_size; i++) {
-      mrb_subtree.handles[i] = -1;
-      // WIP: _hfに値を詰める
+    for (int i = 0; i < field_size; i++) {
+      mrb_subtree.field_handles[i] = -1;
+      mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
+
+      hf_tmp.p_id = &mrb_subtree.field_handles[i];
+
+      mrb_value mrb_hf_name       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "label"));
+      mrb_value mrb_hf_abbrev     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "filter"));
+      mrb_value mrb_hf_field_type = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "field_type"));
+      mrb_value mrb_hf_int_type   = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "int_type"));
+
+      char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
+      hf_name         = mrb_str_to_cstr(mrb, mrb_hf_name);
+      char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
+      hf_abbrev       = mrb_str_to_cstr(mrb, mrb_hf_abbrev);
+
+      hf_tmp.hfinfo.name   = hf_name;
+      hf_tmp.hfinfo.abbrev = hf_abbrev;
+
+      hf_tmp.hfinfo.type    = FT_UINT8;
+      hf_tmp.hfinfo.display = BASE_DEC;
+      hf_tmp.hfinfo.strings = NULL;
+      hf_tmp.hfinfo.bitmask = 0x0;
+      hf_tmp.hfinfo.blurb   = NULL;
+      hf_tmp.hfinfo.id      = HFILL;
+      hf[i] = hf_tmp;
     }
 
-    static hf_register_info hf[] = {
-      { &hf_foo_pdu_type,
-        { "FOO PDU Type",            "foo.type",      FT_UINT8,  BASE_DEC,  NULL, 0x0, NULL, HFILL } },
-      { &hf_foo_flags,
-        { "FOO PDU Flags",           "foo.flags",     FT_UINT8,  BASE_HEX,  NULL, 0x0, NULL, HFILL } },
-      { &hf_foo_sequenceno,
-        { "FOO PDU Sequence Number", "foo.seqn",      FT_UINT16, BASE_DEC,  NULL, 0x0, NULL, HFILL } },
-      { &hf_foo_initialip,
-        { "FOO PDU Initial IP",      "foo.initialip", FT_IPv4,   BASE_NONE, NULL, 0x0, NULL, HFILL } },
-    };
+    for (int i = 0; i < field_size; i++) {
+      printf("%d\n", i);
+      printf("%lu\n", sizeof(hf) / sizeof(hf_register_info));
+      printf("%d\n", *(hf[i].p_id));
+      printf("%s\n", hf[i].hfinfo.name);
+      printf("%s\n", hf[i].hfinfo.abbrev);
+    }
+
+    // static hf_register_info hf[] = {
+    //   { &hf_foo_pdu_type,
+    //     { "FOO PDU Type",            "foo.type",      FT_UINT8,  BASE_DEC,  NULL, 0x0, NULL, HFILL } },
+    //   { &hf_foo_flags,
+    //     { "FOO PDU Flags",           "foo.flags",     FT_UINT8,  BASE_HEX,  NULL, 0x0, NULL, HFILL } },
+    //   { &hf_foo_sequenceno,
+    //     { "FOO PDU Sequence Number", "foo.seqn",      FT_UINT16, BASE_DEC,  NULL, 0x0, NULL, HFILL } },
+    //   { &hf_foo_initialip,
+    //     { "FOO PDU Initial IP",      "foo.initialip", FT_IPv4,   BASE_NONE, NULL, 0x0, NULL, HFILL } },
+    // };
 
     static gint *ett[] = { &ett_foo };
 
-    proto_register_field_array(phandle, hf, array_length(hf));
+    proto_register_field_array(phandle, hf, (int)array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
   }
 }
