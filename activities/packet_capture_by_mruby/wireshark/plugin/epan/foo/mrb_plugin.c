@@ -104,64 +104,17 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
     gint offset = 0;
     proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
     proto_tree *foo_tree = proto_item_add_subtree(ti, ett_foo);
-
-    // proto_tree_add_item(foo_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
-    // offset += 1;
-    // proto_tree_add_item(foo_tree, hf_foo_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
-    // offset += 1;
-    // proto_tree_add_item(foo_tree, hf_foo_sequenceno, tvb, offset, 2, ENC_BIG_ENDIAN);
-    // offset += 2;
-    // proto_tree_add_item(foo_tree, hf_foo_initialip, tvb, offset, 4, ENC_BIG_ENDIAN);
-    // offset += 4;
-
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[0], tvb, 0, 1, ENC_BIG_ENDIAN);
+    proto_tree_add_item(foo_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
     offset += 1;
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[1], tvb, offset, 1, ENC_BIG_ENDIAN);
+    proto_tree_add_item(foo_tree, hf_foo_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset += 1;
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[2], tvb, offset, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_item(foo_tree, hf_foo_sequenceno, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[3], tvb, offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(foo_tree, hf_foo_initialip, tvb, offset, 4, ENC_BIG_ENDIAN);
     offset += 4;
   }
 
   return tvb_captured_length(tvb);
-}
-
-#define HF_FIELD_TYPE(name)                   \
-  if (strcmp(#name, "FT_UINT8") == 0) {       \
-    return FT_UINT8;                          \
-  else if (strcmp(#name, "FT_UINT16") == 0) { \
-    return FT_UINT16;                         \
-  else if (strcmp(#name, "FT_IPv4") == 0) {   \
-    return FT_IPv4;                           \
-  else                                        \
-    return 0;                                 \
-  }
-
-static int hf_field_type(char *name)
-{
-  if (strcmp(name, "FT_UINT8") == 0) {
-    return FT_UINT8;
-  } else if (strcmp(name, "FT_UINT16") == 0) {
-    return FT_UINT16;
-  } else if (strcmp(name, "FT_IPv4") == 0) {
-    return FT_IPv4;
-  }
-
-  return 0;
-}
-
-static int hf_display(char *name)
-{
-  if (strcmp(name, "BASE_DEC") == 0) {
-    return BASE_DEC;
-  } else if (strcmp(name, "BASE_HEX") == 0) {
-    return BASE_HEX;
-  } else if (strcmp(name, "BASE_NONE") == 0) {
-    return BASE_NONE;
-  }
-
-  return 0;
 }
 
 static void _register_plugin(mrb_state *mrb, mrb_value self)
@@ -173,54 +126,43 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
     mrb_value fields  = mrb_funcall(mrb, subtree, "fields", 0);
     int field_size    = (int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
 
-    static hf_register_info hf[4];
+    hf_register_info hf[field_size];
     hf_register_info hf_tmp;
 
     for (int i = 0; i < field_size; i++) {
       mrb_subtree.field_handles[i] = -1;
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
 
+      hf_tmp.p_id = &mrb_subtree.field_handles[i];
+
       mrb_value mrb_hf_name       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "label"));
       mrb_value mrb_hf_abbrev     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "filter"));
       mrb_value mrb_hf_field_type = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "field_type"));
       mrb_value mrb_hf_int_type   = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "int_type"));
 
-      const char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
-      hf_abbrev             = mrb_string_cstr(mrb, mrb_hf_abbrev);
-      const char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
-      hf_name               = mrb_string_cstr(mrb, mrb_hf_name);
+      char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
+      hf_name         = mrb_str_to_cstr(mrb, mrb_hf_name);
+      char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
+      hf_abbrev       = mrb_str_to_cstr(mrb, mrb_hf_abbrev);
 
-      hf_tmp.p_id = &mrb_subtree.field_handles[i];
+      hf_tmp.hfinfo.name   = hf_name;
+      hf_tmp.hfinfo.abbrev = hf_abbrev;
 
-      // hf_tmp.hfinfo.name = "FOO PDU Type";
-      hf_tmp.hfinfo.name     = hf_name;
-      hf_tmp.hfinfo.abbrev   = hf_abbrev;
-      hf_tmp.hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
-      hf_tmp.hfinfo.display  = hf_display(mrb_str_to_cstr(mrb, mrb_hf_int_type));
-      hf_tmp.hfinfo.strings  = NULL;
-      hf_tmp.hfinfo.bitmask  = 0x0;
-      hf_tmp.hfinfo.blurb    = NULL;
-      hf_tmp.hfinfo.id       = -1;
-      hf_tmp.hfinfo.parent   = 0;
-      hf_tmp.hfinfo.ref_type = HF_REF_TYPE_NONE;
-      hf_tmp.hfinfo.same_name_prev_id = -1;
-      hf_tmp.hfinfo.same_name_next    = NULL;
+      hf_tmp.hfinfo.type    = FT_UINT8;
+      hf_tmp.hfinfo.display = BASE_DEC;
+      hf_tmp.hfinfo.strings = NULL;
+      hf_tmp.hfinfo.bitmask = 0x0;
+      hf_tmp.hfinfo.blurb   = NULL;
+      hf_tmp.hfinfo.id      = HFILL;
       hf[i] = hf_tmp;
     }
 
     for (int i = 0; i < field_size; i++) {
+      printf("%d\n", i);
+      printf("%lu\n", sizeof(hf) / sizeof(hf_register_info));
       printf("%d\n", *(hf[i].p_id));
       printf("%s\n", hf[i].hfinfo.name);
       printf("%s\n", hf[i].hfinfo.abbrev);
-      printf("%d\n", hf[i].hfinfo.type);
-      printf("%d\n", hf[i].hfinfo.display);
-      printf("%s\n", (char *)hf[i].hfinfo.strings);
-      printf("%d\n", (int)hf[i].hfinfo.bitmask);
-      printf("%d\n", hf[i].hfinfo.id);
-      printf("%d\n", hf[i].hfinfo.parent);
-      printf("%d\n", hf[i].hfinfo.ref_type);
-      printf("%d\n", hf[i].hfinfo.same_name_prev_id);
-      printf("%p\n", hf[i].hfinfo.same_name_next);
     }
 
     // static hf_register_info hf[] = {
