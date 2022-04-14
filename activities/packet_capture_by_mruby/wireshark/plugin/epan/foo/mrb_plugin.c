@@ -25,7 +25,14 @@ typedef struct {
 } mrb_plugin_t;
 
 typedef struct {
+  int handle;
+  int size;
+} mrb_field_t;
+
+typedef struct {
+  int field_size;
   int field_handles[100];
+  mrb_field_t fields[100];
 } mrb_subtree_t;
 
 static mrb_plugin_t  mrb_plugin;
@@ -87,7 +94,7 @@ static mrb_value mrb_plugin_get_port(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_plugin_add_subtree(mrb_state *mrb, mrb_value self)
 {
-  mrb_value subtree = mrb_load_string(mrb, "SubTree.new");
+  mrb_value subtree = mrb_load_string(mrb, "Subtree.new");
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@subtree"), subtree);
   mrb_iv_set(mrb, subtree, mrb_intern_lit(mrb, "@plugin"), self);
 
@@ -101,42 +108,21 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
   col_clear(pinfo->cinfo, COL_INFO);
 
   if (mrb_plugin.subtree == 1) {
-    gint offset = 0;
     proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
     proto_tree *foo_tree = proto_item_add_subtree(ti, ett_foo);
 
-    // proto_tree_add_item(foo_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
-    // offset += 1;
-    // proto_tree_add_item(foo_tree, hf_foo_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
-    // offset += 1;
-    // proto_tree_add_item(foo_tree, hf_foo_sequenceno, tvb, offset, 2, ENC_BIG_ENDIAN);
-    // offset += 2;
-    // proto_tree_add_item(foo_tree, hf_foo_initialip, tvb, offset, 4, ENC_BIG_ENDIAN);
-    // offset += 4;
+    gint offset = 0;
+    mrb_field_t field;
 
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[0], tvb, 0, 1, ENC_BIG_ENDIAN);
-    offset += 1;
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[1], tvb, offset, 1, ENC_BIG_ENDIAN);
-    offset += 1;
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[2], tvb, offset, 2, ENC_BIG_ENDIAN);
-    offset += 2;
-    proto_tree_add_item(foo_tree, mrb_subtree.field_handles[3], tvb, offset, 4, ENC_BIG_ENDIAN);
-    offset += 4;
+    for (int i = 0; i < mrb_subtree.field_size; i++) {
+      field = mrb_subtree.fields[i];
+      proto_tree_add_item(foo_tree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
+      offset += field.size;
+    }
   }
 
   return tvb_captured_length(tvb);
 }
-
-#define HF_FIELD_TYPE(name)                   \
-  if (strcmp(#name, "FT_UINT8") == 0) {       \
-    return FT_UINT8;                          \
-  else if (strcmp(#name, "FT_UINT16") == 0) { \
-    return FT_UINT16;                         \
-  else if (strcmp(#name, "FT_IPv4") == 0) {   \
-    return FT_IPv4;                           \
-  else                                        \
-    return 0;                                 \
-  }
 
 static int hf_field_type(char *name)
 {
@@ -171,18 +157,18 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
   if (mrb_plugin.subtree == 1) {
     mrb_value subtree = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@subtree"));
     mrb_value fields  = mrb_funcall(mrb, subtree, "fields", 0);
-    int field_size    = (int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
+    mrb_subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
 
-    static hf_register_info hf[4];
+    hf_register_info *hf = malloc(sizeof(hf_register_info) * mrb_subtree.field_size);
 
-    for (int i = 0; i < field_size; i++) {
-      mrb_subtree.field_handles[i] = -1;
+    for (int i = 0; i < mrb_subtree.field_size; i++) {
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
 
       mrb_value mrb_hf_name       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "label"));
       mrb_value mrb_hf_abbrev     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "filter"));
       mrb_value mrb_hf_field_type = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "field_type"));
       mrb_value mrb_hf_int_type   = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "int_type"));
+      mrb_value mrb_hf_size       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "size"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
@@ -190,7 +176,10 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
       strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
 
-      hf[i].p_id = &mrb_subtree.field_handles[i];
+      mrb_subtree.fields[i].handle = -1;
+      mrb_subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
+
+      hf[i].p_id = &mrb_subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;
       hf[i].hfinfo.abbrev   = hf_abbrev;
       hf[i].hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
@@ -205,35 +194,9 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.same_name_next    = NULL;
     }
 
-    for (int i = 0; i < field_size; i++) {
-      printf("%d\n", *(hf[i].p_id));
-      printf("%s\n", hf[i].hfinfo.name);
-      printf("%s\n", hf[i].hfinfo.abbrev);
-      printf("%d\n", hf[i].hfinfo.type);
-      printf("%d\n", hf[i].hfinfo.display);
-      printf("%s\n", (char *)hf[i].hfinfo.strings);
-      printf("%d\n", (int)hf[i].hfinfo.bitmask);
-      printf("%d\n", hf[i].hfinfo.id);
-      printf("%d\n", hf[i].hfinfo.parent);
-      printf("%d\n", hf[i].hfinfo.ref_type);
-      printf("%d\n", hf[i].hfinfo.same_name_prev_id);
-      printf("%p\n", hf[i].hfinfo.same_name_next);
-    }
-
-    // static hf_register_info hf[] = {
-    //   { &hf_foo_pdu_type,
-    //     { "FOO PDU Type",            "foo.type",      FT_UINT8,  BASE_DEC,  NULL, 0x0, NULL, HFILL } },
-    //   { &hf_foo_flags,
-    //     { "FOO PDU Flags",           "foo.flags",     FT_UINT8,  BASE_HEX,  NULL, 0x0, NULL, HFILL } },
-    //   { &hf_foo_sequenceno,
-    //     { "FOO PDU Sequence Number", "foo.seqn",      FT_UINT16, BASE_DEC,  NULL, 0x0, NULL, HFILL } },
-    //   { &hf_foo_initialip,
-    //     { "FOO PDU Initial IP",      "foo.initialip", FT_IPv4,   BASE_NONE, NULL, 0x0, NULL, HFILL } },
-    // };
-
     static gint *ett[] = { &ett_foo };
 
-    proto_register_field_array(phandle, hf, (int)array_length(hf));
+    proto_register_field_array(phandle, hf, mrb_subtree.field_size);
     proto_register_subtree_array(ett, array_length(ett));
   }
 }

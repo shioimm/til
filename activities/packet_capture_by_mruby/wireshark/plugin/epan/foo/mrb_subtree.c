@@ -35,11 +35,13 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   mrb_value filter     = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "filter"));
   mrb_value field_type = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "field_type"));
   mrb_value int_type   = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "int_type"));
+  mrb_value size       = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "size"));
 
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "label"),      label);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "filter"),     filter);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "field_type"), field_type);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "int_type"),   int_type);
+  mrb_hash_set(mrb, field, MRB_SYM(mrb, "size"),       size);
 
   mrb_ary_push(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields")), field);
 
@@ -48,7 +50,7 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
 
 void mrb_subtree_gem_init(mrb_state *mrb)
 {
-  struct RClass *subtree_klass = mrb_define_class(mrb, "SubTree", mrb->object_class);
+  struct RClass *subtree_klass = mrb_define_class(mrb, "Subtree", mrb->object_class);
   mrb_define_method(mrb, subtree_klass, "initialize",  mrb_subtree_init,       MRB_ARGS_NONE());
   mrb_define_method(mrb, subtree_klass, "field",       mrb_subtree_add_field,  MRB_ARGS_REQ(1));
   mrb_define_method(mrb, subtree_klass, "fields",      mrb_subtree_get_fields, MRB_ARGS_NONE());
