@@ -159,7 +159,7 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
     mrb_value fields  = mrb_funcall(mrb, subtree, "fields", 0);
     mrb_subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
 
-    static hf_register_info hf[4];
+    hf_register_info *hf = malloc(sizeof(hf_register_info) * mrb_subtree.field_size);
 
     for (int i = 0; i < mrb_subtree.field_size; i++) {
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
@@ -194,35 +194,9 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.same_name_next    = NULL;
     }
 
-    for (int i = 0; i < mrb_subtree.field_size; i++) {
-      printf("%p\n", (hf[i].p_id));
-      printf("%s\n", hf[i].hfinfo.name);
-      printf("%s\n", hf[i].hfinfo.abbrev);
-      printf("%d\n", hf[i].hfinfo.type);
-      printf("%d\n", hf[i].hfinfo.display);
-      printf("%s\n", (char *)hf[i].hfinfo.strings);
-      printf("%d\n", (int)hf[i].hfinfo.bitmask);
-      printf("%d\n", hf[i].hfinfo.id);
-      printf("%d\n", hf[i].hfinfo.parent);
-      printf("%d\n", hf[i].hfinfo.ref_type);
-      printf("%d\n", hf[i].hfinfo.same_name_prev_id);
-      printf("%p\n", hf[i].hfinfo.same_name_next);
-    }
-
-    // static hf_register_info hf[] = {
-    //   { &hf_foo_pdu_type,
-    //     { "FOO PDU Type",            "foo.type",      FT_UINT8,  BASE_DEC,  NULL, 0x0, NULL, HFILL } },
-    //   { &hf_foo_flags,
-    //     { "FOO PDU Flags",           "foo.flags",     FT_UINT8,  BASE_HEX,  NULL, 0x0, NULL, HFILL } },
-    //   { &hf_foo_sequenceno,
-    //     { "FOO PDU Sequence Number", "foo.seqn",      FT_UINT16, BASE_DEC,  NULL, 0x0, NULL, HFILL } },
-    //   { &hf_foo_initialip,
-    //     { "FOO PDU Initial IP",      "foo.initialip", FT_IPv4,   BASE_NONE, NULL, 0x0, NULL, HFILL } },
-    // };
-
     static gint *ett[] = { &ett_foo };
 
-    proto_register_field_array(phandle, hf, (int)array_length(hf));
+    proto_register_field_array(phandle, hf, mrb_subtree.field_size);
     proto_register_subtree_array(ett, array_length(ett));
   }
 }
