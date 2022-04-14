@@ -94,7 +94,7 @@ static mrb_value mrb_plugin_get_port(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_plugin_add_subtree(mrb_state *mrb, mrb_value self)
 {
-  mrb_value subtree = mrb_load_string(mrb, "SubTree.new");
+  mrb_value subtree = mrb_load_string(mrb, "Subtree.new");
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@subtree"), subtree);
   mrb_iv_set(mrb, subtree, mrb_intern_lit(mrb, "@plugin"), self);
 

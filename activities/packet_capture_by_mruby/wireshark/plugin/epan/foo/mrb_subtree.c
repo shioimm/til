@@ -50,7 +50,7 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
 
 void mrb_subtree_gem_init(mrb_state *mrb)
 {
-  struct RClass *subtree_klass = mrb_define_class(mrb, "SubTree", mrb->object_class);
+  struct RClass *subtree_klass = mrb_define_class(mrb, "Subtree", mrb->object_class);
   mrb_define_method(mrb, subtree_klass, "initialize",  mrb_subtree_init,       MRB_ARGS_NONE());
   mrb_define_method(mrb, subtree_klass, "field",       mrb_subtree_add_field,  MRB_ARGS_REQ(1));
   mrb_define_method(mrb, subtree_klass, "fields",      mrb_subtree_get_fields, MRB_ARGS_NONE());
