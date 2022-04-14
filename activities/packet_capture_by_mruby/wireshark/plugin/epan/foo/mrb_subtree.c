@@ -35,11 +35,13 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   mrb_value filter     = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "filter"));
   mrb_value field_type = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "field_type"));
   mrb_value int_type   = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "int_type"));
+  mrb_value size       = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "size"));
 
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "label"),      label);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "filter"),     filter);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "field_type"), field_type);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "int_type"),   int_type);
+  mrb_hash_set(mrb, field, MRB_SYM(mrb, "size"),       size);
 
   mrb_ary_push(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields")), field);
 
