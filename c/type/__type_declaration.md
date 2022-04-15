@@ -1,12 +1,8 @@
-# 型
-- オブジェクト型 (char、int、配列、ポインタ、構造体、共用体など)
-- 関数型
-- 不完全型 (構造体タグ、voidなど)
-
-## 型宣言
-
+# 型宣言
 ```c
-int (*func_p)(double)
+// (記憶クラス) (型修飾子) データ型 変数名;
+
+int (*func_p)(double);
 
 // 1. 識別子 (変数名または関数名) を主語とする
 //    -> func_p is
@@ -27,10 +23,10 @@ int (*func_p)(double)
 int foo[3];
 
 // foo is array[10] of array[3] of int
-int foo[10][3]
+int foo[10][3];
 
 // foo is array[10] of pointer to int
-int *foo[10]
+int *foo[10];
 
 // foo is pointer to array[5] of int
 int (*foo)[5];

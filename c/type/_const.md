@@ -1,19 +1,19 @@
-# `const`
+# const
 - 読み出し専用
 
 ```c
-// c is pointer to read-only char
+// c is pointer to read-only char (cの参照先の値がconst)
 const char *c;
  c = NULL; // コンパイルエラーにならない
 *c = NULL; // コンパイルエラーになる
 
-// c is read-only pointer to char
-char * const c;
+// c is read-only pointer to char (cがconst)
+char *const c;
  c = NULL; // コンパイルエラーになる
 *c = NULL; // コンパイルエラーにならない
 
 
-// c is read-only pointer to read-only char
+// c is read-only pointer to read-only char (cの参照先の値とcがconst)
 const char * const c;
  c = NULL; // コンパイルエラーになる
 *c = NULL; // コンパイルエラーになる
