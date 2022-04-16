@@ -1,4 +1,4 @@
-# 指定子
+# 記憶クラス指定子
 #### `extern`
 - 外部のファイルで定義済み
 
@@ -33,19 +33,3 @@ int main() {
   return 0;
 }
 ```
-
-#### `typedef`
-- 既存のデータ型に新しい名前を付ける
-
-```c
-// unsigned char -> uchar
-typedef unsigned char uchar;
-
-// struct -> user_table
-typedef struct {
-  char name[255];
-} user_table;
-```
-
-#### `volatile`
-- コンパイラの最適化を抑止する
