@@ -1,14 +1,14 @@
-# デプロイ後にロールバックしたい
+# ロールバック
 
 ```
 # リリース番号を確認する
-$ heroku releases --app アプリケーション名
+$ heroku releases --app <App Name>
 
 # リリース情報の詳細を確認する
-$ heroku releases:info --app アプリケーション名 リリース番号
+$ heroku releases:info --app <App Name> <Release ID>
 
 # ロールバックを実行する
-$ heroku rollback --app アプリケーション名 リリース番号
+$ heroku rollback --app <App Name> <Release ID>
 ```
 
 - デプロイに失敗しているとロールバックできない
