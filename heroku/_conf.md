@@ -3,7 +3,7 @@
 - [Stacks (operating system images)](https://devcenter.heroku.com/categories/stacks)
 - Heroku環境のOSイメージ(Ubuntuベース)
 
-### アップデート
+#### Stackのアップデート
 - app.jsonにて`"stack": "heroku-番号"`を記述
 - review appsにて動作確認後、マージ
 
