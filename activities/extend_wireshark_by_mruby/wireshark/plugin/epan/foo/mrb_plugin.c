@@ -36,13 +36,6 @@ typedef struct {
   field_t fields[100];
 } subtree_t;
 
-static const value_string packettypenames[] = {
-  { 1, "Initialise" },
-  { 2, "Terminate" },
-  { 3, "Data" },
-  { 0, NULL }
-};
-
 static plugin_t  plugin;
 static subtree_t subtree;
 
@@ -151,7 +144,7 @@ static int hf_display(char *name)
   return 0;
 }
 
-static void _register_plugin(mrb_state *mrb, mrb_value self)
+static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
 {
   phandle = proto_register_protocol(plugin.name, plugin.name, plugin.filter_name);
 
@@ -183,13 +176,16 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
 
         for (int hf_desc_i = 0; hf_desc_i < mrb_fixnum(mrb_hf_desc_size); hf_desc_i++) {
           mrb_value mrb_hf_desc = mrb_funcall(mrb, mrb_hf_descs, "fetch", 1, mrb_fixnum_value(hf_desc_i));
-          mrb_value mrb_hf_desc_value = mrb_funcall(mrb, mrb_hf_desc, "fetch", 1, mrb_fixnum_value(0));
-          mrb_value mrb_hf_desc_str   = mrb_funcall(mrb, mrb_hf_desc, "fetch", 1, mrb_fixnum_value(1));
-          // WIP
-          // gchar *hf_desc_str = malloc(sizeof(gchar) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_desc_str, "size", 0)));
-          // strcpy(hf_desc_str, mrb_str_to_cstr(mrb, mrb_hf_desc_str));
-          // hf_desc[hf_desc_i].value  = (guint32)...
-          // hf_desc[hf_desc_i].strptr = ...
+          mrb_value mrb_hf_desc_k = mrb_funcall(mrb, mrb_hf_desc, "fetch", 1, mrb_fixnum_value(0));
+          mrb_value mrb_hf_desc_v = mrb_funcall(mrb, mrb_hf_desc, "fetch", 1, mrb_fixnum_value(1));
+          mrb_hf_desc_k = mrb_funcall(mrb, mrb_hf_desc_k, "to_s", 0);
+
+          guint32 hf_desc_val = (guint32)mrb_fixnum(mrb_hf_desc_v);
+          gchar *hf_desc_str = malloc(sizeof(gchar) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_desc_k, "size", 0)));
+          strcpy(hf_desc_str, mrb_str_to_cstr(mrb, mrb_hf_desc_k));
+
+          hf_desc[hf_desc_i].value  = hf_desc_val;
+          hf_desc[hf_desc_i].strptr = hf_desc_str;
         }
       }
 
@@ -204,7 +200,7 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.abbrev   = hf_abbrev;
       hf[i].hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
       hf[i].hfinfo.display  = hf_display(mrb_str_to_cstr(mrb, mrb_hf_int_type));
-      hf[i].hfinfo.strings  = (strcmp(hf_name, "FOO PDU Type") == 0) ? VALS(packettypenames) : NULL;
+      hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(hf_desc) : NULL;
       hf[i].hfinfo.bitmask  = 0x0;
       hf[i].hfinfo.blurb    = NULL;
       hf[i].hfinfo.id       = -1;
@@ -221,7 +217,7 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
   }
 }
 
-static void _register_handoff(mrb_state *mrb, mrb_value self)
+static void _mrb_register_handoff(mrb_state *mrb, mrb_value self)
 {
   static dissector_handle_t dhandle;
   dhandle = create_dissector_handle(_dissector, phandle);
@@ -242,8 +238,8 @@ static mrb_value mrb_plugin_dissect(mrb_state *mrb, mrb_value self)
     mrb_yield(mrb, blk, mrb_subtree);
   }
 
-  _register_plugin(mrb, self);
-  _register_handoff(mrb, self);
+  _mrb_register_plugin(mrb, self);
+  _mrb_register_handoff(mrb, self);
 
   return mrb_true_value();
 }
