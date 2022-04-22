@@ -14,7 +14,8 @@
 
 #include "mrb_subtree.c"
 
-static int phandle = -1;
+static  int phandle   = -1;
+static gint ett_state = -1;
 
 typedef struct {
   char name[100];
@@ -22,28 +23,21 @@ typedef struct {
   char protocol[4];
   unsigned int port;
   unsigned int subtree;
-} mrb_plugin_t;
+} plugin_t;
 
 typedef struct {
   int handle;
   int size;
-} mrb_field_t;
+} field_t;
 
 typedef struct {
   int field_size;
   int field_handles[100];
-  mrb_field_t fields[100];
-} mrb_subtree_t;
+  field_t fields[100];
+} subtree_t;
 
-static mrb_plugin_t  mrb_plugin;
-static mrb_subtree_t mrb_subtree;
-
-static int hf_foo_pdu_type   = -1;
-static int hf_foo_flags      = -1;
-static int hf_foo_sequenceno = -1;
-static int hf_foo_initialip  = -1;
-
-static gint ett_foo  = -1;
+static plugin_t  plugin;
+static subtree_t subtree;
 
 static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 {
@@ -64,10 +58,10 @@ static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@protocol"),    mrb_symbol_value(protocol));
   mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@port"),        mrb_int_value(mrb, port));
 
-  strcpy(mrb_plugin.name, mrb_string_cstr(mrb, name));
-  strcpy(mrb_plugin.filter_name, mrb_string_cstr(mrb, mrb_funcall(mrb, name, "downcase", 0)));
-  strcpy(mrb_plugin.protocol, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_symbol_value(protocol), "to_s", 0)));
-  mrb_plugin.port = (unsigned int)port;
+  strcpy(plugin.name, mrb_string_cstr(mrb, name));
+  strcpy(plugin.filter_name, mrb_string_cstr(mrb, mrb_funcall(mrb, name, "downcase", 0)));
+  strcpy(plugin.protocol, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_symbol_value(protocol), "to_s", 0)));
+  plugin.port = (unsigned int)port;
 
   return self;
 }
@@ -94,28 +88,28 @@ static mrb_value mrb_plugin_get_port(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_plugin_add_subtree(mrb_state *mrb, mrb_value self)
 {
-  mrb_value subtree = mrb_load_string(mrb, "Subtree.new");
-  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@subtree"), subtree);
-  mrb_iv_set(mrb, subtree, mrb_intern_lit(mrb, "@plugin"), self);
+  mrb_value mrb_subtree = mrb_load_string(mrb, "Subtree.new");
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@subtree"), mrb_subtree);
+  mrb_iv_set(mrb, mrb_subtree, mrb_intern_lit(mrb, "@plugin"), self);
 
-  mrb_plugin.subtree = 1;
-  return subtree;
+  plugin.subtree = 1;
+  return mrb_subtree;
 }
 
 static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
-  col_set_str(pinfo->cinfo, COL_PROTOCOL, mrb_plugin.name);
+  col_set_str(pinfo->cinfo, COL_PROTOCOL, plugin.name);
   col_clear(pinfo->cinfo, COL_INFO);
 
-  if (mrb_plugin.subtree == 1) {
+  if (plugin.subtree == 1) {
     proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
-    proto_tree *foo_tree = proto_item_add_subtree(ti, ett_foo);
+    proto_tree *foo_tree = proto_item_add_subtree(ti, ett_state);
 
     gint offset = 0;
-    mrb_field_t field;
+    field_t field;
 
-    for (int i = 0; i < mrb_subtree.field_size; i++) {
-      field = mrb_subtree.fields[i];
+    for (int i = 0; i < subtree.field_size; i++) {
+      field = subtree.fields[i];
       proto_tree_add_item(foo_tree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
       offset += field.size;
     }
@@ -152,16 +146,16 @@ static int hf_display(char *name)
 
 static void _register_plugin(mrb_state *mrb, mrb_value self)
 {
-  phandle = proto_register_protocol(mrb_plugin.name, mrb_plugin.name, mrb_plugin.filter_name);
+  phandle = proto_register_protocol(plugin.name, plugin.name, plugin.filter_name);
 
-  if (mrb_plugin.subtree == 1) {
-    mrb_value subtree = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@subtree"));
-    mrb_value fields  = mrb_funcall(mrb, subtree, "fields", 0);
-    mrb_subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, subtree, "fields", 0));
+  if (plugin.subtree == 1) {
+    mrb_value mrb_subtree = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@subtree"));
+    mrb_value fields  = mrb_funcall(mrb, mrb_subtree, "fields", 0);
+    subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, mrb_subtree, "fields", 0));
 
-    hf_register_info *hf = malloc(sizeof(hf_register_info) * mrb_subtree.field_size);
+    hf_register_info *hf = malloc(sizeof(hf_register_info) * subtree.field_size);
 
-    for (int i = 0; i < mrb_subtree.field_size; i++) {
+    for (int i = 0; i < subtree.field_size; i++) {
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
 
       mrb_value mrb_hf_name       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "label"));
@@ -176,10 +170,10 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
       strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
 
-      mrb_subtree.fields[i].handle = -1;
-      mrb_subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
+      subtree.fields[i].handle = -1;
+      subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
 
-      hf[i].p_id = &mrb_subtree.fields[i].handle;
+      hf[i].p_id = &subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;
       hf[i].hfinfo.abbrev   = hf_abbrev;
       hf[i].hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
@@ -194,9 +188,9 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.same_name_next    = NULL;
     }
 
-    static gint *ett[] = { &ett_foo };
+    static gint *ett[] = { &ett_state };
 
-    proto_register_field_array(phandle, hf, mrb_subtree.field_size);
+    proto_register_field_array(phandle, hf, subtree.field_size);
     proto_register_subtree_array(ett, array_length(ett));
   }
 }
@@ -208,7 +202,7 @@ static void _register_handoff(mrb_state *mrb, mrb_value self)
   mrb_value protocol = mrb_funcall(mrb, mrb_plugin_get_protocol(mrb, self), "to_s", 0);
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, protocol, ".port")),
-                     mrb_plugin.port,
+                     plugin.port,
                      dhandle);
 }
 
@@ -218,8 +212,8 @@ static mrb_value mrb_plugin_dissect(mrb_state *mrb, mrb_value self)
   mrb_get_args(mrb, "|&", &blk);
 
   if (!mrb_nil_p(blk)) {
-    mrb_value subtree = mrb_funcall(mrb, self, "add_subtree", 0);
-    mrb_yield(mrb, blk, subtree);
+    mrb_value mrb_subtree = mrb_funcall(mrb, self, "add_subtree", 0);
+    mrb_yield(mrb, blk, mrb_subtree);
   }
 
   _register_plugin(mrb, self);
@@ -240,3 +234,4 @@ void mrb_plugin_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, plugin_klass, "dissect",     mrb_plugin_dissect,         MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
   mrb_subtree_gem_init(mrb);
 }
+
