@@ -36,6 +36,13 @@ typedef struct {
   field_t fields[100];
 } subtree_t;
 
+static const value_string packettypenames[] = {
+  { 1, "Initialise" },
+  { 2, "Terminate" },
+  { 3, "Data" },
+  { 0, NULL }
+};
+
 static plugin_t  plugin;
 static subtree_t subtree;
 
@@ -178,7 +185,7 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.abbrev   = hf_abbrev;
       hf[i].hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
       hf[i].hfinfo.display  = hf_display(mrb_str_to_cstr(mrb, mrb_hf_int_type));
-      hf[i].hfinfo.strings  = NULL;
+      hf[i].hfinfo.strings  = (strcmp(hf_name, "FOO PDU Type") == 0) ? VALS(packettypenames) : NULL;
       hf[i].hfinfo.bitmask  = 0x0;
       hf[i].hfinfo.blurb    = NULL;
       hf[i].hfinfo.id       = -1;
@@ -234,4 +241,3 @@ void mrb_plugin_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, plugin_klass, "dissect",     mrb_plugin_dissect,         MRB_ARGS_NONE() | MRB_ARGS_BLOCK());
   mrb_subtree_gem_init(mrb);
 }
-
