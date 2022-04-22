@@ -170,9 +170,28 @@ static void _register_plugin(mrb_state *mrb, mrb_value self)
       mrb_value mrb_hf_field_type = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "field_type"));
       mrb_value mrb_hf_int_type   = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "int_type"));
       mrb_value mrb_hf_size       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "size"));
+      mrb_value mrb_hf_descs      = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "desc"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
+
+      value_string *hf_desc;
+
+      if (!mrb_nil_p(mrb_hf_descs)) {
+        mrb_value mrb_hf_desc_size = mrb_funcall(mrb, mrb_hf_descs, "size", 0);
+        hf_desc = malloc(sizeof(value_string) * mrb_fixnum(mrb_hf_desc_size));
+
+        for (int hf_desc_i = 0; hf_desc_i < mrb_fixnum(mrb_hf_desc_size); hf_desc_i++) {
+          mrb_value mrb_hf_desc = mrb_funcall(mrb, mrb_hf_descs, "fetch", 1, mrb_fixnum_value(hf_desc_i));
+          mrb_value mrb_hf_desc_value = mrb_funcall(mrb, mrb_hf_desc, "fetch", 1, mrb_fixnum_value(0));
+          mrb_value mrb_hf_desc_str   = mrb_funcall(mrb, mrb_hf_desc, "fetch", 1, mrb_fixnum_value(1));
+          // WIP
+          // gchar *hf_desc_str = malloc(sizeof(gchar) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_desc_str, "size", 0)));
+          // strcpy(hf_desc_str, mrb_str_to_cstr(mrb, mrb_hf_desc_str));
+          // hf_desc[hf_desc_i].value  = (guint32)...
+          // hf_desc[hf_desc_i].strptr = ...
+        }
+      }
 
       strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
       strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));

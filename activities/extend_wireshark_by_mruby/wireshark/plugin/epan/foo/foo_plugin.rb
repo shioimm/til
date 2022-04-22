@@ -5,7 +5,8 @@ plugin.dissect { |subtree|
                 filter:     'foo.type',
                 field_type: 'FT_UINT8',
                 int_type:   'BASE_DEC',
-                size:       1
+                size:       1,
+                desc:       { initialise: 1, terminate: 2, data: 3 }
   subtree.field label:      'FOO PDU Flags',
                 filter:     'foo.flags',
                 field_type: 'FT_UINT8',
