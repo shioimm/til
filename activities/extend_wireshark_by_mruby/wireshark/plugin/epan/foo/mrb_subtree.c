@@ -39,7 +39,6 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   mrb_value desc       = mrb_funcall(mrb, args, "fetch", 2, MRB_SYM(mrb, "desc"), mrb_nil_value());
 
   if (!mrb_nil_p(desc)) {
-    desc = mrb_funcall(mrb, desc, "invert", 0);
     desc = mrb_funcall(mrb, desc, "to_a", 0);
   }
 
