@@ -11,7 +11,30 @@ plugin.dissect { |subtree|
                 filter:     'foo.flags',
                 field_type: 'FT_UINT8',
                 int_type:   'BASE_HEX',
-                size:       1
+                size:       1,
+                bitmask:    [
+                              {
+                                label:      'FOO PDU Start Flags',
+                                filter:     'foo.flags.start',
+                                field_type: 'FT_BOOLEAN',
+                                int_type:   'BASE_HEX',
+                                bitmask:    0x01,
+                              },
+                              {
+                                label:      'FOO PDU End Flags',
+                                filter:     'foo.flags.end',
+                                field_type: 'FT_BOOLEAN',
+                                int_type:   'BASE_HEX',
+                                bitmask:    0x02,
+                              },
+                              {
+                                label:      'FOO PDU Priority Flags',
+                                filter:     'foo.flags.priority',
+                                field_type: 'FT_BOOLEAN',
+                                int_type:   'BASE_HEX',
+                                bitmask:    0x04,
+                              },
+                            ]
   subtree.field label:      'FOO PDU Sequence Number',
                 filter:     'foo.seqn',
                 field_type: 'FT_UINT16',

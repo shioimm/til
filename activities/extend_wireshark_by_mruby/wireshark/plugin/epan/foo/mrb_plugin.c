@@ -25,9 +25,17 @@ typedef struct {
   unsigned int subtree;
 } plugin_t;
 
+typedef enum {
+  NORMAL,
+  WITHBIT,
+  BITMASK,
+} PacketType;
+
 typedef struct {
   int handle;
   int size;
+  int symbol;
+  PacketType type;
 } field_t;
 
 typedef struct {
@@ -38,14 +46,6 @@ typedef struct {
 
 static plugin_t  plugin;
 static subtree_t subtree;
-
-// WIP: Adding Flags to the protocol.
-#define FOO_START_FLAG      0x01
-#define FOO_END_FLAG        0x02
-#define FOO_PRIORITY_FLAG   0x04
-static int hf_foo_startflag = -1;
-static int hf_foo_endflag = -1;
-static int hf_foo_priorityflag = -1;
 
 static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 {
@@ -118,29 +118,41 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
 
     // WIP: Adding Flags to the protocol.
     static int* const bits[] = {
-      &hf_foo_startflag,
-      &hf_foo_endflag,
-      &hf_foo_priorityflag,
+      &subtree.fields[2].handle,
+      &subtree.fields[3].handle,
+      &subtree.fields[4].handle,
       NULL
     };
 
     for (int i = 0; i < subtree.field_size; i++) {
       field = subtree.fields[i];
 
-      // WIP: Adding Flags to the protocol.
-      if (i == 1) {
-        proto_tree_add_bitmask(foo_tree, tvb, offset, field.handle, ett_state, bits, ENC_BIG_ENDIAN);
-        offset += 1;
-      } else {
+      if (field.type == NORMAL) {
         proto_tree_add_item(foo_tree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
         offset += field.size;
+      } else if (field.type == WITHBIT) {
+        proto_tree_add_bitmask(foo_tree, tvb, offset, field.handle, ett_state, bits, ENC_BIG_ENDIAN);
+        offset += 1;
+      } else if (field.type == BITMASK) {
+        continue;
       }
-      // proto_tree_add_item(foo_tree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
-      // offset += field.size;
     }
   }
 
   return tvb_captured_length(tvb);
+}
+
+static int hf_packet_type(char *name)
+{
+  if (strcmp(name, "NORMAL") == 0) {
+    return NORMAL;
+  } else if (strcmp(name, "WITHBIT") == 0) {
+    return WITHBIT;
+  } else if (strcmp(name, "BITMASK") == 0) {
+    return BITMASK;
+  }
+
+  return 0;
 }
 
 static int hf_field_type(char *name)
@@ -151,6 +163,8 @@ static int hf_field_type(char *name)
     return FT_UINT16;
   } else if (strcmp(name, "FT_IPv4") == 0) {
     return FT_IPv4;
+  } else if (strcmp(name, "FT_BOOLEAN") == 0) {
+    return FT_BOOLEAN;
   }
 
   return 0;
@@ -164,6 +178,8 @@ static int hf_display(char *name)
     return BASE_HEX;
   } else if (strcmp(name, "BASE_NONE") == 0) {
     return BASE_NONE;
+  } else {
+    atoi(name);
   }
 
   return 0;
@@ -178,19 +194,20 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
     mrb_value fields  = mrb_funcall(mrb, mrb_subtree, "fields", 0);
     subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, mrb_subtree, "fields", 0));
 
-    // WIP: Adding Flags to the protocol.
-    // hf_register_info *hf = malloc(sizeof(hf_register_info) * subtree.field_size);
-    hf_register_info *hf = malloc(sizeof(hf_register_info) * (subtree.field_size + 3));
+    hf_register_info *hf = malloc(sizeof(hf_register_info) * (subtree.field_size));
 
     for (int i = 0; i < subtree.field_size; i++) {
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
 
+      mrb_value mrb_hf_type       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "type"));
+      mrb_value mrb_hf_symbol     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "symbol"));
       mrb_value mrb_hf_name       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "label"));
       mrb_value mrb_hf_abbrev     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "filter"));
       mrb_value mrb_hf_field_type = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "field_type"));
       mrb_value mrb_hf_int_type   = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "int_type"));
       mrb_value mrb_hf_size       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "size"));
       mrb_value mrb_hf_descs      = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "desc"));
+      mrb_value mrb_hf_bitmack    = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "bitmask"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
@@ -221,6 +238,8 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
 
       subtree.fields[i].handle = -1;
       subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
+      subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
+      subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
 
       hf[i].p_id = &subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;
@@ -228,7 +247,7 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
       hf[i].hfinfo.display  = hf_display(mrb_str_to_cstr(mrb, mrb_hf_int_type));
       hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(hf_desc) : NULL;
-      hf[i].hfinfo.bitmask  = 0x0;
+      hf[i].hfinfo.bitmask  = mrb_fixnum(mrb_hf_bitmack);
       hf[i].hfinfo.blurb    = NULL;
       hf[i].hfinfo.id       = -1;
       hf[i].hfinfo.parent   = 0;
@@ -237,52 +256,9 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.same_name_next    = NULL;
     }
 
-    // WIP: Adding Flags to the protocol.
-    hf[subtree.field_size].p_id = &hf_foo_startflag;
-    hf[subtree.field_size].hfinfo.name     = "FOO PDU Start Flags";
-    hf[subtree.field_size].hfinfo.abbrev   = "foo.flags.start";
-    hf[subtree.field_size].hfinfo.type     = FT_BOOLEAN;
-    hf[subtree.field_size].hfinfo.display  = 8;
-    hf[subtree.field_size].hfinfo.strings  = NULL;
-    hf[subtree.field_size].hfinfo.bitmask  = FOO_START_FLAG;
-    hf[subtree.field_size].hfinfo.blurb    = NULL;
-    hf[subtree.field_size].hfinfo.id       = -1;
-    hf[subtree.field_size].hfinfo.parent   = 0;
-    hf[subtree.field_size].hfinfo.ref_type = HF_REF_TYPE_NONE;
-    hf[subtree.field_size].hfinfo.same_name_prev_id = -1;
-    hf[subtree.field_size].hfinfo.same_name_next    = NULL;
-    hf[subtree.field_size + 1].p_id = &hf_foo_endflag;
-    hf[subtree.field_size + 1].hfinfo.name     = "FOO PDU End Flags";
-    hf[subtree.field_size + 1].hfinfo.abbrev   = "foo.flags.end";
-    hf[subtree.field_size + 1].hfinfo.type     = FT_BOOLEAN;
-    hf[subtree.field_size + 1].hfinfo.display  = 8;
-    hf[subtree.field_size + 1].hfinfo.strings  = NULL;
-    hf[subtree.field_size + 1].hfinfo.bitmask  = FOO_END_FLAG;
-    hf[subtree.field_size + 1].hfinfo.blurb    = NULL;
-    hf[subtree.field_size + 1].hfinfo.id       = -1;
-    hf[subtree.field_size + 1].hfinfo.parent   = 0;
-    hf[subtree.field_size + 1].hfinfo.ref_type = HF_REF_TYPE_NONE;
-    hf[subtree.field_size + 1].hfinfo.same_name_prev_id = -1;
-    hf[subtree.field_size + 1].hfinfo.same_name_next    = NULL;
-    hf[subtree.field_size + 2].p_id = &hf_foo_priorityflag;
-    hf[subtree.field_size + 2].hfinfo.name     = "FOO PDU Priority Flags";
-    hf[subtree.field_size + 2].hfinfo.abbrev   = "foo.flags.priority";
-    hf[subtree.field_size + 2].hfinfo.type     = FT_BOOLEAN;
-    hf[subtree.field_size + 2].hfinfo.display  = 8;
-    hf[subtree.field_size + 2].hfinfo.strings  = NULL;
-    hf[subtree.field_size + 2].hfinfo.bitmask  = FOO_PRIORITY_FLAG;
-    hf[subtree.field_size + 2].hfinfo.blurb    = NULL;
-    hf[subtree.field_size + 2].hfinfo.id       = -1;
-    hf[subtree.field_size + 2].hfinfo.parent   = 0;
-    hf[subtree.field_size + 2].hfinfo.ref_type = HF_REF_TYPE_NONE;
-    hf[subtree.field_size + 2].hfinfo.same_name_prev_id = -1;
-    hf[subtree.field_size + 2].hfinfo.same_name_next    = NULL;
-
     static gint *ett[] = { &ett_state };
 
-    // WIP: Adding Flags to the protocol.
-    // proto_register_field_array(phandle, hf, subtree.field_size);
-    proto_register_field_array(phandle, hf, subtree.field_size + 3);
+    proto_register_field_array(phandle, hf, subtree.field_size);
 
     proto_register_subtree_array(ett, array_length(ett));
   }
