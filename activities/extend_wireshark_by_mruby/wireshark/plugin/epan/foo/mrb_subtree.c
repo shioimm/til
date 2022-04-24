@@ -37,21 +37,55 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   mrb_value int_type   = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "int_type"));
   mrb_value size       = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "size"));
   mrb_value desc       = mrb_funcall(mrb, args, "fetch", 2, MRB_SYM(mrb, "desc"), mrb_nil_value());
+  mrb_value bitmask    = mrb_funcall(mrb, args, "fetch", 2, MRB_SYM(mrb, "bitmask"), mrb_nil_value());
 
   if (!mrb_nil_p(desc)) {
     desc = mrb_funcall(mrb, desc, "to_a", 0);
   }
 
+  mrb_value type =  mrb_nil_p(bitmask) ? mrb_str_new_lit(mrb, "NORMAL") : mrb_str_new_lit(mrb, "WITHBIT");
+
+  mrb_hash_set(mrb, field, MRB_SYM(mrb, "type"),       type);
+  mrb_hash_set(mrb, field, MRB_SYM(mrb, "symbol"),     label);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "label"),      label);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "filter"),     filter);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "field_type"), field_type);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "int_type"),   int_type);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "size"),       size);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "desc"),       desc);
+  mrb_hash_set(mrb, field, MRB_SYM(mrb, "bitmask"),    mrb_nil_value());
 
   mrb_ary_push(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields")), field);
 
-  return field;
+  if (!mrb_nil_p(bitmask)) {
+    for (int i = 0; i < (int)RARRAY_LEN(bitmask); i++) {
+      mrb_value bm            = mrb_funcall(mrb, bitmask, "at", 1, mrb_int_value(mrb, i));;
+      mrb_value bm_field      = mrb_hash_new(mrb);
+      mrb_value bm_label      = mrb_funcall(mrb, bm, "fetch", 1, MRB_SYM(mrb, "label"));
+      mrb_value bm_filter     = mrb_funcall(mrb, bm, "fetch", 1, MRB_SYM(mrb, "filter"));
+      mrb_value bm_field_type = mrb_funcall(mrb, bm, "fetch", 1, MRB_SYM(mrb, "field_type"));
+      mrb_value bm_int_type   = mrb_funcall(mrb, bm, "fetch", 1, MRB_SYM(mrb, "int_type"));
+      mrb_value bm_desc       = mrb_funcall(mrb, bm, "fetch", 2, MRB_SYM(mrb, "desc"), mrb_nil_value());
+      mrb_value bm_bitmask    = mrb_funcall(mrb, bm, "fetch", 1, MRB_SYM(mrb, "bitmask"));
+
+      if (!mrb_nil_p(bm_desc)) {
+        desc = mrb_funcall(mrb, desc, "to_a", 0);
+      }
+
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "type"),       mrb_str_new_lit(mrb, "BITMASK"));
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "symbol"),     label);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "label"),      bm_label);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "filter"),     bm_filter);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "field_type"), bm_field_type);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "int_type"),   mrb_funcall(mrb, bm_int_type, "to_s", 0));
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "size"),       size);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "desc"),       bm_desc);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "bitmask"),    bm_bitmask);
+      mrb_ary_push(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields")), bm_field);
+    }
+  }
+
+  return mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields"));
 }
 
 void mrb_subtree_gem_init(mrb_state *mrb)
