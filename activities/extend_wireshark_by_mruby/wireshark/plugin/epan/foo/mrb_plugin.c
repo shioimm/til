@@ -42,7 +42,18 @@ typedef struct {
   int field_size;
   int field_handles[100];
   field_t fields[100];
+  unsigned int withbit;
 } subtree_t;
+
+typedef struct {
+  int size;
+  int symbol;
+} bitmask_tbl_t;
+
+typedef struct {
+  int symbol;
+  int *handles;
+} bitmask_handle_tbl_t;
 
 static plugin_t  plugin;
 static subtree_t subtree;
@@ -117,12 +128,60 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
     field_t field;
 
     // WIP: Adding Flags to the protocol.
+    int withbits_size = 0;
+    int bitmasks_size = 0;
+
+    for (int i = 0; i < subtree.field_size; i++) {
+      if (subtree.fields[i].type == NORMAL)  continue;
+      if (subtree.fields[i].type == WITHBIT) withbits_size++;
+      if (subtree.fields[i].type == BITMASK) bitmasks_size++;
+    }
+
+    int withbit_indexes[withbits_size];
+    int bitmask_indexes[bitmasks_size];
+    int current_withbit_index = 0;
+    int current_bitmask_index = 0;
+
+    for (int i = 0; i < subtree.field_size; i++) {
+      if (subtree.fields[i].type != WITHBIT) continue;
+      withbit_indexes[current_withbit_index] = i;
+      current_withbit_index++;
+      if (current_withbit_index >= withbits_size) break;
+    }
+    for (int i = 0; i < subtree.field_size; i++) {
+      if (subtree.fields[i].type != BITMASK) continue;
+      bitmask_indexes[current_bitmask_index] = i;
+      current_bitmask_index++;
+      if (current_bitmask_index >= bitmasks_size) break;
+    }
+
+    bitmask_tbl_t bitmask_tbl[withbits_size];
+
+    for (int i = 0; i < withbits_size; i++) {
+      field    = subtree.fields[withbit_indexes[i]];
+      int size = 0;
+
+      for (int j = 0; j < bitmasks_size; j++) {
+        if (subtree.fields[bitmask_indexes[j]].symbol == field.symbol) size++;
+      }
+      bitmask_tbl[i].symbol = field.symbol;
+      bitmask_tbl[i].size   = size;
+    }
+
+    int *bitmask_handles = malloc(sizeof(int) * bitmasks_size);
+    bitmask_handle_tbl_t bitmask_handle_tbl[withbit_indexes];
+
+    // TODO: ここから続きを実装する
+    // bitmask_handle_tbl_t構造体にメモリ位置のoffsetを持たせる
+
     static int* const bits[] = {
       &subtree.fields[2].handle,
       &subtree.fields[3].handle,
       &subtree.fields[4].handle,
       NULL
     };
+
+    // WIP: Adding Flags to the protocol. ここまで
 
     for (int i = 0; i < subtree.field_size; i++) {
       field = subtree.fields[i];
@@ -194,7 +253,7 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
     mrb_value fields  = mrb_funcall(mrb, mrb_subtree, "fields", 0);
     subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, mrb_subtree, "fields", 0));
 
-    hf_register_info *hf = malloc(sizeof(hf_register_info) * (subtree.field_size));
+    hf_register_info *hf = malloc(sizeof(hf_register_info) * subtree.field_size);
 
     for (int i = 0; i < subtree.field_size; i++) {
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
@@ -240,6 +299,8 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
       subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
       subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
       subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
+
+      if (subtree.fields[i].type == WITHBIT && subtree.withbit == 0) subtree.withbit = 1;
 
       hf[i].p_id = &subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;
