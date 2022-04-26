@@ -51,10 +51,14 @@ typedef struct {
   int offset;
 } bitmask_handle_t;
 
-static int* bitmask_handles_pool[1000];
 
 static plugin_t  plugin;
 static subtree_t subtree;
+
+int withbits_size = 0;
+int bitmasks_size = 0;
+static int* bitmask_handles_pool[1000];
+bitmask_handle_t bitmask_handles[1000];
 
 static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 {
@@ -132,15 +136,20 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
         proto_tree_add_item(foo_tree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
         offset += field.size;
       } else if (field.type == WITHBIT) {
-        int bitmask_handles_pool_index;
+        int bitmask_handles_pool_index = 0;
         for (int j = 0; j < withbits_size; j++) {
           if (bitmask_handles[i].symbol == field.symbol) {
             bitmask_handles_pool_index = bitmask_handles[i].offset;
             break;
           }
         }
-        printf("%d\n", bitmask_handles_pool_index);
-        proto_tree_add_bitmask(foo_tree, tvb, offset, field.handle, ett_state, &bitmask_handles_pool[0], ENC_BIG_ENDIAN);
+        proto_tree_add_bitmask(foo_tree,
+                               tvb,
+                               offset,
+                               field.handle,
+                               ett_state,
+                               &bitmask_handles_pool[bitmask_handles_pool_index],
+                               ENC_BIG_ENDIAN);
         offset += 1;
       } else if (field.type == BITMASK) {
         continue;
@@ -204,10 +213,6 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
     subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, mrb_subtree, "fields", 0));
 
     hf_register_info *hf = malloc(sizeof(hf_register_info) * subtree.field_size);
-
-    // WIP: Adding Flags to the protocol.
-    int withbits_size = 0;
-    int bitmasks_size = 0;
 
     for (int i = 0; i < subtree.field_size; i++) {
       mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
@@ -294,8 +299,6 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
       }
     }
 
-    bitmask_handle_t bitmask_handles[withbits_size];
-
     for (int i = 0; i < withbits_size; i++) {
       field_t wfield = subtree.fields[withbit_indexes[i]];
       int bfield_size = 0;
@@ -304,18 +307,22 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
         if (subtree.fields[bitmask_indexes[j]].symbol == wfield.symbol) bfield_size++;
       }
 
+      bitmask_handles[i].symbol = wfield.symbol;
+      bitmask_handles[i].size   = bfield_size;
       int offset = i > 0 ? bitmask_handles[i - 1].offset + bitmask_handles[i - 1].size + 1 : 0;
-      bitmask_handle_t bitmask_handle = bitmask_handles[i];
-      bitmask_handle.symbol = wfield.symbol;
-      bitmask_handle.size   = bfield_size;
-      bitmask_handle.offset = offset;
+      bitmask_handles[i].offset = offset;
+    }
 
+    int bitmask_handles_pools_index = 0;
+    for (int i = 0; i < withbits_size; i++) {
       for (int j = 0; j < bitmasks_size; j++) {
-        if (subtree.fields[bitmask_indexes[j]].symbol == wfield.symbol) {
-          bitmask_handles_pool[bitmask_handle.offset + i] = &subtree.fields[bitmask_indexes[j]].handle;
+        if (subtree.fields[bitmask_indexes[j]].symbol == bitmask_handles[i].symbol) {
+          bitmask_handles_pool[bitmask_handles[i].offset + bitmask_handles_pools_index] =
+            &subtree.fields[bitmask_indexes[j]].handle;
+          bitmask_handles_pools_index++;
         }
       }
-      bitmask_handles_pool[bitmask_handle.offset + bitmask_handle.size] = NULL;
+      bitmask_handles_pool[bitmask_handles[i].offset + bitmask_handles[i].size] = NULL;
     }
 
     static gint *ett[] = { &ett_state };
