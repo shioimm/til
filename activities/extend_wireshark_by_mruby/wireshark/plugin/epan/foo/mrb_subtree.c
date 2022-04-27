@@ -43,7 +43,7 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
     desc = mrb_funcall(mrb, desc, "to_a", 0);
   }
 
-  mrb_value type =  mrb_nil_p(bitmask) ? mrb_str_new_lit(mrb, "NORMAL") : mrb_str_new_lit(mrb, "WITHBIT");
+  mrb_value type =  mrb_nil_p(bitmask) ? mrb_str_new_lit(mrb, "NORMAL") : mrb_str_new_lit(mrb, "BITMASKED");
 
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "type"),       type);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "symbol"),     label);
@@ -72,7 +72,7 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
         desc = mrb_funcall(mrb, desc, "to_a", 0);
       }
 
-      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "type"),       mrb_str_new_lit(mrb, "BITMASK"));
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "type"),       mrb_str_new_lit(mrb, "BIT"));
       mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "symbol"),     label);
       mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "label"),      bm_label);
       mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "filter"),     bm_filter);

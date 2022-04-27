@@ -27,8 +27,8 @@ typedef struct {
 
 typedef enum {
   NORMAL,
-  WITHBIT,
-  BITMASK,
+  BITMASKED,
+  BIT,
 } PacketType;
 
 typedef struct {
@@ -42,23 +42,20 @@ typedef struct {
   int field_size;
   int field_handles[100];
   field_t fields[100];
-  unsigned int withbit;
 } subtree_t;
 
 typedef struct {
   int size;
   int symbol;
   int offset;
-} bitmask_handle_t;
-
+} bit_handle_t;
 
 static plugin_t  plugin;
 static subtree_t subtree;
 
-int withbits_size = 0;
-int bitmasks_size = 0;
-static int* bitmask_handles_pool[1000];
-bitmask_handle_t bitmask_handles[1000];
+int bitmasked_fields_size = 0;
+static int* bit_handles_pool[100];
+bit_handle_t bit_handles[100];
 
 static mrb_value mrb_plugin_init(mrb_state *mrb, mrb_value self)
 {
@@ -124,7 +121,7 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
 
   if (plugin.subtree == 1) {
     proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
-    proto_tree *foo_tree = proto_item_add_subtree(ti, ett_state);
+    proto_tree *maintree = proto_item_add_subtree(ti, ett_state);
 
     gint offset = 0;
     field_t field;
@@ -133,25 +130,21 @@ static int _dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, v
       field = subtree.fields[i];
 
       if (field.type == NORMAL) {
-        proto_tree_add_item(foo_tree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
+        proto_tree_add_item(maintree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
         offset += field.size;
-      } else if (field.type == WITHBIT) {
-        int bitmask_handles_pool_index = 0;
-        for (int j = 0; j < withbits_size; j++) {
-          if (bitmask_handles[i].symbol == field.symbol) {
-            bitmask_handles_pool_index = bitmask_handles[i].offset;
+      } else if (field.type == BITMASKED) {
+        int bit_handles_pool_index = 0;
+
+        for (int j = 0; j < bitmasked_fields_size; j++) {
+          if (bit_handles[i].symbol == field.symbol) {
+            bit_handles_pool_index = bit_handles[i].offset;
             break;
           }
         }
-        proto_tree_add_bitmask(foo_tree,
-                               tvb,
-                               offset,
-                               field.handle,
-                               ett_state,
-                               &bitmask_handles_pool[bitmask_handles_pool_index],
-                               ENC_BIG_ENDIAN);
+        proto_tree_add_bitmask(maintree, tvb, offset, field.handle, ett_state,
+                               &bit_handles_pool[bit_handles_pool_index], ENC_BIG_ENDIAN);
         offset += 1;
-      } else if (field.type == BITMASK) {
+      } else if (field.type == BIT) {
         continue;
       }
     }
@@ -164,10 +157,10 @@ static int hf_packet_type(char *name)
 {
   if (strcmp(name, "NORMAL") == 0) {
     return NORMAL;
-  } else if (strcmp(name, "WITHBIT") == 0) {
-    return WITHBIT;
-  } else if (strcmp(name, "BITMASK") == 0) {
-    return BITMASK;
+  } else if (strcmp(name, "BITMASKED") == 0) {
+    return BITMASKED;
+  } else if (strcmp(name, "BIT") == 0) {
+    return BIT;
   }
 
   return 0;
@@ -209,23 +202,25 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
 
   if (plugin.subtree == 1) {
     mrb_value mrb_subtree = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@subtree"));
-    mrb_value fields  = mrb_funcall(mrb, mrb_subtree, "fields", 0);
-    subtree.field_size = (int)RARRAY_LEN(mrb_funcall(mrb, mrb_subtree, "fields", 0));
+    mrb_value mrb_fields  = mrb_funcall(mrb, mrb_subtree, "fields", 0);
+    subtree.field_size    = (int)RARRAY_LEN(mrb_funcall(mrb, mrb_subtree, "fields", 0));
 
     hf_register_info *hf = malloc(sizeof(hf_register_info) * subtree.field_size);
 
-    for (int i = 0; i < subtree.field_size; i++) {
-      mrb_value field = mrb_funcall(mrb, fields, "at", 1, mrb_int_value(mrb, i));
+    int bit_fields_size = 0;
 
-      mrb_value mrb_hf_type       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "type"));
-      mrb_value mrb_hf_symbol     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "symbol"));
-      mrb_value mrb_hf_name       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "label"));
-      mrb_value mrb_hf_abbrev     = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "filter"));
-      mrb_value mrb_hf_field_type = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "field_type"));
-      mrb_value mrb_hf_int_type   = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "int_type"));
-      mrb_value mrb_hf_size       = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "size"));
-      mrb_value mrb_hf_descs      = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "desc"));
-      mrb_value mrb_hf_bitmack    = mrb_funcall(mrb, field, "fetch", 1, MRB_SYM(mrb, "bitmask"));
+    for (int i = 0; i < subtree.field_size; i++) {
+      mrb_value mrb_field = mrb_funcall(mrb, mrb_fields, "at", 1, mrb_int_value(mrb, i));
+
+      mrb_value mrb_hf_type       = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "type"));
+      mrb_value mrb_hf_symbol     = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "symbol"));
+      mrb_value mrb_hf_name       = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "label"));
+      mrb_value mrb_hf_abbrev     = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "filter"));
+      mrb_value mrb_hf_field_type = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "field_type"));
+      mrb_value mrb_hf_int_type   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "int_type"));
+      mrb_value mrb_hf_size       = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "size"));
+      mrb_value mrb_hf_descs      = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
+      mrb_value mrb_hf_bitmask    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "bitmask"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
@@ -259,15 +254,13 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
       subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
       subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
 
-      if (subtree.fields[i].type == WITHBIT && subtree.withbit == 0) subtree.withbit = 1;
-
       hf[i].p_id = &subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;
       hf[i].hfinfo.abbrev   = hf_abbrev;
       hf[i].hfinfo.type     = hf_field_type(mrb_str_to_cstr(mrb, mrb_hf_field_type));
       hf[i].hfinfo.display  = hf_display(mrb_str_to_cstr(mrb, mrb_hf_int_type));
       hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(hf_desc) : NULL;
-      hf[i].hfinfo.bitmask  = mrb_fixnum(mrb_hf_bitmack);
+      hf[i].hfinfo.bitmask  = mrb_fixnum(mrb_hf_bitmask);
       hf[i].hfinfo.blurb    = NULL;
       hf[i].hfinfo.id       = -1;
       hf[i].hfinfo.parent   = 0;
@@ -275,54 +268,55 @@ static void _mrb_register_plugin(mrb_state *mrb, mrb_value self)
       hf[i].hfinfo.same_name_prev_id = -1;
       hf[i].hfinfo.same_name_next    = NULL;
 
-      if (subtree.fields[i].type == WITHBIT) withbits_size++;
-      if (subtree.fields[i].type == BITMASK) bitmasks_size++;
+      if (subtree.fields[i].type == BITMASKED) bitmasked_fields_size++;
+      if (subtree.fields[i].type == BIT) bit_fields_size++;
     }
 
-    int withbit_indexes[withbits_size];
-    int bitmask_indexes[bitmasks_size];
-    int withbit_current_index = 0;
-    int bitmask_current_index = 0;
+    int bitmasked_field_indexes[bitmasked_fields_size];
+    int bit_field_indexes[bit_fields_size];
+    int bmfield_current_index = 0;
+    int bfield_current_index  = 0;
 
     for (int i = 0; i < subtree.field_size; i++) {
       field_t field = subtree.fields[i];
 
       if (field.type == NORMAL) continue;
 
-      if (field.type == WITHBIT) {
-        withbit_indexes[withbit_current_index] = i;
-        withbit_current_index++;
+      if (field.type == BITMASKED) {
+        bitmasked_field_indexes[bmfield_current_index] = i;
+        bmfield_current_index++;
       }
-      if (field.type == BITMASK) {
-        bitmask_indexes[bitmask_current_index] = i;
-        bitmask_current_index++;
+      if (field.type == BIT) {
+        bit_field_indexes[bfield_current_index] = i;
+        bfield_current_index++;
       }
     }
 
-    for (int i = 0; i < withbits_size; i++) {
-      field_t wfield = subtree.fields[withbit_indexes[i]];
+    for (int i = 0; i < bitmasked_fields_size; i++) {
+      field_t bmfield = subtree.fields[bitmasked_field_indexes[i]];
       int bfield_size = 0;
 
-      for (int j = 0; j < bitmasks_size; j++) {
-        if (subtree.fields[bitmask_indexes[j]].symbol == wfield.symbol) bfield_size++;
+      for (int j = 0; j < bit_fields_size; j++) {
+        if (subtree.fields[bit_field_indexes[j]].symbol == bmfield.symbol) bfield_size++;
       }
 
-      bitmask_handles[i].symbol = wfield.symbol;
-      bitmask_handles[i].size   = bfield_size;
-      int offset = i > 0 ? bitmask_handles[i - 1].offset + bitmask_handles[i - 1].size + 1 : 0;
-      bitmask_handles[i].offset = offset;
+      bit_handles[i].symbol = bmfield.symbol;
+      bit_handles[i].size   = bfield_size;
+      int offset = i > 0 ? bit_handles[i - 1].offset + bit_handles[i - 1].size + 1 : 0;
+      bit_handles[i].offset = offset;
     }
 
-    int bitmask_handles_pools_index = 0;
-    for (int i = 0; i < withbits_size; i++) {
-      for (int j = 0; j < bitmasks_size; j++) {
-        if (subtree.fields[bitmask_indexes[j]].symbol == bitmask_handles[i].symbol) {
-          bitmask_handles_pool[bitmask_handles[i].offset + bitmask_handles_pools_index] =
-            &subtree.fields[bitmask_indexes[j]].handle;
-          bitmask_handles_pools_index++;
+    int bit_handles_pools_index = 0;
+
+    for (int i = 0; i < bitmasked_fields_size; i++) {
+      for (int j = 0; j < bit_fields_size; j++) {
+        if (subtree.fields[bit_field_indexes[j]].symbol == bit_handles[i].symbol) {
+          bit_handles_pool[bit_handles[i].offset + bit_handles_pools_index] =
+            &subtree.fields[bit_field_indexes[j]].handle;
+          bit_handles_pools_index++;
         }
       }
-      bitmask_handles_pool[bitmask_handles[i].offset + bitmask_handles[i].size] = NULL;
+      bit_handles_pool[bit_handles[i].offset + bit_handles[i].size] = NULL;
     }
 
     static gint *ett[] = { &ett_state };
