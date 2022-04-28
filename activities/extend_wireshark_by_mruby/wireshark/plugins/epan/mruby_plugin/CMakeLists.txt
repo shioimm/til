@@ -12,10 +12,10 @@
 include(WiresharkPlugin)
 
 # Plugin name and version info (major minor micro extra)
-set_module_info(foo 0 0 1 0)
+set_module_info(mruby 0 0 1 0)
 
 set(DISSECTOR_SRC
-	packet-foo.c
+	packet-mruby.c
 )
 
 set(PLUGIN_FILES
@@ -34,17 +34,17 @@ register_plugin_files(plugin.c
 	${DISSECTOR_SRC}
 )
 
-add_plugin_library(foo epan)
+add_plugin_library(mruby epan)
 
-target_link_libraries(foo epan ${MRUBY_LIBRARIES})
-target_include_directories(foo PRIVATE ${MRUBY_INCLUDE_DIRS})
+target_link_libraries(mruby epan ${MRUBY_LIBRARIES})
+target_include_directories(mruby PRIVATE ${MRUBY_INCLUDE_DIRS})
 
-install_plugin(foo epan)
+install_plugin(mruby epan)
 
 file(GLOB DISSECTOR_HEADERS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.h")
 CHECKAPI(
 	NAME
-	  foo
+	  mruby
 	SWITCHES
 	  --group dissectors-prohibited
 	  --group dissectors-restricted
