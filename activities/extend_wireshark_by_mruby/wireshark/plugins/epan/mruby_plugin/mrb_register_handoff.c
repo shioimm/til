@@ -33,10 +33,14 @@ static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void
     proto_tree *maintree = proto_item_add_subtree(ti, ett_state);
 
     // WIP: Enhancing the display
-    proto_item_append_text(ti, subtree.fields[0].cinfo.format,
-                           val_to_str(packet_type,
-                                      subtree.fields[0].cinfo.value,
-                                      subtree.fields[0].cinfo.fallback));
+    for (int i = 0; i < subtree.field_size; i++) {
+      if (!subtree.fields[i].dinfo.format) continue;
+
+      proto_item_append_text(ti, subtree.fields[0].dinfo.format,
+                             val_to_str(packet_type,
+                                        subtree.fields[0].dinfo.value,
+                                        subtree.fields[0].dinfo.fallback));
+    }
 
     gint offset = 0;
     field_t field;

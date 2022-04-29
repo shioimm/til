@@ -49,11 +49,18 @@ typedef struct {
 } column_info_t;
 
 typedef struct {
+  char *format;
+  void *value;
+  char *fallback;
+} detail_info_t;
+
+typedef struct {
   int handle;
   int size;
   int symbol;
   PacketType type;
   column_info_t cinfo;
+  detail_info_t dinfo;
 } field_t;
 
 typedef struct {
