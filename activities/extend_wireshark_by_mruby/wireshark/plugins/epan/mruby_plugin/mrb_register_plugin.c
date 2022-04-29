@@ -1,5 +1,17 @@
 #include "mrb_plugin.h"
 
+extern  int phandle;
+extern gint ett_state;
+
+extern plugin_t  plugin;
+extern subtree_t subtree;
+
+extern int bitmasked_fields_size;
+extern int* bit_handles_pool[BIT_HANDLES_POOL_SIZE];
+extern bit_handle_t bit_handles[BIT_HANDLES_SIZE];
+
+extern void* hf_descs_pool[HF_DESCS_POOL_SIZE];
+
 static int hf_packet_type(char *name)
 {
   if (strcmp(name, "NORMAL") == 0) {
@@ -68,11 +80,22 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
       mrb_value mrb_hf_size       = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "size"));
       mrb_value mrb_hf_descs      = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
       mrb_value mrb_hf_bitmask    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "bitmask"));
+      mrb_value mrb_cinfo         = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "col_info"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
 
+      strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
+      strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
+
+      subtree.fields[i].handle = -1;
+      subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
+      subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
+      subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
+
       value_string *hf_desc;
+      char *cinfo_fmt;
+      char *cinfo_fb;
 
       if (!mrb_nil_p(mrb_hf_descs)) {
         mrb_value mrb_hf_desc_size = mrb_funcall(mrb, mrb_hf_descs, "size", 0);
@@ -91,15 +114,23 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
           hf_desc[hf_desc_i].value  = hf_desc_val;
           hf_desc[hf_desc_i].strptr = hf_desc_str;
         }
+        // WIP: Enhancing the display
+        if (!mrb_nil_p(mrb_cinfo)) {
+          mrb_value mrb_cinfo_fmt = mrb_funcall(mrb, mrb_cinfo, "fetch", 1, MRB_SYM(mrb, "format"));
+          cinfo_fmt = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_cinfo_fmt, "size", 0)));
+          strcpy(cinfo_fmt, mrb_str_to_cstr(mrb, mrb_cinfo_fmt));
+          subtree.fields[i].cinfo.format = cinfo_fmt;
+          subtree.fields[i].cinfo.value  = hf_desc;
+
+          mrb_value mrb_cinfo_fb = mrb_funcall(mrb, mrb_cinfo, "fetch", 2, MRB_SYM(mrb, "fallback"), mrb_nil_value());
+
+          if (!mrb_nil_p(mrb_cinfo_fb)) {
+            cinfo_fb = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_cinfo_fb, "size", 0)));
+            strcpy(cinfo_fb, mrb_str_to_cstr(mrb, mrb_cinfo_fb));
+            subtree.fields[i].cinfo.fallback = cinfo_fb;
+          }
+        }
       }
-
-      strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
-      strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
-
-      subtree.fields[i].handle = -1;
-      subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
-      subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
-      subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
 
       hf[i].p_id = &subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;

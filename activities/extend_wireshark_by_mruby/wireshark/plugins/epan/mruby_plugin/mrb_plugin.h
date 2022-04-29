@@ -24,6 +24,9 @@
 #define BIT_HANDLES_POOL_SIZE 1000
 #define BIT_HANDLES_SIZE      100
 
+// WIP: Enhancing the display
+#define HF_DESCS_POOL_SIZE    100
+
 typedef struct {
   char name[PLUGIN_NAME_LENGTH];
   char filter_name[PLUGIN_NAME_LENGTH];
@@ -38,11 +41,19 @@ typedef enum {
   BIT,
 } PacketType;
 
+// WIP: Enhancing the display
+typedef struct {
+  char *format;
+  void *value;
+  char *fallback;
+} column_info_t;
+
 typedef struct {
   int handle;
   int size;
   int symbol;
   PacketType type;
+  column_info_t cinfo;
 } field_t;
 
 typedef struct {
