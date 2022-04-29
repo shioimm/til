@@ -43,9 +43,6 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   if (!mrb_nil_p(desc)) {
     desc = mrb_funcall(mrb, desc, "to_a", 0);
   }
-  if (!mrb_nil_p(col_info)) {
-    col_info = mrb_str_cat_lit(mrb, col_info, "%s");
-  }
 
   mrb_value type =  mrb_nil_p(bitmask) ? mrb_str_new_lit(mrb, "NORMAL") : mrb_str_new_lit(mrb, "BITMASKED");
 

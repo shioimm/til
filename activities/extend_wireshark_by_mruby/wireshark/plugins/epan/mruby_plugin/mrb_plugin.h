@@ -42,17 +42,18 @@ typedef enum {
 } PacketType;
 
 // WIP: Enhancing the display
-typedef struct _col_info_t {
-  char *key;
+typedef struct {
+  char *format;
   void *value;
-} col_info_t;
+  char *fallback;
+} column_info_t;
 
 typedef struct {
   int handle;
   int size;
   int symbol;
   PacketType type;
-  col_info_t col_info;
+  column_info_t cinfo;
 } field_t;
 
 typedef struct {

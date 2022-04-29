@@ -80,7 +80,7 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
       mrb_value mrb_hf_size       = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "size"));
       mrb_value mrb_hf_descs      = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
       mrb_value mrb_hf_bitmask    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "bitmask"));
-      mrb_value mrb_col_info   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "col_info"));
+      mrb_value mrb_cinfo         = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "col_info"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
@@ -94,7 +94,8 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
       subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
 
       value_string *hf_desc;
-      char *col_info_key;
+      char *cinfo_fmt;
+      char *cinfo_fb;
 
       if (!mrb_nil_p(mrb_hf_descs)) {
         mrb_value mrb_hf_desc_size = mrb_funcall(mrb, mrb_hf_descs, "size", 0);
@@ -114,11 +115,20 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
           hf_desc[hf_desc_i].strptr = hf_desc_str;
         }
         // WIP: Enhancing the display
-        if (!mrb_nil_p(mrb_col_info)) {
-          col_info_key = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_col_info, "size", 0)));
-          strcpy(col_info_key, mrb_str_to_cstr(mrb, mrb_col_info));
-          subtree.fields[i].col_info.key   = col_info_key;
-          subtree.fields[i].col_info.value = hf_desc;
+        if (!mrb_nil_p(mrb_cinfo)) {
+          mrb_value mrb_cinfo_fmt = mrb_funcall(mrb, mrb_cinfo, "fetch", 1, MRB_SYM(mrb, "format"));
+          cinfo_fmt = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_cinfo_fmt, "size", 0)));
+          strcpy(cinfo_fmt, mrb_str_to_cstr(mrb, mrb_cinfo_fmt));
+          subtree.fields[i].cinfo.format = cinfo_fmt;
+          subtree.fields[i].cinfo.value  = hf_desc;
+
+          mrb_value mrb_cinfo_fb = mrb_funcall(mrb, mrb_cinfo, "fetch", 2, MRB_SYM(mrb, "fallback"), mrb_nil_value());
+
+          if (!mrb_nil_p(mrb_cinfo_fb)) {
+            cinfo_fb = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_cinfo_fb, "size", 0)));
+            strcpy(cinfo_fb, mrb_str_to_cstr(mrb, mrb_cinfo_fb));
+            subtree.fields[i].cinfo.fallback = cinfo_fb;
+          }
         }
       }
 
