@@ -38,9 +38,13 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   mrb_value size       = mrb_funcall(mrb, args, "fetch", 1, MRB_SYM(mrb, "size"));
   mrb_value desc       = mrb_funcall(mrb, args, "fetch", 2, MRB_SYM(mrb, "desc"), mrb_nil_value());
   mrb_value bitmask    = mrb_funcall(mrb, args, "fetch", 2, MRB_SYM(mrb, "bitmask"), mrb_nil_value());
+  mrb_value col_info   = mrb_funcall(mrb, args, "fetch", 2, MRB_SYM(mrb, "col_info"), mrb_nil_value());
 
   if (!mrb_nil_p(desc)) {
     desc = mrb_funcall(mrb, desc, "to_a", 0);
+  }
+  if (!mrb_nil_p(col_info)) {
+    col_info = mrb_str_cat_lit(mrb, col_info, "%s");
   }
 
   mrb_value type =  mrb_nil_p(bitmask) ? mrb_str_new_lit(mrb, "NORMAL") : mrb_str_new_lit(mrb, "BITMASKED");
@@ -54,6 +58,7 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "size"),       size);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "desc"),       desc);
   mrb_hash_set(mrb, field, MRB_SYM(mrb, "bitmask"),    mrb_nil_value());
+  mrb_hash_set(mrb, field, MRB_SYM(mrb, "col_info"),   col_info);
 
   mrb_ary_push(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields")), field);
 
@@ -81,6 +86,7 @@ static mrb_value mrb_subtree_add_field(mrb_state *mrb, mrb_value self)
       mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "size"),       size);
       mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "desc"),       bm_desc);
       mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "bitmask"),    bm_bitmask);
+      mrb_hash_set(mrb, bm_field, MRB_SYM(mrb, "col_info"),   mrb_nil_value());
       mrb_ary_push(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@fields")), bm_field);
     }
   }

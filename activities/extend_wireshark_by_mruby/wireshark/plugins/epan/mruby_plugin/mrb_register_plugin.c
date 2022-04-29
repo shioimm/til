@@ -80,11 +80,21 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
       mrb_value mrb_hf_size       = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "size"));
       mrb_value mrb_hf_descs      = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
       mrb_value mrb_hf_bitmask    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "bitmask"));
+      mrb_value mrb_col_info   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "col_info"));
 
       char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
       char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
 
+      strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
+      strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
+
+      subtree.fields[i].handle = -1;
+      subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
+      subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
+      subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
+
       value_string *hf_desc;
+      char *col_info_key;
 
       if (!mrb_nil_p(mrb_hf_descs)) {
         mrb_value mrb_hf_desc_size = mrb_funcall(mrb, mrb_hf_descs, "size", 0);
@@ -104,16 +114,13 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
           hf_desc[hf_desc_i].strptr = hf_desc_str;
         }
         // WIP: Enhancing the display
-        hf_descs_pool[i] = hf_desc;
+        if (!mrb_nil_p(mrb_col_info)) {
+          col_info_key = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_col_info, "size", 0)));
+          strcpy(col_info_key, mrb_str_to_cstr(mrb, mrb_col_info));
+          subtree.fields[i].col_info.key   = col_info_key;
+          subtree.fields[i].col_info.value = hf_desc;
+        }
       }
-
-      strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
-      strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
-
-      subtree.fields[i].handle = -1;
-      subtree.fields[i].size   = (int)mrb_fixnum(mrb_hf_size);
-      subtree.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
-      subtree.fields[i].type   = hf_packet_type(mrb_str_to_cstr(mrb, mrb_hf_type));
 
       hf[i].p_id = &subtree.fields[i].handle;
       hf[i].hfinfo.name     = hf_name;

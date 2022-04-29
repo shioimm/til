@@ -41,11 +41,18 @@ typedef enum {
   BIT,
 } PacketType;
 
+// WIP: Enhancing the display
+typedef struct _col_info_t {
+  char *key;
+  void *value;
+} col_info_t;
+
 typedef struct {
   int handle;
   int size;
   int symbol;
   PacketType type;
+  col_info_t col_info;
 } field_t;
 
 typedef struct {
@@ -69,9 +76,6 @@ static subtree_t subtree;
 int bitmasked_fields_size = 0;
 static int* bit_handles_pool[BIT_HANDLES_POOL_SIZE];
 bit_handle_t bit_handles[BIT_HANDLES_SIZE];
-
-// WIP: Enhancing the display
-static void* hf_descs_pool[HF_DESCS_POOL_SIZE];
 
 mrb_value mrb_plugin_get_name(mrb_state *mrb, mrb_value self);
 mrb_value mrb_plugin_get_filter_name(mrb_state *mrb, mrb_value self);

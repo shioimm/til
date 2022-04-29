@@ -20,16 +20,16 @@ static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void
 
   // WIP: Enhancing the display
   guint8 packet_type = tvb_get_guint8(tvb, 0);
-  col_add_fstr(pinfo->cinfo, COL_INFO, "Type %s",
-               val_to_str(packet_type, hf_descs_pool[0], "Unknown (0x%02x)"));
+  col_add_fstr(pinfo->cinfo, COL_INFO, subtree.fields[0].col_info.key,
+               val_to_str(packet_type, subtree.fields[0].col_info.value, "Unknown (0x%02x)"));
 
   if (plugin.subtree == 1) {
     proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
     proto_tree *maintree = proto_item_add_subtree(ti, ett_state);
 
     // WIP: Enhancing the display
-    proto_item_append_text(ti, ", Type %s",
-                           val_to_str(packet_type, hf_descs_pool[0], "Unknown (0x%02x)"));
+    proto_item_append_text(ti, subtree.fields[0].col_info.key,
+                           val_to_str(packet_type, subtree.fields[0].col_info.value, "Unknown (0x%02x)"));
 
     gint offset = 0;
     field_t field;
