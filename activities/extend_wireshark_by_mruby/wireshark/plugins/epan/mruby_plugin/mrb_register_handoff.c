@@ -19,34 +19,37 @@ static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void
   col_clear(pinfo->cinfo, COL_INFO);
 
   if (plugin.subtree == 1) {
-    // WIP: Enhancing the display
-    guint8 packet_type = tvb_get_guint8(tvb, 0);
-
-    for (int i = 0; i < subtree.field_size; i++) {
-      if (!subtree.fields[i].cinfo.format) continue;
-
-      col_add_fstr(pinfo->cinfo, COL_INFO, subtree.fields[i].cinfo.format,
-                   val_to_str(packet_type, subtree.fields[i].cinfo.value, subtree.fields[i].cinfo.fallback));
-    }
-
-    proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+    gint  offset = 0;
+    guint packet_type;
+    proto_item *ti       = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
     proto_tree *maintree = proto_item_add_subtree(ti, ett_state);
 
-    // WIP: Enhancing the display
     for (int i = 0; i < subtree.field_size; i++) {
-      if (!subtree.fields[i].dinfo.format) continue;
+      field_t field = subtree.fields[i];
 
-      proto_item_append_text(ti, subtree.fields[0].dinfo.format,
-                             val_to_str(packet_type,
-                                        subtree.fields[0].dinfo.value,
-                                        subtree.fields[0].dinfo.fallback));
+      if (field.type == NORMAL)    offset += field.size;
+      if (field.type == BITMASKED) offset += 1;
+      if (!field.cinfo.format)     continue;
+
+      if (field.size == 1) {
+        packet_type = tvb_get_guint8(tvb, offset);
+      } else {
+        // TODO: Need to change packet_type depending on field.size
+      }
+
+      col_add_fstr(pinfo->cinfo, COL_INFO, field.cinfo.format,
+                   val_to_str(packet_type, field.cinfo.value, field.cinfo.fallback));
+
+      if (!field.dinfo.format) continue;
+      // WIP: Enhancing the display
+      proto_item_append_text(ti, field.dinfo.format,
+                             val_to_str(packet_type, field.dinfo.value, field.dinfo.fallback));
     }
 
-    gint offset = 0;
-    field_t field;
+    offset = 0;
 
     for (int i = 0; i < subtree.field_size; i++) {
-      field = subtree.fields[i];
+      field_t field = subtree.fields[i];
 
       if (field.type == NORMAL) {
         proto_tree_add_item(maintree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);
