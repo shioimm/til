@@ -1,5 +1,17 @@
 #include "mrb_plugin.h"
 
+extern  int phandle;
+extern gint ett_state;
+
+extern plugin_t  plugin;
+extern subtree_t subtree;
+
+extern int bitmasked_fields_size;
+extern int* bit_handles_pool[BIT_HANDLES_POOL_SIZE];
+extern bit_handle_t bit_handles[BIT_HANDLES_SIZE];
+
+extern void* hf_descs_pool[HF_DESCS_POOL_SIZE];
+
 static int hf_packet_type(char *name)
 {
   if (strcmp(name, "NORMAL") == 0) {
@@ -91,6 +103,8 @@ static void mrb_register_plugin(mrb_state *mrb, mrb_value self)
           hf_desc[hf_desc_i].value  = hf_desc_val;
           hf_desc[hf_desc_i].strptr = hf_desc_str;
         }
+        // WIP: Enhancing the display
+        hf_descs_pool[i] = hf_desc;
       }
 
       strcpy(hf_name, mrb_str_to_cstr(mrb, mrb_hf_name));
