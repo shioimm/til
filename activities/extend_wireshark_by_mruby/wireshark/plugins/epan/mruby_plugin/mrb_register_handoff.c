@@ -7,11 +7,9 @@ extern gint ett_state;
 extern plugin_t  plugin;
 extern subtree_t subtree;
 
-extern int bitmasked_fields_size;
+extern int  bitmasked_fields_size;
 extern int* bit_handles_pool[BIT_HANDLES_POOL_SIZE];
 extern bit_handle_t bit_handles[BIT_HANDLES_SIZE];
-
-extern void* hf_descs_pool[HF_DESCS_POOL_SIZE];
 
 static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
