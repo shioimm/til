@@ -41,8 +41,12 @@ static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void
                    val_to_str(packet_type, field.cinfo.value, field.cinfo.fallback));
 
       if (!field.dinfo.format) continue;
-      // WIP: Enhancing the display
-      proto_item_append_text(ti, field.dinfo.format,
+
+      int  dinfo_fmt_size = (int)strlen(field.dinfo.format);
+      char dinfo_fmt[dinfo_fmt_size + 2];
+      strcpy(dinfo_fmt, ", ");
+      strcat(dinfo_fmt, field.dinfo.format);
+      proto_item_append_text(ti, dinfo_fmt,
                              val_to_str(packet_type, field.dinfo.value, field.dinfo.fallback));
     }
 
