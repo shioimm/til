@@ -7,11 +7,9 @@ extern gint ett_state;
 extern plugin_t  plugin;
 extern subtree_t subtree;
 
-extern int bitmasked_fields_size;
+extern int  bitmasked_fields_size;
 extern int* bit_handles_pool[BIT_HANDLES_POOL_SIZE];
 extern bit_handle_t bit_handles[BIT_HANDLES_SIZE];
-
-extern void* hf_descs_pool[HF_DESCS_POOL_SIZE];
 
 static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
@@ -19,30 +17,41 @@ static int dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void
   col_clear(pinfo->cinfo, COL_INFO);
 
   if (plugin.subtree == 1) {
-    // WIP: Enhancing the display
-    guint8 packet_type = tvb_get_guint8(tvb, 0);
-
-    for (int i = 0; i < subtree.field_size; i++) {
-      if (!subtree.fields[i].cinfo.format) continue;
-
-      col_add_fstr(pinfo->cinfo, COL_INFO, subtree.fields[i].cinfo.format,
-                   val_to_str(packet_type, subtree.fields[i].cinfo.value, subtree.fields[i].cinfo.fallback));
-    }
-
-    proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+    gint  offset = 0;
+    guint packet_type;
+    proto_item *ti       = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
     proto_tree *maintree = proto_item_add_subtree(ti, ett_state);
 
-    // WIP: Enhancing the display
-    proto_item_append_text(ti, subtree.fields[0].cinfo.format,
-                           val_to_str(packet_type,
-                                      subtree.fields[0].cinfo.value,
-                                      subtree.fields[0].cinfo.fallback));
+    for (int i = 0; i < subtree.field_size; i++) {
+      field_t field = subtree.fields[i];
 
-    gint offset = 0;
-    field_t field;
+      if (field.type == NORMAL)    offset += field.size;
+      if (field.type == BITMASKED) offset += 1;
+      if (!field.cinfo.format)     continue;
+
+      if (field.size == 1) {
+        packet_type = tvb_get_guint8(tvb, offset);
+      } else {
+        // TODO: Need to change packet_type depending on field.size
+      }
+
+      col_add_fstr(pinfo->cinfo, COL_INFO, field.cinfo.format,
+                   val_to_str(packet_type, field.cinfo.value, field.cinfo.fallback));
+
+      if (!field.dinfo.format) continue;
+
+      int  dinfo_fmt_size = (int)strlen(field.dinfo.format);
+      char dinfo_fmt[dinfo_fmt_size + 2];
+      strcpy(dinfo_fmt, ", ");
+      strcat(dinfo_fmt, field.dinfo.format);
+      proto_item_append_text(ti, dinfo_fmt,
+                             val_to_str(packet_type, field.dinfo.value, field.dinfo.fallback));
+    }
+
+    offset = 0;
 
     for (int i = 0; i < subtree.field_size; i++) {
-      field = subtree.fields[i];
+      field_t field = subtree.fields[i];
 
       if (field.type == NORMAL) {
         proto_tree_add_item(maintree, field.handle, tvb, offset, field.size, ENC_BIG_ENDIAN);

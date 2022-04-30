@@ -1,13 +1,14 @@
 plugin = Plugin.new('FOO', :tcp, 30000)
 
 plugin.dissect { |subtree|
-  subtree.field label:      'FOO PDU Type',
-                filter:     'foo.type',
-                field_type: 'FT_UINT8',
-                int_type:   'BASE_DEC',
-                size:       1,
-                desc:       { initialise: 1, terminate: 2, data: 3 },
-                col_info:   { format: 'Type %s', fallback: 'Unknown (0x%02x)' }
+  subtree.field label:       'FOO PDU Type',
+                filter:      'foo.type',
+                field_type:  'FT_UINT8',
+                int_type:    'BASE_DEC',
+                size:        1,
+                desc:        { initialise: 1, terminate: 2, data: 3 },
+                column_info: { format: 'Type %s', fallback: 'Unknown (0x%02x)' },
+                detail_info: { format: 'Type %s', fallback: 'Unknown (0x%02x)' }
   subtree.field label:      'FOO PDU Flags',
                 filter:     'foo.flags',
                 field_type: 'FT_UINT8',
