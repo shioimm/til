@@ -12,5 +12,8 @@ $ heroku drains:add syslog+tls://logs.example.com:12345 -a <AppName>
 $ heroku drains:remove syslog+tls://logs.example.com:12345 -a <AppName>
 ```
 
+- Syslogドレインを追加した後、トークン (`d...`) を外部のログサービスに登録する
+
 ## 参照
 - [Log Drains](https://devcenter.heroku.com/articles/log-drains)
+- [Herokuからのストリームログ](https://docs.newrelic.com/jp/docs/logs/forward-logs/heroku-log-forwarding/)
