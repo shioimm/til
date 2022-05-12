@@ -1,10 +1,14 @@
 # rm
+- ファイルをGitの管理から外し、ワークツリーからも削除する
 
 ```
-# ファイルをGitの管理から外し、ワークツリーからも削除する
-$ git rm FINENAME
+$ git rm <FileName>
+```
 
-# ファイルをGitの管理から外し、ワークツリーには残す
-# (対象のファイルが既にリポジトリに存在する場合は.gitignoreに追加する)
-$ git rm --cached FINENAME
+#### --cached
+- ファイルをGitの管理から外し、ワークツリーには残す
+  (対象のファイルが既にリポジトリに存在する場合は.gitignoreに追加する)
+
+```
+$ git rm --cached <FileName>
 ```
