@@ -1,18 +1,25 @@
 # 文字列変換
-## 文字列 <-> 二進数
+#### 二進数
 ```ruby
-# 文字列を二進数に変換する
-'abc'.unpack1('B*') # => "011000010110001001100011"
+'abc'.unpack1('B*')
+# => "011000010110001001100011" (#<Encoding:US-ASCII>)
 
-# 二進数を文字列に変換する
-['011000010110001001100011'].pack('B*') # => "abc"
+['011000010110001001100011'].pack('B*')
+# => "abc" (#<Encoding:ASCII-8BIT>)
 ```
 
-## 文字列 -> 8bit 符号なし整数
+#### 8bit ASCII
 ```ruby
-[0x00, 0x00, 0x00, 0x08, 0x57, 0x6f, 0x6f, 0x6f].pack("C*") # => \x00\x00\x00\bWooo
+[0x00, 0x00, 0x00, 0x08, 0x57, 0x6f, 0x6f, 0x6f].pack("C*")
+# => "\x00\x00\x00\bWooo" (#<Encoding:ASCII-8BIT>)
+
+[127, 0, 0, 1].pack("C*")
+# => "\x7F\x00\x00\x01" (#<Encoding:ASCII-8BIT>)
 ```
 
 ## 参照
+- [pack テンプレート文字列](https://docs.ruby-lang.org/ja/3.0/doc/pack_template.html)
+- [Marshal フォーマット](https://docs.ruby-lang.org/ja/3.0/doc/marshal_format.html)
 - [instance method String#unpack](https://docs.ruby-lang.org/ja/3.0.0/method/String/i/unpack.html)
 - [instance method Array#pack](https://docs.ruby-lang.org/ja/3.0.0/method/Array/i/pack.html)
+- [class Encoding](https://docs.ruby-lang.org/ja/3.0/class/Encoding.html)
