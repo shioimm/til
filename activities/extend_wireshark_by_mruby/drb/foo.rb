@@ -1,8 +1,8 @@
 require 'drb'
 
 class Foo
-  def hello
-    puts 'Hello'
+  def greeting
+    'Hello'
   end
 end
 
