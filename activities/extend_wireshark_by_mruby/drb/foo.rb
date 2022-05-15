@@ -1,8 +1,8 @@
 require 'drb'
 
 class Foo
-  def greeting
-    'Hello'
+  def greeting(name)
+    "Hello #{name}"
   end
 end
 
