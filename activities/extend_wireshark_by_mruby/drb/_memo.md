@@ -1,4 +1,61 @@
 # ruby/lib/drb/drb.rb
+## サーバー
+- `class DRbObject`
+  - `#start_service(uri=nil, front=nil, config=nil)`: L1762
+    - `@primary_server = DRbServer.new(uri, front, config)`
+- `class DRbServer`
+  - `#initialize(uri=nil, front=nil, config_or_acl=nil)`: L1450
+    - `@protocol = DRbProtocol.open_server(uri, @config)`
+    - `@thread = run`
+    - `DRb.regist_server(self)`
+  - `#run`: L1554
+    - `main_loop`
+  - `#main_loop`: L1710
+    - `client0 = @protocol.accept`
+    - `invoke_method = InvokeMethod.new(self, client)`
+    - `succ, result = invoke_method.perform`
+    - `client.send_reply(succ, result)`
+- (`DRbServer#initialize` ->) `module DRbProtocol`
+  - `.#open_server(uri, config, first=true)`: L763
+    - `prot = DRb::DRbTCPSocket`
+    - `prot.open_server(uri, config)`
+- `class DRbTCPSocket`
+  - `.open_server(uri, config)`: L875
+    - `soc = TCPServer.open(host, port)`
+    - `self.new(uri, soc, config)`
+- (`DRbServer#main_loop` ->) `class InvokeMethod`
+  - `#initialize(drb_server, client)`: L1623
+  - `#perform`: L1629
+  - `#perform_without_block`: L1672
+    - `@obj = <Foo>`
+    - `@msg_id = :greeting`
+    - `@argv = "dRuby"`
+    - `@obj.__send__(@msg_id, *@argv)`
+- (`DRbServer#main_loop` ->) `class DRbTCPSocket`
+  - `#send_reply(succ, result)`: L935
+    - `@msg = <DRbMessage @load_limit=4294967295, @argc_limit=256>`
+    - `stream = <TCPSocket>`
+    - `succ = true`
+    - `result = "Hello dRuby"`
+    - `@msg.send_reply(stream, succ, result)`
+- `class DRbMessage`
+  - `#send_reply(stream, succ, result)`: L632
+    - `dump(succ) = "\x00\x00\x00\x03\x04\bT"`
+    - `dump(result, !succ) = "\x00\x00\x00\x15\x04\bI\"\x10Hello dRuby\x06:\x06ET"`
+    - `stream.write(dump(succ) + dump(result, !succ))`
+  - `#dump(obj, error=false)`: L561
+    - `obj = "Hello dRuby"`
+    - `obj = make_proxy(obj, error)`
+    - `str = Marshal::dump(obj)`
+    - `[str.size].pack('N') + str`
+  - `make_proxy(obj, error=false)`
+    - `DRbObject.new(obj)`
+- (`DRbServer#initialize` ->) `module DRb`
+  - `.#regist_server(server)`: L1906
+    - `server = <DRbServer>`
+    - `@server[server.uri] = server`
+    - `@primary_server = server`
+
 ## クライアント
 - `class DRbObject`
   - `#method_missing(msg_id, *a, &b)`: L1135
@@ -9,17 +66,17 @@
     - `@protocol.send_request(ref, msg_id, arg, block)`
     - `@protocol.recv_reply`
 - `class DRbTCPSocket` (`@protocol.send_request`)
-  - `send_request(stream, ref, msg_id, arg, b)`: L926
+  - `#send_request(stream, ref, msg_id, arg, b)`: L926
     - `@msg = <DRbMessage>`
     - `@msg.send_request(stream, ref, msg_id, arg, b)`
 - `class DRbMessage`
-  - `send_request(stream, ref, msg_id, arg, b)`: L604
+  - `#send_request(stream, ref, msg_id, arg, b)`: L604
     - `stream = <TCPSocket>`
     - `stream.write([ref.__drbref, msg_id.id2name, arg.length, args, b].join(''))`
 - `class DRbTCPSocket` (`@protocol.recv_reply`)
-  - `recv_reply(stream)`: L638
+  - `#recv_reply(stream)`: L638
     - `[succ, result]`
-  - `load(soc)`: L578
+  - `#load(soc)`: L578
     - `sz = soc.read(4)`
     - `str = soc.read(sz)`
     - `Marshal::load(str)`
