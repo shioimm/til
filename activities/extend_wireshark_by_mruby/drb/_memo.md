@@ -26,11 +26,24 @@
 - (`DRbServer#main_loop` ->) `class InvokeMethod`
   - `#initialize(drb_server, client)`: L1623
   - `#perform`: L1629
-  - `#perform_without_block`: L1672
-    - `@obj = <Foo>`
-    - `@msg_id = :greeting`
-    - `@argv = "dRuby"`
-    - `@obj.__send__(@msg_id, *@argv)`
+    - `#setup_message`: L1632
+    - `#init_with_client`: L1655
+      - `@client = <DRbTCPSocket>`
+      - `@client.recv_request`
+    - `#perform_without_block`: L1672
+      - `@obj = <Foo>`
+      - `@msg_id = :greeting`
+      - `@argv = "dRuby"`
+      - `@obj.__send__(@msg_id, *@argv)`
+- `class DRbTCPSocket`
+  - `recv_request(stream)`: L618
+    - `ref = load(stream)`
+    - `ro = DRb.to_obj(ref)`
+    - `msg = load(stream)`
+    - `argc = load(stream)`
+    - `argv[n] = load(stream)`
+    - `block = load(stream)`
+    - `return ro, msg, argv, block` (`InvokeMethod#perform_without_block`で使用する)
 - (`DRbServer#main_loop` ->) `class DRbTCPSocket`
   - `#send_reply(succ, result)`: L935
     - `@msg = <DRbMessage @load_limit=4294967295, @argc_limit=256>`
@@ -48,6 +61,12 @@
     - `obj = make_proxy(obj, error)`
     - `str = Marshal::dump(obj)`
     - `[str.size].pack('N') + str`
+      - `str.size = 3`
+      - `str = "\x04\bT"`
+      - `[str.size].pack('N') + str = "\x00\x00\x00\x03\x04\bT"`
+      - `str.size = 21`
+      - `str = "\x04\bI\"\x10Hello dRuby\x06:\x06ET"`
+      - `[str.size].pack('N') + str = "\x00\x00\x00\x15\x04\bI\"\x10Hello dRuby\x06:\x06ET"`
   - `make_proxy(obj, error=false)`
     - `DRbObject.new(obj)`
 - (`DRbServer#initialize` ->) `module DRb`
@@ -56,12 +75,33 @@
     - `@server[server.uri] = server`
     - `@primary_server = server`
 
+#### 受信パケット
+
+```
+# #greeting("dRuby")
+
+\x00\x00\x00\x03  \x04\b0                         #  3, ref.__drbref
+\x00\x00\x00\x12  \x04\bI\"\rgreeting\x06:\x06EF  # 18, msg_id.id2name
+\x00\x00\x00\x04  \x04\bi\x06                     #  4, arg.length
+\x00\x00\x00\x0F  \x04\bI\"\ndRuby\x06:\x06ET     # 14, args
+\x00\x00\x00\x03  \x04\b0                         #  3, b
+```
+
+#### 送信パケット
+
+```
+# succ
+\x00\x00\x00\x03  \x04\bT # => 3, true
+# result
+\x00\x00\x00\x15  \x04\bI\"\x10Hello dRuby\x06:\x06ET # => 21, "Hello dRuby"
+```
+
 ## クライアント
 - `class DRbObject`
   - `#method_missing(msg_id, *a, &b)`: L1135
     - `conn.send_message(self, msg_id, a, b)` (DRbObjectオブジェクト、メソッド名、引数[]、&ブロック)
 - `class DRbConn`
-  - `#send_message(ref, msg_id, arg, block)`: L1324
+  - `#send_message(ref, msg_id, arg, block)`: L1322
     - `@protocol = <DRb::DRbTCPSocket>`
     - `@protocol.send_request(ref, msg_id, arg, block)`
     - `@protocol.recv_reply`
@@ -76,26 +116,21 @@
 - `class DRbTCPSocket` (`@protocol.recv_reply`)
   - `#recv_reply(stream)`: L638
     - `[succ, result]`
-  - `#load(soc)`: L578
-    - `sz = soc.read(4)`
-    - `str = soc.read(sz)`
-    - `Marshal::load(str)`
+    - `#load(soc)`: L578
+      - `sz = soc.read(4)`
+      - `str = soc.read(sz)`
+      - `Marshal::load(str)`
 
 #### 送信パケット
-- `ref.__drbref`
-- `msg_id.id2name`
-- `arg.length`
-- `args`
-- `b`
 
 ```
 # #greeting("dRuby")
 
-\x00\x00\x00\x03\x04\b0
-\x00\x00\x00\x12\x04\bI\"\rgreeting\x06:\x06EF
-\x00\x00\x00\x04\x04\bi\x06
-\x00\x00\x00\x0F\x04\bI\"\ndRuby\x06:\x06ET
-\x00\x00\x00\x03\x04\b0
+\x00\x00\x00\x03  \x04\b0                         #  3, ref.__drbref
+\x00\x00\x00\x12  \x04\bI\"\rgreeting\x06:\x06EF  # 18, msg_id.id2name
+\x00\x00\x00\x04  \x04\bi\x06                     #  4, arg.length
+\x00\x00\x00\x0F  \x04\bI\"\ndRuby\x06:\x06ET     # 14, args
+\x00\x00\x00\x03  \x04\b0                         #  3, b
 ```
 
 #### 受信パケット
@@ -105,12 +140,9 @@
 
 ```
 # succ
-"\x00\x00\x00\x03" # => 3
-"\x04\bT"          # => true
-
+\x00\x00\x00\x03  \x04\bT # => 3, true
 # result
-"\x00\x00\x00\x15" # => 21
-"\x04\bI\"\x10Hello dRuby\x06:\x06ET" # => "Hello dRuby"
+\x00\x00\x00\x15  \x04\bI\"\x10Hello dRuby\x06:\x06ET # => 21, "Hello dRuby"
 ```
 
 ## 参照
