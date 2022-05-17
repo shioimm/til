@@ -17,6 +17,13 @@
 # => "\x7F\x00\x00\x01" (#<Encoding:ASCII-8BIT>)
 ```
 
+#### ネットワークバイトオーダー
+```ruby
+# str.size = 3
+[str.size].pack("N")
+# => "\x00\x00\x00\x03"
+```
+
 ## 参照
 - [pack テンプレート文字列](https://docs.ruby-lang.org/ja/3.0/doc/pack_template.html)
 - [Marshal フォーマット](https://docs.ruby-lang.org/ja/3.0/doc/marshal_format.html)
