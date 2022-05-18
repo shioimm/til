@@ -75,27 +75,6 @@
     - `@server[server.uri] = server`
     - `@primary_server = server`
 
-#### 受信パケット
-
-```
-# #greeting("dRuby")
-
-\x00\x00\x00\x03  \x04\b0                         #  3, ref.__drbref
-\x00\x00\x00\x12  \x04\bI\"\rgreeting\x06:\x06EF  # 18, msg_id.id2name
-\x00\x00\x00\x04  \x04\bi\x06                     #  4, arg.length
-\x00\x00\x00\x0F  \x04\bI\"\ndRuby\x06:\x06ET     # 14, args
-\x00\x00\x00\x03  \x04\b0                         #  3, b
-```
-
-#### 送信パケット
-
-```
-# succ
-\x00\x00\x00\x03  \x04\bT # => 3, true
-# result
-\x00\x00\x00\x15  \x04\bI\"\x10Hello dRuby\x06:\x06ET # => 21, "Hello dRuby"
-```
-
 ## クライアント
 - `class DRbObject`
   - `#method_missing(msg_id, *a, &b)`: L1135
@@ -121,28 +100,36 @@
       - `str = soc.read(sz)`
       - `Marshal::load(str)`
 
-#### 送信パケット
+## パケット構造
+- パケットの長さ (4バイト)
+- Marshal文字列
+  - `\x04\b` (2バイト)
+  - Marshal文字列 (可変長バイト)
+
+#### リクエストパケット
+- `ref.__drbref`
+- `msg_id.id2name`
+- `arg.length`
+- `args`
+- `b`
 
 ```
 # #greeting("dRuby")
 
-\x00\x00\x00\x03  \x04\b0                         #  3, ref.__drbref
-\x00\x00\x00\x12  \x04\bI\"\rgreeting\x06:\x06EF  # 18, msg_id.id2name
-\x00\x00\x00\x04  \x04\bi\x06                     #  4, arg.length
-\x00\x00\x00\x0F  \x04\bI\"\ndRuby\x06:\x06ET     # 14, args
-\x00\x00\x00\x03  \x04\b0                         #  3, b
+\x00\x00\x00\x03 | \x04\b  0                         #  3, 0
+\x00\x00\x00\x12 | \x04\b  I\"\rgreeting\x06:\x06EF  # 18, "greeting"
+\x00\x00\x00\x04 | \x04\b  i\x06                     #  4, 6
+\x00\x00\x00\x0F | \x04\b  I\"\ndRuby\x06:\x06ET     # 14, "dRuby"
+\x00\x00\x00\x03 | \x04\b  0                         #  3, 0
 ```
 
-#### 受信パケット
-- `succ` / `result`
-  - `soc.read(4)` - 最初の4バイトが受信パケット全体の長さを表している
-  - `soc.read(sz)` - `Marshal.load`する対象となる文字列全体
+#### レスポンスパケット
+- succ
+- result
 
 ```
-# succ
-\x00\x00\x00\x03  \x04\bT # => 3, true
-# result
-\x00\x00\x00\x15  \x04\bI\"\x10Hello dRuby\x06:\x06ET # => 21, "Hello dRuby"
+\x00\x00\x00\x03 | \x04\b T # => 3, true
+\x00\x00\x00\x15 | \x04\b I\"\x10Hello dRuby\x06:\x06ET # => 21, "Hello dRuby"
 ```
 
 ## 参照
