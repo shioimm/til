@@ -96,52 +96,6 @@ static int hf_type_handle(char c)
   return index;
 }
 
-static void dissect_drb_response(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, guint* offset)
-{
-  col_append_str(pinfo->cinfo, COL_INFO, "dRuby response");
-
-  // success
-  guint32     success_len  = tvb_get_guint32(tvb, *offset, ENC_BIG_ENDIAN);
-  proto_tree *success_tree = proto_tree_add_subtree(tree, tvb, *offset, success_len + 4,
-                                                    ett_node, NULL, "Success");
-
-  proto_tree_add_item(success_tree, hf_druby_len, tvb, *offset, 4, ENC_NA);
-  *offset += 4;
-  *offset += 2; // \x04\bを飛ばす
-
-  proto_tree_add_item(success_tree, hf_druby_type, tvb, *offset, 1, ENC_NA);
-  *offset += 1;
-
-  // result
-  guint32 result_len = tvb_get_guint32(tvb, *offset, ENC_BIG_ENDIAN);
-  proto_tree* result_tree = proto_tree_add_subtree(tree, tvb, *offset, result_len + 4,
-                                                   ett_node, NULL, "Result");
-
-  proto_tree_add_item(result_tree, hf_druby_len, tvb, *offset, 4, ENC_NA);
-  *offset += 4;
-  *offset += 2; // \x04\bを飛ばす
-
-  guint8 result_type = tvb_get_guint8(tvb, *offset);
-
-  if (result_type == 'I') { // インスタンス変数の場合
-    *offset += 1; // Iを飛ばす
-    result_type = tvb_get_guint8(tvb, *offset);
-  }
-
-  proto_tree_add_item(result_tree, hf_druby_type, tvb, *offset, 1, ENC_NA);
-  *offset += 1;
-
-  *offset += 1; // \x10を飛ばす
-  int result_value_len = 0;
-
-  if (result_type == '"') { // 文字列の場合
-    result_value_len = result_len - 10;
-  }
-
-  proto_tree_add_item(result_tree, hf_type_handle(result_type), tvb, *offset, result_value_len, ENC_NA);
-  *offset += result_value_len;
-}
-
 #define BETWEEN(v, b1, b2) (((v) >= (b1)) && ((v) <= (b2)))
 
 void get_druby_integer(tvbuff_t* tvb, guint offset, gint32* value)
@@ -186,6 +140,57 @@ void get_druby_integer(tvbuff_t* tvb, guint offset, gint32* value)
   }
 }
 
+static void dissect_drb_response(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, guint* offset)
+{
+  col_append_str(pinfo->cinfo, COL_INFO, "dRuby response");
+
+  // success
+  guint32     success_len  = tvb_get_guint32(tvb, *offset, ENC_BIG_ENDIAN);
+  proto_tree *success_tree = proto_tree_add_subtree(tree, tvb, *offset, success_len + 4,
+                                                    ett_node, NULL, "Success");
+
+  proto_tree_add_item(success_tree, hf_druby_len, tvb, *offset, 4, ENC_NA);
+  *offset += 4;
+  *offset += 2; // \x04\bを飛ばす
+
+  proto_tree_add_item(success_tree, hf_druby_type, tvb, *offset, 1, ENC_NA);
+  *offset += 1;
+
+  // result
+  guint32     result_len  = tvb_get_guint32(tvb, *offset, ENC_BIG_ENDIAN);
+  proto_tree *result_tree = proto_tree_add_subtree(tree, tvb, *offset, result_len + 4,
+                                                   ett_node, NULL, "Result");
+
+  proto_tree_add_item(result_tree, hf_druby_len, tvb, *offset, 4, ENC_NA);
+  *offset += 4;
+  *offset += 2; // \x04\bを飛ばす
+
+  guint8 result_type = tvb_get_guint8(tvb, *offset);
+
+  if (result_type == 'I') { // インスタンス変数の場合
+    *offset += 1; // Iを飛ばす
+    result_type = tvb_get_guint8(tvb, *offset);
+  }
+
+  proto_tree_add_item(result_tree, hf_druby_type, tvb, *offset, 1, ENC_NA);
+  *offset += 1;
+
+  int result_value_len = 0;
+
+  if (result_type == '"') { // Stringの場合
+    *offset += 1; // \x10を飛ばす
+    result_value_len = result_len - 10;
+    proto_tree_add_item(result_tree, hf_type_handle(result_type), tvb, *offset, result_value_len, ENC_NA);
+  } else if (result_type == 'i') { // Integerの場合
+    result_value_len = result_len - 3;
+    gint32 result_value;
+    get_druby_integer(tvb, *offset, &result_value);
+    proto_tree_add_int_format_value(result_tree, hf_type_handle(result_type), tvb, *offset, result_value_len,
+                                    result_value, "%d", result_value);
+  }
+  *offset += result_value_len;
+}
+
 static void dissect_drb_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, guint* offset)
 {
   col_append_str(pinfo->cinfo, COL_INFO, "dRuby request");
@@ -221,18 +226,22 @@ static void dissect_drb_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* t
   proto_tree_add_item(message_tree, hf_druby_type, tvb, *offset, 1, ENC_NA);
   *offset += 1;
 
-  *offset += 1; // \x10を飛ばす
-
   int message_value_len = 0;
 
-  if (message_type == '"') { // 文字列の場合
+  if (message_type == '"') { // Stringの場合
+    *offset += 1; // \x10を飛ばす
     message_value_len = message_len - 10;
+    proto_tree_add_item(message_tree, hf_type_handle(message_type), tvb, *offset, message_value_len, ENC_NA);
+  } else if (message_type == 'i') { // Integerの場合
+    message_value_len = message_len - 3;
+    gint32 message_value;
+    get_druby_integer(tvb, *offset, &message_value);
+    proto_tree_add_int_format_value(message_tree, hf_type_handle(message_type), tvb,
+                                    *offset, message_value_len, message_value, "%d", message_value);
   }
-
-  proto_tree_add_item(message_tree, hf_druby_string, tvb, *offset, message_value_len, ENC_NA);
   *offset += message_value_len;
 
-  if (message_type == '"') { // 文字列の場合
+  if (message_type == '"') { // Stringの場合
     *offset += 5; // :EFを飛ばす
   }
 
@@ -251,7 +260,11 @@ static void dissect_drb_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* t
   gint32 args_size;
   get_druby_integer(tvb, *offset, &args_size);
 
-  proto_tree_add_item(args_size_tree, hf_druby_integer, tvb, *offset, 1, ENC_NA);
+  int args_size_value_len = args_size_len - 3;
+
+  proto_tree_add_int_format_value(args_size_tree, hf_druby_integer, tvb,
+                                  *offset, args_size_value_len, args_size, "%d", args_size_value_len);
+
   *offset += 1;
 
   // args
@@ -260,46 +273,44 @@ static void dissect_drb_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* t
                                                  ett_node, NULL, "Args");
 
   gchar      *arg_n_label;
-  guint32     args_lengths[args_size];
-  proto_tree *args_trees[args_size];
-
-  int    arg_value_lengths[args_size];
-  guint8 arg_types[args_size];
 
   for (gint32 i = 0; i < args_size; i++) {
     arg_n_label = wmem_strdup_printf(pinfo->pool, "Arg (%d)", i + 1);
 
-    args_lengths[i] = tvb_get_guint32(tvb, *offset, ENC_BIG_ENDIAN);
-    args_trees[i]   = proto_tree_add_subtree(args_tree, tvb, *offset, args_lengths[i] + 4,
-                                             ett_node, NULL, arg_n_label);
+    guint32     arg_len  = tvb_get_guint32(tvb, *offset, ENC_BIG_ENDIAN);
+    proto_tree *arg_tree = proto_tree_add_subtree(args_tree, tvb, *offset, arg_len + 4,
+                                                  ett_node, NULL, arg_n_label);
 
-    proto_tree_add_item(args_trees[i], hf_druby_len, tvb, *offset, 4, ENC_NA);
+    proto_tree_add_item(arg_tree, hf_druby_len, tvb, *offset, 4, ENC_NA);
     *offset += 4;
     *offset += 2; // \x04\bを飛ばす
 
-    arg_types[i] = tvb_get_guint8(tvb, *offset);
+    guint8 arg_type = tvb_get_guint8(tvb, *offset);
 
-    if (arg_types[i] == 'I') { // インスタンス変数の場合
+    if (arg_type == 'I') { // インスタンス変数の場合
       *offset += 1; // Iを飛ばす
-      arg_types[i] = tvb_get_guint8(tvb, *offset);
+      arg_type = tvb_get_guint8(tvb, *offset);
     }
 
-    proto_tree_add_item(args_trees[i], hf_druby_type, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(arg_tree, hf_druby_type, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
-    *offset += 1; // \x10を飛ばす
+    int arg_value_len = 0;
 
-    arg_value_lengths[i] = 0;
-
-    if (arg_types[i] == '"') { // 文字列の場合
-      arg_value_lengths[i] = args_lengths[i] - 10;
+    if (arg_type == '"') { // Stringの場合
+      *offset += 1; // \x10を飛ばす
+      arg_value_len = arg_len - 10;
+      proto_tree_add_item(arg_tree, hf_type_handle(arg_type), tvb, *offset, arg_value_len, ENC_NA);
+    } else if (arg_type == 'i') { // Integerの場合
+      arg_value_len = arg_len - 3;
+      gint32 arg_value;
+      get_druby_integer(tvb, *offset, &arg_value);
+      proto_tree_add_int_format_value(arg_tree, hf_type_handle(arg_type), tvb,
+                                      *offset, arg_value_len, arg_value, "%d", arg_value);
     }
+    *offset += arg_value_len;
 
-    proto_tree_add_item(args_trees[i], hf_type_handle(arg_types[i]), tvb,
-                        *offset, arg_value_lengths[i], ENC_NA);
-    *offset += arg_value_lengths[i];
-
-    if (arg_types[i] == '"') { // 文字列の場合
+    if (arg_type == '"') { // 文字列の場合
       *offset += 5; // :EFを飛ばす
     }
   }
