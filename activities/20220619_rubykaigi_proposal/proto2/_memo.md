@@ -5,15 +5,23 @@ WSProtocol.configure(PROTOCOL_NAME) do |config|
   config.port      PORT_NUMBER # default: 3000
   config.filter    FILTER_NAME # default: PROTOCOL_NAME.downcase
 
-  config.fields({
-                  label:   HF_LABEL,
-                  filter:  HF_FILTER_NAME, # default: FILTER_NAME.downcase + HF_LABEL.downcase.
-                  type:    HF_TYPE,
-                  display: HF_DISPLAY,
-                  size:    HF_SIZE,
-                  offset:  HF_OFFSET, # default: nil
-                  desc:    HF_DESC,   # default: nil
-                })
+  config.field name:      HF_NAME,
+               label:     HF_LABEL,
+               filter:    HF_FILTER_NAME,  # default: FILTER_NAME.downcase + HF_LABEL.downcase.
+               cap_type:  HF_CAPTURE_TYPE,
+               disp_type: HF_DISPLAY_TYPE,
+               desc:      HF_DESCRIPTION,  # default: nil
+
+  config.tree do |t|
+    t.node name:   N_NAME,
+           label:  N_LABEL,
+           field:  HF_NAME,
+           size:   N_SIZE,           # proto_tree_add_itemに渡す
+           offset: N_OFFSET,
+           endian: N_ENDIAN_TYPE,    # default: WSTree::ENDIAN_NA
+           format: { type: N_FORMAT, # default: WSTree::FORMAT_ADD_ITEM
+                     value: proc { ... } }
+  end
 
   # WIP
 end
@@ -21,16 +29,40 @@ end
 
 ```ruby
 class WSProtocol
-  def initialize
-    @name          # String
-    @transport     # Symbol
-    @port          # Integer
-    @filter_name   # String
-    @header_fields # Array
+  # @name          String
+  # @transport     Symbol
+  # @port          Integer
+  # @filter_name   String
+  # @header_fields Array
+
+  def self.configure(name, &block)
+    block.call self.new(name)
   end
 
-  def fields
-    @header_fields << {}
+  def field(f)
+    @header_fields << f
+  end
+
+  def tree(&block)
+    block.call WSTree.new
+  end
+end
+
+class WSTree
+  # @nodes    Array
+  # @position Integer
+
+  def node(n = nil, &block)
+    @nodes << n if n
+    @nodes << block.call self.class.new.node if block_given?
+  end
+
+  def value_at(position, byte)
+    # tvb_get_guint
+  end
+
+  def step(byte)
+    # offset +=
   end
 end
 ```
@@ -44,7 +76,6 @@ end
   - (C) ツリー構造をディセクタ関数内で再現する
   - (C) ツリー構造に応じてettを利用する
 - (Ruby) ツリー内の各ノードを設定することができる
-  - (Ruby) ノード前方にoffsetを指定することができる
   - (Ruby) 固定値のデータサイズ (offset) を指定することができる
   - (Ruby) 指定したパケット位置のデータの値に応じて可変値でデータサイズ (offset) を指定することができる
   - (Ruby) 固定値のヘッダフィールドの種類を指定することができる
@@ -53,6 +84,7 @@ end
     - デフォルトは`proto_tree_add_item`
     - 可変なデータ表現方法としては一旦`proto_tree_add_int_format_value`のみサポートする
     - (Ruby) 任意のRubyスクリプトを渡すことができる
+  - (Ruby) ノード前方にoffsetを指定することができる
 
 #### 現時点ではサポートしない機能
 - ビットフィールド
