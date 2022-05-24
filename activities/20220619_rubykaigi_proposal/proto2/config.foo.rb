@@ -20,5 +20,15 @@ WSProtocol.configure("Foo") do |config|
                endian: WSTree::ENC_BIG_ENDIAN,
                format: { type: WSTree::FORMAT_ADD_ITEM } }
            ]
+
+    t.subtree("Foo subtree") do |st|
+      st.node [
+                { field:  :foo_pdu_type,
+                  size:   1,
+                  offset: 0,
+                  endian: WSTree::ENC_BIG_ENDIAN,
+                  format: { type: WSTree::FORMAT_ADD_ITEM } }
+              ]
+    end
   end
 end
