@@ -13,17 +13,26 @@ WSProtocol.configure(PROTOCOL_NAME) do |config|
                desc:      HF_DESCRIPTION,  # default: nil
 
   config.tree do |t|
-    t.node name:   N_NAME,
-           label:  N_LABEL,
-           field:  HF_NAME,
-           size:   N_SIZE,           # proto_tree_add_itemに渡す
-           offset: N_OFFSET,
-           endian: N_ENDIAN_TYPE,    # default: WSTree::ENDIAN_NA
-           format: { type: N_FORMAT, # default: WSTree::FORMAT_ADD_ITEM
-                     value: proc { ... } }
-  end
+    t.node [
+             { field:  HF_NAME,
+               size:   NODE_SIZE,           # proto_tree_add_itemに渡す
+               offset: NODE_OFFSET,
+               endian: NODE_ENDIAN_TYPE,    # default: WSTree::ENDIAN_NA
+               format: { type: NODE_FORMAT, # default: WSTree::FORMAT_ADD_ITEM
+                         value: proc { ... } } }
+           ]
 
-  # WIP
+    t.subtree(SUBTREE_NAME) do |st|
+      st.node [
+                { field:  HF_NAME,
+                  size:   N_SIZE,           # proto_tree_add_itemに渡す
+                  offset: N_OFFSET,
+                  endian: N_ENDIAN_TYPE,    # default: WSTree::ENDIAN_NA
+                  format: { type: N_FORMAT, # default: WSTree::FORMAT_ADD_ITEM
+                            value: proc { ... } } }
+              ]
+    end
+  end
 end
 ```
 
@@ -49,12 +58,15 @@ class WSProtocol
 end
 
 class WSTree
-  # @nodes    Array
-  # @position Integer
+  # @name  String | nil
+  # @nodes Array
 
-  def node(n = nil, &block)
-    @nodes << n if n
-    @nodes << block.call self.class.new.node if block_given?
+  def node(items)
+    @nodes << items
+  end
+
+  def subtree(name, &block)
+    block.call self.class.new(name)
   end
 
   def value_at(position, byte)
