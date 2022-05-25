@@ -1,14 +1,18 @@
+require_relative 'ws_protocol'
+
 WSProtocol.configure("Foo") do |config|
   config.transport :tcp
-  config.port      30000
+  config.port      4567
   config.filter    "foo"
 
-  config.field name:      :foo_pdu_type,
-               label:     "FOO PDU Type",
-               filter:    "FOO PDU Type",
-               cap_type:  WSProtocol::FT_UINT8,
-               disp_type: WSProtocol::BASE_DEC,
-               desc:      nil
+  config.fields [
+                  { name:      :foo_pdu_type,
+                    label:     "FOO PDU Type",
+                    filter:    "FOO PDU Type",
+                    cap_type:  WSProtocol::FT_UINT8,
+                    disp_type: WSProtocol::BASE_DEC,
+                    desc:      nil }
+                ]
 
   config.tree do |t|
     t.node [
