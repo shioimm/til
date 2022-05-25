@@ -1,11 +1,11 @@
-require_relative 'ws_tree'
-
 class WSProtocol
   FT_UINT8 = nil # C側で実装
   BASE_DEC = nil # C側で実装
 
   def self.configure(name, &block)
-    block.call self.new(name)
+    wsp = self.new(name)
+    block.call wsp
+    wsp.dissect!
   end
 
   def initialize(name)
@@ -34,5 +34,9 @@ class WSProtocol
 
   def tree(&block)
     block.call WSTree.new
+  end
+
+  def dissect!
+    # C側で実装
   end
 end

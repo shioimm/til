@@ -1,5 +1,3 @@
-require_relative 'ws_protocol'
-
 WSProtocol.configure("Foo") do |config|
   config.transport :tcp
   config.port      30000
