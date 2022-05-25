@@ -24,7 +24,8 @@ static int dissect_proto1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U
   return tvb_captured_length(tvb);
 }
 
-static void register_protocol_proto1(void)
+// static void ws_protocol_register(mrb_state *mrb, mrb_value self)
+static void ws_protocol_register(void)
 {
   proto_proto1 = proto_register_protocol(
     "PROTOFOO Protocol",
@@ -33,7 +34,8 @@ static void register_protocol_proto1(void)
   );
 }
 
-static void register_handoff_proto1(void)
+// static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
+static void ws_protocol_handoff(void)
 {
   static dissector_handle_t proto1_handle;
 
@@ -44,8 +46,8 @@ static void register_handoff_proto1(void)
 static mrb_value mrb_ws_protocol_dissect(mrb_state *mrb, mrb_value self)
 {
   mrb_p(mrb, self);
-  register_protocol_proto1();
-  register_handoff_proto1();
+  ws_protocol_register();
+  ws_protocol_handoff();
 
   return self;
 }
