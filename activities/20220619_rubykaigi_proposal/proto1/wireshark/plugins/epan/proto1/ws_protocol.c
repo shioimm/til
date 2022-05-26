@@ -1,7 +1,5 @@
 #include "ws_protocol.h"
 
-#define PROTO1_PORT 4567
-
 typedef enum {
   REGISTER_MODE,
   DISSECTION_MODE,
@@ -34,12 +32,13 @@ static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
   static dissector_handle_t dhandle;
   dhandle = create_dissector_handle(dissect_proto1, phandle);
 
-  mrb_value mrb_transport;
+  mrb_value mrb_transport, mrb_port;
   mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
   mrb_transport = mrb_funcall(mrb, mrb_transport, "to_s", 0);
+  mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, mrb_transport, ".port")),
-                     PROTO1_PORT,
+                     mrb_fixnum(mrb_port),
                      dhandle);
 }
 
