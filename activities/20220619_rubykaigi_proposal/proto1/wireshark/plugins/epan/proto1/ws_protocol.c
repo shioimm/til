@@ -2,6 +2,7 @@
 
 #define PROTO1_PORT 4567
 
+char config_src_path[256];
 static int phandle = -1;
 
 static int dissect_proto1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
@@ -44,7 +45,7 @@ static mrb_value mrb_ws_protocol_dissect(mrb_state *mrb, mrb_value self)
   return self;
 }
 
-void mrb_ws_protocol_init(mrb_state *mrb)
+void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
 {
   FILE *ws_tree_src     = fopen("../plugins/epan/proto1/ws_tree.rb", "r");
   FILE *ws_protocol_src = fopen("../plugins/epan/proto1/ws_protocol.rb", "r");
@@ -55,4 +56,8 @@ void mrb_ws_protocol_init(mrb_state *mrb)
   struct RClass *ws_protocol_klass     = mrb_class_ptr(mrb_ws_protocol_klass);
 
   mrb_define_method(mrb, ws_protocol_klass, "dissect!", mrb_ws_protocol_dissect, MRB_ARGS_NONE());
+
+  strcpy(config_src_path, pathname);
+  FILE *config_src = fopen(config_src_path, "r");
+  mrb_load_file(mrb, config_src);
 }

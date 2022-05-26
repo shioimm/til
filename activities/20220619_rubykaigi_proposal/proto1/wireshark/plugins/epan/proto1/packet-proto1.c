@@ -13,10 +13,7 @@ void proto_reg_handoff_proto1(void)
 {
   mrb_state *mrb = mrb_open();
 
-  mrb_ws_protocol_init(mrb);
-
-  FILE *config_src = fopen("../plugins/epan/proto1/config.foo.rb", "r");
-  mrb_load_file(mrb, config_src);
+  mrb_ws_protocol_start(mrb, "../plugins/epan/proto1/config.foo.rb");
 
   mrb_close(mrb);
 }
