@@ -2,7 +2,7 @@
 
 #define PROTO1_PORT 4567
 
-static int proto_proto1 = -1;
+static int phandle = -1;
 
 static int dissect_proto1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
@@ -15,27 +15,31 @@ static int dissect_proto1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U
 // static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 static void ws_protocol_register(void)
 {
-  proto_proto1 = proto_register_protocol(
+  phandle = proto_register_protocol(
     "PROTOFOO Protocol",
     "PROTOFOO",
     "protofoo"
   );
 }
 
-// static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
-static void ws_protocol_handoff(void)
+static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
 {
-  static dissector_handle_t proto1_handle;
+  static dissector_handle_t dhandle;
+  dhandle = create_dissector_handle(dissect_proto1, phandle);
 
-  proto1_handle = create_dissector_handle(dissect_proto1, proto_proto1);
-  dissector_add_uint("tcp.port", PROTO1_PORT, proto1_handle);
+  mrb_value mrb_transport;
+  mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
+  mrb_transport = mrb_funcall(mrb, mrb_transport, "to_s", 0);
+
+  dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, mrb_transport, ".port")),
+                     PROTO1_PORT,
+                     dhandle);
 }
 
 static mrb_value mrb_ws_protocol_dissect(mrb_state *mrb, mrb_value self)
 {
-  mrb_p(mrb, self);
   ws_protocol_register();
-  ws_protocol_handoff();
+  ws_protocol_handoff(mrb, self);
 
   return self;
 }
