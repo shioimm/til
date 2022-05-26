@@ -4,21 +4,6 @@ class WSProtocol
   FT_UINT8 = nil # C側で実装
   BASE_DEC = nil # C側で実装
 
-  def self.configure(name, &block)
-    wsp = self.new(name)
-    block.call wsp
-    wsp.dissect!
-  end
-
-  def initialize(name)
-    @name           = name
-    @transport      = nil
-    @port           = nil
-    @filter         = nil
-    @header_fields  = []
-    @dissect_fields = nil
-  end
-
   def transport(transport_protocol)
     @transport = transport_protocol
   end

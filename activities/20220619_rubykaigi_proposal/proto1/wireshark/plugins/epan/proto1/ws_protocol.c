@@ -2,8 +2,14 @@
 
 #define PROTO1_PORT 4567
 
+typedef enum {
+  REGISTER_MODE,
+  DISSECTION_MODE,
+} Mode;
+
 char config_src_path[256];
 static int phandle = -1;
+static int mode    = REGISTER_MODE;
 
 static int dissect_proto1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
@@ -37,11 +43,43 @@ static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
                      dhandle);
 }
 
-static mrb_value mrb_ws_protocol_dissect(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_ws_protocol_init(mrb_state *mrb, mrb_value self)
+{
+  mrb_value name;
+  mrb_get_args(mrb, "S", &name);
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@name"), name);
+  return self;
+}
+
+static mrb_value mrb_ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
   ws_protocol_register();
   ws_protocol_handoff(mrb, self);
 
+  return self;
+}
+
+static mrb_value mrb_ws_protocol_dissect(mrb_state *mrb, mrb_value self)
+{
+  return self;
+}
+
+static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
+{
+  mrb_value name;
+  mrb_value blk;
+  mrb_get_args(mrb, "S&", &name, &blk);
+
+  mrb_value proto = mrb_funcall(mrb, self, "new", 1, name);
+  mrb_yield(mrb, blk, proto);
+
+  if (mode == REGISTER_MODE) {
+    mrb_funcall(mrb, proto, "register!", 0);
+    mode = DISSECTION_MODE;
+  }
+  if (mode == DISSECTION_MODE) {
+    mrb_funcall(mrb, proto, "dissect!", 0);
+  }
   return self;
 }
 
@@ -55,9 +93,14 @@ void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_value      mrb_ws_protocol_klass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
   struct RClass *ws_protocol_klass     = mrb_class_ptr(mrb_ws_protocol_klass);
 
+  mrb_define_method(mrb, ws_protocol_klass, "initialize", mrb_ws_protocol_init, MRB_ARGS_REQ(1));
+  mrb_define_method(mrb, ws_protocol_klass, "register!", mrb_ws_protocol_register, MRB_ARGS_NONE());
   mrb_define_method(mrb, ws_protocol_klass, "dissect!", mrb_ws_protocol_dissect, MRB_ARGS_NONE());
+  mrb_define_class_method(mrb, ws_protocol_klass, "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
 
-  strcpy(config_src_path, pathname);
+  if (mode == REGISTER_MODE) {
+    strcpy(config_src_path, pathname);
+  }
   FILE *config_src = fopen(config_src_path, "r");
   mrb_load_file(mrb, config_src);
 }
