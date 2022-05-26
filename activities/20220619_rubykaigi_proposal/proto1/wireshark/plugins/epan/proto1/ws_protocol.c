@@ -1,16 +1,4 @@
-#include "config.h"
-#include <epan/packet.h>
-
-#include <stdlib.h>
-#include <string.h>
-
-#include <mruby.h>
-#include <mruby/class.h>
-#include <mruby/compile.h>
-#include <mruby/numeric.h>
-#include <mruby/string.h>
-#include <mruby/value.h>
-#include <mruby/variable.h>
+#include "ws_protocol.h"
 
 #define PROTO1_PORT 4567
 
