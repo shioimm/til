@@ -1,9 +1,9 @@
 require_relative 'ws_protocol'
 
-WSProtocol.configure("Foo") do |config|
+WSProtocol.configure("ProtoFoo") do |config|
   config.transport :tcp
   config.port      4567
-  config.filter    "foo"
+  config.filter    "proto_foo"
 
   config.fields [
                   { name:      :foo_pdu_type,
