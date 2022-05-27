@@ -1,44 +1,104 @@
 #include "ws_protocol.h"
 
 typedef enum {
-  REGISTER_MODE,
-  DISSECTION_MODE,
-} Mode;
+  REGISTERATION,
+  DISSECTION,
+} OperationMode;
 
 char config_src_path[256];
 static int phandle = -1;
-static int mode    = REGISTER_MODE;
+static int operation_mode = REGISTERATION;
 
-static int dissect_proto1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
+// WIP: 実装中 ----------------
+static int hf_foo_pdu_type = -1;
+static gint ett_foo = -1;
+// -----------------------------
+
+typedef struct {
+  char name[100];
+  char filter[100];
+  char transport[4];
+  unsigned int port;
+} mrb_ws_protocol_t;
+
+static mrb_ws_protocol_t mrb_ws_protocol;
+
+void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
+
+static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
+  if (operation_mode != DISSECTION) operation_mode = DISSECTION;
+
+  // mrb_state *mrb = mrb_open();
+  // mrb_ws_protocol_start(mrb, "");
+  // mrb_close(mrb);
+
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "PROTO FOO");
   col_clear(pinfo->cinfo,COL_INFO);
+
+  // WIP: 実装中 ----------------
+  proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+  proto_tree *main_tree = proto_item_add_subtree(ti, ett_foo);
+  proto_tree_add_item(main_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
+  // -----------------------------
 
   return tvb_captured_length(tvb);
 }
 
-// static void ws_protocol_register(mrb_state *mrb, mrb_value self)
-static void ws_protocol_register(void)
+static void ws_protocol_set_members(mrb_state *mrb, mrb_value self)
 {
+  mrb_value mrb_name      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@name"));
+  mrb_value mrb_filter    = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@filter"));
+  mrb_value mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
+  mrb_value mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
+
+  strcpy(mrb_ws_protocol.name, mrb_string_cstr(mrb, mrb_name));
+  strcpy(mrb_ws_protocol.filter, mrb_string_cstr(mrb, mrb_filter));
+  strcpy(mrb_ws_protocol.transport, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_transport, "to_s", 0)));
+  mrb_ws_protocol.port = (unsigned int)mrb_fixnum(mrb_port);
+}
+
+static void ws_protocol_register(mrb_state *mrb, mrb_value self)
+{
+  ws_protocol_set_members(mrb, self);
+
+  // WIP: 実装中 ----------------
+  static hf_register_info hf[] = {
+    { &hf_foo_pdu_type,
+      { "FOO PDU Type", "foo.type",
+        FT_UINT8, BASE_DEC,
+        NULL, 0x0,
+        NULL, HFILL }
+    }
+  };
+
+  static gint *ett[] = {
+    &ett_foo
+  };
+  // -----------------------------
+
   phandle = proto_register_protocol(
-    "PROTOFOO Protocol",
-    "PROTOFOO",
-    "protofoo"
+    mrb_ws_protocol.name,
+    mrb_ws_protocol.name,
+    mrb_ws_protocol.filter
   );
+
+  // WIP: 実装中 ----------------
+  proto_register_field_array(phandle, hf, array_length(hf));
+  proto_register_subtree_array(ett, array_length(ett));
+  // -----------------------------
 }
 
 static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
 {
   static dissector_handle_t dhandle;
-  dhandle = create_dissector_handle(dissect_proto1, phandle);
+  dhandle = create_dissector_handle(ws_protocol_dissector, phandle);
 
-  mrb_value mrb_transport, mrb_port;
-  mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
-  mrb_transport = mrb_funcall(mrb, mrb_transport, "to_s", 0);
-  mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
+  mrb_value mrb_transport;
+  mrb_transport = mrb_funcall(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport")), "to_s", 0);
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, mrb_transport, ".port")),
-                     mrb_fixnum(mrb_port),
+                     mrb_ws_protocol.port,
                      dhandle);
 }
 
@@ -52,33 +112,28 @@ static mrb_value mrb_ws_protocol_init(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
-  ws_protocol_register();
+  ws_protocol_register(mrb, self);
   ws_protocol_handoff(mrb, self);
-
   return self;
 }
 
-static mrb_value mrb_ws_protocol_dissect(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
 {
+  mrb_p(mrb, self);
   return self;
 }
 
 static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
 {
-  mrb_value name;
-  mrb_value blk;
-  mrb_get_args(mrb, "S&", &name, &blk);
+  mrb_value name, block;
+  mrb_get_args(mrb, "S&", &name, &block);
 
   mrb_value proto = mrb_funcall(mrb, self, "new", 1, name);
-  mrb_yield(mrb, blk, proto);
+  mrb_yield(mrb, block, proto);
 
-  if (mode == REGISTER_MODE) {
-    mrb_funcall(mrb, proto, "register!", 0);
-    mode = DISSECTION_MODE;
-  }
-  if (mode == DISSECTION_MODE) {
-    mrb_funcall(mrb, proto, "dissect!", 0);
-  }
+  if (operation_mode == REGISTERATION) mrb_funcall(mrb, proto, "register!", 0);
+  if (operation_mode == DISSECTION)    mrb_funcall(mrb, proto, "dissect!", 0);
+
   return self;
 }
 
@@ -89,17 +144,18 @@ void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_load_file(mrb, ws_tree_src);
   mrb_load_file(mrb, ws_protocol_src);
 
-  mrb_value      mrb_ws_protocol_klass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
-  struct RClass *ws_protocol_klass     = mrb_class_ptr(mrb_ws_protocol_klass);
+  mrb_value      mrb_klass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
+  struct RClass *klass     = mrb_class_ptr(mrb_klass);
 
-  mrb_define_method(mrb, ws_protocol_klass, "initialize", mrb_ws_protocol_init, MRB_ARGS_REQ(1));
-  mrb_define_method(mrb, ws_protocol_klass, "register!", mrb_ws_protocol_register, MRB_ARGS_NONE());
-  mrb_define_method(mrb, ws_protocol_klass, "dissect!", mrb_ws_protocol_dissect, MRB_ARGS_NONE());
-  mrb_define_class_method(mrb, ws_protocol_klass, "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
+  mrb_define_method(mrb, klass, "initialize", mrb_ws_protocol_init,     MRB_ARGS_REQ(1));
+  mrb_define_method(mrb, klass, "register!",  mrb_ws_protocol_register, MRB_ARGS_NONE());
+  mrb_define_method(mrb, klass, "dissect!",   mrb_ws_protocol_dissector,  MRB_ARGS_NONE());
 
-  if (mode == REGISTER_MODE) {
-    strcpy(config_src_path, pathname);
-  }
+  mrb_define_class_method(mrb, klass,
+                          "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
+
+  if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
+
   FILE *config_src = fopen(config_src_path, "r");
   mrb_load_file(mrb, config_src);
 }

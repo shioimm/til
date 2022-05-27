@@ -4,6 +4,14 @@ class WSProtocol
   FT_UINT8 = nil # C側で実装
   BASE_DEC = nil # C側で実装
 
+  def self.configure
+    # C側で実装
+  end
+
+  def initialize
+    # C側で実装
+  end
+
   def transport(transport_protocol)
     @transport = transport_protocol
   end
@@ -12,8 +20,8 @@ class WSProtocol
     @port = port_number
   end
 
-  def filter(filter_name)
-    @filter = filter_name
+  def filter(filter_name = nil)
+    @filter = filter_name || @name.downcase
   end
 
   def fields(header_fields)
@@ -24,6 +32,10 @@ class WSProtocol
     tree = WSTree.new
     block.call tree
     @dissect_fields = tree
+  end
+
+  def register!
+    # C側で実装
   end
 
   def dissect!
