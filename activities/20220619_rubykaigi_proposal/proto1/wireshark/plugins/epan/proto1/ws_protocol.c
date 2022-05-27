@@ -9,6 +9,11 @@ char config_src_path[256];
 static int phandle = -1;
 static int operation_mode = REGISTERATION;
 
+// WIP: 実装中 ----------------
+static int hf_foo_pdu_type = -1;
+static gint ett_foo = -1;
+// -----------------------------
+
 void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
@@ -22,18 +27,42 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "PROTO FOO");
   col_clear(pinfo->cinfo,COL_INFO);
 
+  // WIP: 実装中 ----------------
+  proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+  proto_tree *main_tree = proto_item_add_subtree(ti, ett_foo);
+  proto_tree_add_item(main_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
+  // -----------------------------
+
   return tvb_captured_length(tvb);
 }
 
 static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
-  mrb_p(mrb, self);
+  // WIP: 実装中 ----------------
+  static hf_register_info hf[] = {
+    { &hf_foo_pdu_type,
+      { "FOO PDU Type", "foo.type",
+        FT_UINT8, BASE_DEC,
+        NULL, 0x0,
+        NULL, HFILL }
+    }
+  };
+
+  static gint *ett[] = {
+    &ett_foo
+  };
+  // -----------------------------
 
   phandle = proto_register_protocol(
     "PROTOFOO Protocol",
     "PROTOFOO",
     "protofoo"
   );
+
+  // WIP: 実装中 ----------------
+  proto_register_field_array(phandle, hf, array_length(hf));
+  proto_register_subtree_array(ett, array_length(ett));
+  // -----------------------------
 }
 
 static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
