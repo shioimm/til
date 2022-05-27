@@ -20,8 +20,8 @@ class WSProtocol
     @port = port_number
   end
 
-  def filter(filter_name)
-    @filter = filter_name
+  def filter(filter_name = nil)
+    @filter = filter_name || @name.downcase
   end
 
   def fields(header_fields)

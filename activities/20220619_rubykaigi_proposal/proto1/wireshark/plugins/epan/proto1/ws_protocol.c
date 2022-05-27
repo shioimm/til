@@ -14,6 +14,15 @@ static int hf_foo_pdu_type = -1;
 static gint ett_foo = -1;
 // -----------------------------
 
+typedef struct {
+  char name[100];
+  char filter[100];
+  char transport[4];
+  unsigned int port;
+} mrb_ws_protocol_t;
+
+static mrb_ws_protocol_t mrb_ws_protocol;
+
 void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
@@ -36,8 +45,23 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   return tvb_captured_length(tvb);
 }
 
+static void ws_protocol_set_members(mrb_state *mrb, mrb_value self)
+{
+  mrb_value mrb_name      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@name"));
+  mrb_value mrb_filter    = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@filter"));
+  mrb_value mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
+  mrb_value mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
+
+  strcpy(mrb_ws_protocol.name, mrb_string_cstr(mrb, mrb_name));
+  strcpy(mrb_ws_protocol.filter, mrb_string_cstr(mrb, mrb_filter));
+  strcpy(mrb_ws_protocol.transport, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_transport, "to_s", 0)));
+  mrb_ws_protocol.port = (unsigned int)mrb_fixnum(mrb_port);
+}
+
 static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
+  ws_protocol_set_members(mrb, self);
+
   // WIP: 実装中 ----------------
   static hf_register_info hf[] = {
     { &hf_foo_pdu_type,
@@ -54,9 +78,9 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
   // -----------------------------
 
   phandle = proto_register_protocol(
-    "PROTOFOO Protocol",
-    "PROTOFOO",
-    "protofoo"
+    mrb_ws_protocol.name,
+    mrb_ws_protocol.name,
+    mrb_ws_protocol.filter
   );
 
   // WIP: 実装中 ----------------
@@ -70,13 +94,11 @@ static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
   static dissector_handle_t dhandle;
   dhandle = create_dissector_handle(ws_protocol_dissector, phandle);
 
-  mrb_value mrb_transport, mrb_port;
-  mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
-  mrb_transport = mrb_funcall(mrb, mrb_transport, "to_s", 0);
-  mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
+  mrb_value mrb_transport;
+  mrb_transport = mrb_funcall(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport")), "to_s", 0);
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, mrb_transport, ".port")),
-                     (unsigned int)mrb_fixnum(mrb_port),
+                     mrb_ws_protocol.port,
                      dhandle);
 }
 
