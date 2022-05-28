@@ -1,5 +1,7 @@
 #include "ws_protocol.h"
 
+#define MRB_SYM(mrb, name) mrb_symbol_value(mrb_intern_lit(mrb, name))
+
 typedef enum {
   REGISTERATION,
   DISSECTION,
@@ -10,7 +12,6 @@ static int phandle = -1;
 static int operation_mode = REGISTERATION;
 
 // WIP: 実装中 ----------------
-static int hf_foo_pdu_type = -1;
 static gint ett_foo = -1;
 // -----------------------------
 
@@ -21,7 +22,19 @@ typedef struct {
   unsigned int port;
 } ws_protocol_t;
 
-static ws_protocol_t ws_protocol;
+typedef struct {
+  int symbol;
+  int handle;
+  int size;
+} ws_field_t;
+
+typedef struct {
+  int size;
+  ws_field_t fields[100];
+} ws_header_fields_t;
+
+static ws_protocol_t      ws_protocol;
+static ws_header_fields_t ws_hfs;
 
 void ws_protocol_start(mrb_state *mrb, const char *pathname);
 
@@ -39,7 +52,7 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   // WIP: 実装中 ----------------
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
   proto_tree *main_tree = proto_item_add_subtree(ti, ett_foo);
-  proto_tree_add_item(main_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
+  proto_tree_add_item(main_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
   // -----------------------------
 
   return tvb_captured_length(tvb);
@@ -62,20 +75,47 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
   ws_protocol_set_members(mrb, self);
 
-  // WIP: 実装中 ----------------
-  static hf_register_info hf[] = {
-    { &hf_foo_pdu_type,
-      { "FOO PDU Type", "foo.type",
-        FT_UINT8, BASE_DEC,
-        NULL, 0x0,
-        NULL, HFILL }
-    }
-  };
+  mrb_value mrb_hfs = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@header_fields"));
+  ws_hfs.size = (int)RARRAY_LEN(mrb_hfs);
+
+  hf_register_info *hf = malloc(sizeof(hf_register_info) * ws_hfs.size);
+
+  for (int i = 0; i < ws_hfs.size; i++) {
+    mrb_value mrb_field = mrb_funcall(mrb, mrb_hfs, "at", 1, mrb_int_value(mrb, i));
+
+    mrb_value mrb_hf_symbol  = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "name"));
+    mrb_value mrb_hf_name    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "label"));
+    mrb_value mrb_hf_abbrev  = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "filter"));
+    mrb_value mrb_hf_type    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "cap_type"));
+    mrb_value mrb_hf_display = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "disp_type"));
+    // WIP: mrb_value mrb_hf_descs   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
+
+    ws_hfs.fields[i].handle = -1;
+    ws_hfs.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
+
+    char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
+    char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
+    strcpy(hf_name,   mrb_str_to_cstr(mrb, mrb_hf_name));
+    strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
+
+    hf[i].p_id = &ws_hfs.fields[i].handle;
+    hf[i].hfinfo.name     = hf_name;
+    hf[i].hfinfo.abbrev   = hf_abbrev;
+    hf[i].hfinfo.type     = (int)mrb_fixnum(mrb_hf_type);
+    hf[i].hfinfo.display  = (int)mrb_fixnum(mrb_hf_display);
+    hf[i].hfinfo.strings  = NULL; // WIP
+    hf[i].hfinfo.bitmask  = 0;    // WIP?;
+    hf[i].hfinfo.blurb    = NULL;
+    hf[i].hfinfo.id       = -1;
+    hf[i].hfinfo.parent   = 0;
+    hf[i].hfinfo.ref_type = HF_REF_TYPE_NONE;
+    hf[i].hfinfo.same_name_prev_id = -1;
+    hf[i].hfinfo.same_name_next    = NULL;
+  }
 
   static gint *ett[] = {
     &ett_foo
   };
-  // -----------------------------
 
   phandle = proto_register_protocol(
     ws_protocol.name,
@@ -83,10 +123,8 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     ws_protocol.filter
   );
 
-  // WIP: 実装中 ----------------
-  proto_register_field_array(phandle, hf, array_length(hf));
+  proto_register_field_array(phandle, hf, ws_hfs.size);
   proto_register_subtree_array(ett, array_length(ett));
-  // -----------------------------
 }
 
 static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
@@ -153,6 +191,9 @@ void ws_protocol_start(mrb_state *mrb, const char *pathname)
 
   mrb_define_class_method(mrb, klass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
+
+  mrb_const_set(mrb, mrb_obj_value(klass), mrb_intern_lit(mrb, "FT_UINT8"), mrb_fixnum_value(FT_UINT8));
+  mrb_const_set(mrb, mrb_obj_value(klass), mrb_intern_lit(mrb, "BASE_DEC"), mrb_fixnum_value(BASE_DEC));
 
   if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
 
