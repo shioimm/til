@@ -19,11 +19,11 @@ typedef struct {
   char filter[100];
   char transport[4];
   unsigned int port;
-} mrb_ws_protocol_t;
+} ws_protocol_t;
 
-static mrb_ws_protocol_t mrb_ws_protocol;
+static ws_protocol_t ws_protocol;
 
-void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
+void ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
@@ -52,10 +52,10 @@ static void ws_protocol_set_members(mrb_state *mrb, mrb_value self)
   mrb_value mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
   mrb_value mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
 
-  strcpy(mrb_ws_protocol.name, mrb_string_cstr(mrb, mrb_name));
-  strcpy(mrb_ws_protocol.filter, mrb_string_cstr(mrb, mrb_filter));
-  strcpy(mrb_ws_protocol.transport, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_transport, "to_s", 0)));
-  mrb_ws_protocol.port = (unsigned int)mrb_fixnum(mrb_port);
+  strcpy(ws_protocol.name, mrb_string_cstr(mrb, mrb_name));
+  strcpy(ws_protocol.filter, mrb_string_cstr(mrb, mrb_filter));
+  strcpy(ws_protocol.transport, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_transport, "to_s", 0)));
+  ws_protocol.port = (unsigned int)mrb_fixnum(mrb_port);
 }
 
 static void ws_protocol_register(mrb_state *mrb, mrb_value self)
@@ -78,9 +78,9 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
   // -----------------------------
 
   phandle = proto_register_protocol(
-    mrb_ws_protocol.name,
-    mrb_ws_protocol.name,
-    mrb_ws_protocol.filter
+    ws_protocol.name,
+    ws_protocol.name,
+    ws_protocol.filter
   );
 
   // WIP: 実装中 ----------------
@@ -98,7 +98,7 @@ static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
   mrb_transport = mrb_funcall(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport")), "to_s", 0);
 
   dissector_add_uint(mrb_str_to_cstr(mrb, mrb_str_cat_lit(mrb, mrb_transport, ".port")),
-                     mrb_ws_protocol.port,
+                     ws_protocol.port,
                      dhandle);
 }
 
@@ -137,7 +137,7 @@ static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
   return self;
 }
 
-void mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
+void ws_protocol_start(mrb_state *mrb, const char *pathname)
 {
   FILE *ws_tree_src     = fopen("../plugins/epan/proto1/ws_tree.rb", "r");
   FILE *ws_protocol_src = fopen("../plugins/epan/proto1/ws_protocol.rb", "r");

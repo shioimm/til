@@ -13,7 +13,7 @@ void proto_reg_handoff_proto1(void)
 {
   mrb_state *mrb = mrb_open();
 
-  mrb_ws_protocol_start(mrb, "../plugins/epan/proto1/config.foo.rb");
+  ws_protocol_start(mrb, "../plugins/epan/proto1/config.foo.rb");
 
   mrb_close(mrb);
 }
