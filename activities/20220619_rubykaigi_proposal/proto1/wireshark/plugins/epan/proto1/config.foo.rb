@@ -8,7 +8,7 @@ WSProtocol.configure("ProtoFoo") do |config|
   config.fields [
                   { name:      :foo_pdu_type,
                     label:     "FOO PDU Type",
-                    filter:    "FOO PDU Type",
+                    filter:    "foo.type",
                     cap_type:  WSProtocol::FT_UINT8,
                     disp_type: WSProtocol::BASE_DEC,
                     desc:      nil }
