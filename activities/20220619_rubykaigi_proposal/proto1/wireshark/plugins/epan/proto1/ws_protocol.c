@@ -11,10 +11,6 @@ char config_src_path[256];
 static int phandle = -1;
 static int operation_mode = REGISTERATION;
 
-// WIP: 実装中 ----------------
-static gint ett_foo = -1;
-// -----------------------------
-
 typedef struct {
   char name[100];
   char filter[100];
@@ -33,8 +29,14 @@ typedef struct {
   ws_field_t fields[100];
 } ws_header_fields_t;
 
+typedef struct {
+   int depth;
+  gint ett;
+} ws_ett_t;
+
 static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
+static ws_ett_t           ws_etts[100];
 
 void ws_protocol_start(mrb_state *mrb, const char *pathname);
 
@@ -51,7 +53,7 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
   // WIP: 実装中 ----------------
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
-  proto_tree *main_tree = proto_item_add_subtree(ti, ett_foo);
+  proto_tree *main_tree = proto_item_add_subtree(ti, ws_etts[0].ett);
   proto_tree_add_item(main_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
   // -----------------------------
 
@@ -113,9 +115,14 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     hf[i].hfinfo.same_name_next    = NULL;
   }
 
-  static gint *ett[] = {
-    &ett_foo
-  };
+  mrb_value mrb_tree_depth = mrb_funcall(mrb, self, "tree_depth", 0);
+  gint **ett = malloc(sizeof(gint) * mrb_fixnum(mrb_tree_depth));
+
+  for (int i = 0; i < mrb_fixnum(mrb_tree_depth); i++) {
+    ws_etts[i].depth = i;
+    ws_etts[i].ett   = -1;
+    ett[i] = &ws_etts[i].ett;
+  }
 
   phandle = proto_register_protocol(
     ws_protocol.name,
@@ -124,7 +131,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
   );
 
   proto_register_field_array(phandle, hf, ws_hfs.size);
-  proto_register_subtree_array(ett, array_length(ett));
+  proto_register_subtree_array((gint *const *)ett, (int)mrb_fixnum(mrb_tree_depth));
 }
 
 static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)

@@ -29,9 +29,13 @@ class WSProtocol
   end
 
   def tree(&block)
-    tree = WSTree.new
+    tree = WSTree.new(name: @name, depth: 1)
     block.call tree
     @dissect_fields = tree
+  end
+
+  def tree_depth
+    @dissect_fields.max_depth + 1
   end
 
   def register!
