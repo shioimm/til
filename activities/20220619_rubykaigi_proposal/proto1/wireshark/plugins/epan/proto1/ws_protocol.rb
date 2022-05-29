@@ -28,13 +28,13 @@ class WSProtocol
     @header_fields = header_fields
   end
 
-  def tree(&block)
-    tree = WSTree.new(name: @name, depth: 1)
-    block.call tree
-    @dissect_fields = tree
+  def dissector(&block)
+    trunk = WSDissector.new(name: @name, depth: 1)
+    block.call trunk
+    @dissect_fields = trunk
   end
 
-  def tree_depth
+  def dissector_depth
     @dissect_fields.max_depth + 1
   end
 

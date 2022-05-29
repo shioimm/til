@@ -55,11 +55,11 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
 
   mrb_value mrb_df = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissect_fields"));
-  mrb_value mrb_nodes = mrb_iv_get(mrb, mrb_df, mrb_intern_lit(mrb, "@nodes"));
+  mrb_value mrb_items = mrb_iv_get(mrb, mrb_df, mrb_intern_lit(mrb, "@items"));
 
-  for (int i = 0; i < (int)RARRAY_LEN(mrb_nodes); i++) {
-    mrb_value mrb_node = mrb_funcall(mrb, mrb_nodes, "fetch", 1, mrb_fixnum_value(i));
-    mrb_p(mrb, mrb_node);
+  for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
+    mrb_value mrb_item = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
+    mrb_p(mrb, mrb_item);
   }
 
   proto_tree *main_tree = proto_item_add_subtree(ti, ws_etts[0].ett);
@@ -129,10 +129,10 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     hf[i].hfinfo.same_name_next    = NULL;
   }
 
-  mrb_value mrb_tree_depth = mrb_funcall(mrb, self, "tree_depth", 0);
-  gint **ett = malloc(sizeof(gint) * mrb_fixnum(mrb_tree_depth));
+  mrb_value mrb_dissector_depth = mrb_funcall(mrb, self, "dissector_depth", 0);
+  gint **ett = malloc(sizeof(gint) * mrb_fixnum(mrb_dissector_depth));
 
-  for (int i = 0; i < mrb_fixnum(mrb_tree_depth); i++) {
+  for (int i = 0; i < mrb_fixnum(mrb_dissector_depth); i++) {
     ws_etts[i].depth = i;
     ws_etts[i].ett   = -1;
     ett[i] = &ws_etts[i].ett;
@@ -145,7 +145,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
   );
 
   proto_register_field_array(phandle, hf, ws_hfs.size);
-  proto_register_subtree_array((gint *const *)ett, (int)mrb_fixnum(mrb_tree_depth));
+  proto_register_subtree_array((gint *const *)ett, (int)mrb_fixnum(mrb_dissector_depth));
 }
 
 static void ws_protocol_handoff(mrb_state *mrb, mrb_value self)
@@ -199,9 +199,9 @@ static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
 
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
 {
-  FILE *ws_tree_src     = fopen("../plugins/epan/proto1/ws_tree.rb", "r");
-  FILE *ws_protocol_src = fopen("../plugins/epan/proto1/ws_protocol.rb", "r");
-  mrb_load_file(mrb, ws_tree_src);
+  FILE *ws_dissector_src = fopen("../plugins/epan/proto1/ws_dissector.rb", "r");
+  FILE *ws_protocol_src  = fopen("../plugins/epan/proto1/ws_protocol.rb", "r");
+  mrb_load_file(mrb, ws_dissector_src);
   mrb_load_file(mrb, ws_protocol_src);
 
   mrb_value      mrb_klass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
