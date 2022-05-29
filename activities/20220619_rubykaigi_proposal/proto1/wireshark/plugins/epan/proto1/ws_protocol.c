@@ -53,6 +53,15 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   col_clear(pinfo->cinfo,COL_INFO);
 
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
+
+  mrb_value mrb_df = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissect_fields"));
+  mrb_value mrb_nodes = mrb_iv_get(mrb, mrb_df, mrb_intern_lit(mrb, "@nodes"));
+
+  for (int i = 0; i < (int)RARRAY_LEN(mrb_nodes); i++) {
+    mrb_value mrb_node = mrb_funcall(mrb, mrb_nodes, "fetch", 1, mrb_fixnum_value(i));
+    mrb_p(mrb, mrb_node);
+  }
+
   proto_tree *main_tree = proto_item_add_subtree(ti, ws_etts[0].ett);
   proto_tree_add_item(main_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
 
