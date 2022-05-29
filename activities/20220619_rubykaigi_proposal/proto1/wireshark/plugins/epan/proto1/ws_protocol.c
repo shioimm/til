@@ -38,26 +38,28 @@ static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
 static ws_ett_t           ws_etts[100];
 
-void ws_protocol_start(mrb_state *mrb, const char *pathname);
+mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
   if (operation_mode != DISSECTION) operation_mode = DISSECTION;
 
-  // mrb_state *mrb = mrb_open();
-  // mrb_ws_protocol_start(mrb, "");
-  // mrb_close(mrb);
+  // WIP: 実装中 ----------------
+  mrb_state *mrb = mrb_open();
+  mrb_value mrb_config = mrb_ws_protocol_start(mrb, "");
+  mrb_p(mrb, mrb_config);
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "PROTO FOO");
   col_clear(pinfo->cinfo,COL_INFO);
 
-  // WIP: 実装中 ----------------
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
   proto_tree *main_tree = proto_item_add_subtree(ti, ws_etts[0].ett);
   proto_tree_add_item(main_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
 
   proto_tree *sub_tree = proto_tree_add_subtree(main_tree, tvb, 0, 1, ws_etts[1].ett, NULL, "Sub");
   proto_tree_add_item(sub_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
+
+  mrb_close(mrb);
   // -----------------------------
 
   return tvb_captured_length(tvb);
@@ -167,7 +169,6 @@ static mrb_value mrb_ws_protocol_register(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
 {
-  mrb_p(mrb, self);
   return self;
 }
 
@@ -179,13 +180,15 @@ static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
   mrb_value proto = mrb_funcall(mrb, self, "new", 1, name);
   mrb_yield(mrb, block, proto);
 
-  if (operation_mode == REGISTERATION) mrb_funcall(mrb, proto, "register!", 0);
-  if (operation_mode == DISSECTION)    mrb_funcall(mrb, proto, "dissect!", 0);
+  mrb_value mrb_config = mrb_nil_value();
 
-  return self;
+  if (operation_mode == REGISTERATION) mrb_config = mrb_funcall(mrb, proto, "register!", 0);
+  if (operation_mode == DISSECTION)    mrb_config = mrb_funcall(mrb, proto, "dissect!", 0);
+
+  return mrb_config;
 }
 
-void ws_protocol_start(mrb_state *mrb, const char *pathname)
+mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
 {
   FILE *ws_tree_src     = fopen("../plugins/epan/proto1/ws_tree.rb", "r");
   FILE *ws_protocol_src = fopen("../plugins/epan/proto1/ws_protocol.rb", "r");
@@ -208,5 +211,5 @@ void ws_protocol_start(mrb_state *mrb, const char *pathname)
   if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
 
   FILE *config_src = fopen(config_src_path, "r");
-  mrb_load_file(mrb, config_src);
+  return mrb_load_file(mrb, config_src);
 }
