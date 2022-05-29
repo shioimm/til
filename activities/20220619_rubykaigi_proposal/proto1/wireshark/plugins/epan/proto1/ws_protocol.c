@@ -55,6 +55,9 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
   proto_tree *main_tree = proto_item_add_subtree(ti, ws_etts[0].ett);
   proto_tree_add_item(main_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
+
+  proto_tree *sub_tree = proto_tree_add_subtree(main_tree, tvb, 0, 1, ws_etts[1].ett, NULL, "Sub");
+  proto_tree_add_item(sub_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
   // -----------------------------
 
   return tvb_captured_length(tvb);
