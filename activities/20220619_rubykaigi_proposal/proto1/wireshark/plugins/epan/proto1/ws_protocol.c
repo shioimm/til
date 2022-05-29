@@ -47,9 +47,9 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   // WIP: 実装中 ----------------
   mrb_state *mrb = mrb_open();
   mrb_value mrb_config = mrb_ws_protocol_start(mrb, "");
-  mrb_p(mrb, mrb_config);
+  mrb_value mrb_name   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@name"));
 
-  col_set_str(pinfo->cinfo, COL_PROTOCOL, "PROTO FOO");
+  col_set_str(pinfo->cinfo, COL_PROTOCOL, mrb_string_cstr(mrb, mrb_name));
   col_clear(pinfo->cinfo,COL_INFO);
 
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
