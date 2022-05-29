@@ -14,23 +14,23 @@ WSProtocol.configure("ProtoFoo") do |config|
                     desc:      nil }
                 ]
 
-  config.tree do |t|
-    t.node [
-             { field:  :foo_pdu_type,
-               size:   1,
-               offset: 0,
-               endian: WSTree::ENC_BIG_ENDIAN,
-               format: { type: WSTree::FORMAT_ADD_ITEM } }
-           ]
+  config.dissector do |d|
+    d.items [
+              { field:  :foo_pdu_type,
+                size:   1,
+                offset: 0,
+                endian: WSDissector::ENC_BIG_ENDIAN,
+                format: { type: WSDissector::FORMAT_ADD_ITEM } }
+             ]
 
-    t.subtree("Foo subtree") do |st|
-      st.node [
-                { field:  :foo_pdu_type,
-                  size:   1,
-                  offset: 0,
-                  endian: WSTree::ENC_BIG_ENDIAN,
-                  format: { type: WSTree::FORMAT_ADD_ITEM } }
-              ]
+    d.sub("Foo subtree") do |ds|
+      ds.items [
+                 { field:  :foo_pdu_type,
+                   size:   1,
+                   offset: 0,
+                   endian: WSDissector::ENC_BIG_ENDIAN,
+                   format: { type: WSDissector::FORMAT_ADD_ITEM } }
+               ]
     end
   end
 end

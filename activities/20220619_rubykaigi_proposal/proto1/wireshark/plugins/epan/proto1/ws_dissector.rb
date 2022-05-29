@@ -1,19 +1,19 @@
-class WSTree
+class WSDissector
   ENC_BIG_ENDIAN  = nil # C側で実装
   FORMAT_ADD_ITEM = nil # C側で実装
 
   def initialize(name:, depth:)
     @name     = name
     @depth    = depth
-    @nodes    = []
+    @items    = []
     @subtrees = []
   end
 
-  def node(items)
-    @nodes = items
+  def items(dissecting_items)
+    @items = dissecting_items
   end
 
-  def subtree(name, &block)
+  def sub(name, &block)
     subtree = self.class.new(name: name, depth: @depth + 1)
     block.call subtree
     @subtrees << subtree
