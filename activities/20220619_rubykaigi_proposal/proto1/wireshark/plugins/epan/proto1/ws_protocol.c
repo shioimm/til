@@ -69,6 +69,27 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
   }
 }
 
+static void ws_protocol_add_subtree_items(mrb_state *mrb, mrb_value mrb_subtrees, proto_item *ti, tvbuff_t *tvb)
+{
+  for (int i = 0; i < (int)RARRAY_LEN(mrb_subtrees); i++) {
+    mrb_value mrb_subtree = mrb_funcall(mrb, mrb_subtrees, "fetch", 1, mrb_fixnum_value(i));
+    mrb_value mrb_name    = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@name"));
+    mrb_value mrb_items   = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@items"));
+    mrb_value mrb_depth   = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@depth"));
+    gint ett = ws_protocol_detect_ws_ett((int)mrb_fixnum(mrb_depth));
+
+    // WIP: 実装中 -----------------
+    proto_tree *subtree = proto_tree_add_subtree(ti, tvb,
+                                                 0, 1, ett, NULL, mrb_string_cstr(mrb, mrb_name));
+    // -----------------------------
+
+    ws_protocol_add_items(mrb, mrb_items, subtree, tvb);
+
+    mrb_value mrb_s_subytrees = mrb_iv_get(mrb, mrb_subtree, mrb_intern_lit(mrb, "@subtrees"));
+    ws_protocol_add_subtree_items(mrb, mrb_s_subytrees, subtree, tvb);
+  }
+}
+
 static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
   if (operation_mode != DISSECTION) operation_mode = DISSECTION;
@@ -90,12 +111,10 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   proto_tree *main_tree = proto_item_add_subtree(ti, ett);
   ws_protocol_add_items(mrb, mrb_items, main_tree, tvb);
 
-  // WIP: 実装中
-  // proto_tree *sub_tree = proto_tree_add_subtree(main_tree, tvb, 0, 1, ws_etts[1].ett, NULL, "Sub");
-  // proto_tree_add_item(sub_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
+  mrb_value mrb_subtrees = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@subtrees"));
+  ws_protocol_add_subtree_items(mrb, mrb_subtrees, main_tree, tvb);
 
   mrb_close(mrb);
-  // -----------------------------
 
   return tvb_captured_length(tvb);
 }
@@ -159,7 +178,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
   gint **ett = malloc(sizeof(gint) * mrb_fixnum(mrb_dissector_depth));
 
   for (int i = 0; i < mrb_fixnum(mrb_dissector_depth); i++) {
-    ws_etts[i].depth = i;
+    ws_etts[i].depth = i + 1;
     ws_etts[i].ett   = -1;
     ett[i] = &ws_etts[i].ett;
   }
