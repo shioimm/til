@@ -40,11 +40,39 @@ static ws_ett_t           ws_etts[100];
 
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
+static gint ws_protocol_detect_ws_ett(int depth)
+{
+  for (int i = 0; i < 100; i++) {
+    if (ws_etts[i].depth == depth) return ws_etts[i].ett;
+  }
+}
+
+static ws_field_t ws_protocol_detect_ws_field(int symbol)
+{
+  for (int i = 0; i < ws_hfs.size; i++) {
+    if (ws_hfs.fields[i].symbol == symbol) return ws_hfs.fields[i];
+  }
+}
+
+static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_item *ti, tvbuff_t *tvb)
+{
+  for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
+    mrb_value  mrb_item   = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
+    mrb_value  mrb_size   = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
+    mrb_value  mrb_offset = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
+    mrb_value  mrb_endian = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "endian"));
+    mrb_value  mrb_sym    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "field"));
+    ws_field_t ws_field   = ws_protocol_detect_ws_field(mrb_obj_to_sym(mrb, mrb_sym));
+
+    proto_tree_add_item(ti, ws_field.handle, tvb,
+                        (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
+  }
+}
+
 static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
   if (operation_mode != DISSECTION) operation_mode = DISSECTION;
 
-  // WIP: 実装中 ----------------
   mrb_state *mrb = mrb_open();
   mrb_value mrb_config = mrb_ws_protocol_start(mrb, "");
   mrb_value mrb_name   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@name"));
@@ -54,19 +82,17 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
 
-  mrb_value mrb_df = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissect_fields"));
-  mrb_value mrb_items = mrb_iv_get(mrb, mrb_df, mrb_intern_lit(mrb, "@items"));
+  mrb_value mrb_dfs   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissect_fields"));
+  mrb_value mrb_items = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@items"));
+  mrb_value mrb_depth = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@depth"));
+  gint ett = ws_protocol_detect_ws_ett((int)mrb_fixnum(mrb_depth));
 
-  for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
-    mrb_value mrb_item = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
-    mrb_p(mrb, mrb_item);
-  }
+  proto_tree *main_tree = proto_item_add_subtree(ti, ett);
+  ws_protocol_add_items(mrb, mrb_items, main_tree, tvb);
 
-  proto_tree *main_tree = proto_item_add_subtree(ti, ws_etts[0].ett);
-  proto_tree_add_item(main_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
-
-  proto_tree *sub_tree = proto_tree_add_subtree(main_tree, tvb, 0, 1, ws_etts[1].ett, NULL, "Sub");
-  proto_tree_add_item(sub_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
+  // WIP: 実装中
+  // proto_tree *sub_tree = proto_tree_add_subtree(main_tree, tvb, 0, 1, ws_etts[1].ett, NULL, "Sub");
+  // proto_tree_add_item(sub_tree, ws_hfs.fields[0].handle, tvb, 0, 1, ENC_BIG_ENDIAN);
 
   mrb_close(mrb);
   // -----------------------------
@@ -178,6 +204,15 @@ static mrb_value mrb_ws_protocol_register(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
 {
+  mrb_value mrb_dklass = mrb_obj_value(mrb_class_get(mrb, "WSDissector"));
+
+  mrb_const_set(mrb, mrb_dklass,
+                mrb_intern_lit(mrb, "ENC_NA"), mrb_fixnum_value(ENC_NA));
+  mrb_const_set(mrb, mrb_dklass,
+                mrb_intern_lit(mrb, "ENC_BIG_ENDIAN"), mrb_fixnum_value(ENC_BIG_ENDIAN));
+  mrb_const_set(mrb, mrb_dklass,
+                mrb_intern_lit(mrb, "ENC_LITTLE_ENDIAN"), mrb_fixnum_value(ENC_LITTLE_ENDIAN));
+
   return self;
 }
 
@@ -204,18 +239,18 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_load_file(mrb, ws_dissector_src);
   mrb_load_file(mrb, ws_protocol_src);
 
-  mrb_value      mrb_klass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
-  struct RClass *klass     = mrb_class_ptr(mrb_klass);
+  mrb_value      mrb_pklass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
+  struct RClass *pklass     = mrb_class_ptr(mrb_pklass);
 
-  mrb_define_method(mrb, klass, "initialize", mrb_ws_protocol_init,     MRB_ARGS_REQ(1));
-  mrb_define_method(mrb, klass, "register!",  mrb_ws_protocol_register, MRB_ARGS_NONE());
-  mrb_define_method(mrb, klass, "dissect!",   mrb_ws_protocol_dissector,  MRB_ARGS_NONE());
+  mrb_define_method(mrb, pklass, "initialize", mrb_ws_protocol_init,     MRB_ARGS_REQ(1));
+  mrb_define_method(mrb, pklass, "register!",  mrb_ws_protocol_register, MRB_ARGS_NONE());
+  mrb_define_method(mrb, pklass, "dissect!",   mrb_ws_protocol_dissector,  MRB_ARGS_NONE());
 
-  mrb_define_class_method(mrb, klass,
+  mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
 
-  mrb_const_set(mrb, mrb_obj_value(klass), mrb_intern_lit(mrb, "FT_UINT8"), mrb_fixnum_value(FT_UINT8));
-  mrb_const_set(mrb, mrb_obj_value(klass), mrb_intern_lit(mrb, "BASE_DEC"), mrb_fixnum_value(BASE_DEC));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"), mrb_fixnum_value(FT_UINT8));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"), mrb_fixnum_value(BASE_DEC));
 
   if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
 
