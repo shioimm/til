@@ -175,7 +175,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
   }
 
   mrb_value mrb_dissector_depth = mrb_funcall(mrb, self, "dissector_depth", 0);
-  gint **ett = malloc(sizeof(gint) * mrb_fixnum(mrb_dissector_depth));
+  gint **ett = malloc(sizeof(gint *) * (int)mrb_fixnum(mrb_dissector_depth));
 
   for (int i = 0; i < mrb_fixnum(mrb_dissector_depth); i++) {
     ws_etts[i].depth = i + 1;
