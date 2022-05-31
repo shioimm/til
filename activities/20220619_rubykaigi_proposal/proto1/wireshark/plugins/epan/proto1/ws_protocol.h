@@ -12,6 +12,7 @@
 #include <mruby/compile.h>
 #include <mruby/data.h>
 #include <mruby/error.h>
+#include <mruby/hash.h>
 #include <mruby/numeric.h>
 #include <mruby/string.h>
 #include <mruby/value.h>

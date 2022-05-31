@@ -54,6 +54,19 @@ static ws_field_t ws_protocol_detect_ws_field(int symbol)
   }
 }
 
+static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym,
+                                 proto_item *ti, int handle, tvbuff_t *tvb,
+                                 int offset, int size, int endian)
+{
+  int format_spec     = (int)mrb_obj_to_sym(mrb, mrb_sym);
+  int add_item_format = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_item"));
+
+  if (format_spec == add_item_format) {
+    proto_tree_add_item(ti, handle, tvb, offset, size, endian);
+    return;
+  }
+}
+
 static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_item *ti, tvbuff_t *tvb)
 {
   for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
@@ -64,8 +77,16 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     mrb_value  mrb_sym    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "field"));
     ws_field_t ws_field   = ws_protocol_detect_ws_field(mrb_obj_to_sym(mrb, mrb_sym));
 
-    proto_tree_add_item(ti, ws_field.handle, tvb,
-                        (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
+    mrb_value mrb_fmt = mrb_funcall(mrb, mrb_item, "fetch", 2, MRB_SYM(mrb, "format"), mrb_hash_new(mrb));
+    mrb_value mrb_fmt_type = mrb_funcall(mrb, mrb_fmt, "fetch", 2, MRB_SYM(mrb, "type"), mrb_nil_value());
+
+    if (mrb_nil_p(mrb_fmt_type)) {
+      mrb_fmt_type = MRB_SYM(mrb, "format_add_item");
+    }
+
+    ws_protocol_tree_add(mrb, mrb_fmt_type,
+                         ti, ws_field.handle, tvb,
+                         (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
   }
 }
 
