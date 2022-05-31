@@ -38,6 +38,15 @@ static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
 static ws_ett_t           ws_etts[100];
 
+// WIP: 実装中 --------------------------------
+static const value_string packettypenames[] = {
+  { 1, "Initialise" },
+  { 2, "Terminate" },
+  { 3, "Data" },
+  { 0, NULL }
+};
+// --------------------------------------------
+
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static gint ws_protocol_detect_ws_ett(int depth)
@@ -170,7 +179,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     mrb_value mrb_hf_abbrev  = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "filter"));
     mrb_value mrb_hf_type    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "cap_type"));
     mrb_value mrb_hf_display = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "disp_type"));
-    // WIP: mrb_value mrb_hf_descs   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
+    mrb_value mrb_hf_descs   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
 
     ws_hfs.fields[i].handle = -1;
     ws_hfs.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
@@ -185,7 +194,9 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     hf[i].hfinfo.abbrev   = hf_abbrev;
     hf[i].hfinfo.type     = (int)mrb_fixnum(mrb_hf_type);
     hf[i].hfinfo.display  = (int)mrb_fixnum(mrb_hf_display);
-    hf[i].hfinfo.strings  = NULL; // WIP
+    // WIP: 実装中 ----------------------
+    hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(packettypenames) : NULL;
+    // ----------------------------------
     hf[i].hfinfo.bitmask  = 0;    // WIP?;
     hf[i].hfinfo.blurb    = NULL;
     hf[i].hfinfo.id       = -1;
