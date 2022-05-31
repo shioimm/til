@@ -268,8 +268,12 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
 
-  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"), mrb_fixnum_value(FT_UINT8));
-  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"), mrb_fixnum_value(BASE_DEC));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"),  mrb_fixnum_value(FT_UINT8));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT16"), mrb_fixnum_value(FT_UINT16));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_IPv4"),   mrb_fixnum_value(FT_IPv4));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_HEX"),  mrb_fixnum_value(BASE_HEX));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_NONE"), mrb_fixnum_value(BASE_NONE));
 
   if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
 
