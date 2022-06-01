@@ -38,6 +38,15 @@ static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
 static ws_ett_t           ws_etts[100];
 
+// WIP: 実装中 --------------------------------
+static const value_string packettypenames[] = {
+  { 1, "Initialise" },
+  { 2, "Terminate" },
+  { 3, "Data" },
+  { 0, NULL }
+};
+// --------------------------------------------
+
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static gint ws_protocol_detect_ws_ett(int depth)
@@ -54,6 +63,19 @@ static ws_field_t ws_protocol_detect_ws_field(int symbol)
   }
 }
 
+static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym,
+                                 proto_item *ti, int handle, tvbuff_t *tvb,
+                                 int offset, int size, int endian)
+{
+  int format_spec     = (int)mrb_obj_to_sym(mrb, mrb_sym);
+  int add_item_format = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_item"));
+
+  if (format_spec == add_item_format) {
+    proto_tree_add_item(ti, handle, tvb, offset, size, endian);
+    return;
+  }
+}
+
 static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_item *ti, tvbuff_t *tvb)
 {
   for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
@@ -64,8 +86,16 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     mrb_value  mrb_sym    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "field"));
     ws_field_t ws_field   = ws_protocol_detect_ws_field(mrb_obj_to_sym(mrb, mrb_sym));
 
-    proto_tree_add_item(ti, ws_field.handle, tvb,
-                        (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
+    mrb_value mrb_fmt = mrb_funcall(mrb, mrb_item, "fetch", 2, MRB_SYM(mrb, "format"), mrb_hash_new(mrb));
+    mrb_value mrb_fmt_type = mrb_funcall(mrb, mrb_fmt, "fetch", 2, MRB_SYM(mrb, "type"), mrb_nil_value());
+
+    if (mrb_nil_p(mrb_fmt_type)) {
+      mrb_fmt_type = MRB_SYM(mrb, "format_add_item");
+    }
+
+    ws_protocol_tree_add(mrb, mrb_fmt_type,
+                         ti, ws_field.handle, tvb,
+                         (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
   }
 }
 
@@ -149,7 +179,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     mrb_value mrb_hf_abbrev  = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "filter"));
     mrb_value mrb_hf_type    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "cap_type"));
     mrb_value mrb_hf_display = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "disp_type"));
-    // WIP: mrb_value mrb_hf_descs   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
+    mrb_value mrb_hf_descs   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
 
     ws_hfs.fields[i].handle = -1;
     ws_hfs.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
@@ -164,7 +194,9 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     hf[i].hfinfo.abbrev   = hf_abbrev;
     hf[i].hfinfo.type     = (int)mrb_fixnum(mrb_hf_type);
     hf[i].hfinfo.display  = (int)mrb_fixnum(mrb_hf_display);
-    hf[i].hfinfo.strings  = NULL; // WIP
+    // WIP: 実装中 ----------------------
+    hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(packettypenames) : NULL;
+    // ----------------------------------
     hf[i].hfinfo.bitmask  = 0;    // WIP?;
     hf[i].hfinfo.blurb    = NULL;
     hf[i].hfinfo.id       = -1;
@@ -268,8 +300,12 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
 
-  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"), mrb_fixnum_value(FT_UINT8));
-  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"), mrb_fixnum_value(BASE_DEC));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"),  mrb_fixnum_value(FT_UINT8));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT16"), mrb_fixnum_value(FT_UINT16));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_IPv4"),   mrb_fixnum_value(FT_IPv4));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_HEX"),  mrb_fixnum_value(BASE_HEX));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_NONE"), mrb_fixnum_value(BASE_NONE));
 
   if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
 
