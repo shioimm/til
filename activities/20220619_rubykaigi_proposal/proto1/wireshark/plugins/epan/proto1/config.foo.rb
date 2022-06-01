@@ -11,7 +11,7 @@ WSProtocol.configure("ProtoFoo") do |config|
                     filter:    "foo.type",
                     cap_type:  WSProtocol::FT_UINT8,
                     disp_type: WSProtocol::BASE_DEC,
-                    desc:      true }, # WIP: 実装中
+                    desc:      { 1 => "Initialise", 2 => "Terminate", 3 => "Data" } },
                   { name:      :foo_pdu_flag,
                     label:     "FOO PDU Flags",
                     filter:    "foo.flags",
