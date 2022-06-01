@@ -38,15 +38,6 @@ static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
 static ws_ett_t           ws_etts[100];
 
-// WIP: 実装中 --------------------------------
-static const value_string packettypenames[] = {
-  { 1, "Initialise" },
-  { 2, "Terminate" },
-  { 3, "Data" },
-  { 0, NULL }
-};
-// --------------------------------------------
-
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static gint ws_protocol_detect_ws_ett(int depth)
@@ -162,6 +153,32 @@ static void ws_protocol_set_members(mrb_state *mrb, mrb_value self)
   ws_protocol.port = (unsigned int)mrb_fixnum(mrb_port);
 }
 
+static value_string *ws_protocol_set_desc_labels(mrb_state *mrb, mrb_value mrb_descs, value_string *desc_labels)
+{
+  mrb_value mrb_descs_size;
+  mrb_descs      = mrb_funcall(mrb, mrb_descs, "to_a", 0);
+  mrb_descs_size = mrb_funcall(mrb, mrb_descs, "size", 0);
+  desc_labels = malloc(sizeof(value_string) * mrb_fixnum(mrb_descs_size));
+
+  for (int i = 0; i < mrb_fixnum(mrb_descs_size); i++) {
+    mrb_value mrb_desc       = mrb_funcall(mrb, mrb_descs, "fetch", 1, mrb_fixnum_value(i));
+    mrb_value mrb_desc_val   = mrb_funcall(mrb, mrb_desc, "fetch", 1, mrb_fixnum_value(0));
+    mrb_value mrb_desc_label = mrb_funcall(mrb, mrb_desc, "fetch", 1, mrb_fixnum_value(1));
+    mrb_value mrb_desc_label_size;
+
+    mrb_desc_label      = mrb_funcall(mrb, mrb_desc_label, "to_s", 0);
+    mrb_desc_label_size = mrb_funcall(mrb, mrb_desc_label, "size", 0);
+
+    guint32 desc_val   = (guint32)mrb_fixnum(mrb_desc_val);
+    gchar  *desc_label = malloc(sizeof(gchar) * mrb_fixnum(mrb_desc_label_size));
+    strcpy(desc_label, mrb_str_to_cstr(mrb, mrb_desc_label));
+
+    desc_labels[i].value  = desc_val;
+    desc_labels[i].strptr = desc_label;
+  }
+  return desc_labels;
+}
+
 static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
   ws_protocol_set_members(mrb, self);
@@ -189,14 +206,18 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     strcpy(hf_name,   mrb_str_to_cstr(mrb, mrb_hf_name));
     strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
 
+    value_string *hf_desc_labels = NULL;
+
+    if (!mrb_nil_p(mrb_hf_descs)) {
+      hf_desc_labels = ws_protocol_set_desc_labels(mrb, mrb_hf_descs, hf_desc_labels);
+    }
+
     hf[i].p_id = &ws_hfs.fields[i].handle;
     hf[i].hfinfo.name     = hf_name;
     hf[i].hfinfo.abbrev   = hf_abbrev;
     hf[i].hfinfo.type     = (int)mrb_fixnum(mrb_hf_type);
     hf[i].hfinfo.display  = (int)mrb_fixnum(mrb_hf_display);
-    // WIP: 実装中 ----------------------
-    hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(packettypenames) : NULL;
-    // ----------------------------------
+    hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(hf_desc_labels) : NULL;
     hf[i].hfinfo.bitmask  = 0;    // WIP?;
     hf[i].hfinfo.blurb    = NULL;
     hf[i].hfinfo.id       = -1;
