@@ -45,4 +45,8 @@ class WSProtocol
   def dissect!
     # C側で実装
   end
+
+  def packet(offset, size)
+    # C側で実装
+  end
 end
