@@ -22,11 +22,11 @@ typedef struct {
   int symbol;
   int handle;
   int size;
-} ws_field_t;
+} ws_header_t;
 
 typedef struct {
   int size;
-  ws_field_t fields[100];
+  ws_header_t headers[100];
 } ws_header_fields_t;
 
 typedef struct {
@@ -40,17 +40,17 @@ static ws_ett_t           ws_etts[100];
 
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
-static gint ws_protocol_detect_ws_ett(int depth)
+static gint ws_protocol_detect_ett(int depth)
 {
   for (int i = 0; i < 100; i++) {
     if (ws_etts[i].depth == depth) return ws_etts[i].ett;
   }
 }
 
-static ws_field_t ws_protocol_detect_ws_field(int symbol)
+static ws_header_t ws_protocol_detect_header(int symbol)
 {
   for (int i = 0; i < ws_hfs.size; i++) {
-    if (ws_hfs.fields[i].symbol == symbol) return ws_hfs.fields[i];
+    if (ws_hfs.headers[i].symbol == symbol) return ws_hfs.headers[i];
   }
 }
 
@@ -70,12 +70,12 @@ static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym,
 static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_item *ti, tvbuff_t *tvb)
 {
   for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
-    mrb_value  mrb_item   = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
-    mrb_value  mrb_size   = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
-    mrb_value  mrb_offset = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
-    mrb_value  mrb_endian = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "endian"));
-    mrb_value  mrb_sym    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "field"));
-    ws_field_t ws_field   = ws_protocol_detect_ws_field(mrb_obj_to_sym(mrb, mrb_sym));
+    mrb_value   mrb_item   = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
+    mrb_value   mrb_size   = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
+    mrb_value   mrb_offset = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
+    mrb_value   mrb_endian = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "endian"));
+    mrb_value   mrb_sym    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
+    ws_header_t ws_header  = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_sym));
 
     mrb_value mrb_fmt = mrb_funcall(mrb, mrb_item, "fetch", 2, MRB_SYM(mrb, "format"), mrb_hash_new(mrb));
     mrb_value mrb_fmt_type = mrb_funcall(mrb, mrb_fmt, "fetch", 2, MRB_SYM(mrb, "type"), mrb_nil_value());
@@ -85,7 +85,7 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     }
 
     ws_protocol_tree_add(mrb, mrb_fmt_type,
-                         ti, ws_field.handle, tvb,
+                         ti, ws_header.handle, tvb,
                          (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
   }
 }
@@ -97,7 +97,7 @@ static void ws_protocol_add_subtree_items(mrb_state *mrb, mrb_value mrb_subtrees
     mrb_value mrb_name    = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@name"));
     mrb_value mrb_items   = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@items"));
     mrb_value mrb_depth   = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@depth"));
-    gint ett = ws_protocol_detect_ws_ett((int)mrb_fixnum(mrb_depth));
+    gint ett = ws_protocol_detect_ett((int)mrb_fixnum(mrb_depth));
 
     // WIP: 実装中 -----------------
     proto_tree *subtree = proto_tree_add_subtree(ti, tvb,
@@ -124,10 +124,10 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
   proto_item *ti = proto_tree_add_item(tree, phandle, tvb, 0, -1, ENC_NA);
 
-  mrb_value mrb_dfs   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissect_fields"));
+  mrb_value mrb_dfs   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissectors"));
   mrb_value mrb_items = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@items"));
   mrb_value mrb_depth = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@depth"));
-  gint ett = ws_protocol_detect_ws_ett((int)mrb_fixnum(mrb_depth));
+  gint ett = ws_protocol_detect_ett((int)mrb_fixnum(mrb_depth));
 
   proto_tree *main_tree = proto_item_add_subtree(ti, ett);
   ws_protocol_add_items(mrb, mrb_items, main_tree, tvb);
@@ -147,77 +147,79 @@ static void ws_protocol_set_members(mrb_state *mrb, mrb_value self)
   mrb_value mrb_transport = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@transport"));
   mrb_value mrb_port      = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@port"));
 
-  strcpy(ws_protocol.name, mrb_string_cstr(mrb, mrb_name));
-  strcpy(ws_protocol.filter, mrb_string_cstr(mrb, mrb_filter));
+  strcpy(ws_protocol.name,      mrb_string_cstr(mrb, mrb_name));
+  strcpy(ws_protocol.filter,    mrb_string_cstr(mrb, mrb_filter));
   strcpy(ws_protocol.transport, mrb_string_cstr(mrb, mrb_funcall(mrb, mrb_transport, "to_s", 0)));
   ws_protocol.port = (unsigned int)mrb_fixnum(mrb_port);
 }
 
-static value_string *ws_protocol_set_desc_labels(mrb_state *mrb, mrb_value mrb_descs, value_string *desc_labels)
+static value_string *ws_protocol_set_packet_labels(mrb_state *mrb,
+                                                   mrb_value mrb_plabels,
+                                                   value_string *packet_labels)
 {
-  mrb_value mrb_descs_size;
-  mrb_descs      = mrb_funcall(mrb, mrb_descs, "to_a", 0);
-  mrb_descs_size = mrb_funcall(mrb, mrb_descs, "size", 0);
-  desc_labels = malloc(sizeof(value_string) * mrb_fixnum(mrb_descs_size));
+  mrb_value mrb_plabels_size;
+  mrb_plabels      = mrb_funcall(mrb, mrb_plabels, "to_a", 0);
+  mrb_plabels_size = mrb_funcall(mrb, mrb_plabels, "size", 0);
+  packet_labels    = malloc(sizeof(value_string) * mrb_fixnum(mrb_plabels_size));
 
-  for (int i = 0; i < mrb_fixnum(mrb_descs_size); i++) {
-    mrb_value mrb_desc       = mrb_funcall(mrb, mrb_descs, "fetch", 1, mrb_fixnum_value(i));
-    mrb_value mrb_desc_val   = mrb_funcall(mrb, mrb_desc, "fetch", 1, mrb_fixnum_value(0));
-    mrb_value mrb_desc_label = mrb_funcall(mrb, mrb_desc, "fetch", 1, mrb_fixnum_value(1));
-    mrb_value mrb_desc_label_size;
+  for (int i = 0; i < mrb_fixnum(mrb_plabels_size); i++) {
+    mrb_value mrb_plabel      = mrb_funcall(mrb, mrb_plabels, "fetch", 1, mrb_fixnum_value(i));
+    mrb_value mrb_plabel_val  = mrb_funcall(mrb, mrb_plabel,  "fetch", 1, mrb_fixnum_value(0));
+    mrb_value mrb_plabel_desc = mrb_funcall(mrb, mrb_plabel,  "fetch", 1, mrb_fixnum_value(1));
+    mrb_value mrb_plabel_desc_size;
 
-    mrb_desc_label      = mrb_funcall(mrb, mrb_desc_label, "to_s", 0);
-    mrb_desc_label_size = mrb_funcall(mrb, mrb_desc_label, "size", 0);
+    mrb_plabel_desc      = mrb_funcall(mrb, mrb_plabel_desc, "to_s", 0);
+    mrb_plabel_desc_size = mrb_funcall(mrb, mrb_plabel_desc, "size", 0);
 
-    guint32 desc_val   = (guint32)mrb_fixnum(mrb_desc_val);
-    gchar  *desc_label = malloc(sizeof(gchar) * mrb_fixnum(mrb_desc_label_size));
-    strcpy(desc_label, mrb_str_to_cstr(mrb, mrb_desc_label));
+    guint32 packet_val  = (guint32)mrb_fixnum(mrb_plabel_val);
+    gchar  *packet_desc = malloc(sizeof(gchar) * mrb_fixnum(mrb_plabel_desc_size));
+    strcpy(packet_desc, mrb_str_to_cstr(mrb, mrb_plabel_desc));
 
-    desc_labels[i].value  = desc_val;
-    desc_labels[i].strptr = desc_label;
+    packet_labels[i].value  = packet_val;
+    packet_labels[i].strptr = packet_desc;
   }
-  return desc_labels;
+  return packet_labels;
 }
 
 static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
   ws_protocol_set_members(mrb, self);
 
-  mrb_value mrb_hfs = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@header_fields"));
+  mrb_value mrb_hfs = mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@headers"));
   ws_hfs.size = (int)RARRAY_LEN(mrb_hfs);
 
   hf_register_info *hf = malloc(sizeof(hf_register_info) * ws_hfs.size);
 
   for (int i = 0; i < ws_hfs.size; i++) {
-    mrb_value mrb_field = mrb_funcall(mrb, mrb_hfs, "at", 1, mrb_int_value(mrb, i));
+    mrb_value mrb_header = mrb_funcall(mrb, mrb_hfs, "at", 1, mrb_int_value(mrb, i));
 
-    mrb_value mrb_hf_symbol  = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "name"));
-    mrb_value mrb_hf_name    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "label"));
-    mrb_value mrb_hf_abbrev  = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "filter"));
-    mrb_value mrb_hf_type    = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "cap_type"));
-    mrb_value mrb_hf_display = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "disp_type"));
-    mrb_value mrb_hf_descs   = mrb_funcall(mrb, mrb_field, "fetch", 1, MRB_SYM(mrb, "desc"));
+    mrb_value mrb_hf_symbol  = mrb_funcall(mrb, mrb_header, "fetch", 1, MRB_SYM(mrb, "name"));
+    mrb_value mrb_hf_name    = mrb_funcall(mrb, mrb_header, "fetch", 1, MRB_SYM(mrb, "label"));
+    mrb_value mrb_hf_abbrev  = mrb_funcall(mrb, mrb_header, "fetch", 1, MRB_SYM(mrb, "filter"));
+    mrb_value mrb_hf_type    = mrb_funcall(mrb, mrb_header, "fetch", 1, MRB_SYM(mrb, "type"));
+    mrb_value mrb_hf_display = mrb_funcall(mrb, mrb_header, "fetch", 1, MRB_SYM(mrb, "display"));
+    mrb_value mrb_hf_plabels = mrb_funcall(mrb, mrb_header, "fetch", 1, MRB_SYM(mrb, "dict"));
 
-    ws_hfs.fields[i].handle = -1;
-    ws_hfs.fields[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
+    ws_hfs.headers[i].handle = -1;
+    ws_hfs.headers[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
 
     char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
     char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
     strcpy(hf_name,   mrb_str_to_cstr(mrb, mrb_hf_name));
     strcpy(hf_abbrev, mrb_str_to_cstr(mrb, mrb_hf_abbrev));
 
-    value_string *hf_desc_labels = NULL;
+    value_string *hf_packet_labels = NULL;
 
-    if (!mrb_nil_p(mrb_hf_descs)) {
-      hf_desc_labels = ws_protocol_set_desc_labels(mrb, mrb_hf_descs, hf_desc_labels);
+    if (!mrb_nil_p(mrb_hf_plabels)) {
+      hf_packet_labels = ws_protocol_set_packet_labels(mrb, mrb_hf_plabels, hf_packet_labels);
     }
 
-    hf[i].p_id = &ws_hfs.fields[i].handle;
+    hf[i].p_id = &ws_hfs.headers[i].handle;
     hf[i].hfinfo.name     = hf_name;
     hf[i].hfinfo.abbrev   = hf_abbrev;
     hf[i].hfinfo.type     = (int)mrb_fixnum(mrb_hf_type);
     hf[i].hfinfo.display  = (int)mrb_fixnum(mrb_hf_display);
-    hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_descs) ? VALS(hf_desc_labels) : NULL;
+    hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_plabels) ? VALS(hf_packet_labels) : NULL;
     hf[i].hfinfo.bitmask  = 0;    // WIP?;
     hf[i].hfinfo.blurb    = NULL;
     hf[i].hfinfo.id       = -1;
@@ -288,6 +290,18 @@ static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
   return self;
 }
 
+static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value self)
+{
+  mrb_int offset, size;
+  mrb_get_args(mrb, "ii", &offset, &size);
+  // WIP: 実装中 ----
+  mrb_p(mrb, mrb_fixnum_value(offset));
+  mrb_p(mrb, mrb_fixnum_value(size));
+  // ----------------
+
+  return self;
+}
+
 static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
 {
   mrb_value name, block;
@@ -314,9 +328,10 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_value      mrb_pklass = mrb_obj_value(mrb_class_get(mrb, "WSProtocol"));
   struct RClass *pklass     = mrb_class_ptr(mrb_pklass);
 
-  mrb_define_method(mrb, pklass, "initialize", mrb_ws_protocol_init,     MRB_ARGS_REQ(1));
-  mrb_define_method(mrb, pklass, "register!",  mrb_ws_protocol_register, MRB_ARGS_NONE());
-  mrb_define_method(mrb, pklass, "dissect!",   mrb_ws_protocol_dissector,  MRB_ARGS_NONE());
+  mrb_define_method(mrb, pklass, "initialize", mrb_ws_protocol_init,      MRB_ARGS_REQ(1));
+  mrb_define_method(mrb, pklass, "register!",  mrb_ws_protocol_register,  MRB_ARGS_NONE());
+  mrb_define_method(mrb, pklass, "dissect!",   mrb_ws_protocol_dissector, MRB_ARGS_NONE());
+  mrb_define_method(mrb, pklass, "packet",     mrb_ws_protocol_packet,    MRB_ARGS_REQ(2));
 
   mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());

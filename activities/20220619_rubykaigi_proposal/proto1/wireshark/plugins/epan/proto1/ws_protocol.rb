@@ -24,18 +24,18 @@ class WSProtocol
     @filter = filter_name || @name.downcase
   end
 
-  def fields(header_fields)
-    @header_fields = header_fields
+  def headers(header_fields)
+    @headers = header_fields
   end
 
-  def dissector(&block)
+  def dissectors(&block)
     trunk = WSDissector.new(name: @name, depth: 1)
     block.call trunk
-    @dissect_fields = trunk
+    @dissectors = trunk
   end
 
   def dissector_depth
-    @dissect_fields.max_depth + 1
+    @dissectors.max_depth + 1
   end
 
   def register!
@@ -43,6 +43,10 @@ class WSProtocol
   end
 
   def dissect!
+    # C側で実装
+  end
+
+  def packet(offset, size)
     # C側で実装
   end
 end

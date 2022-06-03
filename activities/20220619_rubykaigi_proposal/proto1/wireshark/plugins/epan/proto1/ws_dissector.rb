@@ -26,12 +26,4 @@ class WSDissector
       @subtrees.map(&:max_depth).max + 1
     end
   end
-
-  def value_at(position, byte)
-    # tvb_get_guint
-  end
-
-  def step(byte)
-    # offset +=
-  end
 end
