@@ -15,7 +15,7 @@ class WSDissector
 
   def sub(name, &block)
     subtree = self.class.new(name: name, depth: @depth + 1)
-    block.call subtree
+    subtree.instance_eval(&block)
     @subtrees << subtree
   end
 
