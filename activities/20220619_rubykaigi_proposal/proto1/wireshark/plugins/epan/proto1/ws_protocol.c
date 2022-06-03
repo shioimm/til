@@ -295,6 +295,8 @@ static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value self)
   mrb_int offset, size;
   mrb_get_args(mrb, "ii", &offset, &size);
   // WIP: 実装中 ----
+  // sizeによってtvb_get_guintXXを実行
+  // mrb_valueに変換して返す
   mrb_p(mrb, mrb_fixnum_value(offset));
   mrb_p(mrb, mrb_fixnum_value(size));
   // ----------------
@@ -308,7 +310,7 @@ static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
   mrb_get_args(mrb, "S&", &name, &block);
 
   mrb_value proto = mrb_funcall(mrb, self, "new", 1, name);
-  mrb_yield(mrb, block, proto);
+  mrb_funcall_with_block(mrb, proto, mrb_intern_lit(mrb, "instance_eval"), 0, NULL, block);
 
   mrb_value mrb_config = mrb_nil_value();
 

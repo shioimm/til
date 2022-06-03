@@ -30,7 +30,7 @@ class WSProtocol
 
   def dissectors(&block)
     trunk = WSDissector.new(name: @name, depth: 1)
-    block.call trunk
+    trunk.instance_eval(&block)
     @dissectors = trunk
   end
 
@@ -43,10 +43,6 @@ class WSProtocol
   end
 
   def dissect!
-    # C側で実装
-  end
-
-  def packet(offset, size)
     # C側で実装
   end
 end
