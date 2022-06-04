@@ -38,6 +38,8 @@ static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
 static ws_ett_t           ws_etts[100];
 
+static tvbuff_t *_ws_tvb;
+
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static gint ws_protocol_detect_ett(int depth)
@@ -115,6 +117,7 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 {
   if (operation_mode != DISSECTION) operation_mode = DISSECTION;
 
+  _ws_tvb = tvb;
   mrb_state *mrb = mrb_open();
   mrb_value mrb_config = mrb_ws_protocol_start(mrb, "");
   mrb_value mrb_name   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@name"));
@@ -290,18 +293,26 @@ static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
   return self;
 }
 
-static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value _self)
 {
-  mrb_int offset, size;
-  mrb_get_args(mrb, "ii", &offset, &size);
+  if (operation_mode == REGISTERATION) return mrb_nil_value();
+
+  mrb_int offset;
+  mrb_sym type;
+  mrb_get_args(mrb, "in", &offset, &type);
+
+  mrb_value mrb_packet = mrb_nil_value();
+
   // WIP: 実装中 ----
-  // sizeによってtvb_get_guintXXを実行
-  // mrb_valueに変換して返す
-  mrb_p(mrb, mrb_fixnum_value(offset));
-  mrb_p(mrb, mrb_fixnum_value(size));
+  mrb_sym type_gint8 = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint8"));
   // ----------------
 
-  return self;
+  if (type == type_gint8) {
+    gint8 packet = tvb_get_gint8(_ws_tvb, (int)offset);
+    mrb_packet   = mrb_str_new(mrb, &packet, 1);
+  }
+
+  return mrb_packet;
 }
 
 static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
