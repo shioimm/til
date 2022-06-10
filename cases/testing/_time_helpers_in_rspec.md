@@ -1,5 +1,4 @@
 # Timecopの代わりにActiveSupport::Testing::TimeHelpersを使用する
-- [ActiveSupport::Testing::TimeHelpers](https://api.rubyonrails.org/classes/ActiveSupport/Testing/TimeHelpers.html)
 
 ```ruby
 # rails_helper.rb
@@ -28,3 +27,6 @@ after do
   unfreeze_time
 end
 ```
+
+## 参照
+- [ActiveSupport::Testing::TimeHelpers](https://api.rubyonrails.org/classes/ActiveSupport/Testing/TimeHelpers.html)
