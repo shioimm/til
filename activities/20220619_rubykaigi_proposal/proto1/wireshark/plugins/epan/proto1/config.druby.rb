@@ -15,8 +15,8 @@ WSProtocol.configure("dRuby") do
   dissectors do
     sub("Success") do
       items [
-              { header: :hf_druby_len,
-                size:   1,
+              { header: :hf_druby_size,
+                size:   4,
                 offset: 0,
                 endian: WSDissector::ENC_BIG_ENDIAN },
             ]
