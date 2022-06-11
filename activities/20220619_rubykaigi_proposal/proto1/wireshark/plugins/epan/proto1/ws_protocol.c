@@ -47,6 +47,8 @@ static gint ws_protocol_detect_ett(int depth)
   for (int i = 0; i < 100; i++) {
     if (ws_etts[i].depth == depth) return ws_etts[i].ett;
   }
+  puts("static gint ws_protocol_detect_ett(int depth): ett not found");
+  exit(1);
 }
 
 static ws_header_t ws_protocol_detect_header(int symbol)
@@ -54,6 +56,8 @@ static ws_header_t ws_protocol_detect_header(int symbol)
   for (int i = 0; i < ws_hfs.size; i++) {
     if (ws_hfs.headers[i].symbol == symbol) return ws_hfs.headers[i];
   }
+  puts("static ws_header_t ws_protocol_detect_header(int symbol): symbol not found");
+  exit(1);
 }
 
 static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym,
@@ -76,8 +80,8 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     mrb_value   mrb_size   = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
     mrb_value   mrb_offset = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
     mrb_value   mrb_endian = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "endian"));
-    mrb_value   mrb_sym    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
-    ws_header_t ws_header  = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_sym));
+    mrb_value   mrb_symbol = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
+    ws_header_t ws_header  = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_symbol));
 
     mrb_value mrb_fmt = mrb_funcall(mrb, mrb_item, "fetch", 2, MRB_SYM(mrb, "format"), mrb_hash_new(mrb));
     mrb_value mrb_fmt_type = mrb_funcall(mrb, mrb_fmt, "fetch", 2, MRB_SYM(mrb, "type"), mrb_nil_value());
@@ -101,10 +105,10 @@ static void ws_protocol_add_subtree_items(mrb_state *mrb, mrb_value mrb_subtrees
     mrb_value mrb_depth   = mrb_iv_get(mrb,  mrb_subtree, mrb_intern_lit(mrb, "@depth"));
     gint ett = ws_protocol_detect_ett((int)mrb_fixnum(mrb_depth));
 
-    // WIP: 実装中 -----------------
+    // WIP: Need to set size and offset dynamically --
     proto_tree *subtree = proto_tree_add_subtree(ti, tvb,
                                                  0, 1, ett, NULL, mrb_string_cstr(mrb, mrb_name));
-    // -----------------------------
+    // -----------------------------------------------
 
     ws_protocol_add_items(mrb, mrb_items, subtree, tvb);
 
@@ -223,7 +227,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
     hf[i].hfinfo.type     = (int)mrb_fixnum(mrb_hf_type);
     hf[i].hfinfo.display  = (int)mrb_fixnum(mrb_hf_display);
     hf[i].hfinfo.strings  = !mrb_nil_p(mrb_hf_plabels) ? VALS(hf_packet_labels) : NULL;
-    hf[i].hfinfo.bitmask  = 0;    // WIP?;
+    hf[i].hfinfo.bitmask  = 0;    // WIP (Advanced feat)
     hf[i].hfinfo.blurb    = NULL;
     hf[i].hfinfo.id       = -1;
     hf[i].hfinfo.parent   = 0;
@@ -303,14 +307,16 @@ static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value _self)
 
   mrb_value mrb_packet = mrb_nil_value();
 
-  // WIP: 実装中 ----
+  // WIP: Need to add support other packet types --
   mrb_sym type_gint8 = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint8"));
-  // ----------------
+  // ----------------------------------------------
 
   if (type == type_gint8) {
     gint8 packet = tvb_get_gint8(_ws_tvb, (int)offset);
     mrb_packet   = mrb_str_new(mrb, &packet, 1);
   }
+
+  (void) _self; // Avoid -Wunused-parameter
 
   return mrb_packet;
 }
@@ -333,8 +339,8 @@ static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
 
 mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
 {
-  FILE *ws_dissector_src = fopen("../plugins/epan/proto1/ws_dissector.rb", "r");
-  FILE *ws_protocol_src  = fopen("../plugins/epan/proto1/ws_protocol.rb", "r");
+  FILE *ws_dissector_src = fopen("../plugins/epan/mruby/ws_dissector.rb", "r");
+  FILE *ws_protocol_src  = fopen("../plugins/epan/mruby/ws_protocol.rb", "r");
   mrb_load_file(mrb, ws_dissector_src);
   mrb_load_file(mrb, ws_protocol_src);
 
@@ -351,6 +357,7 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
 
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"),  mrb_fixnum_value(FT_UINT8));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT16"), mrb_fixnum_value(FT_UINT16));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT32"), mrb_fixnum_value(FT_UINT32));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_IPv4"),   mrb_fixnum_value(FT_IPv4));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_HEX"),  mrb_fixnum_value(BASE_HEX));
