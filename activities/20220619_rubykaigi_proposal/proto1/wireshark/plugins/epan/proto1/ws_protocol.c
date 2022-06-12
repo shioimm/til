@@ -178,6 +178,10 @@ static value_string *ws_protocol_set_packet_labels(mrb_state *mrb,
     mrb_plabel_desc      = mrb_funcall(mrb, mrb_plabel_desc, "to_s", 0);
     mrb_plabel_desc_size = mrb_funcall(mrb, mrb_plabel_desc, "size", 0);
 
+    if (mrb_string_p(mrb_plabel_val)) {
+      mrb_plabel_val = mrb_funcall(mrb, mrb_plabel_val, "ord", 0);
+    }
+
     guint32 packet_val  = (guint32)mrb_fixnum(mrb_plabel_val);
     gchar  *packet_desc = malloc(sizeof(gchar) * mrb_fixnum(mrb_plabel_desc_size));
     strcpy(packet_desc, mrb_str_to_cstr(mrb, mrb_plabel_desc));
