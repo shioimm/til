@@ -289,15 +289,8 @@ static mrb_value mrb_ws_protocol_register(mrb_state *mrb, mrb_value self)
 
 static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
 {
-  mrb_value mrb_dklass = mrb_obj_value(mrb_class_get(mrb, "WSDissector"));
-
-  mrb_const_set(mrb, mrb_dklass,
-                mrb_intern_lit(mrb, "ENC_NA"), mrb_fixnum_value(ENC_NA));
-  mrb_const_set(mrb, mrb_dklass,
-                mrb_intern_lit(mrb, "ENC_BIG_ENDIAN"), mrb_fixnum_value(ENC_BIG_ENDIAN));
-  mrb_const_set(mrb, mrb_dklass,
-                mrb_intern_lit(mrb, "ENC_LITTLE_ENDIAN"), mrb_fixnum_value(ENC_LITTLE_ENDIAN));
-
+  // Unused function
+  (void) mrb; // Avoid -Wunused-parameter
   return self;
 }
 
@@ -307,22 +300,25 @@ static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value _self)
 
   mrb_int offset;
   mrb_sym type;
-  mrb_get_args(mrb, "in", &offset, &type);
-
-  mrb_value mrb_packet = mrb_nil_value();
+  mrb_int endian;
+  mrb_get_args(mrb, "in|i", &offset, &type, &endian);
 
   // WIP: Need to add support other packet types --
-  mrb_sym type_gint8 = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint8"));
+  mrb_sym type_gint8  = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint8"));
+  mrb_sym type_gint32 = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint32"));
   // ----------------------------------------------
 
+  gint8 packet = 0;
+
   if (type == type_gint8) {
-    gint8 packet = tvb_get_gint8(_ws_tvb, (int)offset);
-    mrb_packet   = mrb_str_new(mrb, &packet, 1);
+    packet = tvb_get_gint8(_ws_tvb, (int)offset);
+  } else if (type == type_gint32) {
+    packet = (gint32)tvb_get_gint32(_ws_tvb, (int)offset, (int)endian);
   }
 
   (void) _self; // Avoid -Wunused-parameter
 
-  return mrb_packet;
+  return mrb_funcall(mrb, mrb_fixnum_value(packet), "to_s", 1, mrb_fixnum_value(16));
 }
 
 static mrb_value mrb_ws_protocol_config(mrb_state *mrb, mrb_value self)
@@ -354,7 +350,7 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_define_method(mrb, pklass, "initialize", mrb_ws_protocol_init,      MRB_ARGS_REQ(1));
   mrb_define_method(mrb, pklass, "register!",  mrb_ws_protocol_register,  MRB_ARGS_NONE());
   mrb_define_method(mrb, pklass, "dissect!",   mrb_ws_protocol_dissector, MRB_ARGS_NONE());
-  mrb_define_method(mrb, pklass, "packet",     mrb_ws_protocol_packet,    MRB_ARGS_REQ(2));
+  mrb_define_method(mrb, pklass, "packet",     mrb_ws_protocol_packet,    MRB_ARGS_ARG(2, 1));
 
   mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
@@ -366,6 +362,11 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_HEX"),  mrb_fixnum_value(BASE_HEX));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_NONE"), mrb_fixnum_value(BASE_NONE));
+
+  mrb_value mrb_dklass = mrb_obj_value(mrb_class_get(mrb, "WSDissector"));
+  mrb_const_set(mrb, mrb_dklass, mrb_intern_lit(mrb, "ENC_NA"),            mrb_fixnum_value(ENC_NA));
+  mrb_const_set(mrb, mrb_dklass, mrb_intern_lit(mrb, "ENC_BIG_ENDIAN"),    mrb_fixnum_value(ENC_BIG_ENDIAN));
+  mrb_const_set(mrb, mrb_dklass, mrb_intern_lit(mrb, "ENC_LITTLE_ENDIAN"), mrb_fixnum_value(ENC_LITTLE_ENDIAN));
 
   if (operation_mode == REGISTERATION) strcpy(config_src_path, pathname);
 

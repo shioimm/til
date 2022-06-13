@@ -15,5 +15,5 @@ class Foo
 end
 
 foo = Foo.new
-DRb.start_service('druby://localhost:8080', foo)
+DRb.start_service('druby://localhost:8082', foo)
 sleep
