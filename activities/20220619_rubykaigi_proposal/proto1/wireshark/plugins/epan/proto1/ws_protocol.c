@@ -359,6 +359,7 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT16"), mrb_fixnum_value(FT_UINT16));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT32"), mrb_fixnum_value(FT_UINT32));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_IPv4"),   mrb_fixnum_value(FT_IPv4));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_STRING"), mrb_fixnum_value(FT_STRING));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_HEX"),  mrb_fixnum_value(BASE_HEX));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_NONE"), mrb_fixnum_value(BASE_NONE));
