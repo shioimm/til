@@ -40,6 +40,12 @@ WSProtocol.configure("dRuby") do
               type:    WSProtocol::FT_UINT8,
               display: WSProtocol::BASE_HEX,
               dict:    druby_types },
+            { name:    :hf_druby_string,
+              label:   "Value",
+              filter:  "druby.string",
+              type:    WSProtocol::FT_STRING,
+              display: WSProtocol::BASE_NONE,
+              dict:    nil },
           ]
 
   protocol =  self
