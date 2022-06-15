@@ -66,6 +66,8 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Result") do
+        result_value_size = protocol.packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+
         items [
                 { header: :hf_druby_size,
                   size:   4,
@@ -76,22 +78,43 @@ WSProtocol.configure("dRuby") do
                   offset: 14,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
-                  size:   protocol.packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN).hex - 10,
+                  size:   result_value_size.hex - 10,
                   offset: 16,
                   endian: WSDissector::ENC_NA },
-                # WIP
               ]
       end
     end
   else # Request
     dissectors do
-      sub("Success") do
+      sub("Ref") do
         items [
                 { header: :hf_druby_size,
                   size:   4,
                   offset: 0,
                   endian: WSDissector::ENC_BIG_ENDIAN },
-                # WIP
+                { header: :hf_druby_string,
+                  size:   1,
+                  offset: 6,
+                  endian: WSDissector::ENC_NA },
+              ]
+      end
+
+      sub("Message") do
+        message_value_size = protocol.packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+
+        items [
+                { header: :hf_druby_size,
+                  size:   4,
+                  offset: 7,
+                  endian: WSDissector::ENC_BIG_ENDIAN },
+                { header: :hf_druby_type,
+                  size:   1,
+                  offset: 14,
+                  endian: WSDissector::ENC_BIG_ENDIAN },
+                { header: :hf_druby_string,
+                  size:   message_value_size ? message_value_size.hex - 10 : 0,
+                  offset: 16,
+                  endian: WSDissector::ENC_NA },
               ]
       end
     end
