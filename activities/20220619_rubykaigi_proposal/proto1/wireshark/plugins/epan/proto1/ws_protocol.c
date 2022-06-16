@@ -34,6 +34,17 @@ typedef struct {
   gint ett;
 } ws_ett_t;
 
+typedef struct {
+  tvbuff_t *tvb;
+  int offset;
+  int size;
+} ws_packet_t;
+
+typedef union {
+  int  endian;
+  char template[10];
+} ws_format_t;
+
 static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
 static ws_ett_t           ws_etts[100];
@@ -60,15 +71,14 @@ static ws_header_t ws_protocol_detect_header(int symbol)
   exit(1);
 }
 
-static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym,
-                                 proto_item *ti, int handle, tvbuff_t *tvb,
-                                 int offset, int size, int endian)
+static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym, proto_item *ti, int handle,
+                                 ws_packet_t packet, ws_format_t format)
 {
   int format_spec     = (int)mrb_obj_to_sym(mrb, mrb_sym);
   int add_item_format = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_item"));
 
   if (format_spec == add_item_format) {
-    proto_tree_add_item(ti, handle, tvb, offset, size, endian);
+    proto_tree_add_item(ti, handle, packet.tvb, packet.offset, packet.size, format.endian);
     return;
   }
 }
@@ -79,21 +89,22 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     mrb_value mrb_item   = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
     mrb_value mrb_size   = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
     mrb_value mrb_offset = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
-    mrb_value mrb_endian = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "endian"));
     mrb_value mrb_symbol = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
+    mrb_value mrb_endian = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "endian"));
+    mrb_value mrb_fmt    = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "format"));
 
-    mrb_value mrb_fmt_type = mrb_funcall(mrb, mrb_item, "dig", 2,
-                                         MRB_SYM(mrb, "format"), MRB_SYM(mrb, "type"));
+    mrb_value   mrb_fmt_type;
+    ws_format_t ws_format;
 
-    if (mrb_nil_p(mrb_fmt_type)) {
+    if (mrb_nil_p(mrb_fmt)) {
       mrb_fmt_type = MRB_SYM(mrb, "format_add_item");
+      ws_format.endian = (int)mrb_fixnum(mrb_endian);
     }
 
-    ws_header_t ws_header  = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_symbol));
+    ws_header_t ws_header = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_symbol));
+    ws_packet_t ws_packet = { tvb, (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size) };
 
-    ws_protocol_tree_add(mrb, mrb_fmt_type,
-                         ti, ws_header.handle, tvb,
-                         (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size), (int)mrb_fixnum(mrb_endian));
+    ws_protocol_tree_add(mrb, mrb_fmt_type, ti, ws_header.handle, ws_packet, ws_format);
   }
 }
 
