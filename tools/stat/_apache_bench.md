@@ -10,6 +10,16 @@
 $ ab -n 100 -c 10 http://example.com
 ```
 
+| オプション | 意味                                                           |
+| -          | -                                                              |
+| -k         | KeepAliveの有効化                                              |
+| -t         | 試行時間                                                       |
+| -C         | Cookieヘッダの指定                                             |
+| -H         | HTTP ヘッダの指定                                              |
+| -T         | Content-Typeヘッダの指定 (POST / PUT時)                        |
+| -p         | bodyのファイルを指定(POST時・-Tが必要)                         |
+| -l         | レスポンスのサイズがリクエストごとに異なる場合でも失敗にしない |
+
 | 項目                 | 意味                                                               |
 | -                    | -                                                                  |
 | Server Software      | 最初に成功したレスポンスのHTTPヘッダに返された値                   |
