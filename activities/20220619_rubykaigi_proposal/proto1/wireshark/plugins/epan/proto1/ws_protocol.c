@@ -40,10 +40,16 @@ typedef struct {
   int size;
 } ws_packet_t;
 
-typedef union {
-  int  endian;
-  char template[10];
+typedef struct {
+  guint32 value;
+  char    template[10];
 } ws_format_t;
+
+typedef struct {
+  int spec;
+  int endian;
+  ws_format_t format;
+} ws_display_t;
 
 static ws_protocol_t      ws_protocol;
 static ws_header_fields_t ws_hfs;
@@ -71,14 +77,31 @@ static ws_header_t ws_protocol_detect_header(int symbol)
   exit(1);
 }
 
-static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym, proto_item *ti, int handle,
-                                 ws_packet_t packet, ws_format_t format)
+static bool ws_protocol_is_default_display(mrb_state *mrb, int format)
 {
-  int format_spec     = (int)mrb_obj_to_sym(mrb, mrb_sym);
-  int add_item_format = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_item"));
+  int default_display = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_item"));
 
-  if (format_spec == add_item_format) {
-    proto_tree_add_item(ti, handle, packet.tvb, packet.offset, packet.size, format.endian);
+  return default_display == format;
+}
+
+static bool ws_protocol_is_formatted_int_display(mrb_state *mrb, int format)
+{
+  int formatted_int_display = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_int_item"));
+
+  return formatted_int_display == format;
+}
+
+static void ws_protocol_tree_add(mrb_state *mrb, proto_item *ti, int handle,
+                                 ws_packet_t packet, ws_display_t display)
+{
+  if (ws_protocol_is_default_display(mrb, display.spec)) {
+    proto_tree_add_item(ti, handle, packet.tvb, packet.offset, packet.size, display.endian);
+    return;
+  } else if (ws_protocol_is_formatted_int_display(mrb, display.spec)) {
+    // WIP
+    printf("%d\n", display.format.value);
+    // proto_tree_add_int_format_value(ti, handle, packet.tvb, packet.offset, packet.size,
+    //                                 display.format.value, display.format.template, display.format.value);
     return;
   }
 }
@@ -86,25 +109,33 @@ static void ws_protocol_tree_add(mrb_state *mrb, mrb_value mrb_sym, proto_item *
 static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_item *ti, tvbuff_t *tvb)
 {
   for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
-    mrb_value mrb_item   = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
-    mrb_value mrb_size   = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
-    mrb_value mrb_offset = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
-    mrb_value mrb_symbol = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
-    mrb_value mrb_endian = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "endian"));
-    mrb_value mrb_fmt    = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "format"));
+    mrb_value mrb_item    = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
+    mrb_value mrb_size    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
+    mrb_value mrb_offset  = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
+    mrb_value mrb_symbol  = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
+    mrb_value mrb_display = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "display"));
+    mrb_value mrb_endian  = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "endian"));
 
-    mrb_value   mrb_fmt_type;
-    ws_format_t ws_format;
+    mrb_value mrb_fmt, mrb_val;
+    ws_display_t ws_display;
 
-    if (mrb_nil_p(mrb_fmt)) {
-      mrb_fmt_type = MRB_SYM(mrb, "format_add_item");
-      ws_format.endian = (int)mrb_fixnum(mrb_endian);
+    if (mrb_nil_p(mrb_display)) mrb_display = MRB_SYM(mrb, "format_add_item");
+
+    ws_display.spec  = (int)mrb_obj_to_sym(mrb, mrb_display);
+
+    if (ws_protocol_is_default_display(mrb, ws_display.spec)) {
+      ws_display.endian = (int)mrb_fixnum(mrb_endian);
+    } else if (ws_protocol_is_formatted_int_display(mrb, ws_display.spec)) {
+      mrb_fmt = mrb_funcall(mrb, mrb_item, "fetch", 1, MRB_SYM(mrb, "format"));
+      mrb_val = mrb_funcall(mrb, mrb_item, "fetch", 1, MRB_SYM(mrb, "value"));
+      strcpy(ws_display.format.template, mrb_string_cstr(mrb, mrb_fmt));
+      ws_display.format.value = (gint32)mrb_fixnum(mrb_val);
     }
 
     ws_header_t ws_header = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_symbol));
     ws_packet_t ws_packet = { tvb, (int)mrb_fixnum(mrb_offset), (int)mrb_fixnum(mrb_size) };
 
-    ws_protocol_tree_add(mrb, mrb_fmt_type, ti, ws_header.handle, ws_packet, ws_format);
+    ws_protocol_tree_add(mrb, ti, ws_header.handle, ws_packet, ws_display);
   }
 }
 
@@ -370,6 +401,7 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"),  mrb_fixnum_value(FT_UINT8));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT16"), mrb_fixnum_value(FT_UINT16));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT32"), mrb_fixnum_value(FT_UINT32));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_INT32"),  mrb_fixnum_value(FT_INT32));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_IPv4"),   mrb_fixnum_value(FT_IPv4));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_STRING"), mrb_fixnum_value(FT_STRING));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
