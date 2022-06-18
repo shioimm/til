@@ -62,14 +62,14 @@ static ws_header_t ws_protocol_detect_header(int symbol)
 
 static bool ws_protocol_is_default_display(mrb_state *mrb, int format)
 {
-  int default_display = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_item"));
+  int default_display = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "default"));
 
   return default_display == format;
 }
 
 static bool ws_protocol_is_formatted_int_display(mrb_state *mrb, int format)
 {
-  int formatted_int_display = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "format_add_int_item"));
+  int formatted_int_display = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "formatted_int"));
 
   return formatted_int_display == format;
 }
@@ -87,7 +87,7 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     ws_header_t ws_header = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_symbol));
     mrb_value mrb_fmt, mrb_val;
 
-    if (mrb_nil_p(mrb_display)) mrb_display = MRB_SYM(mrb, "format_add_item");
+    if (mrb_nil_p(mrb_display)) mrb_display = MRB_SYM(mrb, "default");
 
     int ws_display_spec = (int)mrb_obj_to_sym(mrb, mrb_display);
 
