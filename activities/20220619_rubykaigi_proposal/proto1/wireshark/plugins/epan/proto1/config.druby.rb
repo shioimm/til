@@ -154,6 +154,32 @@ WSProtocol.configure("dRuby") do
                   value:   convert_form_to_int(args_size_value.to_i) },
               ]
       end
+
+      sub("Args") do
+        items [
+                { header: :hf_druby_size,
+                  size:   4,
+                  offset: 37,
+                  endian: WSDissector::ENC_BIG_ENDIAN },
+                { header: :hf_druby_string,
+                  size:   5, # WIP
+                  offset: 46,
+                  endian: WSDissector::ENC_NA },
+              ]
+      end
+
+      sub("Block") do
+        items [
+                { header: :hf_druby_size,
+                  size:   4,
+                  offset: 56,
+                  endian: WSDissector::ENC_BIG_ENDIAN },
+                { header: :hf_druby_type,
+                  size:   1,
+                  offset: 62,
+                  endian: WSDissector::ENC_BIG_ENDIAN },
+              ]
+      end
     end
   end
 end
