@@ -44,11 +44,18 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname);
 
 static gint ws_protocol_detect_ett(int depth)
 {
+  if (depth < 0) {
+    puts("static gint ws_protocol_detect_ett(int depth): no available ett");
+    exit(1);
+  }
+
   for (int i = 0; i < 100; i++) {
     if (ws_etts[i].depth == depth) return ws_etts[i].ett;
   }
-  puts("static gint ws_protocol_detect_ett(int depth): ett not found");
-  exit(1);
+  puts("static gint ws_protocol_detect_ett(int depth): ett not found, fallback to higher ett");
+  ws_protocol_detect_ett(depth - 1);
+
+  return 0; // Unreachable
 }
 
 static ws_header_t ws_protocol_detect_header(int symbol)
