@@ -1,3 +1,16 @@
+def convert_form_to_int(n)
+  n = n ^ 128 - 128
+
+  if n == 0 then 0
+  elsif n >= 4 then n - 5
+  elsif n < -6 then n + 5
+  elsif ( 1.. 3).include? n
+    # WIP
+  elsif (-5..-1).include? n
+    # WIP
+  end
+end
+
 WSProtocol.configure("dRuby") do
   transport :tcp
   port      8080
@@ -124,22 +137,10 @@ WSProtocol.configure("dRuby") do
               ]
       end
 
+      args_size_value = protocol.packet(36, :gint8)
+
       sub("Args size") do
         args_size_value_size = protocol.packet(29, :gint32, WSDissector::ENC_BIG_ENDIAN)
-        args_size_value      = protocol.packet(36, :gint8)
-
-        def convert_form_to_int(n)
-          n = n ^ 128 - 128
-
-          if n == 0 then 0
-          elsif n >= 4 then n - 5
-          elsif n < -6 then n + 5
-          elsif ( 1.. 3).include? n
-            # WIP
-          elsif (-5..-1).include? n
-            # WIP
-          end
-        end
 
         items [
                 { header:  :hf_druby_size,
@@ -151,21 +152,27 @@ WSProtocol.configure("dRuby") do
                   offset:  36,
                   display: :formatted_int,
                   format: "%d",
-                  value:   convert_form_to_int(args_size_value.to_i) },
+                  value:   args_size_value ? convert_form_to_int(args_size_value.to_i) : 0 },
               ]
       end
 
-      sub("Args") do
-        items [
+      if args_size_value
+        sub("Args") do
+          convert_form_to_int(args_size_value.to_i).times do |n|
+            sub("Arg (#{n + 1})") do
+              items [
                 { header: :hf_druby_size,
                   size:   4,
                   offset: 37,
                   endian: WSDissector::ENC_BIG_ENDIAN },
-                { header: :hf_druby_string,
-                  size:   5, # WIP
-                  offset: 46,
-                  endian: WSDissector::ENC_NA },
+                  { header: :hf_druby_string,
+                    size:   5, # WIP
+                    offset: 46,
+                    endian: WSDissector::ENC_NA },
               ]
+            end
+          end
+        end
       end
 
       sub("Block") do
