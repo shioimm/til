@@ -157,6 +157,8 @@ WSProtocol.configure("dRuby") do
       end
 
       if args_size_value
+        args_value_size = protocol.packet(37, :gint32, WSDissector::ENC_BIG_ENDIAN)
+
         sub("Args") do
           convert_form_to_int(args_size_value.to_i).times do |n|
             sub("Arg (#{n + 1})") do
@@ -165,10 +167,10 @@ WSProtocol.configure("dRuby") do
                   size:   4,
                   offset: 37,
                   endian: WSDissector::ENC_BIG_ENDIAN },
-                  { header: :hf_druby_string,
-                    size:   5, # WIP
-                    offset: 46,
-                    endian: WSDissector::ENC_NA },
+                { header: :hf_druby_string,
+                  size:   args_value_size ? args_value_size.hex - 10 : 0,
+                  offset: 46,
+                  endian: WSDissector::ENC_NA },
               ]
             end
           end
