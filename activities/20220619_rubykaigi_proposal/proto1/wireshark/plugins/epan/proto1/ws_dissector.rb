@@ -1,9 +1,10 @@
 class WSDissector
-  ENC_BIG_ENDIAN  = nil # C側で実装
+  ENC_BIG_ENDIAN  = nil # Implemented in ws_protocol.c
 
-  def initialize(name:, depth:)
+  def initialize(name:, depth:, protocol:)
     @name     = name
     @depth    = depth
+    @protocol = protocol
     @items    = []
     @subtrees = []
   end
@@ -13,7 +14,7 @@ class WSDissector
   end
 
   def sub(name, &block)
-    subtree = self.class.new(name: name, depth: @depth + 1)
+    subtree = self.class.new(name: name, depth: @depth + 1, protocol: @protocol)
     subtree.instance_eval(&block)
     @subtrees << subtree
   end
@@ -24,5 +25,9 @@ class WSDissector
     else
       @subtrees.map(&:max_depth).max + 1
     end
+  end
+
+  def packet(offset, type, endian = nil)
+    endian ? @protocol.packet(offset, type, endian) : @protocol.packet(offset, type)
   end
 end

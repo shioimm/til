@@ -67,8 +67,6 @@ WSProtocol.configure("dRuby") do
               dict:    nil },
           ]
 
-  protocol =  self
-
   if packet(6, :gint8) == "54" || packet(6, :gint8) == "46" # Response
     dissectors do
       sub("Success") do
@@ -85,7 +83,7 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Result") do
-        result_value_size = protocol.packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
         items [
                 { header: :hf_druby_size,
@@ -119,7 +117,7 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Message") do
-        message_value_size = protocol.packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        message_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
         items [
                 { header: :hf_druby_size,
@@ -137,10 +135,10 @@ WSProtocol.configure("dRuby") do
               ]
       end
 
-      args_size_value = protocol.packet(36, :gint8)
+      args_size_value = packet(36, :gint8)
 
       sub("Args size") do
-        args_size_value_size = protocol.packet(29, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        args_size_value_size = packet(29, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
         items [
                 { header:  :hf_druby_size,
@@ -157,7 +155,7 @@ WSProtocol.configure("dRuby") do
       end
 
       if args_size_value
-        args_value_size = protocol.packet(37, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        args_value_size = packet(37, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
         sub("Args") do
           convert_form_to_int(args_size_value.to_i).times do |n|
