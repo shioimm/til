@@ -1,4 +1,15 @@
 # DBのパフォーマンス改善
+#### プロセスリストの確認
+- RDBMS上で動作する各プロセス (スレッド) のCPU利用状況の調査
+
+```
+# MySQL
+> show processlist;
+
+# PG
+> select * from pg_stat_activity;
+```
+
 #### 検索負荷の低減
 - 適切なインデックスを設定する
 
