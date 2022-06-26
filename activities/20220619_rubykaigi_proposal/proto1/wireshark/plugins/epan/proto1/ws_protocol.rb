@@ -1,7 +1,4 @@
 class WSProtocol
-  FT_UINT8 = nil # Implemented in ws_protocol.c
-  BASE_DEC = nil # Implemented in ws_protocol.c
-
   def self.configure
     # Implemented in ws_protocol.c
   end
