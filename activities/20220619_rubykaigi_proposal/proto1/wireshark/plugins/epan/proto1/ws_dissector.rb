@@ -1,6 +1,4 @@
 class WSDissector
-  ENC_BIG_ENDIAN  = nil # Implemented in ws_protocol.c
-
   def initialize(name:, depth:, protocol:)
     @name     = name
     @depth    = depth

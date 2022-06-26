@@ -72,11 +72,9 @@ WSProtocol.configure("dRuby") do
       sub("Success") do
         items [
                 { header: :hf_druby_size,
-                  size:   4,
                   offset: 0,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
-                  size:   1,
                   offset: 6,
                   endian: WSDissector::ENC_BIG_ENDIAN },
               ]
@@ -87,11 +85,9 @@ WSProtocol.configure("dRuby") do
 
         items [
                 { header: :hf_druby_size,
-                  size:   4,
                   offset: 7,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
-                  size:   1,
                   offset: 14,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
@@ -106,7 +102,6 @@ WSProtocol.configure("dRuby") do
       sub("Ref") do
         items [
                 { header: :hf_druby_size,
-                  size:   4,
                   offset: 0,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
@@ -121,11 +116,9 @@ WSProtocol.configure("dRuby") do
 
         items [
                 { header: :hf_druby_size,
-                  size:   4,
                   offset: 7,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
-                  size:   1,
                   offset: 14,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
@@ -142,7 +135,6 @@ WSProtocol.configure("dRuby") do
 
         items [
                 { header:  :hf_druby_size,
-                  size:    4,
                   offset:  29,
                   endian:  WSDissector::ENC_BIG_ENDIAN },
                 { header:  :hf_druby_integer,
@@ -162,7 +154,6 @@ WSProtocol.configure("dRuby") do
             sub("Arg (#{n + 1})") do
               items [
                 { header: :hf_druby_size,
-                  size:   4,
                   offset: 37,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
@@ -178,11 +169,9 @@ WSProtocol.configure("dRuby") do
       sub("Block") do
         items [
                 { header: :hf_druby_size,
-                  size:   4,
                   offset: 56,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
-                  size:   1,
                   offset: 62,
                   endian: WSDissector::ENC_BIG_ENDIAN },
               ]
