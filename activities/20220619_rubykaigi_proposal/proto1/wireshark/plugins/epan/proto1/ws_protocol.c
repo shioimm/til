@@ -85,13 +85,22 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
 {
   for (int i = 0; i < (int)RARRAY_LEN(mrb_items); i++) {
     mrb_value mrb_item    = mrb_funcall(mrb, mrb_items, "fetch", 1, mrb_fixnum_value(i));
-    mrb_value mrb_size    = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "size"));
+    mrb_value mrb_size    = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "size"));
     mrb_value mrb_offset  = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "offset"));
     mrb_value mrb_symbol  = mrb_funcall(mrb, mrb_item,  "fetch", 1, MRB_SYM(mrb, "header"));
     mrb_value mrb_display = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "display"));
     mrb_value mrb_endian  = mrb_funcall(mrb, mrb_item,  "dig",   1, MRB_SYM(mrb, "endian"));
 
     ws_header_t ws_header = ws_protocol_detect_header(mrb_obj_to_sym(mrb, mrb_symbol));
+
+    int field_size = 0;
+
+    if (!mrb_nil_p(mrb_size)) {
+      field_size = (int)mrb_fixnum(mrb_size);
+    } else {
+      field_size = ws_header.size;
+    }
+
     mrb_value mrb_fmt, mrb_val;
 
     if (mrb_nil_p(mrb_display)) mrb_display = MRB_SYM(mrb, "default");
@@ -101,14 +110,14 @@ static void ws_protocol_add_items(mrb_state *mrb, mrb_value mrb_items, proto_ite
     if (ws_protocol_is_default_display(mrb, ws_display_spec)) {
       proto_tree_add_item(ti, ws_header.handle, tvb,
                           (int)mrb_fixnum(mrb_offset),
-                          (int)mrb_fixnum(mrb_size),
+                          field_size,
                           (int)mrb_fixnum(mrb_endian));
     } else if (ws_protocol_is_formatted_int_display(mrb, ws_display_spec)) {
       mrb_fmt = mrb_funcall(mrb, mrb_item, "fetch", 1, MRB_SYM(mrb, "format"));
       mrb_val = mrb_funcall(mrb, mrb_item, "fetch", 1, MRB_SYM(mrb, "value"));
       proto_tree_add_int_format_value(ti, ws_header.handle, tvb,
                                       (int)mrb_fixnum(mrb_offset),
-                                      (int)mrb_fixnum(mrb_size),
+                                      field_size,
                                       (gint32)mrb_fixnum(mrb_val),
                                       mrb_string_cstr(mrb, mrb_fmt),
                                       (gint32)mrb_fixnum(mrb_val));
@@ -212,6 +221,33 @@ static value_string *ws_protocol_set_packet_labels(mrb_state *mrb,
   return packet_labels;
 }
 
+static int ws_protocol_field_size(int field_type)
+{
+  int size = 0;
+
+  // WIP: Need to add support other ftypes --
+  switch (field_type) {
+    case FT_INT8:
+    case FT_UINT8:
+      size = 1;
+      break;
+    case FT_INT16:
+    case FT_UINT16:
+      size = 2;
+      break;
+    case FT_INT32:
+    case FT_UINT32:
+    case FT_IPv4:
+      size = 4;
+      break;
+    default:
+      size = 0;
+  }
+  // ----------------------------------------
+
+  return size;
+}
+
 static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 {
   ws_protocol_set_members(mrb, self);
@@ -233,6 +269,7 @@ static void ws_protocol_register(mrb_state *mrb, mrb_value self)
 
     ws_hfs.headers[i].handle = -1;
     ws_hfs.headers[i].symbol = mrb_obj_to_sym(mrb, mrb_hf_symbol);
+    ws_hfs.headers[i].size   = ws_protocol_field_size((int)mrb_fixnum(mrb_hf_type));
 
     char *hf_name   = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_name, "size", 0)));
     char *hf_abbrev = malloc(sizeof(char) * mrb_fixnum(mrb_funcall(mrb, mrb_hf_abbrev, "size", 0)));
@@ -375,10 +412,12 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
 
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_INT8"),   mrb_fixnum_value(FT_INT8));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT8"),  mrb_fixnum_value(FT_UINT8));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_INT16"),  mrb_fixnum_value(FT_INT16));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT16"), mrb_fixnum_value(FT_UINT16));
-  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT32"), mrb_fixnum_value(FT_UINT32));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_INT32"),  mrb_fixnum_value(FT_INT32));
+  mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_UINT32"), mrb_fixnum_value(FT_UINT32));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_IPv4"),   mrb_fixnum_value(FT_IPv4));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "FT_STRING"), mrb_fixnum_value(FT_STRING));
   mrb_const_set(mrb, mrb_pklass, mrb_intern_lit(mrb, "BASE_DEC"),  mrb_fixnum_value(BASE_DEC));
