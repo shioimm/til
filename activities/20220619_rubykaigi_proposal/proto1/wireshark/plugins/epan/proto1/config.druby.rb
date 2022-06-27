@@ -82,19 +82,35 @@ WSProtocol.configure("dRuby") do
 
       sub("Result") do
         result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        result_type       = druby_types[packet(13, :gint8).hex.chr]
 
-        items [
-                { header: :hf_druby_size,
-                  offset: 7,
-                  endian: WSDissector::ENC_BIG_ENDIAN },
-                { header: :hf_druby_type,
-                  offset: 14,
-                  endian: WSDissector::ENC_BIG_ENDIAN },
-                { header: :hf_druby_string,
-                  size:   result_value_size.hex - 10,
-                  offset: 16,
-                  endian: WSDissector::ENC_NA },
-              ]
+        result_items = [{ header: :hf_druby_size,
+                          offset: 7,
+                          endian: WSDissector::ENC_BIG_ENDIAN }]
+
+        if result_type == "Instance variable"
+          result_items.push({ header: :hf_druby_type,
+                              offset: 14,
+                              endian: WSDissector::ENC_BIG_ENDIAN })
+          result_items.push({ header: :hf_druby_string,
+                              size:   result_value_size.hex - 10,
+                              offset: 16,
+                              endian: WSDissector::ENC_NA })
+        elsif result_type == "Integer"
+          result_items.push({ header: :hf_druby_type,
+                              offset: 13,
+                              endian: WSDissector::ENC_BIG_ENDIAN })
+
+          result_int_value = packet(14, :gint8)
+          result_items.push({ header: :hf_druby_integer,
+                              size: result_value_size ? result_value_size.hex - 3 : 0,
+                              offset: 14,
+                              display: :formatted_int,
+                              format: "%d",
+                              value:  result_int_value ? convert_form_to_int(result_int_value.to_i) : 0 })
+        end
+
+        items result_items
       end
     end
   else # Request
