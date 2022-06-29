@@ -81,14 +81,13 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Result") do
-        result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
-        result_type       = druby_types[packet(13, :gint8).hex.chr]
-
+        result_type  = druby_types[packet(13, :gint8).hex.chr]
         result_items = [{ header: :hf_druby_size,
                           offset: 7,
                           endian: WSDissector::ENC_BIG_ENDIAN }]
 
         if result_type == "Instance variable"
+          result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
           result_items.push({ header: :hf_druby_type,
                               offset: 14,
                               endian: WSDissector::ENC_BIG_ENDIAN })
@@ -115,66 +114,79 @@ WSProtocol.configure("dRuby") do
     end
   else # Request
     dissectors do
+      offset = 0
+
       sub("Ref") do
         items [
                 { header: :hf_druby_size,
-                  offset: 0,
+                  offset: offset,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
                   size:   1,
-                  offset: 6,
+                  offset: offset += 6,
                   endian: WSDissector::ENC_NA },
               ]
+
+        offset += 1
       end
 
       sub("Message") do
-        message_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        message_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        message_value_size_int = message_value_size ? message_value_size.hex - 10 : 0
 
         items [
                 { header: :hf_druby_size,
-                  offset: 7,
+                  offset: offset,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
-                  offset: 14,
+                  offset: offset += 7,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
-                  size:   message_value_size ? message_value_size.hex - 10 : 0,
-                  offset: 16,
+                  size:   message_value_size_int,
+                  offset: offset += 2,
                   endian: WSDissector::ENC_NA },
               ]
+
+        offset += message_value_size_int
+        offset += 5
       end
 
-      args_size_value = packet(36, :gint8)
+      args_size_value_offset = offset + 7
+      args_size_value        = packet(args_size_value_offset, :gint8)
 
       sub("Args size") do
-        args_size_value_size = packet(29, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        args_size_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        args_size_value_size_int = args_size_value_size ? args_size_value_size.hex - 3 : 0
 
         items [
                 { header:  :hf_druby_size,
-                  offset:  29,
+                  offset:  offset,
                   endian:  WSDissector::ENC_BIG_ENDIAN },
                 { header:  :hf_druby_integer,
-                  size:    args_size_value_size ? args_size_value_size.hex - 3 : 0,
-                  offset:  36,
+                  size:    args_size_value_size_int,
+                  offset:  args_size_value_offset,
                   display: :formatted_int,
                   format: "%d",
                   value:   args_size_value ? convert_form_to_int(args_size_value.to_i) : 0 },
               ]
+
+        offset = args_size_value_offset
+        offset += 1
       end
 
       if args_size_value
-        args_value_size = packet(37, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        args_value_size = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
         sub("Args") do
           convert_form_to_int(args_size_value.to_i).times do |n|
             sub("Arg (#{n + 1})") do
               items [
                 { header: :hf_druby_size,
-                  offset: 37,
+                  offset: offset,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
                   size:   args_value_size ? args_value_size.hex - 10 : 0,
-                  offset: 46,
+                  offset: offset += 9,
                   endian: WSDissector::ENC_NA },
               ]
             end
@@ -185,10 +197,10 @@ WSProtocol.configure("dRuby") do
       sub("Block") do
         items [
                 { header: :hf_druby_size,
-                  offset: 56,
+                  offset: offset += 10,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
-                  offset: 62,
+                  offset: offset += 6,
                   endian: WSDissector::ENC_BIG_ENDIAN },
               ]
       end
