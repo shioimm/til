@@ -180,15 +180,31 @@ WSProtocol.configure("dRuby") do
         sub("Args") do
           convert_form_to_int(args_size_value.to_i).times do |n|
             sub("Arg (#{n + 1})") do
-              items [
-                { header: :hf_druby_size,
-                  offset: offset,
-                  endian: WSDissector::ENC_BIG_ENDIAN },
-                { header: :hf_druby_string,
-                  size:   args_value_size ? args_value_size.hex - 10 : 0,
-                  offset: offset += 9,
-                  endian: WSDissector::ENC_NA },
-              ]
+              arg_items = [{ header: :hf_druby_size,
+                             offset: offset,
+                             endian: WSDissector::ENC_BIG_ENDIAN }]
+              arg_type = druby_types[packet(offset += 6, :gint8).hex.chr]
+
+              if arg_type == "Instance variable"
+                args_value_size_int = args_value_size ? args_value_size.hex - 10 : 0
+                arg_items.push({ header: :hf_druby_string,
+                                 size:   args_value_size_int,
+                                 offset: offset += 3,
+                                 endian: WSDissector::ENC_NA })
+                offset += args_value_size_int
+                offset += 5
+              elsif arg_type == "Integer"
+                arg_int_value = packet(offset += 1, :gint8)
+                arg_items.push({ header: :hf_druby_integer,
+                                 size: args_value_size ? args_value_size.hex - 3 : 0,
+                                 offset: offset,
+                                 display: :formatted_int,
+                                 format: "%d",
+                                 value:  arg_int_value ? convert_form_to_int(arg_int_value.to_i) : 0 })
+                offset += 1
+              end
+
+              items arg_items
             end
           end
         end
@@ -197,7 +213,7 @@ WSProtocol.configure("dRuby") do
       sub("Block") do
         items [
                 { header: :hf_druby_size,
-                  offset: offset += 10,
+                  offset: offset,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_type,
                   offset: offset += 6,
