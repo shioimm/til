@@ -67,7 +67,9 @@ WSProtocol.configure("dRuby") do
               dict:    nil },
           ]
 
-  if packet(6, :gint8) == "54" || packet(6, :gint8) == "46" # Response
+  packet_type = druby_types[packet(6, :gint8)&.hex&.chr]
+
+  if %w[true false].include?(packet_type) # Response
     dissectors do
       sub("Success") do
         items [
@@ -81,35 +83,35 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Result") do
-        result_type  = druby_types[packet(13, :gint8).hex.chr]
-        result_items = [{ header: :hf_druby_size,
-                          offset: 7,
-                          endian: WSDissector::ENC_BIG_ENDIAN }]
+        result_value_type = druby_types[packet(13, :gint8).hex.chr]
+        result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        result_tree_items = [{ header: :hf_druby_size,
+                               offset: 7,
+                               endian: WSDissector::ENC_BIG_ENDIAN }]
 
-        if result_type == "Instance variable"
-          result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
-          result_items.push({ header: :hf_druby_type,
-                              offset: 14,
-                              endian: WSDissector::ENC_BIG_ENDIAN })
-          result_items.push({ header: :hf_druby_string,
-                              size:   result_value_size.hex - 10,
-                              offset: 16,
-                              endian: WSDissector::ENC_NA })
-        elsif result_type == "Integer"
-          result_items.push({ header: :hf_druby_type,
-                              offset: 13,
-                              endian: WSDissector::ENC_BIG_ENDIAN })
+        if result_value_type == "Instance variable"
+          result_tree_items.push({ header: :hf_druby_type,
+                                   offset: 14,
+                                   endian: WSDissector::ENC_BIG_ENDIAN })
+          result_tree_items.push({ header: :hf_druby_string,
+                                   size:   result_value_size.hex - 10,
+                                   offset: 16,
+                                   endian: WSDissector::ENC_NA })
+        elsif result_value_type == "Integer"
+          result_tree_items.push({ header: :hf_druby_type,
+                                   offset: 13,
+                                   endian: WSDissector::ENC_BIG_ENDIAN })
 
-          result_int_value = packet(14, :gint8)
-          result_items.push({ header: :hf_druby_integer,
-                              size: result_value_size ? result_value_size.hex - 3 : 0,
-                              offset: 14,
-                              display: :formatted_int,
-                              format: "%d",
-                              value:  result_int_value ? convert_form_to_int(result_int_value.to_i) : 0 })
+          result_int_value = packet(14, :gint8)&.to_i
+          result_tree_items.push({ header:  :hf_druby_integer,
+                                   size:    result_value_size.hex - 3,
+                                   offset:  14,
+                                   display: :formatted_int,
+                                   format:  "%d",
+                                   value:   convert_form_to_int(result_int_value)})
         end
 
-        items result_items
+        items result_tree_items
       end
     end
   else # Request
@@ -132,7 +134,7 @@ WSProtocol.configure("dRuby") do
 
       sub("Message") do
         message_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
-        message_value_size_int = message_value_size ? message_value_size.hex - 10 : 0
+        message_value_size_dec = message_value_size ? message_value_size.hex - 10 : 0
 
         items [
                 { header: :hf_druby_size,
@@ -142,70 +144,69 @@ WSProtocol.configure("dRuby") do
                   offset: offset += 7,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
-                  size:   message_value_size_int,
+                  size:   message_value_size_dec,
                   offset: offset += 2,
                   endian: WSDissector::ENC_NA },
               ]
 
-        offset += message_value_size_int
+        offset += message_value_size_dec
         offset += 5
       end
 
-      args_size_value_offset = offset + 7
-      args_size_value        = packet(args_size_value_offset, :gint8)
+      argc_value_position = offset + 7
+      argc_value          = packet(argc_value_position, :gint8)
 
       sub("Args size") do
-        args_size_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
-        args_size_value_size_int = args_size_value_size ? args_size_value_size.hex - 3 : 0
+        argc_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        argc_value_size_dec = argc_value_size ? argc_value_size.hex - 3 : 0
 
         items [
                 { header:  :hf_druby_size,
                   offset:  offset,
                   endian:  WSDissector::ENC_BIG_ENDIAN },
                 { header:  :hf_druby_integer,
-                  size:    args_size_value_size_int,
-                  offset:  args_size_value_offset,
+                  size:    argc_value_size_dec,
+                  offset:  argc_value_position,
                   display: :formatted_int,
                   format: "%d",
-                  value:   args_size_value ? convert_form_to_int(args_size_value.to_i) : 0 },
+                  value:   argc_value ? convert_form_to_int(argc_value.to_i) : 0 },
               ]
 
-        offset = args_size_value_offset
+        offset = argc_value_position
         offset += 1
       end
 
-      if args_size_value
-        args_value_size = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+      args_value_size = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
-        sub("Args") do
-          convert_form_to_int(args_size_value.to_i).times do |n|
-            sub("Arg (#{n + 1})") do
-              arg_items = [{ header: :hf_druby_size,
-                             offset: offset,
-                             endian: WSDissector::ENC_BIG_ENDIAN }]
-              arg_type = druby_types[packet(offset += 6, :gint8).hex.chr]
+      sub("Args") do
+        convert_form_to_int(argc_value.to_i).times do |n|
+          sub("Arg (#{n + 1})") do
+            arg_tree_items = [{ header: :hf_druby_size,
+                                offset: offset,
+                                endian: WSDissector::ENC_BIG_ENDIAN }]
+            arg_value_type = druby_types[packet(offset += 6, :gint8).hex.chr]
 
-              if arg_type == "Instance variable"
-                args_value_size_int = args_value_size ? args_value_size.hex - 10 : 0
-                arg_items.push({ header: :hf_druby_string,
-                                 size:   args_value_size_int,
-                                 offset: offset += 3,
-                                 endian: WSDissector::ENC_NA })
-                offset += args_value_size_int
-                offset += 5
-              elsif arg_type == "Integer"
-                arg_int_value = packet(offset += 1, :gint8)
-                arg_items.push({ header: :hf_druby_integer,
-                                 size: args_value_size ? args_value_size.hex - 3 : 0,
-                                 offset: offset,
-                                 display: :formatted_int,
-                                 format: "%d",
-                                 value:  arg_int_value ? convert_form_to_int(arg_int_value.to_i) : 0 })
-                offset += 1
-              end
-
-              items arg_items
+            if arg_value_type == "Instance variable"
+              args_value_size_dec = args_value_size ? args_value_size.hex - 10 : 0
+              arg_tree_items.push({ header: :hf_druby_string,
+                                    size:   args_value_size_dec,
+                                    offset: offset += 3,
+                                    endian: WSDissector::ENC_NA })
+              offset += args_value_size_dec
+              offset += 5
+            elsif arg_value_type == "Integer"
+              args_value_size_dec = args_value_size ? args_value_size.hex - 3 : 0
+              arg_value = packet(offset += 1, :gint8)&.to_i
+              arg_tree_items.push({ header: :hf_druby_integer,
+                                    size: args_value_size_dec,
+                                    offset: offset,
+                                    display: :formatted_int,
+                                    format: "%d",
+                                    value:  convert_form_to_int(arg_value) })
+              offset += 1
             end
+
+            items arg_tree_items
           end
         end
       end
