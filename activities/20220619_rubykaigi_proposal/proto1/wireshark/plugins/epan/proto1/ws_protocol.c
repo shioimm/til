@@ -163,11 +163,13 @@ static int ws_protocol_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
   mrb_value mrb_dfs   = mrb_iv_get(mrb, mrb_config, mrb_intern_lit(mrb, "@dissectors"));
   mrb_value mrb_items = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@items"));
   mrb_value mrb_depth = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@depth"));
+  mrb_value mrb_label = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@name"));
   gint ett = ws_protocol_detect_ett((int)mrb_fixnum(mrb_depth));
 
   proto_tree *main_tree = proto_item_add_subtree(ti, ett);
   ws_protocol_add_items(mrb, mrb_items, main_tree, tvb);
 
+  col_append_str(pinfo->cinfo, COL_INFO, mrb_string_cstr(mrb, mrb_label));
   mrb_value mrb_subtrees = mrb_iv_get(mrb, mrb_dfs, mrb_intern_lit(mrb, "@subtrees"));
   ws_protocol_add_subtree_items(mrb, mrb_subtrees, main_tree, tvb);
 

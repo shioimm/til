@@ -70,7 +70,7 @@ WSProtocol.configure("dRuby") do
   packet_type = druby_types[value_at(6)&.hex&.chr]
 
   if %w[true false].include?(packet_type) # Response
-    dissectors do
+    dissectors("dRuby Response") do
       sub("Success") do
         items [
                 { header: :hf_druby_size,
@@ -115,7 +115,7 @@ WSProtocol.configure("dRuby") do
       end
     end
   else # Request
-    dissectors do
+    dissectors("dRuby Request") do
       offset = 0
 
       sub("Ref") do

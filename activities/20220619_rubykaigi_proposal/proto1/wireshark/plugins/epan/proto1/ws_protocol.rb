@@ -23,8 +23,8 @@ class WSProtocol
     @headers = header_fields
   end
 
-  def dissectors(&block)
-    trunk = WSDissector.new(name: @name, depth: 1, protocol: self)
+  def dissectors(name = @name, &block)
+    trunk = WSDissector.new(name: name, depth: 1, protocol: self)
     trunk.instance_eval(&block)
     @dissectors = trunk
   end
