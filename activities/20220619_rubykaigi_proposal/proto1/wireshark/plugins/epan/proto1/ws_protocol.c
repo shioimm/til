@@ -351,19 +351,21 @@ static mrb_value mrb_ws_protocol_dissector(mrb_state *mrb, mrb_value self)
   return self;
 }
 
-static mrb_value mrb_ws_protocol_packet(mrb_state *mrb, mrb_value _self)
+static mrb_value mrb_ws_protocol_value(mrb_state *mrb, mrb_value _self)
 {
   if (operation_mode == REGISTERATION) return mrb_nil_value();
-
-  mrb_int offset;
-  mrb_sym type;
-  mrb_int endian;
-  mrb_get_args(mrb, "in|i", &offset, &type, &endian);
 
   // WIP: Need to add support other packet types --
   mrb_sym type_gint8  = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint8"));
   mrb_sym type_gint32 = (int)mrb_obj_to_sym(mrb, mrb_str_new_lit(mrb, "gint32"));
   // ----------------------------------------------
+
+  mrb_int offset;
+  mrb_sym type;
+  mrb_int endian;
+  mrb_int argc = mrb_get_args(mrb, "i|ni", &offset, &type, &endian);
+
+  if (argc == 1) type = type_gint8;
 
   gint8 packet = 0;
 
@@ -407,7 +409,7 @@ mrb_value mrb_ws_protocol_start(mrb_state *mrb, const char *pathname)
   mrb_define_method(mrb, pklass, "initialize", mrb_ws_protocol_init,      MRB_ARGS_REQ(1));
   mrb_define_method(mrb, pklass, "register!",  mrb_ws_protocol_register,  MRB_ARGS_NONE());
   mrb_define_method(mrb, pklass, "dissect!",   mrb_ws_protocol_dissector, MRB_ARGS_NONE());
-  mrb_define_method(mrb, pklass, "packet",     mrb_ws_protocol_packet,    MRB_ARGS_ARG(2, 1));
+  mrb_define_method(mrb, pklass, "value_at",   mrb_ws_protocol_value,     MRB_ARGS_ARG(1, 2));
 
   mrb_define_class_method(mrb, pklass,
                           "configure", mrb_ws_protocol_config, MRB_ARGS_REQ(1) | MRB_ARGS_BLOCK());
