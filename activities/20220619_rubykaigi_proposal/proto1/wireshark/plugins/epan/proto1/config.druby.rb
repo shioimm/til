@@ -67,7 +67,7 @@ WSProtocol.configure("dRuby") do
               dict:    nil },
           ]
 
-  packet_type = druby_types[packet(6, :gint8)&.hex&.chr]
+  packet_type = druby_types[value_at(6)&.hex&.chr]
 
   if %w[true false].include?(packet_type) # Response
     dissectors do
@@ -83,8 +83,8 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Result") do
-        result_value_type = druby_types[packet(13, :gint8).hex.chr]
-        result_value_size = packet(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        result_value_type = druby_types[value_at(13).hex.chr]
+        result_value_size = value_at(7, :gint32, WSDissector::ENC_BIG_ENDIAN)
         result_tree_items = [{ header: :hf_druby_size,
                                offset: 7,
                                endian: WSDissector::ENC_BIG_ENDIAN }]
@@ -102,7 +102,7 @@ WSProtocol.configure("dRuby") do
                                    offset: 13,
                                    endian: WSDissector::ENC_BIG_ENDIAN })
 
-          result_int_value = packet(14, :gint8)&.to_i
+          result_int_value = value_at(14)&.to_i
           result_tree_items.push({ header:  :hf_druby_integer,
                                    size:    result_value_size.hex - 3,
                                    offset:  14,
@@ -133,7 +133,7 @@ WSProtocol.configure("dRuby") do
       end
 
       sub("Message") do
-        message_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        message_value_size     = value_at(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
         message_value_size_dec = message_value_size ? message_value_size.hex - 10 : 0
 
         items [
@@ -154,10 +154,10 @@ WSProtocol.configure("dRuby") do
       end
 
       argc_value_position = offset + 7
-      argc_value          = packet(argc_value_position, :gint8)
+      argc_value          = value_at(argc_value_position)
 
       sub("Args size") do
-        argc_value_size     = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        argc_value_size     = value_at(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
         argc_value_size_dec = argc_value_size ? argc_value_size.hex - 3 : 0
 
         items [
@@ -176,7 +176,7 @@ WSProtocol.configure("dRuby") do
         offset += 1
       end
 
-      args_value_size = packet(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+      args_value_size = value_at(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
 
       sub("Args") do
         convert_form_to_int(argc_value.to_i).times do |n|
@@ -184,7 +184,7 @@ WSProtocol.configure("dRuby") do
             arg_tree_items = [{ header: :hf_druby_size,
                                 offset: offset,
                                 endian: WSDissector::ENC_BIG_ENDIAN }]
-            arg_value_type = druby_types[packet(offset += 6, :gint8).hex.chr]
+            arg_value_type = druby_types[value_at(offset += 6).hex.chr]
 
             if arg_value_type == "Instance variable"
               args_value_size_dec = args_value_size ? args_value_size.hex - 10 : 0
@@ -196,7 +196,7 @@ WSProtocol.configure("dRuby") do
               offset += 5
             elsif arg_value_type == "Integer"
               args_value_size_dec = args_value_size ? args_value_size.hex - 3 : 0
-              arg_value = packet(offset += 1, :gint8)&.to_i
+              arg_value = value_at(offset += 1)&.to_i
               arg_tree_items.push({ header: :hf_druby_integer,
                                     size: args_value_size_dec,
                                     offset: offset,
