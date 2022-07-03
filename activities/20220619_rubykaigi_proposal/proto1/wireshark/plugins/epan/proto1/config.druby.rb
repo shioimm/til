@@ -119,17 +119,19 @@ WSProtocol.configure("dRuby") do
       offset = 0
 
       sub("Ref") do
+        ref_value_size     = value_at(offset, :gint32, WSDissector::ENC_BIG_ENDIAN)
+        ref_value_size_dec = ref_value_size ? ref_value_size.hex : 0
         items [
                 { header: :hf_druby_size,
                   offset: offset,
                   endian: WSDissector::ENC_BIG_ENDIAN },
                 { header: :hf_druby_string,
-                  size:   1,
-                  offset: offset += 6,
+                  size:   ref_value_size_dec,
+                  offset: offset += 4,
                   endian: WSDissector::ENC_NA },
               ]
 
-        offset += 1
+        offset += ref_value_size_dec
       end
 
       sub("Message") do
