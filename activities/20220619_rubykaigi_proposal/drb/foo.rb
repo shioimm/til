@@ -5,8 +5,8 @@ class Foo
     "Hello #{name}"
   end
 
-  def add(n)
-    1 + n
+  def sum(x, y)
+    x + y
   end
 
   def with_block
