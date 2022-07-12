@@ -1,4 +1,11 @@
 # メモリ管理
+
+```cc
+// Cのデータをバックエンドに持ち、特定のクラスに所属するインスタンスについてデータタイプを指定する
+
+MRB_SET_INSTANCE_TT(struct RClass *c, enum mrb_vtype tt)
+```
+
 #### メモリの確保 (Cレベル)
 
 ```c
