@@ -38,20 +38,26 @@ struct RData {
 ```c
 // インスタンスにCレベルのデータを持たせる
 
+// インスタンスに紐づけるCレベルの構造体
 typedef struct {
   int n;
 } mrb_prog_data;
 
+// インスタンスに紐づけるCレベルの構造体の解放方法
 static const struct mrb_data_type mrb_prog_data_type = {
-  "mrb_prog_data", mrb_free,
+  "mrb_prog_data", // 解放する対象の構造体型名
+  mrb_free,        // struct mrb_prog_data型のデータをどのように解放するか
 };
 
 mrb_value mrb_func(mrb_state *mrb, mrb_value self)
 {
   mrb_prog_data *data = (mrb_prog_data*)DATA_PTR(self);
   data->n = 1;
+
+  // RData構造体のdataメンバにCレベルのデータmrb_prog_data *dataを紐づける
   DATA_PTR(self) = data;
 
+  // RData構造体のtypeメンバにCレベルのデータmrb_prog_data *dataの解放方法を紐づける
   DATA_TYPE(self) = &mrb_prog_data_type;
 
   return self:
