@@ -32,8 +32,12 @@ struct RData {
 }
 ```
 
-- `DATA_PTR(mrb_value self)`  - `mrb_value`から`RData`構造体`data`メンバへのアクセス
-- `DATA_TYPE(mrb_value self)` - `mrb_value`から`RData`構造体`type`メンバへのアクセス
+- `DATA_PTR(mrb_value self)`
+  - `mrb_value`から`RData`構造体`data`メンバへのアクセス
+- `DATA_TYPE(mrb_value self)`
+  - `mrb_value`から`RData`構造体`type`メンバへのアクセス
+- `MRB_SET_INSTANCE_TT(struct RClass *c, enum mrb_vtype tt)`
+  - Cのデータをバックエンドに持ち、特定のクラスに所属するインスタンスについてデータタイプを指定する
 
 ```c
 // インスタンスにCレベルのデータを持たせる
@@ -61,6 +65,22 @@ mrb_value mrb_func(mrb_state *mrb, mrb_value self)
   DATA_TYPE(self) = &mrb_prog_data_type;
 
   return self:
+}
+
+int main(void)
+{
+  mrb_state *mrb = mrb_open();
+
+  mrb_value self = mrb_load_string(mrb, "Object.new");
+
+  struct RClass obj_class = mrb_class_get(mrb, "Object");
+  MRB_SET_INSTANCE_TT(obj_class, MRB_TT_OBJECT);
+
+  mrb_func(mrb, self);
+
+  mrb_close(mrb);
+
+  return 0;
 }
 ```
 
