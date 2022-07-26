@@ -16,3 +16,6 @@ Networks: packets: 121606220/110G in, 104230337/47G out. Disks: 622961147/24T re
 PID    COMMAND      %CPU TIME     #TH   #WQ  #PORT MEM    PURG   CMPRS  PGRP  PPID  STATE    BOOSTS
 81622  top          12.6 00:18.94 1/1   0    32    6420K  0B     0B     81622 76508 running  *0[1]
 ```
+
+## オプション
+- `-1` - CPU が複数コアであった場合にそれぞれのコアの状態を表示する
