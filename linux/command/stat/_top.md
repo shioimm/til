@@ -17,5 +17,18 @@ PID    COMMAND      %CPU TIME     #TH   #WQ  #PORT MEM    PURG   CMPRS  PGRP  PP
 81622  top          12.6 00:18.94 1/1   0    32    6420K  0B     0B     81622 76508 running  *0[1]
 ```
 
+## 項目
+- us - User: ユーザ空間におけるCPU利用率
+- sy - System: カーネル空間におけるCPU利用率
+- ni - Nice: nice値(優先度)が変更されたプロセスのCPU利用率 (-20 (最高) ~ 19 (最低))
+- id - Idle: 利用されていないCPU
+- wa - Wait: I/O処理を待っているプロセスのCPU利用率
+- hi - Hardware Interrupt: ハードウェア割り込みプロセスの利用率
+- si - Soft Interrupt: ソフト割り込みプロセスの利用率
+- st - Steal: ハイパーバイザによって利用されているCPU利用率
+
 ## オプション
 - `-1` - CPU が複数コアであった場合にそれぞれのコアの状態を表示する
+
+## 参照
+- 達人が教えるWebパフォーマンスチューニング 〜ISUCONから学ぶ高速化の実践
