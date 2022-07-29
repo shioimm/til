@@ -1,8 +1,9 @@
 # window
 - DOM documentを収めるウィンドウを指す
 
-## `window.localStrage`
+## `window.localStorage`
 - 特定のドメインのローカルストレージAPIを操作するメソッド
+
 ```js
 // key, valueは文字列で渡す
 window.localStorage.setItem('Book', 'Programming Ruby')
@@ -11,7 +12,7 @@ const book = window.localStorage.getItem('Book') // => 'Programming Ruby'
 
 window.localStorage.removeItem('Book')
 // or
-window.localStrage.clear()
+window.localStorage.clear()
 ```
 
 ## 参照

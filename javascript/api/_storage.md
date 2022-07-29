@@ -1,7 +1,7 @@
-# Strage
+# Storage
 - 特定のドメインのセッションストレージ / ローカルストレージへアクセスする機能
-  - セッションストレージを操作する場合は`window.sessionStrage`を使用する
-  - ローカルストレージを操作する場合は`window.localStrage`を使用する
+  - セッションストレージを操作する場合は`window.sessionStorage`を使用する
+  - ローカルストレージを操作する場合は`window.localStorage`を使用する
 - データは 'key': 'value' の対応づけで保存される
 - データはクライアント側から操作できる
 
