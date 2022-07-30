@@ -10,17 +10,30 @@
 - [ESLint と Prettier の共存設定とその根拠について](https://blog.ojisan.io/eslint-prettier)
 - ESLintのスタイル設定を全部OFFにしESLintの中からPrettierを実行」
 
-## Get Started
+## Usage
 - [Install](https://prettier.io/docs/en/install.html)
-
-### 設定方法
 - `.prettierrc.json`に設定を記述する
   - フォーマットを無視する場合は`.prettierignore`に設定を記述する
 
-### 実行方法
+#### 実行方法
 - `$ yarn prettier --write .` -> フォーマットを実行
 - `$ yarn prettier --check .` -> フォーマットを確認
-- huskeyにフックして実行する etc
+- huskyにフックして実行する etc
 
-## 参照・引用
+## prettier-standard
+- prettierと標準ルールで設定されたeslintのルールを使ったフォーマットツール
+
+### Usage
+- package.jsonに実行したい処理を記述
+
+```json
+{
+  "scripts". {
+    "format". "prettier-standard --format"
+  }
+}
+```
+
+## 参照
 - [Prettier](https://prettier.io/)
+- [prettier-standard](https://github.com/sheerun/prettier-standard)
