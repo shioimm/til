@@ -27,7 +27,8 @@
 ### ホスト
 - Dockerの動作環境
 - Docker EngineをインストールしたLinux環境
-  - Docker Desktop - WinやmacOSにおいて、Dockerを動かすためのソフトウエア
+- Linuxサブシステムの上にDocker EngineをインストールしたWin／Mac環境
+  - Docker Desktop - Win/Mac環境でDockerを動作させるためのソフトウエア、内部にLinuxカーネルを含む
 
 ### Docker Engine
 - コンテナやイメージを管理するアプリケーション
