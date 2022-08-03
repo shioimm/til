@@ -18,7 +18,7 @@ $ docker container run -dit --name web01 -v "$PWD":/usr/local/apache2/htdocs -p 
   # $ docker container create --name web01 -v "$PWD":/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
   # $ docker container start  web01
 
-$ docker container ls # $ docker psと同じ
+$ docker container ls    # $ docker psと同じ
 $ docker container logs  web01
 $ docker container stop  web01
 $ docker container start web01
@@ -31,13 +31,14 @@ $ docker image     rm    httpd:2.4
 $ docker image     prune
 ```
 
-1. ホストのカレントディレクトリに`hello.rb`ファイルを用意
+1. ホストのカレントディレクトリ (`$PWD`) に`hello.rb`ファイルを用意
 2. ホストのカレントディレクトリをコンテナの`/usr/src`ディレクトリにマウントし、
    コンテナの`/usr/src`ディレクトリで`ruby`コマンドをワンショットで実行
 
 ```
 $ cat hello.rb
 puts "Hello"
+
 $ docker run --rm -v "$PWD":/usr/src -w /usr/src rubylang/ruby ruby hello.rb
 Hello
 ```
@@ -55,16 +56,16 @@ Hello
 - `-t`
   - 疑似端末 (pseudo-tty: カーソルの移動や文字入力などをサポートする端末) を割り当てる
   - `-t`オプションを指定せずアタッチモードに入ると、疑似端末の機能を利用したキー操作が効かない状態になる
-- `-p ホストのポート番号:コンテナのポート番号`
+- `-p HOST_PORT_NUMBER:CONTAINER_PORT_NUMBER`
   - ホストのTCPポート番号をコンテナのTCPポート番号にマッピングする
   - `http://ホストのIP:ホストのポート番号`へのアクセスはコンテナのポート番号に転送される
 - `--rm`
   - 実行終了時にコンテナを破棄する
-- `-v ホストのディレクトリ:コンテナのディレクトリ`
+- `-v HOST_DIRECTORY:CONTAINER_DIRECTORY`
   - = `--mount type=タイプ,src=マウント元,dst=マウント先`
   - ホストのディレクトリをコンテナのディレクトリにマウントする
   - ホストのディレクトリへのアクセスはコンテナのディレクトリに転送される
-- `-w DIRECTORY`
+- `-w CONTAINER_DIRECTORY`
   - コンテナ内のプログラムを実行する際の作業ディレクトリ
 
 ## 参照
