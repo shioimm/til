@@ -90,27 +90,38 @@ let arr: (string | number)[] = [1, 2, 3]
 ```ts
 // discriminator = type
 
-type InProgress = { type: "InProgress"; progress: number };
-type Success    = { type: "Success" };
-type Failure    = { type: "Failure"; error: Error };
-
-type Status     = InProgress | Success | Failure;
+type Success = { type: "Success" };
+type Failure = { type: "Failure"; error: Error };
+type Status  = Success | Failure;
 
 const printStatus(status: Status) => {
-  switch (status.type) {
-    case "InProgress":
-      console.log("Uploading");
-      break;
-    case "Success":
-      console.log("Success");
-      break;
-    case "Failure":
-      console.log("Failure");
-      break;
-    default:
-      console.log("Invalid status", status);
+  if (status.type == "Success") {
+    console.log("Success");
+  } else if (status.type == "Failure")
+    console.log("Failure");
+  } else {
+    console.log("Invalid status", status);
   }
 }
+```
+
+### インターセクション型
+
+```ts
+type X = {
+  x: number;
+};
+
+type Y = {
+  y: number;
+};
+
+type XZndY = X & Z;
+
+const n: XZndY = {
+  x: 0,
+  y: 1,
+};
 ```
 
 ## readonly (読み取り専用プロパティ)
@@ -121,6 +132,31 @@ let obj: {
 };
 ```
 
+## constアサーション (読み取り専用オブジェクト)
+
+```ts
+const obj: {
+  prop: number;
+} as const;
+```
+
+- ネストしたオブジェクトも再帰的にreadonlyにすることができる
+
+## definite assignment assertion
+- 変数が初期化済みであることを明示する
+
+```ts
+let num!: number;
+initNum();
+
+console.log(num);
+
+function initNum() {
+  num = 2;
+}
+```
+
 ## 参照
 - [TypeScript基礎講座](https://www.udemy.com/course/typescript-y/)
 - [判別可能なユニオン型](https://typescriptbook.jp/reference/values-types-variables/discriminated-union)
+- [definite assignment assertion](https://typescriptbook.jp/reference/values-types-variables/definite-assignment-assertion)
