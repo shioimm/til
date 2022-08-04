@@ -1,14 +1,13 @@
 # 型定義
+
 ```ts
 let num: number = 123
 let str: string = "string"
 let bool: boolean = true
-
-// union型 (複数の型定義)
-let num: number|string = 123 // "123"でも型エラーにならない
 ```
 
 ### 配列
+
 ```ts
 let arr1: string[] = ["str", "ing"]
 
@@ -47,6 +46,7 @@ const fn = (...args: string[]) => {
 ```
 
 ### オブジェクト
+
 ```ts
 let obj: {
   nums: number[],
@@ -55,6 +55,60 @@ let obj: {
   nums: [1, 2, 3],
   func: function(arg: boolean): number[] {
     reuturn this.nums
+  }
+}
+```
+
+### enum
+- デフォルトではインデックスと同じ数値が割り当てられるが上書きもできる
+
+```js
+enum Cities {
+  Tokyo,      // 0
+  Osaka = 10, // 10
+  Fukuoka     // 11
+}
+
+let city: Cities = Cities.Fukuoka // => 11
+```
+
+### union
+
+```ts
+let numOrStr: number|string = 123
+
+// 配列
+let arr: (string | number)[] = [1, 2, 3]
+```
+
+#### 判別可能なユニオン型
+- オブジェクト型で構成されたユニオン型
+  - 各オブジェクトの型を判別するためのdiscriminatorプロパティを持つ
+  - discriminatorの型はリテラル型などであること
+  - 各オブジェクト型は固有のプロパティを持つことができる
+
+```ts
+// discriminator = type
+
+type InProgress = { type: "InProgress"; progress: number };
+type Success    = { type: "Success" };
+type Failure    = { type: "Failure"; error: Error };
+
+type Status     = InProgress | Success | Failure;
+
+const printStatus(status: Status) => {
+  switch (status.type) {
+    case "InProgress":
+      console.log("Uploading");
+      break;
+    case "Success":
+      console.log("Success");
+      break;
+    case "Failure":
+      console.log("Failure");
+      break;
+    default:
+      console.log("Invalid status", status);
   }
 }
 ```
@@ -69,4 +123,4 @@ let obj: {
 
 ## 参照
 - [TypeScript基礎講座](https://www.udemy.com/course/typescript-y/)
-
+- [判別可能なユニオン型](https://typescriptbook.jp/reference/values-types-variables/discriminated-union)

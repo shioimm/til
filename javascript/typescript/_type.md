@@ -1,5 +1,7 @@
 # 型エイリアス
+
 ```ts
+// オブジェクト型
 type Obj = {
   nums: number[],
   func: (arg: boolean) => number[]
@@ -11,9 +13,19 @@ const obj: Obj = {
     reuturn this.nums
   }
 }
+
+// ユニオン型
+type ErrorCode =
+  | 400
+  | 401
+  | 402
+  | 403
+  | 404
+  | 405;
 ```
 
 ## 型エイリアスの宣言
+
 ```ts
 // プリミティブ型
 type Str = string;
