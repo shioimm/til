@@ -5,7 +5,7 @@
 interface Obj {
   prop1: string
   prop2?: number
-  [propName: string]: any // プロパティ名が決まっていない場合
+  [K: string]: string // インデックス型: プロパティ名が決まっていない場合 (キー名はstring、number、symbol)
   fn(arg: string): void
 }
 
@@ -16,7 +16,7 @@ const fn = (obj: Obj): void => {
 const obj: Obj = {
   prop1: 'abc',
   prop2: 100,
-  prop3: ['JavaScript', 'Ruby']
+  prop3: 'JavaScript',
   fn(arg: string) {
     console.log(`${this.prop1} ${arg}`)
   }
