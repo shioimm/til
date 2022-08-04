@@ -10,10 +10,13 @@ let num: number|string = 123 // "123"でも型エラーにならない
 
 ### 配列
 ```ts
-let arr: string[] = ["str", "ing"]
+let arr1: string[] = ["str", "ing"]
 
-// 複数の型の要素を配列に含む場合(tuple)s
-let arr: [string, number] = ["str", 123] // 順番を守る
+let arr2: Array<number>
+arr2 = [1, 2, 3]
+
+// 複数の型の要素を配列に含む場合(tuple)
+let arr3: [string, number] = ["str", 123] // 順番を守る
 ```
 
 ### 関数
