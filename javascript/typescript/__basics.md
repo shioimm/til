@@ -4,6 +4,12 @@
 let num: number = 123
 let str: string = "string"
 let bool: boolean = true
+
+// 分割代入引数
+function foo({ a, b }: { a: number; b: number }) {
+}
+function bar([num1]: number[]) {
+}
 ```
 
 ### 配列
@@ -19,6 +25,7 @@ let arr3: [string, number] = ["str", 123] // 順番を守る
 ```
 
 ### 関数
+
 ```js
 const fn = (): number => {
 }
@@ -79,6 +86,14 @@ let numOrStr: number|string = 123
 
 // 配列
 let arr: (string | number)[] = [1, 2, 3]
+
+// 複数の型の値を返しうる関数
+function fn(n: number): number | string {
+  if (n == 0) {
+    return "zero";
+  }
+  return n;
+}
 ```
 
 #### 判別可能なユニオン型
@@ -122,6 +137,21 @@ const n: XZndY = {
   x: 0,
   y: 1,
 };
+```
+
+### unlnown型
+- どんな値でも代入可能な型
+- unknown型の値は具体的な型への代入およびプロパティへのアクセス、メソッドの呼び出しが不可能
+  - `typeof`によって型を絞り込んだ場合はプロパティへのアクセス、メソッドの呼び出しが可能
+
+```
+let value: unknown;
+
+value = 1; // 可
+const num: number = value; // 不可
+
+value = "string"; // 可
+const str: string = value; // 不可
 ```
 
 ## readonly (読み取り専用プロパティ)
