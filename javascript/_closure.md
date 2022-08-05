@@ -10,7 +10,7 @@ function printX() {
   return x; // グローバルスコープでの変数定義const x = 10;を参照することが静的に決定する
 }
 
-function runPrintX() {  
+function runPrintX() {
   const x = 20; // runPrintX関数スコープ内での変数定義 (printX関数内から参照されない)
   printX();
 }
@@ -23,13 +23,13 @@ run(); // => 10
 ```js
 const createCounter = () => {
   let count = 0;
-  return function increment() {    
-    count = count + 1; 
+  return function increment() {
+    count = count + 1;
     return count;
   };
 };
 
-const myCounter = createCounter();  
+const myCounter = createCounter();
 myCounter(); // => 1
 myCounter(); // => 2
 
