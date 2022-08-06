@@ -22,6 +22,11 @@ type ErrorCode =
   | 403
   | 404
   | 405;
+
+// 関数 (アロー関数、function式の型注釈に使用可能 (function文は不可能))
+type Increment = (num: number) => number;
+
+const inc: Increment = num => num + 1;
 ```
 
 ## 型エイリアスの宣言
