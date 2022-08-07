@@ -7,7 +7,7 @@ class Person {
 const person = new Person();
 ```
 
-### 抽象クラス
+## 抽象クラス
 
 ```ts
 abstract class AbstractKlass {
@@ -24,7 +24,7 @@ class Klass extends AbstractKlass {
 }
 ```
 
-### インターフェース
+## インターフェース
 
 ```ts
 interface I1 {
@@ -48,7 +48,31 @@ class Klass implements I1, I2 {
 
 - 同じ名前のインターフェースを宣言した場合、それぞれのインターフェースの型がマージされる
 
-#### 型エイリアスとの違い
+### 継承
+```ts
+interface extentedObj extends Obj {
+  prop2: number // prop2プロパティを強制
+}
+
+const objHasProp2: extentedObj = {
+  name: 'abc',
+  age: 99
+}
+```
+
+### 関数
+
+```ts
+interface DoubleValues {
+  (x: number, y: number): number
+}
+
+let doubleFn: DoubleValues = (x: number, y: number) => {
+  return (x ** y)
+}
+```
+
+### 型エイリアスとの違い
 - インターフェース -  型の宣言
 - 型エイリアス -  型に名前をつける
 
