@@ -8,21 +8,23 @@
 - コンテナが扱うデータをブラックボックスとして扱い、
   コンテナを破棄してもデータが残るようにしたいだけの場合はボリュームマウントを使う
 
-## ボリュームのマウント
+## マウント
+
 ```
 # -v /ホストのディレクトリへのパス:コンテナのディレクトリへのパス
 
-$ docker run -dit --name web01 -v /home/ubuntu/web01data/:/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
+$ docker run -dit --name web01 -v /home/ubuntu/web01data:/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
 ```
 - マウント元のパスを`/`から指定する (指定しない場合ボリュームマウントになる)
 
-#### mountオプションの利用によるボリュームのマウント (推奨)
+#### mountオプションの利用によるバインドマウント (推奨)
+
 ```
 --mount type=マウントの種類,src=マウント元,dst=マウント先
 ```
 
 ```
-$ docker run -dit --name web01 --mount type=bind,src="$PWD",dst=/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
+$ docker run -dit --name web01 --mount type=bind,src=/home/ubuntu/web01data,dst=/usr/local/apache2/htdocs -p 8080:80 httpd:2.4
 ```
 
 ## 参照
