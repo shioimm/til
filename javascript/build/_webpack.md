@@ -1,14 +1,17 @@
 # Webpack
 - Node.jsベースのアセットパイプライン
+- ES Modules、CommonJSをサポートし、使用されている構文を自動で検出し適切に依存関係を解決する
+- webpack.config.jsにて設定を行う
 
 #### 機能
-- モジュールバンドリング
-  - モジュール形式としてES Modules / CommonJS Modulesをサポート
-- CSSバンドリング
-- トランスパイル
-  - 別途babel-loaderなどのローダーが必要
-  - webpack.config.jsにて設定を行う
-- 最小化と難読化
+- モジュールバンドリング (ES Modules / CommonJS)
+- 静的ファイルのバンドリング
+- トランスパイル (別途babel-loaderなどのローダーが必要)
+- Minify
+- Tree Shaking
+- コード分割
+- キャッシュ管理
+- ソースコードの難読化
 - webpack-dev-server
 
 ## webpack.config.js
