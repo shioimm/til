@@ -23,54 +23,21 @@ promise.then(onResolved, onRejected);
 ```js
 const fetch = (bool) => {
   return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (bool) {
-        // 処理に成功した場合
-        resolve("successed");
-      } else {
-        // 処理に失敗した場合
-        reject(new Error("failed"));
-      }
-    }, 1000);
+    if (bool) {
+      // 処理に成功した場合
+      resolve("successed");
+    } else {
+      // 処理に失敗した場合
+      reject(new Error("failed")); // 失敗時はErrorオブジェクトが返されるためcatchできる
+    }
   });
 }
 
-const onResolved = () => {
-  console.log("successed");
-};
-
-const onRejected = () => {
-  console.log("failed");
-};
-
-// 処理に成功する場合
-fetch(true).then(function onResolved(result) {
-  console.log(result) // => successed
-}, function onRejected(error) {
-  // unreached
+fetch(<BOOLEAN>).then((result) => {
+  console.log(result); // => successed
+}).catch((error) => {
+  console.log(error)   // => failed
 });
-
-// 処理に失敗する場合
-fetch(false).then(function onResolved(result) {
-  // unreached
-}, function onRejected(error) {
-  console.log(error); // => "failed"
-});
-```
-
-```js
-// エラー処理のみ
-
-const errorHandling = () => {
-  return new Promise((_, reject) => {
-    reject(new Error("failed"));
-  });
-}
-
-errorHandling).catch(error => {
-  console.log(error.message); // => "failed"
-});
-
 ```
 
 ### Promiseインスタンスの内部状態
