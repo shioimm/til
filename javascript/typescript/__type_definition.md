@@ -55,15 +55,44 @@ const fn = (...args: string[]) => {
 ### オブジェクト
 
 ```ts
+// オブジェクトリテラル表記
+
 let obj: {
   nums: number[],
   func: (arg: boolean) => number[]
+  [k: number]: boolean // インデックスシグネチャ (動的なキー名)
 } = {
   nums: [1, 2, 3],
   func: function(arg: boolean): number[] {
     reuturn this.nums
+  },
+  1: true
+}
+
+// 空のオブジェクトリテラル表記 / Object型
+// nullとundefinedを除く全ての型を代入可能
+let danger1: {}
+let danger2: Object
+
+// object型
+// object.propにアクセス不可能
+let obj0: object = { prop: 'prop' }
+```
+
+```ts
+let obj: { prop: string } = { // 型はオブジェクトの形状を表している
+  prop: 'prop'
+}
+
+class Obj {
+  prop: string
+
+  constructor(prop: string) {
+    this.prop = prop
   }
 }
+
+obj = new Obj('prop0') // OK
 ```
 
 ### enum
@@ -139,19 +168,20 @@ const n: XZndY = {
 };
 ```
 
-### unlnown型
+### unknown型
 - どんな値でも代入可能な型
 - unknown型の値は具体的な型への代入およびプロパティへのアクセス、メソッドの呼び出しが不可能
-  - `typeof`によって型を絞り込んだ場合はプロパティへのアクセス、メソッドの呼び出しが可能
+  - `typeof`によって型を絞り込んだ場合は以降その型にキャストされる
 
 ```
-let value: unknown;
+let a: unknown = 30 // unknown
+let b = a + 10 // Error
 
-value = 1; // 可
-const num: number = value; // 不可
+if (typeof a === 'number') {
+  typeof a // number
+}
 
-value = "string"; // 可
-const str: string = value; // 不可
+typeof a //number
 ```
 
 ## readonly (読み取り専用プロパティ)
@@ -190,3 +220,4 @@ function initNum() {
 - [TypeScript基礎講座](https://www.udemy.com/course/typescript-y/)
 - [判別可能なユニオン型](https://typescriptbook.jp/reference/values-types-variables/discriminated-union)
 - [definite assignment assertion](https://typescriptbook.jp/reference/values-types-variables/definite-assignment-assertion)
+- プログラミングTypeScript
