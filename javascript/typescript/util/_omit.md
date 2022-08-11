@@ -10,9 +10,9 @@ type Obj = {
   prop3: true
 }
 
-type ExtractObj = Omit<Obj, "prop1" | "prop2">
+type OmitObj = Omit<Obj, "prop1" | "prop2">
 
-// type ExtractObj = {
+// type OmitObj = {
 //   prop3: true
 // } の宣言と同じ
 ```

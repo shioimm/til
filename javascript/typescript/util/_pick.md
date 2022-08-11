@@ -10,9 +10,9 @@ type Obj = {
   prop3: true
 }
 
-type ExtractObj = Pick<Obj, "prop1" | "prop2">
+type PickObj = Pick<Obj, "prop1" | "prop2">
 
-// type ExtractObj = {
+// type PickObj = {
 //   prop1: 1,
 //   prop2: "prop",
 // } の宣言と同じ

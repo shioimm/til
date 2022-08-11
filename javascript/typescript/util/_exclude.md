@@ -6,8 +6,8 @@
 ```ts
 type Union = "A" | "B" | "C" | "D" | "E";
 
-type ExtractUnion = Exclude<Union, "D" | "E">;
-// type ExtractUnion = "A" | "B" | "C"; の宣言と同じ
+type ExcludeUnion = Exclude<Union, "D" | "E">;
+// type ExcludeUnion = "A" | "B" | "C"; の宣言と同じ
 ```
 
 ## 参照
