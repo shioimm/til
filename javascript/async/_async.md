@@ -27,7 +27,7 @@ doAsync().then(value => {
 ```js
 // resolved
 async function resolveFn() {
-  return "resoled";
+  return "resolved";
 }
 
 resolveFn().then(value => {
@@ -130,7 +130,32 @@ async function asyncMain() {
 }
 ```
 
-## Promiseチェーン
+```js
+const fetch = async (bool) => {
+  return await new Promise((resolve, reject) => {
+    if (bool) {
+      // 処理に成功した場合
+      resolve("successed");
+    } else {
+      // 処理に失敗した場合
+      reject(new Error("failed")); // 失敗時はErrorオブジェクトが返されるためcatchできる
+    }
+  });
+}
+
+const main = async () => {
+  try {
+    const result = await fetch(<BOOLEAN>);
+    console.log(result); // => successed
+  } catch(error) {
+    console.log(error)   // => failed
+  };
+};
+
+main();
+```
+
+#### Promiseチェーン
 
 ```js
 function fn() {
@@ -150,7 +175,7 @@ fnMain().then(result => {
 });
 ```
 
-## 並列処理
+#### 並列処理
 
 ```js
 function fn(bool) {

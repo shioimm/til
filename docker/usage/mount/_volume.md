@@ -56,6 +56,7 @@ mysql> SELECT * FROM exampletable; # 挿入したレコード一覧が表示さ�
 ```
 
 #### mountオプションの利用によるボリュームマウント (推奨)
+
 ```
 --mount type=マウントの種類,src=マウント元,dst=マウント先
 ```
@@ -86,7 +87,7 @@ $ docker volume inspect mysqlvolume
 ```
 # バックアップ
 ホスト上にバックアップ用のLinuxコンテナを用意
-  -> Linuxコンテナにバックアップ対象のボリュームをマウントして起動
+  -> Linuxコンテナのバックアップ用ディレクトリにバックアップ対象のボリュームをマウントして起動
   -> Linuxコンテナでtarコマンドを実行し、ホスト上にアーカイブファイルを作成
 
 # リストア
@@ -94,36 +95,43 @@ Docker Engine上にボリュームを作成
   -> Linuxコンテナでtarコマンドを実行し、ボリュームにアーカイブを展開する
 ```
 
-#### バックアップ
-1. 軽量Linuxシステムのbusyboxを起動し、`tar(1)`コマンドでバックアップを作成
+### バックアップ
+1. 軽量Linuxシステムのbusyboxを起動し、`tar(1)`コマンドでバックアップファイルを作成
 2. ホストのカレントディレクトリにバックアップファイルが作成されていることを確認
 
 ```
 # ボリュームをマウントしたコンテナを予め停止しておく
+
 $ docker run --rm -v mysqlvolume:/src -v "$PWD":/dest busybox tar czvf /dest/backup.tar.gz -C /src .
-$ ls -la # backup.tar.gzファイルが作成されている
+
+# backup.tar.gzファイルが作成されている事を確認
+$ ls -la
 ```
 
 - `-v mysqlvolume:/src`
-  - バックアップ対象 (mysqlvolume) をbusyboxの`/src`にボリュームマウント
+  - バックアップ対象のボリューム`mysqlvolume`をbusyboxの`/src`にボリュームマウント
 - `-v "$PWD":/dest`
   - ホストのカレントディレクトリをbusyboxの`/dest`にバインドマウント
 - `tar czvf /dest/backup.tar.gz -C /src .`
-  - busyboxの`/src`以下の全ファイルを`/dest/backup.tar.gz`にバックアップ
+  - busyboxの`/src`内の全ファイルを対象にbusyboxの`/dest`にバックアップファイル`backup.tar.gz`を作成
+- `--rm`
+  - busyboxを破棄
 
 #### volumes-fromオプションの利用によるマウント情報の引き継ぎ
+- バックアップ対象のボリュームをボリューム名ではなくコンテナ名で指定する
 1. ボリュームをマウントするコンテナを作成
 2. コンテナを停止・削除
 3. 1のコンテナと同じマウント情報でバックアップを作成
+
 ```
 $ docker run --name db01 -dit -v mysqlvolume:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=mypassword mysql:5.7
 $ docker stop db01; docker rm db01
 $ docker run --rm --volumes-from db01 -v "$PWD":/dest busybox tar czvf /dest/backup.tar.gz -C /var/lib/mysql .
 ```
 
-#### データのリストア
+### データのリストア
 1. ボリュームの作成
-2. 軽量Linuxシステムのbusyboxを起動し、`tar(1)`コマンドでデータをリストア
+2. 軽量Linuxシステムのbusyboxを起動し、`tar(1)`コマンドでバックアップファイルをリストア
 
 ```
 $ docker volume create mysqlvolume
