@@ -3,24 +3,45 @@
 - 任意に作成されたDockerネットワークに接続されたDockerコンテナ同士はコンテナ名で通信可能
 
 ## ネットワークの確認
+
 ```
 $ docker network ls
 ```
 
 ## コンテナに割り当てられたIPアドレスの確認
-1. httpdコンテナを立ち上げる
-2. httpdコンテナのIPアドレスを確認
-    - フォーマット書式: `{{ .項目名 }}`
+- コンテナ内でifconfig
+
+```
+$ docker exec -it <ContainerName> /bin/bash
+> ifconfig
+```
+
+- bridgeに接続されている全コンテナのIPアドレスを表示
+  - フォーマット書式: `{{ .項目名 }}`
+
+```
+$ docker network inspect bridge
+
+# フォーマット
+$ docker network inspect --format='{{range $host, $conf := .Containers}}{{$conf.Name}}->{{$conf.IPv4Address}}{{\n}}{{end}}' bridge
+```
+
+- 特定のコンテナのIPアドレスを確認
 
 ```
 $ docker container run -dit --name web01 -p 8080:80 httpd:2.4
+$ docker container inspect web01
+
+# フォーマット
 $ docker container inspect --format="{{.NetworkSettings.IPAddress}}" web01
 ```
 
-#### ネットワークに接続されているコンテナのIPアドレス一覧を確認
+## コンテナ同士の通信
+- 同じホスト上に作成されたコンテナに対してping(1)
 
 ```
-$ docker network inspect --format='{{ range $host, $conf := .Containers }}{{ $conf.Name }}->{{ $conf.IPv4Address }}{{ "\n" }}{{ end }}' bridge
+$ docker exec -it <ContainerName> /bin/bash
+> ping ***.***.***.***
 ```
 
 ## 任意のDockerネットワークの作成
@@ -46,6 +67,7 @@ $ docker container inspect --format="{{.NetworkSettings}}" web01
 ```
 
 #### コンテナ名で通信できることを確認する
+
 ```
 $ docker run --rm -it --net mydockernet ubuntu /bin/bash
 /# apt install -y iproute2 iputils-ping curl
