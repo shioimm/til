@@ -89,7 +89,8 @@ $ docker-compose stop wordpress-db
 $ docker-compose start wordpress-db
 ```
 
-## Docker Composeを使用しない場合の操作
+#### Docker Composeを使用しない場合の操作
+
 ```
 $ docker network create wordpressnet
 $ docker volume create wordpress_db_volume
