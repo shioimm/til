@@ -1,10 +1,19 @@
 # クラス
 
 ```ts
-class Person {
+// Klassクラスを定義すると
+// 1. 型の名前空間にKlass型、値の名前空間にKlassクラスが定義される
+
+class Klass {
+  constrator() {}
+  method() {}
 }
 
-const person = new Person();
+let k: Klass = new Klass // Klass型のKlassインスタンスkを生成
+
+// 2. インスタンス型 (Klass) とコンストラクタ型 (typeof Klass) が生成される
+//   インスタンス型はメンバmethod()を持つシグネチャ
+//   コンストラクタ型はメンバnew()を持つシグネチャ
 ```
 
 ## 抽象クラス
@@ -135,6 +144,22 @@ let doubleFn: DoubleValues = (x: number, y: number) => {
 | 同名の宣言                   | 定義をマージ or エラー | エラー                                         |
 | Mapped Type                  | 使用不可               | 使用可能                                       |
 
+## finalクラス
+
+```ts
+// constratorをprivateにすることによってクラスの拡張や直接的なインスタンス化を禁止する
+
+class Klass {
+  private constrator(private arg: number) {}
+
+  // インスタンス化を行うメソッドを用意
+  static create(arg: number) {
+    return new Klass(arg)
+  }
+}
+
+Klass.create(1)
+```
 
 ## 参照
 - [クラス (class)](https://typescriptbook.jp/reference/object-oriented/class)
