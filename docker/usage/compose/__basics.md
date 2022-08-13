@@ -1,7 +1,7 @@
 # Docker Compose
 - e.g. WordPress + MySQL
 
-## インストール
+### インストール
 
 ```
 $ sudo apt install -y python3 python3-pip
@@ -9,7 +9,7 @@ $ sudo pip3 install docker-compose
 $ docker compose --version
 ```
 
-## docker-compose.yml
+### docker-compose.yml
 - services (コンテナ)、networks (コンテナが参加するネットワーク)、volumes (ボリューム) を定義する
 
 ```yml
@@ -54,18 +54,29 @@ volumes:
   wordpress_db_volume:
 ```
 
-## コンテナを作成・起動
+### コンテナを作成・起動
+- docker-compose.ymlファイルを置いたディレクトリ内で操作する
 - 通常はデタッチモードで起動する
 
 ```
 $ docker-compose up -d
-$ docker-compose ps
 ```
 
 - コンテナ・ネットワーク・ボリュームが作成され、コンテナが起動する
 - コンテナ名は`作業用ディレクトリ_コンテナ名_N`として命名される
 
-## コンテナの停止・削除
+### コンテナの確認
+1. コンテナ一覧を表示
+2. Composeファイルの確認
+3. コンテナの出力を表示
+
+```
+$ docker-compose ps
+$ docker-compose config
+$ docker-compose logs
+```
+
+### コンテナの停止・削除
 - コンテナ・ネットワークは削除される
 - ボリュームは削除されず (デフォルト) 、次回`$ docker-compose up`時にマウントされる
 
@@ -74,7 +85,7 @@ $ docker-compose down
 $ docker-compose psa
 ```
 
-## 特定のコンテナの操作
+### 特定のコンテナの操作
 - docker-compose(1)コマンドの操作にはdocker-compose.ymlが必要
 - docker-compose(1)コマンドでは操作するコンテナのservice名を指定する
 - docker-compose(1)コマンドではコンテナの依存関係が考慮される
@@ -89,7 +100,7 @@ $ docker-compose stop wordpress-db
 $ docker-compose start wordpress-db
 ```
 
-#### Docker Composeを使用しない場合の操作
+### Docker Composeを使用しない場合の操作
 
 ```
 $ docker network create wordpressnet
