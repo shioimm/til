@@ -49,14 +49,66 @@ class Klass implements I1, I2 {
 - 同じ名前のインターフェースを宣言した場合、それぞれのインターフェースの型がマージされる
 
 ### 継承
+
 ```ts
-interface extentedObj extends Obj {
-  prop2: number // prop2プロパティを強制
+interface Obj {
+  prop1: string
 }
 
-const objHasProp2: extentedObj = {
-  name: 'abc',
-  age: 99
+interface extentedObj extends Obj {
+  prop2: number
+}
+
+const ob: extentedObj = {
+  prop1: 'string'
+  prop2: 1
+}
+```
+
+```ts
+// リテラル型へ変換可能
+interface Obj1 {
+  prop: string
+}
+
+interface extentedObj1 extends Obj1 {
+  prop: 'string'
+}
+
+// ユニオン型から絞り込み可能
+interface Obj2 {
+  prop: string | number
+}
+
+interface extentedObj2 extends Obj2 {
+  prop: string
+}
+
+interface Obj3 {
+  prop: string
+}
+
+// 継承元のプロパティに適合しない上書きは不可能
+interface extentedObj3 extends Obj3 {
+  prop: number // Error
+}
+```
+
+### 宣言のマージ
+
+```ts
+interface Obj {
+  prop: number
+}
+
+// 別の名前のプロパティを持つ同名のインターフェースを宣言した場合、プロパティがマージされる
+interface Obj {
+  prop0: string
+}
+
+// 同じ名前・異なる型のプロパティを持つ同名のインターフェースの宣言は不可能
+interface Obj {
+  prop: string // Error
 }
 ```
 
@@ -76,12 +128,13 @@ let doubleFn: DoubleValues = (x: number, y: number) => {
 - インターフェース -  型の宣言
 - 型エイリアス -  型に名前をつける
 
-| 機能                       | インターフェース   | 型エイリアス                                   |
-| -                          | -                  | -                                              |
-| 継承                       | 可能               | 不可 (インターセクション型で代替可能)          |
-| プロパティのオーバーライド | 上書き or エラー   | フィールド毎にインターセクション型が計算される |
-| 同名の宣言                 | 定義がマージされる | エラーが発生                                   |
-| Mapped Type                | 使用不可           | 使用可能                                       |
+| 機能                         | インターフェース       | 型エイリアス                                   |
+| -                            | -                      | -                                              |
+| 継承                         | 可能                   | 不可 (インターセクション型で代替可能)          |
+| 継承によるプロパティの上書き | 上書き or エラー       | フィールド毎にインターセクション型が計算される |
+| 同名の宣言                   | 定義をマージ or エラー | エラー                                         |
+| Mapped Type                  | 使用不可               | 使用可能                                       |
+
 
 ## 参照
 - [クラス (class)](https://typescriptbook.jp/reference/object-oriented/class)
