@@ -20,15 +20,15 @@ let obj: {
 };
 ```
 
-## constアサーション (読み取り専用オブジェクト)
+## constアサーション
+- 型の拡大を抑制する
+- 読み取り専用オブジェクトにする
+  - ネストしたオブジェクトも再帰的にreadonlyにすることができる
 
 ```ts
-const obj: {
-  prop: number;
-} as const;
+let obj1 = { prop: 1 } as const;      // obj1に{ readonly prop: 1 }型が割り当てられる
+let obj2 = [1, { prop: 1 }] as const; // obj2にreadonly [1, { readonly prop: 1 }]型が割り当てられる
 ```
-
-- ネストしたオブジェクトも再帰的にreadonlyにすることができる
 
 ## definite assignment assertion
 - 変数が初期化済みであることを明示する
