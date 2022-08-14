@@ -1,7 +1,7 @@
-# `Omit<T, Keys>`
-- オブジェクト型TからプロパティのキーとしてKeysを除くオブジェクト型を返すユーティリティ型
-  - T - オブジェクト型
-  - Keys - Tのプロパティキー
+# `Omit<Object, Keys>`
+- オブジェクト型ObjectからプロパティのキーとしてKeysを除くオブジェクト型を返すユーティリティ型
+  - Object - オブジェクト型
+  - Keys - Objectのプロパティキー
 
 ```ts
 type Obj = {
