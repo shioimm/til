@@ -1,7 +1,7 @@
-# `Record<Keys, Type>`
-- プロパティのキーがKeys、プロパティの値がTypeのオブジェクト型を作るユーティリティ型
-  - Keys - string、number、symbol
-  - Type - オブジェクトのプロパティの値の型
+# `Record<Key, Value>`
+- プロパティのキーがKey、プロパティの値がValueのオブジェクト型を作るユーティリティ型
+  - Key - string、number、symbol
+  - Value - オブジェクトのプロパティの値の型
 
 ```ts
 type StringNumber = Record<string, number>;
