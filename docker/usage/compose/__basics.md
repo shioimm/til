@@ -15,8 +15,10 @@ $ docker compose --version
 ```yml
 version: "3"
 
+# コンテナの定義
 services:
-  wordpress-db: # DBコンテナの定義
+  # DBコンテナの定義
+  wordpress-db:
     image: mysql:5.7
     networks:
       - wordpressnet
@@ -31,7 +33,8 @@ services:
       MYSQL_USER: wordpressuser
       MYSQL_PASSWORD: wordpresspass
 
-  wordpress-app: # アプリケーションコンテナの定義
+  # アプリケーションコンテナの定義
+  wordpress-app:
     depends_on:
       - wordpress-db
     image: wordpress
@@ -46,10 +49,11 @@ services:
       WORDPRESS_DB_USER: wordpressuser
       WORDPRESS_DB_PASSWORD: wordpresspass
 
+# ネットワークの定義 (明示しない場合は新規作成される)
 networks:
-
   wordpressnet:
 
+# ボリュームの定義
 volumes:
   wordpress_db_volume:
 ```
@@ -82,14 +86,11 @@ $ docker-compose logs
 
 ```
 $ docker-compose down
-$ docker-compose psa
+$ docker-compose ps -a
 ```
 
 ### 特定のコンテナの操作
-- docker-compose(1)コマンドの操作にはdocker-compose.ymlが必要
-- docker-compose(1)コマンドでは操作するコンテナのservice名を指定する
-- docker-compose(1)コマンドではコンテナの依存関係が考慮される
-1. 特定のコンテナをインタラクティブモードで操作
+1. 特定のコンテナのシェルを実行
 2. 特定のコンテナを停止
 3. 特定のコンテナを再起動
 
@@ -99,6 +100,11 @@ root@xxxxxxxxxxxx:/var/www/html# exit
 $ docker-compose stop wordpress-db
 $ docker-compose start wordpress-db
 ```
+
+#### dockerコマンドとの違い
+- docker-composeコマンドの操作にはdocker-compose.ymlが必要
+- docker-composeコマンドでは操作するコンテナのservice名を指定する
+- docker-composeコマンドではコンテナの依存関係が考慮される
 
 ### Docker Composeを使用しない場合の操作
 
