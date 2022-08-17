@@ -14,8 +14,7 @@ RUN apt update \
     && apt install -y apache2 php libapache2-mod-php \
     && apt clean \
     && rm -rf /var/lib/apt/lists/* \
-    && rm /var/www/html/index.html
-    # index.htmlとindex.phpを同じディレクトリに置くとindex.htmlが優先されてしまうため
+    && rm /var/www/html/index.html # index.htmlとindex.phpを同じディレクトリに置くとindex.htmlが優先されてしまうため
 COPY index.php /var/www/html
 CMD /usr/sbin/apachectl -DFOREGROUND
 STOPSIGNAL SIGWINCH # httpdを終了させるシグナル (SIGWINCH) を送出するため
@@ -37,6 +36,10 @@ $ cat index.php
 
 ```
 $ docker build . -t myphpimage
+
+# 前回のキャッシュを使わない場合
+$ docker build . -t myphpimage --nocache
+
 $ docker image ls
 $ docker run -dit --name myphp -p 8080:80 myphpimage
 ```
@@ -68,7 +71,8 @@ $ docker image ls
   - COPYは圧縮ファイルを自動的に展開しない
 
 #### ENTRYPOINT / CMD
-- コンテナ起動時 (`$ docker run`) にコマンドを実行
+- コンテナ起動時 (`$ docker run`) にコンテナ内で実行する規定のコマンドを指定
+  - コマンドが終了するとコンテナも終了する
   - ENTRYPOINTはコマンドの指定を強要する
   - CMDは`$ docker run`の際に指定する最後のコマンドのデフォルト値を変更する
   - ENTRYPOINTもCMDも指定しない場合はベースイメージの設定値が引き継がれる
@@ -84,13 +88,23 @@ $ docker image ls
 #### FROM
 - ベースイメージ
 
+#### ONBUILD
+- イメージのビルド完了後に実行する命令
+
+```
+ONBUILD COPY ...
+```
+
 #### RUN
 - イメージ作成時 (`$ docker build`) にコマンドを実行
-- パッケージのインストールやファイルのコピー、変更など
-- 複数のコマンドを実行する際も一つのRUNコマンドで済ませるようにする
+  - パッケージのインストールやファイルのコピー、変更など
+  - 複数のコマンドを実行する際も一つのRUNコマンドで済ませるようにする
 
 #### VOLUME
 - ボリュームの指定 (-vオプションに渡すデフォルト値を指定する)
+
+#### WORKDIR
+- RUN、CMD、ENTRYPOINT、ADD、COPYの作業ディレクトリを指定
 
 ## 参照
 - さわって学ぶクラウドインフラ docker基礎からのコンテナ構築
