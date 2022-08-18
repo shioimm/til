@@ -50,10 +50,10 @@ $ docker build . -t myphpimage --no-cache
 ```
 
 ## イメージをファイル化 & ファイルからイメージを読み込み
-1. イメージをファイルとして保存
+1. イメージを.tarファイルとして保存
 2. ファイルサイズを確認
 3. 内容を確認
-4. ファイルからイメージを読み込み
+4. .tarファイルからイメージを読み込み
 5. イメージ一覧を確認
 
 ```
@@ -62,6 +62,21 @@ $ ls -la saved.tar
 $ tar tvf saved.tar
 $ docker load -i saved.tar
 $ docker image ls
+```
+
+## イメージをDockerHubに登録・ダウンロード
+1. Dockerイメージ名を変更 `Dockerイメージ名` -> `<Docker ID>/<リポジトリ名>`
+2. DockerHubにログイン
+3. push
+4. pull
+5. DockerHubからログアウト
+
+```
+$ docker tag myexample myexampleid/myexample
+$ docker login
+$ docker push myexampleid/myexample
+$ docker pull myexampleid/myexample
+$ docker logout
 ```
 
 ## Dockerfile書式
