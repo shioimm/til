@@ -1,40 +1,27 @@
 # `useEffect`
-- 参照: [React Hooks 入門 - Hooksと Redux を組み合わせて最新のフロントエンド状態管理手法を習得しよう！](https://www.udemy.com/course/react-hooks-101/)
-- 監視する対象に対してDOMを描画する際、もしくはDOMが変更された際にコールバックを実行するhook
-  - 第一引数 -> コールバック関数
-  - 第二引数 -> 監視する対象の配列(ex: `[state]`)
+- render後にコールバックを実行する
 
-### 使い方
 ```js
-import React, { useEffect, useState } from 'react'
-
-const App = () => {
-  useEffect(() => {
-    console.log(2) // レンダリング後に実行される
-  })
-
-  const fuga = useEffect(() => {
-    console.log(1) // レンダリング時にreturnの中で呼ばれる
-    return 'fuga'
-  })
-
-  return (
-    <>
-      {fuga()}
-    </>
-  )
-}
-```
-#### 最初にDOMを描画するタイミングでのみ`useEffect`を呼ぶ
-- componentDidMountと同じ
-```js
-useEffect(() => {
-  return 'hoge'
-}, []) // 第二引数に空配列を渡す
+useEffect(コールバック関数, 監視対象の配列)
 ```
 
-#### stateの特定のプロパティの変更のみにフックする
 ```js
+// render後に一回だけコールバックを実行
 useEffect(() => {
-  return 'hoge'
-}, [state.city]) // 第二引数に対象となるプロパティを要素に取る配列を渡す
+  f()
+}, [])
+
+// 監視対象が変更されるたびコールバックを実行
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  f()
+}, [count])
+
+setCount(count++)
+
+// コンポーネントのアンマウント時にコールバックを実行 (クリーンアップ関数)
+useEffect(() => {
+  return f()
+}, [])
+```

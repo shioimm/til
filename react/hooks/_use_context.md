@@ -1,10 +1,11 @@
 # `useContext`
-- 参照: [React Hooks 入門 - Hooksと Redux を組み合わせて最新のフロントエンド状態管理手法を習得しよう！](https://www.udemy.com/course/react-hooks-101/)
-- コンテキストを共有する(Prop Grilling問題を回避する)ためのhook
-- 共有したいデータを渡す側(Provider)と、共有したいデータを受け取る側(Consumer)の双方に読み込んで使う
-  - 引数 -> コンテキスト
+- コンテキストオブジェクトを共有する
+- コンテキストを渡す側 (Provider) と、コンテキストを受け取る側 (Consumer) の双方に読み込んで使う
 
-### 使い方
+```js
+const count = useContext(MyContext);
+```
+
 ```js
 // app/javascript/contexts/MyContext.js
 
@@ -13,46 +14,41 @@ import { createContext } from 'react'
 const MyContext = createContext()
 
 export default MyContext
-```
 
-```js
+// ------------------------------------
+
+// app/javascript/components/app/count.js
+
+import React, { useState } from 'react'
+import MyContext from 'contexts/MyContext'
+
+const { state } = useContext(MyContext) // コンテキストからcountを取り出す
+
+const Count = () => {
+  return <p>count: {state.count}</p>
+}
+
+export default Count
+
+// ------------------------------------
+
 // app/javascript/components/App.js
 
 import React, { useState } from 'react'
 import MyContext from 'contexts/MyContext'
-import City from 'components/app/City'
+import Count from 'components/app/Count'
 
-const App = props => {
-  const [state, setState] = useState(props)
-  const { city } = state
+const App = () => {
+  const [state, setState] = useState(0)
+  const { count } = state
 
   return (
     // 使用したい箇所をProviderコンポーネントで囲む
-    // valueに共有したいデータを渡す
+    // countに共有したいデータを渡す
     <MyContext.Provider value={{ state }}>
-      <City />
-      <input value={city} onChange={e => setState({ ...state, city: e.target.value })} />
-      <button onClick={() => setState(props)}>reset</button>
+      <Count />
+      <button onClick={() => setState(...state, count: count++)}>+</button>
     </MyContext.Provider>
   )
 }
-
-App.defaultProps = {
-  city: 'Fukuoka',
-}
-```
-
-```js
-// app/javascript/components/app/city.js
-
-import React, { useState } from 'react'
-import MyContext from 'contexts/MyContext'
-
-const { state } = useContext(MyContext) // コンテキストからvalueを取り出す
-
-const App = () => {
-  return <p>City: {state.city}</p>
-}
-
-export default City
 ```
