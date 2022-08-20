@@ -30,6 +30,16 @@ let obj1 = { prop: 1 } as const;      // obj1に{ readonly prop: 1 }型が割り
 let obj2 = [1, { prop: 1 }] as const; // obj2にreadonly [1, { readonly prop: 1 }]型が割り当てられる
 ```
 
+#### 型の拡大
+- `let`で宣言する変数にリテラル値を代入する際、明示的に型をアノテーションしないと
+  変数の型はリテラル型ではなくそのリテラルが属するベースの型へと拡大される現象
+
+```ts
+let   letA        = 'str' // letA:   string
+let   letB: 'str' = 'str' // letB:   'str'
+const constA      = 'str' // constA: 'str'
+```
+
 ## definite assignment assertion
 - 変数が初期化済みであることを明示する
 
