@@ -3,11 +3,12 @@
   - reducer - stateとactionを受け取りaction.typeによってstateの値を変化させる純粋関数
 
 ```js
-const [state, dispatch] = useReducer(reducer, initialArg);
-```
+const reducer = (現在の状態, action) => return 次の状態; // actionに応じて次の状態を返す
 
-- 第一引数 -> reducer (`(state, action) => newState`)
-- 第二引数 -> stateの初期値
+const [現在の状態, dispatch] = useReducer(reducer, 初期状態);
+
+let latestState = dispatch(action); // 状態を更新
+```
 
 ```js
 import React, { useReducer } from 'react';
