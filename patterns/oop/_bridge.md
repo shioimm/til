@@ -1,8 +1,17 @@
 # Bridge [構造に関するパターン]
-- 共通する動作を行うオブジェクト群からその一連の動作を切り離し、
-  抽象的な動作としてカプセル化する
-- 各オブジェクトが行っていた動作の具体的な実装とそのインターフェースは
-  カプセル化した抽象クラスからの派生クラスが持つ
+- 一連の実装を、それらが利用されるオブジェクトから切り離し、独立したオブジェクトへ分離する
+
+#### 構成要素
+- Abstraction
+  - オブジェクトのためのインターフェース
+  - Implementorを集約する (Implementorを利用する)
+- RefinedAbstraction
+  - Abstractionから派生した具体的なオブジェクト
+- Implementor
+  - 実装のためのインターフェース
+  - RefinedAbstractionオブジェクトによって実際に利用するConcreteImplementorNを判断する
+- ConcreteImplementorN
+  - Implementorから派生した具体的な実装を表すオブジェクト
 
 ## 参照
 - オブジェクト指向のこころ 第10章
