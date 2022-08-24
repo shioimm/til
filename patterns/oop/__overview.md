@@ -23,32 +23,26 @@
 ## パターンの分類
 ### 生成に関するパターン
 - オブジェクトの生成や実体化を管理する目的に使用される
-
-#### 例
-- Abstract Factory
-- Singleton
-- Double-Chuncked Locking
-- Factory Method
-- Object Pool
+  - Abstract Factory
+  - Singleton
+  - Double-Chuncked Locking
+  - Factory Method
+  - Object Pool
 
 ### 構造に関するパターン
-- 既存コードを新たなオブジェクト指向設計に統合する (既存オブジェクトをまとめる) 目的に使用される
+- 別種のオブジェクト群を統合する目的に使用される
   - インターフェースを取り扱うとき
-  - 実装と抽象を関連づけるとき
-
-#### 例
-- Facade
-- Adapter
-- Bridge
-- Decorator
+  - 実装と抽象を整理するとき
+  - Facade
+  - Adapter
+  - Bridge
+  - Decorator
 
 ### 振る舞いに関するパターン
-- 振る舞いにおける流動的要素を保持させ、柔軟な振る舞いを実現する目的に使用される
-
-#### 例
-- Strategy
-- Observer
-- Template Method
+- 振る舞いにおける流動的要素を保持させ、変化する振る舞いを実現する目的に使用される
+  - Strategy
+  - Observer
+  - Template Method
 
 ## 参照
 - オブジェクト指向のこころ 第18/25章

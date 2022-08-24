@@ -4,14 +4,10 @@
 
 #### 構成要素
 - Client
-  - AbstractFactoryにメッセージを送り、ProductNを受け取る
-  - ProductNにメッセージを送る
+  - AbstractFactoryにメッセージを送り、必要なProductを得て、Productにメッセージを送る
 - AbstractFactory
-  - Clientからメッセージを受け取り、実際に利用するConcreteFactoryNを判断してConcreteFactoryNへ移譲する
-  - ConcreteFactoryNによって生成されたProductNをClientへ返す
-- ConcreteFactoryN
-  - ProductNを生成する
-- ProductN
+  - Clientからメッセージを受け取り、Productを生成してClientに返す
+- Product
   - Clientからメッセージを受け取る
 
 ## 参照

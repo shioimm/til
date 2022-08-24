@@ -3,16 +3,12 @@
 
 #### 構成要素
 - Client
+  - Contextにメッセージを送る
 - Context
   - ビジネスルールやアルゴリズムを必要とするオブジェクト
-  - Clientからメッセージを受け取り、必要な場合はStrategyを呼び出す
-  - Contextオブジェクトによって実際に利用するConcreteStrategyNを指定するケースがある
+  - Clientからメッセージを受け取り、必要なビジネスルールやアルゴリズムを取得するためにStrategyを呼び出す
 - Strategy
-  - Contextからメッセージを受け取り、ConcreteStrategyNへ移譲する
-  - Contextオブジェクトによって実際に利用するConcreteStrategyNを判断するケースがある
-- ConcreteStrategyN
-  - 実際のロジック
-  - Strategyからメッセージを受け取る
+  - Contextからメッセージを受け取り、Contextにとって適切なビジネスルールやアルゴリズムを返す
 
 ## 参照
 - オブジェクト指向のこころ 第6章
