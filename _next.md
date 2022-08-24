@@ -21,3 +21,12 @@
 | revalidateを返すgetStaticProps    | ISR              | ビルド時 (ISR)              |
 | getServerSideProps                | SSR              | リクエスト時 (サーバー)     |
 | 上記以外                          | CSR              | リクエスト時 (クライアント) |
+
+## プロジェクト開始時にやること (例)
+1. プロジェクト作成 (`$ create-next-app`)
+2. tsconfig.jsonの設定
+3. CSSの導入 (styled-components)
+4. リンタの導入 (ESLintの設定)
+5. Storybookの導入・設定
+6. 環境変数の設定 (.envファイル)
+7. テスト環境の構築 (testing-library)

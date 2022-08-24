@@ -2,6 +2,7 @@
 #### `$ rails db:migrate:redo`
 - 一つ前のマイグレーションに戻してからもう一度マイグレーションを実行する
 - up/downが両方とも可能かを確認するために使用する
+- n以上前のマイグレーションから再実行する場合 `$ rails db:migrate:redo STEP=n`
 
 #### `$ rails db:migrate:reset`
 - DBをdropした後にcreateし、マイグレーションファイルを元にマイグレーションを実行する
