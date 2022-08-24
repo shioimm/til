@@ -1,4 +1,9 @@
 # PostgreSQL
+#### URLの構造
+```
+postgres:/<DomainName>:<Password>@<URL>:<PortNumber>/<Path>
+```
+
 ## 構造
 #### データベース
 - インストール直後はデータベースとして`template0`、`template1` (テンプレート用)、`postgres`が作成される
