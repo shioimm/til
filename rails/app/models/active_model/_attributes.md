@@ -1,6 +1,4 @@
 # ActiveModel::Attributes
-- 属性を示す文字列をモデルの期待するデータ型に変換する
-
 ## ActiveModel::Attributes::BeforeTypeCast
 #### `(属性名)_before_type_cast`
 - DBへ保存される前 (型キャスト前) のデータ型を取得する

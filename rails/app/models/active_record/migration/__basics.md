@@ -6,6 +6,15 @@
 - `schema_migrations`に日付情報があるが、それに対応するマイグレーションファイルがない場合、
   `$ rails db:migrate:status`は`********** NO FILE **********`を表示する
 
+#### `config.active_record.schema_format`
+
+```ruby
+# config/application.rb
+# スキーマ情報をSQL (structure.sql) で保存する
+
+config.active_record.schema_format = :sql
+```
+
 #### 任意のSQLを実行
 
 ```ruby
