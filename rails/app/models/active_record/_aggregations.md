@@ -1,8 +1,6 @@
 # ActiveRecord::Aggregations::ClassMethods
-- 参照: [ActiveRecord::Aggregations::ClassMethods](https://api.rubyonrails.org/classes/ActiveRecord/Aggregations/ClassMethods.html#method-i-composed_of)
-- 参照・引用: パーフェクトRuby on Rails[増補改訂版] P460-473
-
 ## `compised_of`
+
 ```ruby
 # 値オブジェクトの定義
 
@@ -42,3 +40,7 @@ class User < ApplicationRecord
   # converter   - 値オブジェクトのクラスとは異なるクラスのインスタンスが代入された場合の変換方法(default: nil)
 end
 ```
+
+## 参照
+- [ActiveRecord::Aggregations::ClassMethods](https://api.rubyonrails.org/classes/ActiveRecord/Aggregations/ClassMethods.html#method-i-composed_of)
+- パーフェクトRuby on Rails[増補改訂版] P460-473
