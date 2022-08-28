@@ -3,10 +3,8 @@
 - ActiveRecord::Encryptionを用いたデータがActive Recordオブジェクトに読み込まれると平文になり、
   DBに置かれると暗号化される
 
-## Usage
-#### キーセットの追加
 ```
-# credentialファイルにキーセットを追加する
+# セットアップ: Rails credentialsにキーを追加
 $ bin/rails db:encryption:init
 
 # active_record_encryption:
@@ -15,24 +13,31 @@ $ bin/rails db:encryption:init
 #   key_derivation_salt: 暗号化キーを導出するために利用
 ```
 
-#### configファイル
-- [Configuration Options](https://edgeguides.rubyonrails.org/active_record_encryption.html#configuration-options)
-
-#### モデル
 ```ruby
-class Event < ApplicationRecord
-  # locationカラムを暗号化
-  encrypts :location
+class User < ApplicationRecord
+  encrypts :name
+
+  # 大文字小文字を区別しない
+  encrypts :email, downcase: true
+
+  # 決定論的暗号化 (同じコンテンツなら同じ暗号文が生成される)
+  # デフォルトは非決定論的暗号化
+  # 決定論的に暗号化されたデータのみuniquenessバリデーションを利用できる
+  encrypts :address, deterministic: true
+end
 ```
+
+- 暗号化された属性 + Base64エンコーディング + メタデータがDBに保存されるようになる
+- 510バイト以上のデータを保存できるカラムが必要
 
 ```ruby
 # 書き込みと読み込みは透過的に行われる
-event = Event.create!(location: 'somewhere')
-event.first.location
+user = User.create!(name: 'Bob')
+user.take.name
 
 # DBに保存されている内容を直接表示
-event = Event.connection.execute('SELECT location FROM events LIMIT 1').first
-JSON.parse(event['location'])
+user = User.connection.execute('SELECT name FROM users LIMIT 1').take
+JSON.parse(user['name'])
 # => {"p"=>"...", "h"=>{"iv"=>"...", "at"=>"..."}}
 # p  - ペイロード (暗号文)
 # h  - 暗号化操作に関連する情報を含むヘッダのハッシュ
@@ -41,4 +46,5 @@ JSON.parse(event['location'])
 ```
 
 ## 参照
+- [Active Record と暗号化](https://railsguides.jp/active_record_encryption.html)
 - [Rails 7のActive Record暗号化機能（翻訳）](https://techracho.bpsinc.jp/hachi8833/2021_09_29/109824)
