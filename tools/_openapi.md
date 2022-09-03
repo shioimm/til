@@ -1,32 +1,30 @@
 # OpenAPI
-- RESTful APIにおけるインターフェイス定義の記述形式
-  - OAS: OpenAPI仕様
-- Swaggerが標準的実装となっている
+#### 定義ファイルをエディタで作成
+- [Swagger Editor](https://swagger.io/tools/swagger-editor/)
 
-### 用途
-- APIを表示するドキュメント生成ツール
-- 多様なプログラミング言語でサーバーやクライアントを生成するコード生成ツール
-- テストツール など
+#### 定義ファイルをコードから作成
+- [FastAPI](https://fastapi.tiangolo.com/ja/) (Python)
+- [rspec-openapi](https://github.com/k0kubun/rspec-openapi) (Ruby)
 
-### OpenAPIによって定義されるもの
-- APIの名前と説明
-- API内の個々のエンドポイント
-- 呼び出し元の認証方法
+#### 定義ファイルを読み込んでドキュメントとして可視化
+- [Swagger UI](https://swagger.io/tools/swagger-ui/)
+- [Swagger Codegen](https://swagger.io/tools/swagger-codegen/)
+  - コード生成ツール
+  - OASで定義されたAPI用サーバースタブとクライアントSDKを生成する
 
-### 仕様
-- インターフェイス定義はJSONもしくはYAMLによって記述される
+#### ソースコードの自動生成
+- [OpenAPI Generator](https://github.com/OpenAPITools/openapi-generator)
+  - 定義ファイルからリクエスト / レスポンスのインターフェースと
+    APIを呼び出すフロントエンドコードを生成
+- [oapi-codegen](https://github.com/deepmap/oapi-codegen)
+  - 定義ファイルからリクエスト / レスポンスに対応した構造体や
+    リクエストハンドラとしてのインターフェースとなるバックエンドコードを生成
 
-### Swagger
-- OASによるAPI仕様を書くためのツール
-  - [Swagger Editor](https://swagger.io/tools/swagger-editor/)
-    - OpenAPIベースのAPIに特化したオープンソースエディタ
-  - [Swagger UI](https://swagger.io/tools/swagger-ui/)
-    - ドキュメント生成ツール
-    - OASから自動的にAPIリソースを視覚化する
-  - [Swagger Codegen](https://swagger.io/tools/swagger-codegen/)
-    - コード生成ツール
-    - OASで定義されたAPI用サーバースタブとクライアントSDKを生成する
+#### 定義ファイルの型やサンプル入出力を利用してモックサーバを作成
+- [Prisma](https://github.com/stoplightio/prism)
 
-## 参照
-- [OpenAPI Specification](https://swagger.io/specification/)
-- [OpenAPI の概要](https://cloud.google.com/endpoints/docs/openapi/openapi-overview?hl=ja)
+#### 実際のリクエスト・レスポンス時の値と定義ファイルが一致しているかを確認
+- [committee](https://github.com/interagent/committee)
+
+#### 分割された定義ファイルの統合
+- [swagger-cli](https://github.com/APIDevTools/swagger-cli)
