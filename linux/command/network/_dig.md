@@ -32,4 +32,22 @@ $ dig -6 example.com # Ipv6で調べる
 ;; MSG SIZE  rcvd: 受信メッセージサイズ
 ```
 
+- `QR` - Query or Response
+  - 問い合わせ- 0
+  - 応答 - 1
+- `AA` - Aithoritative Answer
+  - 対応したネームサーバーが問い合わせ部のドメイン名に対応する権威を持っているかどうか
+- `TC` - Truncation
+
+  - メッセージがtruncateされたかどうか
+- `RD` - Recursion Desired
+  - 再帰問い合わせかどうか
+- `RA` - Recursion Available
+  - 再帰問い合わせを処理できるかどうか
+- `AD` - Authentic Data
+  - 問い合わせ - DNSSECの検証を指示
+  - 応答 - DNSSECの検証に成功したかどうか
+- `CD` - Checking Disabled
+  - DNSSECの検証を行わないことを指示
+
 - [【 dig 】コマンド――ドメイン名からIPアドレスを調べる](https://atmarkit.itmedia.co.jp/ait/articles/1711/09/news020.html)
