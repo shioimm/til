@@ -1,4 +1,4 @@
-require 'drb'
+require "drb"
 
 class Foo
   def greeting(name)
@@ -15,5 +15,5 @@ class Foo
 end
 
 foo = Foo.new
-DRb.start_service('druby://localhost:8082', foo)
+DRb.start_service("druby://localhost:8082", foo)
 sleep
