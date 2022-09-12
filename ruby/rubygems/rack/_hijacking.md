@@ -1,38 +1,61 @@
-# Hijacking
-- 参照: [The new Rack socket hijacking API](https://old.blog.phusion.nl/2013/01/23/the-new-rack-socket-hijacking-api/)
-- 翻訳参考: [DeepL](https://www.deepl.com/translator)
-
-## TL;DR
+# Hijacking (Rack1.5 ~)
 - アプリケーションがクライアントソケットを制御し、任意の操作を行うための機能
-- Rack1.5から導入
-
-### Rack環境変数
-- `'rack.hijack?'`
-  - アプリケーションサーバーがHijacking APIをサポートしているかどうか
-- `rack.hijack`
-  - `#call`に応答するオブジェクト
-  - ハイジャック操作を行う
-- `rack.hijack_io`
-  - ハイジャックされたソケットオブジェクト
+  - e.g. WebSocketの実装、クライアントへのデータのストリーミング
 
 ## full hijacking API
-- アプリケーションがソケットを完全に制御することができる
-  - アプリケーションサーバはソケットを介して何も送信しない
-- ソケットを介して任意の(HTTP 以外の)プロトコルを実装したい場合に便利
+- ソケットを通過する内容をアプリケーションによって完全に制御する
+- HTTP/1.xによる通信を完全にハイジャックするために使用される
+- HTTPヘッダが書き込まれる前に発生する
+- アプリケーションによって生成されたレスポンスは無視される
 
-### アプリケーション実装
-- `rack.hijack_io`がすべてのHTTPヘッダを出力するようにする
-  - HTTP keep-aliveを自力で実装しない場合: `Connection: close`ヘッダも出力する
-- IOオブジェクトが不要になったら`close`する
+#### API (~ 3.0)
+- HTTPヘッダを出力する
+- ハイジャックの対象となるソケットが不要になった際にクローズする
+
+```ruby
+# full hijackingの実行
+env['rack.hijack'].call
+
+# ハイジャックの対象となるソケットオブジェクトへのアクセス
+io = env['rack.hijack_io']
+io.write("Status: 200\r\n")
+io.write("Connection: close\r\n") # HTTP keep-aliveを実装しない場合必要
+# ...
+io.close
+```
+
+#### API (3.0 ~)
+
+```ruby
+# full hijackingを実行するために使用されるオブジェクト
+# callableであり、HTTP/1.xのセマンティックとフォーマットを使用した接続に対して読み書きできるIOオブジェクト
+env['rack.hijack']
+
+# full hijackingの実行
+env['rack.hijack'].call
+```
 
 ## partial hijacking API
-- アプリケーションサーバーがヘッダを送信した後に
-  アプリケーションがソケットを制御することができる
-- ストリーミングに便利
+- アプリケーションがレスポンスボディのストリームを制御する
+  - e.g. 双方向ストリーミング
 
-### アプリケーション実装
-- `rack.hijack`にProcオブジェクトを割り当てる
-  - Procオブジェクトはアプリケーションサーバがヘッダを送信した後に呼び出される
-  - アプリケーションサーバーはRackレスポンスのボディを無視して
-    `rack.hijack`を`#call`し、返り値をクライアントソケットに渡す
-- Procオブジェクトが不要になったら`close`する
+#### API (3.0 ~)
+
+```ruby
+# 真である場合、サーバーがpartial hijackingをサポートしていることを示す
+env['rack.hijack?']
+
+# env['rack.hijack?']がtrulyであればresponse_headersを設定可能
+response_headers = {}
+response_headers["rack.hijack"] = lambda do |io|
+  io.write(...)
+  # ...
+  io.close
+end
+
+[200, response_headers, nil]
+```
+
+## 参照
+- [The new Rack socket hijacking API](https://old.blog.phusion.nl/2013/01/23/the-new-rack-socket-hijacking-api/)
+- [Hijacking¶ ↑](https://github.com/rack/rack/blob/3012643ea6a89fefe8cc0c68d4992531c367c906/SPEC.rdoc)
