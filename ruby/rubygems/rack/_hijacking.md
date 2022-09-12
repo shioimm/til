@@ -1,8 +1,4 @@
-# Hijacking
-- 参照: [The new Rack socket hijacking API](https://old.blog.phusion.nl/2013/01/23/the-new-rack-socket-hijacking-api/)
-- 翻訳参考: [DeepL](https://www.deepl.com/translator)
-
-## TL;DR
+# Hijacking (Rack1.5 ~)
 - アプリケーションがクライアントソケットを制御し、任意の操作を行うための機能
 - Rack1.5から導入
 
@@ -26,8 +22,7 @@
 - IOオブジェクトが不要になったら`close`する
 
 ## partial hijacking API
-- アプリケーションサーバーがヘッダを送信した後に
-  アプリケーションがソケットを制御することができる
+- アプリケーションサーバーがヘッダを送信した後にアプリケーションがソケットを制御することができる
 - ストリーミングに便利
 
 ### アプリケーション実装
@@ -36,3 +31,7 @@
   - アプリケーションサーバーはRackレスポンスのボディを無視して
     `rack.hijack`を`#call`し、返り値をクライアントソケットに渡す
 - Procオブジェクトが不要になったら`close`する
+
+## 参照
+- [The new Rack socket hijacking API](https://old.blog.phusion.nl/2013/01/23/the-new-rack-socket-hijacking-api/)
+- 翻訳参考: [DeepL](https://www.deepl.com/translator)
