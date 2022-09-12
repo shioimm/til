@@ -1,6 +1,6 @@
 # `$ sudo perf record` / `$ sudo perf report`
-- record - イベントを記録し`perf.data`に出力・表示する
-- report - プロセスや関数によりイベントを分解す
+- record - 測定対象となるハードウェア・ソフトウェアを記録し`perf.data`に出力・表示する
+- report - 記録したイベントをプロセスや関数により分解する
 
 ```
 $ sudo perf record -F 99 -p <PID> -g # -> perf.dataの作成

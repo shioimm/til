@@ -1,6 +1,13 @@
 # perf
-- Linuxの`perf`コマンド (`tools/perf`に含まれる)
-- プログラムの実行時のパフォーマンスを計測する
+- プログラム実行時の性能を計測する
+- Linuxの`tools/perf`に含まれる
+
+| サブコマンド    | 用途                                                                  |
+| -               | -                                                                     |
+| `$ perf list`   | 測定対象となるハードウェア・ソフトウェアイベント一覧を表示            |
+| `$ perf stat`   | プログラムのパフォーマンスカウンタを表示                              |
+| `$ perf top`    | 実行中のプログラムの統計情報を関数単位でcpu使用率の高い順に表示       |
+| `$ perf record` | 測定対象となるハードウェア・ソフトウェアイベントを記録                |
 
 #### 計測ポイント
 - CPU performance counters
@@ -14,10 +21,10 @@
 - Uprobes (dynamic tracing)
   - ユーザ空間のアプリケーションにおけるブレークポイント
 
-## インストール
-- `linux-tools-common` + `linux-tools-$(uname -r)` (カーネルのバージョンを指定) をインストール
+#### インストール
 
 ```
+# linux-tools-common + linux-tools-$(uname -r) (カーネルのバージョンを指定) をインストール
 $ sudo apt install linux-tools-common linux-tools-$(uname -r)
 ```
 
