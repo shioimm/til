@@ -1,119 +1,131 @@
 # ミドルウェア
-- 引用: [Available middleware shipped with Rack](https://github.com/rack/rack#available-middleware-shipped-with-rack-)
-- 翻訳参考: [DeepL](https://www.deepl.com/translator)
-
-## Rack::Chunked
-- [rack/lib/rack/chunked.rb](https://github.com/rack/rack/blob/master/lib/rack/chunked.rb)
-- レスポンスに`Content-Length`ヘッダが含まれていない場合に
-  レスポンスボディにチャンク化されたエンコーディングを適用し、レスポンスをストリーミングするミドルウェア
-- `Trailer`レスポンスヘッダをサポート
-  - チャンク化されたエンコーディングで末尾のヘッダを使用することができる
-
-## Rack::CommonLogger
-- [rack/lib/rack/common_logger.rb](https://github.com/rack/rack/blob/master/lib/rack/common_logger.rb)
-- Apache-styleなログファイルを作成するミドルウェア
+#### Rack::CommonLogger
+- [rack/lib/rack/`common_logger.rb`](https://github.com/rack/rack/blob/master/lib/rack/common_logger.rb)
+- Apacheフォーマットによるログファイルを作成する
+  - [Apache common log format](http://httpd.apache.org/docs/2.4/logs.html#common)
 - 与えられたappへのすべてのリクエストを転送し、設定されたロガーに記録する
 
-## Rack::ConditionalGet
-- [rack/lib/rack/conditional_get.rb](https://github.com/rack/rack/blob/master/lib/rack/conditional_get.rb)
-- レスポンスが変更されていない場合、レスポンスをそのまま返すミドルウェア
-- `If-None-Match` / `If-Modified-Since`リクエストヘッダを利用した条件付き`GET`を有効化する
+#### Rack::ConditionalGet
+- [rack/lib/rack/`conditional_get.rb`](https://github.com/rack/rack/blob/master/lib/rack/conditional_get.rb)
+- レスポンスが変更されていない場合に`304 Not Modified`を返す
+- `If-None-Match` / `If-Modified-Since`を使った条件付きGETを可能にする
+  - アプリケーションは`Last-Modified`またはetagレスポンスヘッダのどちらか
+    あるいは両方を設定する必要がある (RFC2616)
+  - 条件付きGETがマッチした場合、レスポンスボディの生成を回避することができる
 
-## Rack::Config
+#### Rack::Config
 - [rack/lib/rack/config.rb](https://github.com/rack/rack/blob/master/lib/rack/config.rb)
-- リクエストを処理する前に環境を変更するミドルウェア
+- リクエストを処理する前に環境を変更する
 
-## Rack::ContentLength
-- [rack/lib/rack/config.rb](https://github.com/rack/rack/blob/master/lib/rack/config.rb)
-- ボディサイズに基づいて`Content-Length`ヘッダを設定するミドルウェア
+```ruby
+use Rack::Config do |env|
+  env['foo'] = 'bar'
+end
+```
 
-## Rack::ContentType
-- [rack/lib/rack/content_type.rb](https://github.com/rack/rack/blob/master/lib/rack/content_type.rb)
-- `Content-Type`ヘッダを持たないレスポンスに対してデフォルトの`Content-Type`ヘッダを設定するミドルウェア
+#### Rack::ContentLength
+- [rack/lib/rack/`content_length.rb`](https://github.com/rack/rack/blob/master/lib/rack/content_length.rb)
+- `Content-Length`や`Transfer-Encoding`ヘッダを持たないレスポンスに対して
+  レスポンスボディのサイズに応じた`Content-Length`ヘッダを設定する
 
-## Rack::Deflater
+#### Rack::ContentType
+- [rack/lib/rack/`content_type.rb`](https://github.com/rack/rack/blob/master/lib/rack/content_type.rb)
+- `Content-Type`ヘッダを持たないレスポンスに対してデフォルトの`Content-Type`ヘッダを設定する
+
+```ruby
+use Rack::ContentType, "text/plain"
+```
+
+#### Rack::Deflater
 - [rack/lib/rack/deflater.rb](https://github.com/rack/rack/blob/master/lib/rack/deflater.rb)
--  gzipでレスポンスを圧縮するミドルウェア
+- gzipを用いてHTTPレスポンスのコンテンツをエンコーディングし、圧縮を行う
 
-## Rack::ETag
+#### Rack::ETag
 - [rack/lib/rack/etag.rb](https://github.com/rack/rack/blob/master/lib/rack/etag.rb)
-- レスポンスボディに`ETag`ヘッダを設定するミドルウェア
+- レスポンスボディがバッファリング可能だった場合に`ETag`レスポンスヘッダを設定する
 
-## Rack::Events
+#### Rack::Events
 - [rack/lib/rack/events.rb](https://github.com/rack/rack/blob/master/lib/rack/events.rb)
-- リクエスト受信時 / レスポンス送信時に発火するフックを提供するミドルウェア
+- リクエスト受信時 / レスポンス送信時にイベントを発火させるフックを提供する
+  - `on_start(request, response)`
+  - `on_commit(request, response)`
+  - `on_send(request, response)`
+  - `on_finish(request, response)`
+  - `on_error(request, response, error)`
 
-## Rack::Files
+#### Rack::Files
 - [rack/lib/rack/files.rb](https://github.com/rack/rack/blob/master/lib/rack/files.rb)
-- リクエストのパス情報に応じて、指定のディレクトリ以下のファイルを提供するミドルウェア
+- リクエストパスに応じて、指定された`root/`ディレクトリ以下の静的ファイルを配信する
 
-## Rack::Head
+#### Rack::Head
 - [rack/lib/rack/head.rb](https://github.com/rack/rack/blob/master/lib/rack/head.rb)
-- `HEAD`リクエストに空のボディを返すミドルウェア
+- `HEAD`リクエストに空のボディを返す
 
-## Rack::Lint
+#### Rack::Lint
 - [rack/lib/rack/lint.rb](https://github.com/rack/rack/blob/master/lib/rack/lint.rb)
-- Rack APIへの適合性をチェックするミドルウェア
+- Rack APIへの適合性をチェックする
 - アプリケーション・リクエスト・レスポンスがRackの仕様に準拠しているかどうかを検証する
 
-## Rack::Lock
+#### Rack::Lock
 - [rack/lib/rack/lock.rb](https://github.com/rack/rack/blob/master/lib/rack/lock.rb)
-- ミューテックスによってリクエストをシリアライズするミドルウェア
-- すべてのリクエスト処理をミューテックスロック内で同期実行する
+- 全てのリクエストをmutexの中にロックし、全てのリクエストが同期して実行されるようにする
 
-## Rack::Logger
+#### Rack::Logger
 - [rack/lib/rack/logger.rb](https://github.com/rack/rack/blob/master/lib/rack/logger.rb)
-- エラーを処理するためのロガーを設定するミドルウェア
+- ロギングエラーを処理するロガーを設定する
 
-## Rack::MethodOverride
-- [rack/lib/rack/method_override.rb](https://github.com/rack/rack/blob/master/lib/rack/method_override.rb)
-- 送信されたパラメータに基づいてリクエストメソッドをオーバーライドするミドルウェア
+#### Rack::MethodOverride
+- [rack/lib/rack/`method_override.rb`](https://github.com/rack/rack/blob/master/lib/rack/method_override.rb)
+- 送信されたパラメータに基づいてリクエストメソッドを変更する
 
-## Rack::Recursive
+#### Rack::Recursive
 - [rack/lib/rack/recursive.rb](https://github.com/rack/rack/blob/master/lib/rack/recursive.rb)
-- 連鎖的に呼び出されたRackアプリケーションが別のRackアプリケーションからデータを取り込めるようにし、
-  内部的にリダイレクトするようにするミドルウェア
-  - リダイレクトのために`Rack::ForwardRequest`を発行する
+- Rack::ForwardRequestを捕捉し、現在のリクエストを指定のURLにあるアプリケーションにリダイレクトする
 
-## Rack::Reloader
+#### Rack::Reloader
 - [rack/lib/rack/reloader.rb](https://github.com/rack/rack/blob/master/lib/rack/reloader.rb)
-- ファイルが変更された場合にリロードを行うミドルウェア
+- ファイルが変更された場合に再読み込みする
 
-## Rack::Runtime
+#### Rack::Runtime
 - [rack/lib/rack/runtime.rb](https://github.com/rack/rack/blob/master/lib/rack/runtime.rb)
-- リクエストを処理するのにかかった時間を`X-Runtime`レスポンスヘッダに設定するミドルウェア
+- リクエストを処理するのにかかった時間を`X-Runtime`レスポンスヘッダに設定する
 
-## Rack::Sendfile
+#### Rack::Sendfile
 - [rack/lib/rack/sendfile.rb](https://github.com/rack/rack/blob/master/lib/rack/sendfile.rb)
-- ファイルシステムのパスに合わせて最適化されたファイル提供を行うミドルウェア
 - ボディがファイルから提供されているレスポンスに割り込み、サーバー固有の`X-Sendfile`ヘッダに置き換える
+- ファイルシステムのパスに対して最適化されたファイルを提供することができるフロントサーバーとの連携を提供する
 
-## Rack::ShowExceptions
-- [rack/lib/rack/show_exceptions.rb](https://github.com/rack/rack/blob/master/lib/rack/show_exceptions.rb)
-- アプリケーションから発生した例外をすべて捕捉し、バックトレースで表示するミドルウェア
+#### Rack::ShowExceptions
+- [rack/lib/rack/`show_exceptions.rb`](https://github.com/rack/rack/blob/master/lib/rack/show_exceptions.rb)
+- ミドルウェア内側で発生した例外を捕捉し、バックトレースを表示する
+  - バックトレースはソースファイル、クリック可能なコンテキスト、Rack環境、リクエストデータを含む
 
-## Rack::ShowStatus
-- [rack/lib/rack/show_status.rb](https://github.com/rack/rack/blob/master/lib/rack/show_status.rb)
-- 空のレスポンスを補足し、エラー画面を表示するミドルウェア
+#### Rack::ShowStatus
+- [rack/lib/rack/`show_status.rb`](https://github.com/rack/rack/blob/master/lib/rack/show_status.rb)
+- 空のレスポンスに対して適切なエラーページを表示する
 
-## Rack::Static
+#### Rack::Static
 - [rack/lib/rack/static.rb](https://github.com/rack/rack/blob/master/lib/rack/static.rb)
-- 静的ファイルへのリクエストに割り込み、`Rack::Files`オブジェクトによってそれらを提供するミドルウェア
+- 静的ファイル配信を細かく設定する
+- 静的ファイルへのリクエストを、オプションで渡されたURLプレフィックスやルートマッピングに基づいて
+  受け取りRack::Filesオブジェクトを使って提供する
 
-## Rack::TempfileReaper
-- [rack/lib/rack/tempfile_reaper.rb](https://github.com/rack/rack/blob/master/lib/rack/tempfile_reaper.rb)
-- リクエスト中に作成されたtempファイルを削除するミドルウェア
+```ruby
+use Rack::Static, :urls => ["/static"]
+```
 
-## Rack::Auth
-### Rack::Auth::Basic
+#### Rack::TempfileReaper
+- [rack/lib/rack/`tempfile_reaper.rb`](https://github.com/rack/rack/blob/master/lib/rack/tempfile_reaper.rb)
+- リクエスト中に作成されたtempファイルを削除する
+
+#### Rack::Auth::Basic
 - [rack/lib/rack/auth/basic.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/basic.rb)
 - RFC2617に基づくHTTP Basic認証を提供する
 
-### Rack::Auth::AbstractHandler
+#### Rack::Auth::AbstractHandler
 - [rack/lib/rack/auth/basic.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/basic.rb)
 - 共通の認証機能を提供するハンドラ
 
-### Rack::Auth::Digest
 #### Rack::Auth::Digest::MD5
 - [rack/auth/digest/md5.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/digest/md5.rb)
 - RFC 2617に基づくMD5アルゴリズムによるHTTPダイジェスト認証を提供する
@@ -122,14 +134,15 @@
 - [rack/auth/digest/nonce.rb](https://github.com/rack/rack/blob/master/lib/rack/auth/digest/nonce.rb)
 - `Rack::Auth::Digest::MD5`ハンドラ用のデフォルトのnonceジェネレータ
 
-
-## Rack::Session
-### Rack::Session::Cookie
+#### Rack::Session::Cookie
 - [rack/lib/rack/session/cookie.rb](https://github.com/rack/rack/blob/master/lib/rack/session/cookie.rb)
 - Cookieベースのセッション管理を提供する
   - デフォルトでは、セッションはbase64エンコードデータをキーに設定したRubyハッシュとして格納される
   - 秘密鍵が設定されるとCookieはデータの整合性をチェックする
 
-## Rack::Session::Pool
-- 引用: [rack/lib/rack/session/pool.rb](https://github.com/rack/rack/blob/master/lib/rack/session/pool.rb)
+#### Rack::Session::Pool
+- [rack/lib/rack/session/pool.rb](https://github.com/rack/rack/blob/master/lib/rack/session/pool.rb)
 - シンプルなCookieベースのセッション管理を提供する
+
+## 参照
+- [Available middleware shipped with Rack](https://github.com/rack/rack#available-middleware-shipped-with-rack-)
