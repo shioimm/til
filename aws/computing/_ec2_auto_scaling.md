@@ -1,10 +1,44 @@
 # EC2 Auto Scaling
-- EC２の負荷の増減に合わせてキャパシティを自動的にスケーリングする
+- VPC上に配置したEC2インスタンスの負荷の増減に合わせて自動的にEC2インスタンスを増減させる
 - CloudWacthでターゲット超過を検知し、ELBに対してスケールアウト/スケールインを指示する
 - インスタンスに対するヘルスチェックを行い、インスタアンスが正常ではない場合
   問題のあるインスタンスを削除して新しいインスタンスを起動する
   - EC2ヘルスチェック
   - ELBヘルスチェック
+
+## 構成要素
+### Auto Scaling Group
+- Auto Scalingの設定の単位 / スケーリングに関わる全般設定を定義したグループ
+  - 起動するインスタンスを配置するVPCおよびサブネット
+  - インスタンスの配置数の最小値・最大値・希望値 (Desired Capacity)
+  - Scaling Plan
+  - ヘルスチェック方法
+- Auto Scaling Groupに組み込まれたインスタンスは定められたライフサイクルに則って実行される
+
+#### スケーリングされたインスタンスのライフサイクル
+
+| ステータス      | 内容                                                                     |
+| -               | -                                                                        |
+| Pending         | インスタンスの起動や初期化処理を行なっている                             |
+| InService       | インスタンスが正常起動されている                                         |
+| Terminating     | インスタンスの終了処理を行なっている                                     |
+| Terminated      | インスタンスが終了した                                                   |
+| Detaching       | インスタンスをAuto Scaling Groupからデタッチ処理している                 |
+| Detached        | インスタンスをAuto Scaling Groupからデタッチした                         |
+| EnteringStandby | Standbyへの移行                                                          |
+| Standby         | インスタンスがAuto Scaling Groupで管理されているが一時的に削除されている |
+
+### Launch Configuration / Launch Template
+- Auto Scaling Groupに関連づけられたインスタンスの起動ルールを定めた設定
+  (EC2の起動フローの設定内容と同じ)
+
+### Scaling Plan
+- インスタンスをスケールするルール
+  - 最小台数の位置 (Auto Healing)
+  - 手動スケーリング
+  - スケジューリング
+  - 動的スケーリング
+  - 予測スケーリング
 
 ## GUI操作によるAUTO SCALING設定
 1. EC2ダッシュボード
@@ -58,3 +92,4 @@
 - サーバ・インフラエンジニアの基本がこれ一冊でしっかり身につく本 9.3
 - [4. Hands-on #1: 初めてのEC2インスタンスを起動する](https://tomomano.github.io/learn-aws-by-coding/#sec_first_ec2)
 - AWSの知識地図〜現場必修の基礎から構築・セキュリティまで 2.3
+- AWSの基本・仕組み・重要用語が全部わかる教科書 04-02

@@ -11,6 +11,25 @@
 5. [JS] JavaScript ASTをバイトコードへ変換
 6. [JS] バイトコードがランタイムによって評価される
 
+## TSプロジェクトの最小構成
+
+```
+projects/
+├── node_modules/
+├── src/
+│ └── index.ts
+├── dist/
+│ └── index.ts # コンパイル時に自動生成される
+├── package.json
+├── tsconfig.json
+└── tslint.json
+
+# コンパイル
+# $ ./node_modules/.bin/tsc
+# 実行
+# $ node ./dist/index.js
+```
+
 ## 宣言による型/値の生成
 
 | キーワード | 型を生成する | 値を生成する |
