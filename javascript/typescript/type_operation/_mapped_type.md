@@ -1,4 +1,14 @@
-# Mapped Type
+# マップ型 (Mapped Type)
+
+```ts
+type Weekday = 'Mon' | 'Tue'| 'Wed' | 'Thu' | 'Fri'
+type Day = Weekday | 'Sat' | 'Sun'
+
+// マップ型 [Key in UnionType]: ValueType
+let nextDay: { [K in Weekday]: Day } = {
+  Mon: 'Tue' // nextDayにキーとしてTue, Wed, Thu, Friが不足していることが警告される
+}
+```
 
 ```ts
 type T = {
@@ -13,7 +23,7 @@ let t: T = {
   prop3: ['string']
 }
 
-// すべてのフィールドを省略可能にする
+// すべてのフィールドを省略 (?) 可能にする
 type OptionalT = {
   [K in keyof T]?: T[K]
 }
@@ -37,4 +47,4 @@ type ReadOnlyT = {
 - `Required<Object>`
 
 ## 参照
-- プログラミングTypeScript
+- プログラミングTypeScript 6.3.3

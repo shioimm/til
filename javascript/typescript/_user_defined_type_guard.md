@@ -21,4 +21,4 @@ function parseInput(input: string | number) {
 ```
 
 ## 参照
-- プログラミングTypeScript
+- プログラミングTypeScript 6.4.2
