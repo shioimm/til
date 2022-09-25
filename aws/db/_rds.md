@@ -1,7 +1,6 @@
 # Amazone RDS
-- AWSクラウド上のフルマネージドRDBMS
-- 既存のDBエンジンを使用可能
-  - Amazon Aurora/PostgreSQL/MySQL/MariaDB/Oracle/SQL Server
+- フルマネージドRDB (CA型)
+- 使用可能なDBエンジン: Amazon Aurora / PostgreSQL / MySQL / MariaDB / Oracle / SQL Server
 - アプリケーション最適化以外の作業の(バックアップやスケーリング・更新など)を自動で行う
 - プライマリDBとスタンバイDBを用意した際、
   スタンバイDBにデータを同期させることで可用性を上げることが可能(マルチAZ配置)
