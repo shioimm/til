@@ -11,6 +11,18 @@ select
       end as country
 from
     customers;
+
+select
+    name
+    , address
+    , case address
+        when 'Tokyo'  then 'Japan'
+        when 'NY'     then 'US'
+        when 'London' then 'UK'
+      else null
+      end as country
+from
+    customers;
 ```
 
 ## 参照
