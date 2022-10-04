@@ -1,15 +1,11 @@
 # direnv
 - [direnv/direnv](https://github.com/direnv/direnv)
 - ディレクトリごとに環境変数を管理する
+- `$ direnv edit`で作成される.envrcは必ずignoreする
 
-## Get Started
-```
-$ brew install direnv
-```
+#### 新しく環境変数を設定する
 
-## Usage
 ```
-# 新しく環境変数を設定する
 $ direnv edit /path/to
 ```
 
