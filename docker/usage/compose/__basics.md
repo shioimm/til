@@ -58,6 +58,12 @@ volumes:
   wordpress_db_volume:
 ```
 
+### イメージの作成
+
+```
+$ docker-compose build
+```
+
 ### コンテナを作成・起動
 - docker-compose.ymlファイルを置いたディレクトリ内で操作する
 - 通常はデタッチモードで起動する
@@ -66,6 +72,7 @@ volumes:
 $ docker-compose up -d
 ```
 
+- イメージが存在しない場合は併せて作成
 - コンテナ・ネットワーク・ボリュームが作成され、コンテナが起動する
 - コンテナ名は`作業用ディレクトリ_コンテナ名_N`として命名される
 
@@ -87,6 +94,12 @@ $ docker-compose logs
 ```
 $ docker-compose down
 $ docker-compose ps -a
+```
+
+### 既存のコンテナを起動
+
+```
+$ docker-compose start
 ```
 
 ### 特定のコンテナの操作
