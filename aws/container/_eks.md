@@ -1,11 +1,10 @@
-# Amazon EKS
-- Amazon Elasic Kubernetes Service
-- Kubernetesによるコンテナオーケストレーションサービス
+# Amazon EKS (Amazon Elasic Kubernetes Service)
+- コンテナオーケストレーションサービスKubernetesのマネージドサービス
 - Kubernetesクラスタの管理・運用を自動化できる
 - プラットフォームとしてAWS独自の基盤を使用する場合はECSを利用する
 
 ## EKSクラスタの構造
-- EKSコントロールプレーン(Kubernetesにおけるマスター)
+- EKSコントロールプレーン (Kubernetesにおけるマスター)
   - EKSによって管理・運用される
 - EKSワーカーノード(Kubernetesにおけるワーカー)
   - EC２インスタンスとして作成される
@@ -30,3 +29,4 @@
 
 ## 参照
 - 仮想化&コンテナがこれ1冊でしっかりわかる教科書
+- AWSの基本・仕組み・重要用語が全部わかる教科書 11-04
