@@ -1,5 +1,5 @@
 # MTU (Maximum Transmission Unit)
-- ネットワークインターフェースから 送信できるデータ量の最大サイズ
+- Ethernetで扱えるデータ量の最大サイズ
 - MTU設定値よりも大きなサイズのパケットを送信する場合、MTUのサイズまで分割して送信する
 - 最大1500バイト - IEEE 802.3で定められたEthernetの最大サイズと同じ
 
@@ -11,7 +11,7 @@ $ ip link show enp0s3
 $ sudo ip link set enp0s3 mtu 9000
 ```
 
-## Jumbo Frame
+#### Jumbo Frame
 - 9000バイト
 - MTUを1500バイトよりも大きくしてスループットを向上させるための定義
 - ホストがJumbo Frameを利用する場合であっても、
