@@ -1,6 +1,5 @@
-# PPPoE
-- PPP over Ethernet
-- PPP(Point-to-Point Protocol)をEthernetネットワーク上で使用できるように拡張したプロトコル
+# PPPoE (PPP over Ethernet)
+- PPPをEthernetネットワーク上で使用できるように拡張したプロトコル
 - Ethernetのデータ部にPPPのフレームを格納して転送する
 - ADSLやケーブルテレビを使用したインターネット接続で利用される
 
