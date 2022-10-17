@@ -1,8 +1,12 @@
 # AWS CLI
-#### インストール
-- [Installing, updating, and uninstalling the AWS CLI version 2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html)
+- AWS Access Key ID - AWSアカウントとIAMユーザーを一位に特定する情報
+- AWS Secret Access Key - アクセスキーIDのパスワード
+- Default region name - CLIの操作対象のリージョン (ap-northeast-1: 東京リージョン)
+- Default output format - 出力形式 (デフォルト: JSON)
 
-#### 設定
+## Usage
+#### インストール・設定
+- [Installing, updating, and uninstalling the AWS CLI version 2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html)
 - [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html)
 - [Understanding and getting your AWS credentials](https://docs.aws.amazon.com/general/latest/gr/aws-sec-cred-types.html)
 - [15.3. AWS CLI のインストール](https://tomomano.github.io/learn-aws-by-coding/#aws_cli_install)
@@ -13,7 +17,8 @@ $ aws configure
 
 # AWS Access Key ID
 # AWS Secret Access Key
-# Default region name = リージョン名(ap-northeast-1: 東京リージョン)
+# Default region name
+# Default output format
 ```
 
 - `~/.aws/credentials` - 認証鍵の情報
