@@ -1,5 +1,6 @@
-## コンパイル
-```
+# コンパイル
+
+```c
 # ソースファイルprog.c -> 実行ファイルprog
 $ gcc prog.c -o prog
 
@@ -17,13 +18,15 @@ $ gcc -g proc.c
 ```
 
 #### 複数ソースファイルのコンパイル
-```
+
+```c
 # ソースファイルprog.c + ソースファイルlib.c -> 実行ファイルprog
 $ gcc prog.c lib.c -o prog
 ```
 
 #### 出力
-```
+
+```c
 # 冗長
 $ gcc prog.c -v
 
@@ -32,6 +35,7 @@ $ gcc prog.c -Wall
 ```
 
 #### 位置独立
+
 ```c
 # 位置非依存のコードを生成しない
 $ gcc prog -fno-pic
@@ -40,7 +44,16 @@ $ gcc prog -fpic
 # 位置非依存のコードを生成する
 ```
 
+#### ASLR機能 (PIE) を無効化
+- ASLR - Address Space Layout Randomization
+  - プログラムを実行する際、毎回実行ファイルの各セクションを異なるアドレスにマップする機能
+
+```c
+$ gcc -o prog -no-pic prog.c
+```
+
 #### フレームポインタ
+
 ```c
 # フレームポインタを管理するコードを生成しない
 $ gcc prog -fomit-frame-pointer
