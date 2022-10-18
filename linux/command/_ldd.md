@@ -1,5 +1,5 @@
 # ldd(1)
-- 共有ライブラリがリンクしているライブラリを表示する
+- プログラムがリンクしているライブラリを表示する
 
 ```
 $ ldd /usr/lib/apache2/modules/mod_mruby.so

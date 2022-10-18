@@ -3,19 +3,19 @@
 
 ```
 # ELFヘッダの表示
-$ readelf -e <File Name>
+$ readelf -e <FileName> # -hオプションも同じ
 
 # プログラムヘッダの表示
-$ readelf -l <File Name>
+$ readelf -l <FileName>
 
 # セクションヘッダの表示
-$ readelf -S <File Name>
+$ readelf -S <FileName>
 
 # セクションヘッダの表示
-$ readelf -S <File Name>
+$ readelf -S <FileName>
 
 # シンボルテーブルの表示
-$ readelf -s <File Name>
+$ readelf -s <FileName>
 ```
 
 ```
@@ -32,7 +32,7 @@ ELF Header:
   Type:                              REL (Relocatable file)
   Machine:                           Advanced Micro Devices X86-64
   Version:                           0x1
-  Entry point address:               0x0  # プログラムのエントリポイント
+  Entry point address:               0x0  # プログラムの開始アドレス
   Start of program headers:          0 (bytes into file)
   Start of section headers:          896 (bytes into file)
   Flags:                             0x0
@@ -44,6 +44,7 @@ ELF Header:
   Section header string table index: 10
 
 Section Headers:
+# Name (セクション名), Address (メモリマップ開始アドレス), Offset (ファイル内オフセット), Size (サイズ)
   [Nr] Name              Type             Address           Offset
        Size              EntSize          Flags  Link  Info  Align
   [ 0]                   NULL             0000000000000000  00000000
