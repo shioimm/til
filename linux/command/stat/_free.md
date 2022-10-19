@@ -5,15 +5,17 @@
 ```
 $ free
 
-# total - システムが搭載する全メモリの量
-# free - 見かけ上の空きメモリの量
-# buff / cache - バッファキャッシュ・ページキャッシュが利用するメモリの量
-# available - free + buff / cache
+# total - システムが搭載する全メモリ
+# free - 見かけ上の空きメモリ
+# buff/cache - バッファキャッシュ及びページキャッシュが利用するメモリ
+# available - 実質的な空きメモリ (free + 解放可能なbuff/cache)
+# used - システムが使用中のメモリからbuff/cacheを引いたもの
 ```
 
-- メモリ使用量が増え続けた場合、システムは何もできない状態に陥る(OOM)
-- OOMに陥った場合、システムは適当なプロセスを選んでメモリ領域を解放する(OOM killer)
-  - `sysctl`の`vm.panic_on_oom`パラメータで動作を変更可能(OOM killer発動/システム強制終了)
+- freeフィールドの値が減ってきた際、カーネルはbuff/cacheを解放する
+- メモリ使用量が増え続けた場合、システムは何もできない状態に陥る (OOM)
+- OOMに陥った場合、システムは適当なプロセスを選んでメモリ領域を解放する (OOM killer)
+  - `sysctl`の`vm.panic_on_oom`パラメータで動作を変更可能 (OOM killer発動 / システム強制終了)
   - 実際にはOOM killerが発生する前にスワッピングで救済を行う
 
 ## 参照
