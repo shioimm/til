@@ -21,22 +21,6 @@
 | Cgroup    | cgroup(Linux4.6~)                        |
 | Time      | システムクロックの一部(Linux 5.6~)       |
 
-### cgroup
-- プロセスが使用可能なリソースに対して設定を行う機能
-- コンテナが利用可能なハードウェアリソースの上限やデバイスファイルへの権限を設定するために利用される
-
-#### サブシステム(リソースコントローラ)
-- 各リソースを管理するカーネルのコンポーネント
-
-#### cgroupfs
-- サブシステムへの設定を行うためのファイルシステム
-- cgroupfsはディレクトリに沿った階層構造
-- 各ディレクトリが各control group(制限の対象となるプロセスの集合)に対応する
-- 各プロセスはいずれかのcontrol groupに所属する
-- 各ディレクトリのファイルを通じて設定を適用する
-  - 上位のcgroupの設定は下位のcgroupへ引き継がれる
-  - 下位のcgroupは上位のcgroupによって設定された制限を超えない
-
 ## 参照
 - [Docker](https://www.docker.com/)
 - [Docker 概要](https://docs.docker.jp/get-started/overview.html)
