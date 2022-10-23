@@ -1,9 +1,15 @@
-# BCC (BPF Compiler Collection)
-- BPFプログラムをより簡単に書くためのツールキット
+# bcc (BPF Compiler Collection)
+- BPFプログラムを書くためのフロントエンドツールキット
 - C (LLVMによるCラッパーを含む) によるカーネルインストルメンテーションと
-  Python・Luaによるフロントエンドを備える
+  Python・Lua・Goによるバインディングを備える
 
-## BCCの機能
+#### bcc tools
+- bccを使ったトレーシングのツールキット
+  - e.g. execsnoop - execve(2)をトレースする
+  - e.g. bashreadline - bashに入力されたコマンドを表示する
+  - e.g. argdict - 指定の関数をトレースし引数の値を頻度カウンタやヒストグラムとして表示する
+
+## bccの機能
 - BPFプログラムを簡単に記述するためのModified C (BPF C)
 - BPF Cのコンパイル機能
 - BPFプログラムローダー

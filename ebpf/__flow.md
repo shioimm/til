@@ -16,7 +16,7 @@
    ユーザープログラムがBPF Mapやperf bufferを参照してeBPFプログラムの実行結果を取得
 
 ### Probeの種類
-#### kprobes
+### kprobes
 #### uprobes
 #### tracepoint
 #### USDT (User Statically Defined Tracepoints)
