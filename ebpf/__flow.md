@@ -67,7 +67,14 @@
 - `BPF_PROG_TYPE_CGROUP_SOCK` - a network packet filter for cgroups that is allowed to modify socket options
 - `BPF_PROG_CGROUP_DEVICE` - determine if a device operation should be permitted or not
 
-### BPF Map
+## BPF Verifierの検証項目
+- ループが存在しないこと
+- 未初期化のレジスタを利用しないこと
+- コンテキストの許可範囲のみアクセスしていること
+- 境界を超えたメモリアクセスをしないこと
+- メモリアクセスのアラインメントが正しいこと
+
+## BPF Map
 - カーネル空間とユーザー空間の間でデータを共有するためのストレージ
 - 配列、ハッシュマップ、キュー、スタック、リングバッファなどの様々な種類のデータ構造が用意されている
 - BPFプログラムからは外部関数呼び出し機能を利用することによってアクセス可能
