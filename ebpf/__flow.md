@@ -42,6 +42,12 @@
 - トレースプログラムが動作すると`DTRACE_PROBEn`マクロの箇所がint3c命令に変更され、トラップされる
 
 ### Program Type (フック可能なカーネルイベント) の種類
+- BPFプログラムがどこで呼び出されるのか
+- BPFプログラムにどんな引数 (コンテキスト) が渡されるのか
+- BPFプログラム内から引数のポインタデータは変更可能か
+- BPFから呼び出せるヘルパー関数 (`BPF_CALL`できる関数) には何があるのか
+- BPFプログラムの戻り値はどのような意味を持つのか
+
 #### ソケット操作
 - `BPF_PROG_TYPE_SOCKET_FILTER` - a network packet filter
 - `BPF_PROG_TYPE_SOCK_OPS` - a program for setting socket parameters
