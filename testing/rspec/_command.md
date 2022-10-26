@@ -1,4 +1,4 @@
-# Usage
+# `rspec`コマンド
 
 ```
 # 実行に時間がかかったスペックを出力
@@ -15,4 +15,7 @@ $ rspec --fail-fast
 
 # テストを実行せずにテスト一覧を出力する
 $ rspec --dry-run
+
+# 定義順にスペックを実行
+$ rspec --order defined
 ```
