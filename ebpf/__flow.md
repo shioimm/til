@@ -8,45 +8,27 @@
    カーネルをクラッシュさせる可能性がある場合はeBPFバイトコードのロードに失敗
    問題なければeBPFバイトコードをロードしJITコンパイラがマシンコードに変換
 4. (カーネル空間)
-   eBPFプログラムを対象のProbeにアタッチ
+   eBPFプログラムを対象のイベントにアタッチ
 5. (カーネル空間)
-   eBPFプログラムがアタッチされたProbe Eventが発生
+   eBPFプログラムがアタッチされたイベントが発生
 6. (カーネル空間)
    eBPF Executorがマシンコードをロードし実行、処理結果をBPF Mapやperf bufferへ格納
 7. (ユーザー空間)
    ユーザープログラムがBPF Mapやperf bufferを参照してeBPFプログラムの実行結果を取得
 
-### Probe (イベントが発生する、トレース可能な場所) の種類
-#### [カーネルトレーシング)] kprobes
-- カーネル空間で実行される命令に動的にトラップを設定し、その実行前にBPFプログラムを実行する
-- 設定したトラップに到達するとBPFプログラムを実行し、その後元の命令に戻る
-- 安定したABIを提供しておらず、カーネルのバージョンごとに互換性が保証されていない
-- 対象の関数のアドレスや関数シンボルが必要
-
-#### [ユーザープログラムトレーシング] uprobes
-- ユーザー空間で実行されるプログラムに動的にトラップを設定し、その実行前にBPFプログラムを実行する
-- 設定したトラップに到達するとBPFプログラムを実行し、その後元の命令に戻る
-- 安定したABIを提供しておらず、カーネルのバージョンごとに互換性が保証されていない
-- 対象の関数のアドレスや関数シンボルが必要
-
-#### [カーネルトレーシング] tracepoint
-- カーネルに事前に定義されているトラップ
-- tracefs (カーネルのデバッグ情報にアクセスするための仮想ファイルシステム) を利用する
-  - `/sys/kernel/debug/tracing/`にマウントされる
-  - トレース可能なイベントの一覧は`/sys/kernel/debug/tracing/available_events`に記載されている
-  - イベントを操作するインターフェースは`/sys/kernel/debug/tracing/events/`以下にイベントごとに存在する
-
-#### [ユーザープログラムトレーシン] USDT (User Statically Defined Tracepoints)
-- ユーザー空間のアプリケーション自体にtracepointを設置してトレースを行う
-- アプリケーションのトレースを行いたい場所に`DTRACE_PROBEn`マクロを記述することで利用できる
-- トレースプログラムが動作すると`DTRACE_PROBEn`マクロの箇所がint3c命令に変更され、トラップされる
-
-### Program Type (フック可能なカーネルイベント) の種類
+## Program Type (フック可能なカーネルイベント)
+### Program Typeによって定義されるもの
 - BPFプログラムがどこで呼び出されるのか
 - BPFプログラムにどんな引数 (コンテキスト) が渡されるのか
 - BPFプログラム内から引数のポインタデータは変更可能か
 - BPFから呼び出せるヘルパー関数 (`BPF_CALL`できる関数) には何があるのか
 - BPFプログラムの戻り値はどのような意味を持つのか
+
+### Program Typeの種類
+#### トレーシング
+- `BPF_PROG_TYPE_PERF_EVENT` - determine whether a perf event handler should fire or not
+- `BPF_PROG_TYPE_KPROBE` - determine whether a kprobe should fire or not
+- `BPF_PROG_TYPE_TRACEPOINT` - determine whether a tracepoint should fire or not
 
 #### ソケット操作
 - `BPF_PROG_TYPE_SOCKET_FILTER` - a network packet filter
@@ -62,11 +44,6 @@
 
 #### XDP (eXpress Data Path)
 - `BPF_PROG_TYPE_XDP` - a network packet filter run from the device-driver receive path
-
-#### トレーシング
-- `BPF_PROG_TYPE_PERF_EVENT` - determine whether a perf event handler should fire or not
-- `BPF_PROG_TYPE_KPROBE` - determine whether a kprobe should fire or not
-- `BPF_PROG_TYPE_TRACEPOINT` - determine whether a tracepoint should fire or not
 
 #### Cgroups
 - `BPF_PROG_TYPE_CGROUP_SKB` - a network packet filter for cgroups
