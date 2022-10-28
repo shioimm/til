@@ -24,6 +24,15 @@
 - eBPF (extended BPF) - パケットフィルタリング以外に用途を広げたトレース機構
   - cBPFに比べて命令セットが一新され、使用可能なレジスタ数が増え、ヘルパー関数呼び出しの機能が追加された
 
+## eBPFプログラムの書き方
+- eBPFバイトコード
+- eBPFマクロ
+- eBPFアセンブラ
+- C (Clang/LLVMでコンパイル)
+- BPF C (BCCでコンパイル)
+- bpftrace DSL (bpftraceコマンドで実行)
+- libbpf (libbpfライブラリのAPIを使用)
+
 ## BPFを利用したプロジェクト
 - BCC (BPF Compiler Collection) - Cで書かれたeBPFプログラムのコンパイラ
 - bpftrace - BPFをラップするDSL(Domain Specific Language)を提供する汎用的なトレーシングツール
