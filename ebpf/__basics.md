@@ -35,7 +35,7 @@
 
 ## BPFを利用したプロジェクト
 - BCC (BPF Compiler Collection) - Cで書かれたeBPFプログラムのコンパイラ
-- bpftrace - BPFをラップするDSL(Domain Specific Language)を提供する汎用的なトレーシングツール
+- bpftrace - BPFをラップするDSLを提供する汎用的なトレーシングCLI
 - XDP (eXpress Data Path) - NICから受け取ったパケットデータを直接操作するツール
 - Katran - XDPを活用した高性能L4ロードバランサ
 - Cilium - コンテナ間通信に対してパケット処理に可観測性・セキュリティ・高度な通信制御を付与するソフトウェア
