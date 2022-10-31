@@ -1,11 +1,11 @@
 # 構文解析
 #### パーサの構築手順
-1. parse.yの記述
+1. 文法規則parse.yの記述
 2. 予約語入力ファイルをgperfにかけ、lex.cを生成
 3. lex.cをparse.yにinclude
-4. parse.yをyaccコマンドにかけ、y.tab.cを生成
+4. parse.yをyaccコマンドにかけ、パーサコードy.tab.cを生成
 5. y.tab.cをparse.cにmv
-6. parse.cをコンパイル (cc) しパーサの実行ファイルparse.oを生成
+6. parse.cをコンパイル (cc) し、パーサ実行ファイルparse.oを生成
 
 #### parse.yユーザー定義部に定義される補助関数
 - パーサインターフェイス
