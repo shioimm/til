@@ -23,17 +23,22 @@ $ git clone https://github.com/ruby/ruby.git
 $ cd ruby
 $ ./autogen.sh
 
-# 2. workdir/build/でconfigureスクリプトを実行しMakefileを生成
-$ mkdir ../ruby && cd "$_"
+# 2. ビルドディレクトリを作成
+$ cd../
+$ mkdir build
+$ cd build
+
+# 3. ビルドディレクトリ直下でconfigureスクリプトを実行しMakefileを生成
 $ ../ruby/configure --prefix=$PWD/../install --enable-shared
 
-# --prefixオプションでインストール先をworkdir/install/に指定する
+# (--prefix: インストール先をworkdir/install/に指定)
 # Homebrewで各種ライブラリをインストールしている場合はconfigureに以下のオプションを追加
 # --with-openssl-dir=`brew --prefix openssl` --with-readline-dir=`brew --prefix readline` --disable-libedit
 
-# 3. workdir/build/でmakeを実行し、MRIをビルド (-j: 並列でコンパイルを実行)
+# 4. workdir/build/でmakeを実行し、workdir/build/にMRIをビルド
 $ make -j
 
+# (-j: 並列でコンパイルを実行)
 # makeで実行される処理:
 # - make miniruby - workdir/build/minirubyの生成
 # - make encs     - エンコーディング関連拡張ライブラリの生成
@@ -41,15 +46,17 @@ $ make -j
 # - make ruby     - workdir/build/rubyの生成
 # - make docs     - rdocの生成
 
-# 4. workdir/build/以下にビルドしたMRIをworkdir/install/にインストール (インストート先は手順2で指定済み)
+# 5. workdir/build/以下にビルドしたMRIをworkdir/install/にインストール (インストール先は手順2で指定済み)
 $ make install
 
-# 5. インストールができていることを確認
+# 6. 開発中のRubyのインストールができていることを確認
 $ ../install/bin/ruby -v
 ```
 
 #### `$ history`
 ```
+$ history
+
 $ cd workdir/
 $ cd ruby
 $ ./autogen.sh
