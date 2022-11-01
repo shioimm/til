@@ -1,7 +1,7 @@
 i = 1
 i++
 
-# $ ruby -y parsing.rb
+# $ ruby -y parsing++.rb
 #
 # Starting parse
 #
@@ -133,9 +133,9 @@ i++
 #    $1 = nterm term (1.5-1.5: )
 # -> $$ = nterm terms (1.5-1.5: )
 # Stack now 0 2 71
-
+#
 # ---------------------- L2 -----------------------
-
+#
 # Entering state 316
 # Reading a token:
 # lex_state: BEG -> CMDARG at line 9214
@@ -145,7 +145,7 @@ i++
 # Entering state 35
 # Reading a token:
 # lex_state: END|LABEL -> BEG at line 9646
-# Next token is token '+' (2.1-2.2: )
+# Next token is token '+' (2.1-2.2: ) <---------- "operator-assignment"になるべき
 # Reducing stack by rule 649 (line 5059):
 #    $1 = token "local variable or method" (2.0-2.1: i)
 # -> $$ = nterm user_variable (2.0-2.1: )
