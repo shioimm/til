@@ -58,9 +58,28 @@
 | 文を終端する記号 | terms, terminators                       |
 | 省略可能         | opt, optional                            |
 
-## スキャナの状態`lex_state` (parse.y)
-- 今スキャナを動作させたらどのように動くかを示す状態
-- `lex_state` (parse.y) - スキャナの状態を示す変数 (`lex_state_bits` / `lex_state_e`)
+## `lex_state`
+- スキャナの状態 (今スキャナを動作させたらどんな振舞いをするか) を表すための概念
+  - `lex_states` - スキャナの状態の種類を表現するenum
+  - `lex_state_e` - スキャナの状態の値を表現するenum
+  - `IS_lex_state_...` - スキャナの状態を真偽値で表現するマクロ
+  - `parser_set_lex_state()` / `SET_LEX_STATE` - スキャナの状態を更新する関数・マクロ
+
+| 種類           | 意味                       |
+| -              | -                          |
+| `EXPR_BEG`     | 式の先頭にいる             |
+| `EXPR_END`     | 式の末尾にいる             |
+| `EXPR_ENDARG`  |                            |
+| `EXPR_ENDFN`   |                            |
+| `EXPR_ARG`     | メソッドの引数の前にいる   |
+| `EXPR_CMDARG`  |                            |
+| `EXPR_MID`     |                            |
+| `EXPR_FNAME`   | メソッド名の前にいる       |
+| `EXPR_DOT`     | 式の中の`.`の後にいる      |
+| `EXPR_CLASS`   |                            |
+| `EXPR_LABEL `  |                            |
+| `EXPR_LABELED` |                            |
+| `EXPR_FITEM`   |                            |
 
 ## 参照
 - [第10章 パーサ](https://i.loveruby.net/ja/rhg/book/parser.html)
