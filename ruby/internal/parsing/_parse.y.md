@@ -65,21 +65,21 @@
   - `IS_lex_state_...` - スキャナの状態を真偽値で表現するマクロ
   - `parser_set_lex_state()` / `SET_LEX_STATE` - スキャナの状態を更新する関数・マクロ
 
-| 種類           | 意味                       |
-| -              | -                          |
-| `EXPR_BEG`     | 式の先頭にいる             |
-| `EXPR_END`     | 式の末尾にいる             |
-| `EXPR_ENDARG`  |                            |
-| `EXPR_ENDFN`   |                            |
-| `EXPR_ARG`     | メソッドの引数の前にいる   |
-| `EXPR_CMDARG`  |                            |
-| `EXPR_MID`     |                            |
-| `EXPR_FNAME`   | メソッド名の前にいる       |
-| `EXPR_DOT`     | 式の中の`.`の後にいる      |
-| `EXPR_CLASS`   |                            |
-| `EXPR_LABEL `  |                            |
-| `EXPR_LABELED` |                            |
-| `EXPR_FITEM`   |                            |
+| 種類           | 意味                                                                               |
+| -              | -                                                                                  |
+| `EXPR_BEG`     | 式の先頭 (`\n`、`(`、`{`、`[`、`!`、`?`、`:`、`,`、演算子、`op=`などの直後) にいる |
+| `EXPR_END`     | 式が終端可能なところにいる                                                         |
+| `EXPR_ENDARG`  | `tLPAREN_ARG`に対応する閉じ括弧の直後にいる                                        |
+| `EXPR_ENDFN`   |                                                                                    |
+| `EXPR_ARG`     | メソッド呼び出しのメソッド名部分である可能性がある要素、 または`[`の直後にいる     |
+| `EXPR_CMDARG`  | 通常形式のメソッド呼び出しの最初の引数の前にいる                                   |
+| `EXPR_MID`     | 予約語`return`、`break`、`next`、`rescue`の直後にいる                              |
+| `EXPR_FNAME`   | メソッド名の前 (`def`、`alias`、`undef`、シンボル`:`の直後) にいる                 |
+| `EXPR_DOT`     | メソッド呼び出しの`.`の直後にいる                                                  |
+| `EXPR_CLASS`   | 予約語`class`の直後にいる                                                          |
+| `EXPR_LABEL `  |                                                                                    |
+| `EXPR_LABELED` |                                                                                    |
+| `EXPR_FITEM`   |                                                                                    |
 
 ## 参照
 - [第10章 パーサ](https://i.loveruby.net/ja/rhg/book/parser.html)
