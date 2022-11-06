@@ -11,7 +11,9 @@
 1. `parser_compile_string()` / `rb_parser_compile_file_path()` / `rb_parser_compile_generic()`
 2. `yycompile()`
 3. `yycompile0()`
-4. `yyparse()` -> `yylex()` -> `yyreduce()` -> `yynewstate()` -> `yylex()` ...
+4. `yyparse()`
+5. `yylex()` -> `parser_yylex()`
+6. `yyreduce()` -> `yynewstate()` -> `yylex()` ...
 
 ## 参照
 - [第10章 パーサ](https://i.loveruby.net/ja/rhg/book/parser.html)
