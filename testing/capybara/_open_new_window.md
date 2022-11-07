@@ -15,3 +15,10 @@ end
 # 新しいウィンドウを閉じる
 Capybara.current_window.close
 ```
+
+```ruby
+# 局所的な操作
+Capybara.within_window(Capybara.open_new_window) do
+  # ...
+end
+```
