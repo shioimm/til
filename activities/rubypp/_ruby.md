@@ -1,8 +1,31 @@
-# yylex() '+'
+# Ruby
+#### tokenの定義 (L1301)
 
 ```c
-// p = struct parser_params *p
+%token tUPLUS  RUBY_TOKEN(UPLUS)  "unary+"
+```
 
+#### Lexer Buffer (`p = struct parser_params *p`) の構造 (L261)
+
+```c
+//
+//  lex.pbeg     lex.ptok     lex.pcur     lex.pend
+//     |            |            |            |
+//     |------------+------------+------------|
+//                  |<---------->|
+//                      token
+//
+```
+
+#### yylvalの定義 (L5912)
+
+```c
+#define yylval  (*p->lval) (parser_params構造体のメンバYYSTYPE *lval)
+```
+
+#### `yylex()` (L9813)
+
+```c
 case '+':
   c = nextc(p);
 
@@ -11,17 +34,17 @@ case '+':
   if (IS_AFTER_OPERATOR()) {
     SET_LEX_STATE(EXPR_ARG);
     if (c == '@') {
-      return tUPLUS;
+      return tUPLUS; // トークンtUPLUSをパーサに渡す
     }
     pushback(p, c);
-    return '+';
+    return '+'; // トークン'+'をパーサに渡す
   }
 
   // <Receiver>+= が実行された場合
   if (c == '=') {
-    set_yylval_id('+'); // yylval.id = ('+') (L5937)
+    set_yylval_id('+'); // define set_yylval_id(x)  (yylval.id = (x)) (L5937)
     SET_LEX_STATE(EXPR_BEG);
-    return tOP_ASGN;
+    return tOP_ASGN; // トークンtOP_ASGNをパーサに渡す
   }
 
   // 通常はIS_BEGがtrueになっていそう
@@ -31,7 +54,7 @@ case '+':
     if (c != -1 && ISDIGIT(c)) {
       return parse_numeric(p, '+');
     }
-    return tUPLUS;
+    return tUPLUS; // トークンtUPLUSをパーサに渡す
   }
 
 SET_LEX_STATE(EXPR_BEG);
