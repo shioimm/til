@@ -10,9 +10,10 @@
   ...
 }
 
-%token ...
+%token <unionで定義した型>終端記号1
+%token <unionで定義した型>終端記号2 ...
 
-%type  ...
+%type  <unionで定義した型>非終端記号1 非終端記号2...
 
 // 構文規則部
 %%
@@ -67,6 +68,27 @@ args    : expr
 - 構文解析で使用する補助関数を記述する
 - Lexを使用する場合はここで`#include "lex.yy.c"`し字句解析プログラムを取り込む
 - エラー表示関数`yyerror()`は必ずユーザー定義が必要
+
+```c
+%{
+  ...
+%}
+
+%union {
+  int val;
+}
+
+%token <val> NUMBER
+
+%type  ...
+
+%%
+<規則名>: <定義> { アクション }
+...
+
+%%
+...
+```
 
 ## 参照
 - [yacc](https://ja.wikipedia.org/wiki/Yacc)
