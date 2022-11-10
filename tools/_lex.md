@@ -15,13 +15,17 @@
 
 // 正則表現部
 %%
-Hello { return GREETING; }
+Hello { yylval = atoi(yytext); return GREETING; }
 \n    return 0;
 .     return yytext[0];
 
 // プログラム部
 %%
 ```
+
+- `yytext` - トークンの値を`<FileName>.l`内で取得するための変数
+- `yylval` - トークンの値を`<FileName>.y`内の正則表現部のアクションで取り出す (`$n`) ための変数
+  - パーサが`%union`を定義している場合は`yylval.<メンバ名> = `でアクセスできる
 
 #### 宣言部
 - 正則表現部やプログラム部で使用する変数、関数、マクロを宣言する
