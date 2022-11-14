@@ -8,19 +8,38 @@
 #### Lexer Buffer (`p = struct parser_params *p`) の構造 (L261)
 
 ```c
-//
 //  lex.pbeg     lex.ptok     lex.pcur     lex.pend
 //     |            |            |            |
 //     |------------+------------+------------|
 //                  |<---------->|
 //                      token
-//
 ```
 
 #### yylvalの定義 (L5912)
 
 ```c
 #define yylval  (*p->lval) (parser_params構造体のメンバYYSTYPE *lval)
+```
+
+#### `SET_LEX_STATE`マクロ
+
+```c
+# define SET_LEX_STATE(ls) parser_set_lex_state(p, ls, __LINE__)
+
+// struct parser_params p->lex.state = ls (L10901)
+```
+
+#### `IS_BEG`マクロ
+
+```c
+#define IS_lex_state_for(x, ls)     ((x) & (ls))
+#define IS_lex_state_all_for(x, ls) (((x) & (ls)) == (ls))
+#define IS_lex_state(ls)            IS_lex_state_for(p->lex.state, (ls))
+#define IS_lex_state_all(ls)        IS_lex_state_all_for(p->lex.state, (ls))
+
+// lex_stateがEXPR_BEG_ANY
+// もしくはEXPR_ARG|EXPR_LABELED
+#define IS_BEG() (IS_lex_state(EXPR_BEG_ANY) || IS_lex_state_all(EXPR_ARG|EXPR_LABELED))
 ```
 
 #### `yylex()` (L9813)
@@ -36,7 +55,7 @@ case '+':
     if (c == '@') {
       return tUPLUS; // トークンtUPLUSをパーサに渡す
     }
-    pushback(p, c);
+    pushback(p, c); // p->lex.pcur-- (L6799)
     return '+'; // トークン'+'をパーサに渡す
   }
 
@@ -50,7 +69,7 @@ case '+':
   // 通常はIS_BEGがtrueになっていそう
   if (IS_BEG() || (IS_SPCARG(c) && arg_ambiguous(p, '+'))) {
     SET_LEX_STATE(EXPR_BEG);
-    pushback(p, c); // p->lex.pcur-- (L6799)
+    pushback(p, c);
     if (c != -1 && ISDIGIT(c)) {
       return parse_numeric(p, '+');
     }
