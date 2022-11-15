@@ -33,7 +33,47 @@
 -> アドレスリストの先頭のアドレスの接続試行に進む
 ```
 
+```
+Start
+-> getaddrinfo
+  -> IPv6 getaddrinfo -> IPv6-getaddrinfo-finished
+  -> IPv4 getaddrinfo -> IPv4-getaddrinfo-finished
+
+IPv6-getaddrinfo-finished
+-> TCPハンドシェイクを開始していないIPアドレスがある場合: IPv6アドレスで接続試行
+   -> 接続試行                             -> Success
+   -> IPv4アドレス取得                     -> IPv6-IPv4-getaddrinfo-finished
+   -> Connection Attempt Delayタイムアウト -> IPv6-getaddrinfo-finished
+
+IPv4-getaddrinfo-finished
+-> Resolution Delay
+   -> Resolution Delayタイムアウト -> IPv4-getaddrinfo-and-RESOLUTION_DELAY-finished
+   -> IPv6アドレス取得             -> IPv6-getaddrinfo-finished
+
+IPv4-getaddrinfo-and-RESOLUTION_DELAY-finished
+-> IPv4アドレスで接続試行
+   -> 接続試行                             -> Success
+   -> IPv6アドレス取得                     -> IPv6-IPv4-getaddrinfo-finished
+   -> Connection Attempt Delayタイムアウト -> IPv4-getaddrinfo-and-RESOLUTION_DELAY-finished
+
+IPv6-IPv4-getaddrinfo-finished
+-> 接続未試行のIPアドレスがあり、TCPハンドシェイク中かつCADタイムアウト済: IPv6アドレスで接続試行
+   接続未試行のIPアドレスがあり、TCPハンドシェイク中かつCADタイムアウト済: IPv4アドレスで接続試行
+   接続未試行のIPアドレスがあり、TCPハンドシェイク中かつCADタイムアウト未: Connection Attempt Delay
+   接続未試行のIPアドレスがない場合: アドレス枯渇
+   -> 接続試行                             -> Success
+   -> Connection Attempt Delayタイムアウト -> IPv6-IPv4-getaddrinfo-finished
+   -> アドレス枯渇                         -> Error
+
+Success
+-> 接続済みソケットを返す
+
+Error
+-> 例外を送出する
+```
+
 ## 参照
 - [Happy Eyeballsとは](https://www.nic.ad.jp/ja/basics/terms/happy-eyeballs.html)
 - [Happy Eyeballs: Success with Dual-Stack Hosts](https://www.ietf.org/rfc/rfc6555.txt)
 - [Happy Eyeballs Version 2: Better Connectivity Using Concurrency](https://www.ietf.org/rfc/rfc8305.txt)
+- https://github.com/ruby/ruby/pull/4038#issuecomment-776417560
