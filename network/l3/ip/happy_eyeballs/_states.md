@@ -1,33 +1,79 @@
 # 状態遷移
-#### 名前解決
 
 ```
-(1) AAAAクエリの送信 / Aクエリの送信
+(1) getaddrinfo (IPv6) / getaddrinfo (IPv4)
 
-(2-1) 先にAAAAクエリの応答があった場合
--> Aクエリの応答があるまで250秒間待つ (Resolution Delay)
+(2-1) getaddrinfo (IPv6) の応答を先に受信した場合
+-> IPv6アドレスで接続試行を行う
 
-  (2-1-1) Aクエリの応答があった場合
-  -> IPv6アドレスの接続試行へ進む / IPv4アドレスをアドレスリストの先頭に加える
+   (2-1-1) getaddrinfo (IPv4) の応答を受信した場合
+   -> IPv4アドレスをアドレスリストの先頭に加える
 
-  (2-1-2) Aクエリの応答がなかった場合
-  -> IPv6アドレスの接続試行へ進む / Aクエリの応答を待つ (返ってきたらアドレスリストの先頭に加える)
+(2-2) getaddrinfo (IPv4) の応答を先に受信した場合
+-> getaddrinfo (IPv6) 応答を50ms待つ (Resolution Delay)
 
-(2-2) 先にAクエリの応答があった場合
--> AAAA応答を50ミリ秒 (推奨値) 待つ (Resolution Delay)
+  (2-2-1) Resolution Delay中に肯定的なgetaddrinfo (IPv6) の応答を受信した場合
+  -> IPv6アドレスの接続試行を行う
+     IPv4アドレスをアドレスリストの先頭に加える
 
-  (2-2-1) Resolution Delay時間内に肯定的なAAAA応答を受信した場合
-  -> IPv6アドレスの接続試行へ進む / IPv4アドレスをアドレスリストの先頭に加える
+  (2-2-2) Resolution Delay中に否定的なgetaddrinfo (IPv6) の応答を受信、または応答を受信しなかった場合
+  -> IPv4アドレスで接続試行を行う
 
-  (2-2-2) Resolution Delay時間内に否定的なAAAA応答を受信、またはAAAA応答を受信しなかった場合
-  -> これまでに返されたIPv4アドレスのソートを行い、スタッガード接続する
+    (2-2-2-1) 接続が確立される前にgetaddrinfo (IPv6) の応答を受信した場合
+    -> IPv4アドレスで接続試行を続ける
+       IPv6アドレスをアドレスリストの先頭に加える
 
-    (2-2-2-1) スタッガード接続が確立される前にAAAA応答が到着した場合
-    -> 新しく受信したIPv6アドレスを利用可能な候補アドレスのリストに組み込み、
-       接続が確立するまでIPv6アドレスを追加して接続試行のプロセスを継続する
+(3-1) 接続が確立した場合
+-> 接続済みソケットを返し、他の接続試行を破棄する
+
+(3-2) 接続に失敗した場合
+-> 例外を送出する
+
+(3-3) 接続が確立できないまま250ms経過した場合 (Connection Attempt Delay)
+-> アドレスリストの先頭のアドレスの接続試行に進む
+```
+
+```
+Start
+-> getaddrinfo
+  -> IPv6 getaddrinfo -> IPv6-getaddrinfo-finished
+  -> IPv4 getaddrinfo -> IPv4-getaddrinfo-finished
+
+IPv6-getaddrinfo-finished
+-> TCPハンドシェイクを開始していないIPアドレスがある場合: IPv6アドレスで接続試行
+   -> 接続試行                             -> Success
+   -> IPv4アドレス取得                     -> IPv6-IPv4-getaddrinfo-finished
+   -> Connection Attempt Delayタイムアウト -> IPv6-getaddrinfo-finished
+
+IPv4-getaddrinfo-finished
+-> Resolution Delay
+   -> Resolution Delayタイムアウト -> IPv4-getaddrinfo-and-RESOLUTION_DELAY-finished
+   -> IPv6アドレス取得             -> IPv6-getaddrinfo-finished
+
+IPv4-getaddrinfo-and-RESOLUTION_DELAY-finished
+-> IPv4アドレスで接続試行
+   -> 接続試行                             -> Success
+   -> IPv6アドレス取得                     -> IPv6-IPv4-getaddrinfo-finished
+   -> Connection Attempt Delayタイムアウト -> IPv4-getaddrinfo-and-RESOLUTION_DELAY-finished
+
+IPv6-IPv4-getaddrinfo-finished
+-> 接続未試行のIPアドレスがあり、TCPハンドシェイク中かつCADタイムアウト済: IPv6アドレスで接続試行
+   接続未試行のIPアドレスがあり、TCPハンドシェイク中かつCADタイムアウト済: IPv4アドレスで接続試行
+   接続未試行のIPアドレスがあり、TCPハンドシェイク中かつCADタイムアウト未: Connection Attempt Delay
+   接続未試行のIPアドレスがない場合: アドレス枯渇
+   -> 接続試行                             -> Success
+   -> Connection Attempt Delayタイムアウト -> IPv6-IPv4-getaddrinfo-finished
+   -> アドレス枯渇                         -> Error
+
+Success
+-> 接続済みソケットを返す
+
+Error
+-> 例外を送出する
 ```
 
 ## 参照
 - [Happy Eyeballsとは](https://www.nic.ad.jp/ja/basics/terms/happy-eyeballs.html)
 - [Happy Eyeballs: Success with Dual-Stack Hosts](https://www.ietf.org/rfc/rfc6555.txt)
 - [Happy Eyeballs Version 2: Better Connectivity Using Concurrency](https://www.ietf.org/rfc/rfc8305.txt)
+- https://github.com/ruby/ruby/pull/4038#issuecomment-776417560
