@@ -88,4 +88,29 @@ return warn_balanced('+', "+", "unary operator"); // 警告
 even though it seems like unary operator
 ```
 
-- https://github.com/ruby/ruby/blob/1454f8f219890b8134f68e868d8cb1d0a9d2aa20/parse.y#L9813-L9838
+#### `new_qcall`
+
+```c
+// | primary_value tCOLON2 operation3 {
+//   $$ = new_qcall(p, ID2VAL(idCOLON2), $1, $3, Qnull, &@3, &@$);
+// }
+
+static NODE *
+new_qcall(struct parser_params* p,
+          ID atype,
+          NODE *recv,
+          ID mid,
+          NODE *args,
+          const YYLTYPE *op_loc,
+          const YYLTYPE *loc)
+{
+  NODE *qcall = NEW_QCALL(atype, recv, mid, args, loc);
+  nd_set_line(qcall, op_loc->beg_pos.lineno);
+  return qcall;
+}
+
+// #define NEW_QCALL(q,r,m,a,loc) NEW_NODE(NODE_CALL_Q(q),r,m,a,loc)
+// #define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc) (node.h)
+```
+
+- https://github.com/ruby/ruby/blob/1454f8f219890b8134f68e868d8cb1d0a9d2aa20/parse.y
