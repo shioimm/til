@@ -88,13 +88,22 @@ return warn_balanced('+', "+", "unary operator"); // 警告
 even though it seems like unary operator
 ```
 
-#### `new_qcall`
+#### `method_call`
 
 ```c
-// | primary_value tCOLON2 operation3 {
-//   $$ = new_qcall(p, ID2VAL(idCOLON2), $1, $3, Qnull, &@3, &@$);
+// method_call : primary_value call_op operation2 opt_paren_args
+// {
+//   $$ = new_qcall(p, $2, $1, $3, $4, &@3, &@$); // 構文木に新しいノードを追加する
+//   nd_set_line($$, @3.end_pos.lineno);          // 行番号のセット
 // }
+//
+// primary_value  = primary
+// call_op        = '.' / tANDDOT
+// operation2     = operation (tIDENTIFIER / tCONSTANT / tFID) / op (演算子)
+// opt_paren_args = none / paren_args
 
+
+// new_qcall(): L10517
 static NODE *
 new_qcall(struct parser_params* p,
           ID atype,
@@ -109,8 +118,35 @@ new_qcall(struct parser_params* p,
   return qcall;
 }
 
-// #define NEW_QCALL(q,r,m,a,loc) NEW_NODE(NODE_CALL_Q(q),r,m,a,loc)
-// #define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc) (node.h)
+// NEW_QCALL: L477
+#define NEW_QCALL(q,r,m,a,loc) NEW_NODE(NODE_CALL_Q(q),r,m,a,loc)
+
+// NEW_NODE: node.h L293
+#define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc) (node.h)
+
+// rb_node_newnode: L511
+#define rb_node_newnode(type, a1, a2, a3, loc) node_newnode(p, (type), (a1), (a2), (a3), (loc))
+
+// node_newnode(): L12835
+static NODE*
+node_newnode(struct parser_params *p,
+             enum node_type type,
+             VALUE a0,
+             VALUE a1,
+             VALUE a2,
+             const rb_code_location_t *loc)
+{
+    NODE *n = rb_ast_newnode(p->ast, type);
+
+    rb_node_init(n, type, a0, a1, a2);
+
+    nd_set_loc(n, loc);
+    nd_set_node_id(n, parser_get_node_id(p));
+    return n;
+}
+
+// nd_set_line: node.h L204
+#define nd_set_line(n,l) (n)->flags=(((n)->flags&~((VALUE)(-1)<<NODE_LSHIFT))|((VALUE)((l)&NODE_LMASK)<<NODE_LSHIFT))
 ```
 
 - https://github.com/ruby/ruby/blob/1454f8f219890b8134f68e868d8cb1d0a9d2aa20/parse.y
