@@ -78,6 +78,10 @@ funcall : IDENTIFIER '(' args ')'
 args    : expr
 ```
 
+#### アクション内
+- `@n` - n番目のトークンのテキスト上の位置情報
+- `@$` - 当該非終端トークン自身のテキスト上の位置情報
+
 ### ユーザ定義部 (プログラム部)
 - 構文解析で使用する補助関数を記述する
 - Lexを使用する場合はここで`#include "lex.yy.c"`し字句解析プログラムを取り込む
@@ -102,6 +106,20 @@ args    : expr
 
 %%
 ...
+```
+
+#### yylloc構造体変数
+- 現在の規則の第n要素の行番号と列番号を含む配列変数 (YYLTYPE型)
+- アクション内では`@$` / `@n`を介してアクセスすることができる
+- 解析の開始時に位置情報を初期化し、`yylex()`内でスキャンを進めるたびに位置情報を更新する必要がある
+
+```c
+typedef struct YYLTYPE {
+  int first_line;
+  int first_column;
+  int last_line;
+  int last_column;
+} YYLTYPE;
 ```
 
 ## 参照
