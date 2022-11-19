@@ -1,6 +1,15 @@
 # YARV
 #### `compile.c`
 - ASTをYARV命令列に変換する
+  - `switch`文の`case`にノード名が渡されている箇所で
+    `ADD_INSN*`マクロを利用してスタックにYARV命令列をプッシュする
+
+```c
+/* ruby/compile.c L221 */
+/* add an instruction */
+#define ADD_INSN(seq, line_node, insn) \
+  ADD_ELEM((seq), (LINK_ELEMENT *) new_insn_body(iseq, (line_node), BIN(insn), 0))
+```
 
 #### `ruby/include/ruby/vm.h` / `ruby/vm.c`
 - VMの内部構造
