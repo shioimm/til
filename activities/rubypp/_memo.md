@@ -5,7 +5,9 @@
     - [要作業] `++`に対してメソッド呼び出しを表すトークンを返す
 3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
     - [要作業] `method_call`規則に`| primary_value <TokenName>`を追加する
-4. YARVがASTをYARV命令列へ変換する
+    - [要作業] `.`を必要としない改造版`new_qcall()` / `NEW_QCALL` (`NODE_CALL`を返す) を追加する
+    - [要作業] `| primary_value <TokenName>`のアクションで改造版`new_qcall()`を呼ぶ
+4. YARV compile.cがASTをYARV命令列へ変換する
     - [要作業] insns.defに`++`を表現する命令を定義する
 5. YARV命令列の実行時にメソッドディスパッチを行う
-    - [要作業] `++`メソッド定義
+    - [要作業] Numericに`++`メソッド定義
