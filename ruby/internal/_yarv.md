@@ -1,15 +1,10 @@
 # YARV
 #### `compile.c`
 - ASTをYARV命令列に変換する
-  - `switch`文の`case`にノード名が渡されている箇所で
-    `ADD_INSN*`マクロを利用してスタックにYARV命令列をプッシュする
-
-```c
-/* ruby/compile.c L221 */
-/* add an instruction */
-#define ADD_INSN(seq, line_node, insn) \
-  ADD_ELEM((seq), (LINK_ELEMENT *) new_insn_body(iseq, (line_node), BIN(insn), 0))
-```
+- `iseq_compile_each()`が呼び出す`iseq_compile_each0()`でノードの種類を取得し、
+  `switch`文を用いてノードの種類ごとに`compile_*()`を呼び出す
+  - メソッド呼び出しを表すノードでは`compile_call()`が呼び出され、
+    スタックにレシーバと引数をプッシュした後`ADD_SEND_R`マクロを呼び出してYRAVのSEND命令を実行する
 
 #### `ruby/include/ruby/vm.h` / `ruby/vm.c`
 - VMの内部構造
@@ -68,13 +63,6 @@ puts RubyVM::InstructionSequence.compile(source).disasm
 - `:stack_caching` - スタックキャッシングを行う
 - `:tailcall_optimization`
 - `:trace_instruction`
-
-## Rubyファイルの実行フロー
-1. 実行ファイルの読み込み
-2. 字句解析
-3. 構文解析
-4. YARV命令列の生成
-5. YARV命令列の実行
 
 ## 参照
 - [YARVアーキテクチャ](http://www.atdot.net/yarv/yarvarch.ja.html)
