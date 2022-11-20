@@ -113,13 +113,16 @@ new_qcall(struct parser_params* p,
           const YYLTYPE *op_loc,
           const YYLTYPE *loc)
 {
-  NODE *qcall = NEW_QCALL(atype, recv, mid, args, loc);
+  NODE *qcall = NEW_QCALL(atype, recv, mid, args, loc); // 新しいノード (NODE_QCALL or NODE_CALL) を追加する
   nd_set_line(qcall, op_loc->beg_pos.lineno);
   return qcall;
 }
 
 // NEW_QCALL: L477
 #define NEW_QCALL(q,r,m,a,loc) NEW_NODE(NODE_CALL_Q(q),r,m,a,loc)
+
+// NODE_CALL_Q: L476 (NODE_QCALL = "safe method invocation" / NODE_CALL = "method invocation")
+#define NODE_CALL_Q(q) (CALL_Q_P(q) ? NODE_QCALL : NODE_CALL)
 
 // NEW_NODE: node.h L293
 #define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc) (node.h)
@@ -149,4 +152,4 @@ node_newnode(struct parser_params *p,
 #define nd_set_line(n,l) (n)->flags=(((n)->flags&~((VALUE)(-1)<<NODE_LSHIFT))|((VALUE)((l)&NODE_LMASK)<<NODE_LSHIFT))
 ```
 
-- https://github.com/ruby/ruby/blob/1454f8f219890b8134f68e868d8cb1d0a9d2aa20/parse.y
+- https://github.com/ruby/ruby/blob/master/parse.y

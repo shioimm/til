@@ -1,24 +1,41 @@
 # YARV
+#### `compile.c`
+- ASTをYARV命令列に変換する
+  - `switch`文の`case`にノード名が渡されている箇所で
+    `ADD_INSN*`マクロを利用してスタックにYARV命令列をプッシュする
+
+```c
+/* ruby/compile.c L221 */
+/* add an instruction */
+#define ADD_INSN(seq, line_node, insn) \
+  ADD_ELEM((seq), (LINK_ELEMENT *) new_insn_body(iseq, (line_node), BIN(insn), 0))
+```
+
 #### `ruby/include/ruby/vm.h` / `ruby/vm.c`
 - VMの内部構造
 
 #### `tool/insns2vm.rb` / `tool/ruby_vm/scripts/insns2vm.rb`
-- insns.defファイルを読み込み、VMのために必要なファイルを生成する
+- insns.defを読み込み、VMのために必要なファイルを生成する
 
 #### insns.def
 - VMの命令シーケンスの定義 (YARV命令がどのような命令であるか)
 
 ```c
 DEFINE_INSN
-instruction_name
-(type operand, type operand, ..)
-(pop_values, ..)
-(return values ..)
-// attr type name contents..
+instruction_name                 // 命令の名前
+(type operand, type operand, ..) // オペランドの名前
+(pop_values, ..)                 // 命令実行前にスタックからポップする値
+(return values ..)               // 命令実行後にスタックにプッシュする値
+// attr type name contents..     // 命令のカテゴリ、コメント
 {
-  .. // insn body
+  ...                            // 命令のロジック
 }
 ```
+
+#### `vm_exec_core()` (`vm_exec.c`)
+- YARV命令列を実行する関数
+- make時にビルドディレクトリに生成される`vmtc.inc` (ラベルのエントリ) 、
+  `vm.inc` (命令列のエントリ) をincludeする
 
 #### leave命令
 - leaveが呼ばれる直前までに積まれているスタックトップを持って前のスコープに戻る
@@ -62,3 +79,4 @@ puts RubyVM::InstructionSequence.compile(source).disasm
 ## 参照
 - [YARVアーキテクチャ](http://www.atdot.net/yarv/yarvarch.ja.html)
 - [YARV Maniacs 【第 8 回】 命令列のシリアライズ](https://magazine.rubyist.net/articles/0015/0015-YarvManiacs.html)
+- [YARV instruction dispatch](https://qiita.com/k0kubun/items/dbb2f0979f19f76eed26)
