@@ -2,16 +2,16 @@
 #### 必要なコマンド
 - git
 - ruby
-- autoconf(`configure`スクリプトの自動生成ツール)
-- bison(パーサージェネレータ)
+- autoconf (`configure`スクリプトの自動生成ツール)
+- bison (パーサージェネレータ)
 - gcc
 - make
 
 #### ディレクトリ構造
 - workdir/
-  - ruby/ - MRIソースコードを格納するディレクトリ
-  - build/ - コンパイル済みファイルを格納するディレクトリ
-  - install/ - 修正後のMRIをインストールするディレクトリ
+  - `ruby/`    - MRIソースコードを格納するディレクトリ
+  - `build/`   - ビルドしたRubyを格納するディレクトリ
+  - `install/` - `build/`に格納されているRubyをインストールするディレクトリ
 
 ## ビルド手順
 ```
@@ -28,17 +28,16 @@ $ cd../
 $ mkdir build
 $ cd build
 
-# 3. ビルドディレクトリ直下でconfigureスクリプトを実行しMakefileを生成
+# 3. ビルドディレクトリ直下でconfigureスクリプトを実行しcommon.mkを生成
 $ ../ruby/configure --prefix=$PWD/../install --enable-shared
 
 # (--prefix: インストール先をworkdir/install/に指定)
 # Homebrewで各種ライブラリをインストールしている場合はconfigureに以下のオプションを追加
 # --with-openssl-dir=`brew --prefix openssl` --with-readline-dir=`brew --prefix readline` --disable-libedit
 
-# 4. workdir/build/でmakeを実行し、workdir/build/にMRIをビルド
+# 4. workdir/build/でmakeを実行し、workdir/build/にRubyをビルド (-j: 並列でコンパイルを実行)
 $ make -j
 
-# (-j: 並列でコンパイルを実行)
 # makeで実行される処理:
 # - make miniruby - workdir/build/minirubyの生成
 # - make encs     - エンコーディング関連拡張ライブラリの生成
@@ -46,7 +45,7 @@ $ make -j
 # - make ruby     - workdir/build/rubyの生成
 # - make docs     - rdocの生成
 
-# 5. workdir/build/以下にビルドしたMRIをworkdir/install/にインストール (インストール先は手順2で指定済み)
+# 5. workdir/build/以下にビルドしたRubyをworkdir/install/にインストール (インストール先は手順2で指定済み)
 $ make install
 
 # 6. 開発中のRubyのインストールができていることを確認
@@ -54,6 +53,7 @@ $ ../install/bin/ruby -v
 ```
 
 #### `$ history`
+
 ```
 $ history
 
@@ -70,6 +70,7 @@ $ ../install/bin/ruby -v
 ```
 
 #### makeコマンド実行時、ビルドに失敗する場合
+
 ```
 $ make clean
 
