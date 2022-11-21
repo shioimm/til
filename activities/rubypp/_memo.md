@@ -7,7 +7,8 @@
     - [要作業] `method_call`規則に`| primary_value <TokenName>`を追加する
     - [要作業] `.`を必要としない改造版`new_qcall()` / `NEW_QCALL` (`NODE_CALL`を返す) を追加する
     - [要作業] `| primary_value <TokenName>`のアクションで改造版`new_qcall()`を呼ぶ
-4. YARV compile.cがASTをYARV命令列へ変換する
-    - [要作業] insns.defに`++`を表現する命令を定義する
-5. YARV命令列の実行時にメソッドディスパッチを行う
+4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
+    - スタックにレシーバをpush
+    - スタックに引数1をpush
+    - メソッド`+`を実行
     - [要作業] Numericに`++`メソッド定義
