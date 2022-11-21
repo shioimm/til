@@ -13,6 +13,22 @@
 //     |------------+------------+------------|
 //                  |<---------->|
 //                      token
+
+struct parser_params {
+  // ...
+
+  YYSTYPE *lval;
+
+  struct {
+    // ...
+    const char *pbeg;
+    const char *pcur;
+    const char *pend;
+    const char *ptok;
+    // ...
+  }
+  // ...
+}
 ```
 
 #### yylvalの定義 (L5912)
@@ -61,7 +77,7 @@ case '+':
 
   // <Receiver>+= が実行された場合
   if (c == '=') {
-    set_yylval_id('+'); // define set_yylval_id(x)  (yylval.id = (x)) (L5937)
+    set_yylval_id('+'); // define set_yylval_id(x)  (yylval.id = (x)) (L5947)
     SET_LEX_STATE(EXPR_BEG);
     return tOP_ASGN; // トークンtOP_ASGNをパーサに渡す
   }
@@ -150,6 +166,15 @@ node_newnode(struct parser_params *p,
 
 // nd_set_line: node.h L204
 #define nd_set_line(n,l) (n)->flags=(((n)->flags&~((VALUE)(-1)<<NODE_LSHIFT))|((VALUE)((l)&NODE_LMASK)<<NODE_LSHIFT))
+```
+
+#### `command_asgn`
+
+```c
+// command_asgn : var_lhs tOP_ASGN lex_ctxt command_rhs
+// {
+//   $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
+// }
 ```
 
 - https://github.com/ruby/ruby/blob/master/parse.y
