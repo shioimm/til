@@ -175,6 +175,37 @@ node_newnode(struct parser_params *p,
 // {
 //   $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
 // }
+//
+// var_lhs     = user_variable (tIDENTIFIER /  tCONSTANT / nonlocal_var)
+// lex_ctxt    = none (p->ctxt)
+// command_rhs = command_call %prec tOP_ASGN / command_call modifier_rescue stmt / command_asgn
+
+static NODE *
+new_op_assign(
+  struct parser_params *p,
+  NODE *lhs,
+  ID op,
+  NODE *rhs,
+  struct lex_context ctxt,
+  const YYLTYPE *loc)
+{
+  NODE *asgn;
+
+  if (lhs) {
+    ID vid = lhs->nd_vid;
+    YYLTYPE lhs_loc = lhs->nd_loc;
+    // ...
+    asgn = lhs;
+
+    rhs = NEW_CALL(gettable(p, vid, &lhs_loc), op, NEW_LIST(rhs, &rhs->nd_loc), loc);
+    // ...
+    asgn->nd_value = rhs;
+    nd_set_loc(asgn, loc);
+  } else {
+    // ...
+  }
+  return asgn;
+}
 ```
 
 - https://github.com/ruby/ruby/blob/master/parse.y
