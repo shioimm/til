@@ -140,30 +140,6 @@ new_qcall(struct parser_params* p,
 // NODE_CALL_Q: L476 (NODE_QCALL = "safe method invocation" / NODE_CALL = "method invocation")
 #define NODE_CALL_Q(q) (CALL_Q_P(q) ? NODE_QCALL : NODE_CALL)
 
-// NEW_NODE: node.h L293
-#define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc) (node.h)
-
-// rb_node_newnode: L511
-#define rb_node_newnode(type, a1, a2, a3, loc) node_newnode(p, (type), (a1), (a2), (a3), (loc))
-
-// node_newnode(): L12835
-static NODE*
-node_newnode(struct parser_params *p,
-             enum node_type type,
-             VALUE a0,
-             VALUE a1,
-             VALUE a2,
-             const rb_code_location_t *loc)
-{
-    NODE *n = rb_ast_newnode(p->ast, type);
-
-    rb_node_init(n, type, a0, a1, a2);
-
-    nd_set_loc(n, loc);
-    nd_set_node_id(n, parser_get_node_id(p));
-    return n;
-}
-
 // nd_set_line: node.h L204
 #define nd_set_line(n,l) (n)->flags=(((n)->flags&~((VALUE)(-1)<<NODE_LSHIFT))|((VALUE)((l)&NODE_LMASK)<<NODE_LSHIFT))
 ```
@@ -183,9 +159,9 @@ node_newnode(struct parser_params *p,
 static NODE *
 new_op_assign(
   struct parser_params *p,
-  NODE *lhs,
-  ID op,
-  NODE *rhs,
+  NODE *lhs, // 左辺
+  ID op,     // 演算子
+  NODE *rhs, // 右辺
   struct lex_context ctxt,
   const YYLTYPE *loc)
 {
@@ -197,14 +173,101 @@ new_op_assign(
     // ...
     asgn = lhs;
 
+    // 右辺を計算するノードを作成
     rhs = NEW_CALL(gettable(p, vid, &lhs_loc), op, NEW_LIST(rhs, &rhs->nd_loc), loc);
     // ...
+    // 左辺に代入する値として右辺を計算するノードをセットする
     asgn->nd_value = rhs;
     nd_set_loc(asgn, loc);
   } else {
     // ...
   }
   return asgn;
+}
+
+// NEW_CALL: L357
+#define NEW_CALL(r,m,a,loc) NEW_NODE(NODE_CALL,r,m,a,loc)
+
+// gettable: L10625
+static NODE*
+gettable(struct parser_params *p, ID id, const YYLTYPE *loc)
+{
+  ID *vidp = NULL;
+  NODE *node;
+  // ...
+  switch (id_type(id)) {
+    case ID_LOCAL:
+      if (dyna_in_block(p) && dvar_defined_ref(p, id, &vidp)) {
+        if (NUMPARAM_ID_P(id) && numparam_nested_p(p)) return 0;
+        if (id == p->cur_arg) {
+                compile_error(p, "circular argument reference - %"PRIsWARN, rb_id2str(id));
+                return 0;
+        }
+        if (vidp) *vidp |= LVAR_USED;
+        node = NEW_DVAR(id, loc);
+        return node;
+      }
+      if (local_id_ref(p, id, &vidp)) {
+        if (id == p->cur_arg) {
+          compile_error(p, "circular argument reference - %"PRIsWARN, rb_id2str(id));
+          return 0;
+        }
+        if (vidp) *vidp |= LVAR_USED;
+        node = NEW_LVAR(id, loc);
+        return node;
+      }
+      if (dyna_in_block(p) && NUMPARAM_ID_P(id) && parser_numbered_param(p, NUMPARAM_ID_TO_IDX(id))) {
+        if (numparam_nested_p(p)) return 0;
+        node = NEW_DVAR(id, loc);
+        struct local_vars *local = p->lvtbl;
+        if (!local->numparam.current) local->numparam.current = node;
+        return node;
+      }
+      // ...
+      /* method call without arguments */
+      return NEW_VCALL(id, loc);
+    case ID_GLOBAL:
+      return NEW_GVAR(id, loc);
+    case ID_INSTANCE:
+      return NEW_IVAR(id, loc);
+    case ID_CONST:
+      return NEW_CONST(id, loc);
+    case ID_CLASS:
+      return NEW_CVAR(id, loc);
+  }
+  compile_error(p, "identifier %"PRIsVALUE" is not valid to get", rb_id2str(id));
+  return 0;
+}
+
+// NEW_LIST: node.h L323
+// #define NEW_LIST(a,loc) NEW_NODE(NODE_LIST,a,1,0,loc)
+```
+
+#### `NEW_NODE`
+
+```c
+// NEW_NODE: node.h L293
+#define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc) (node.h)
+
+// rb_node_newnode: L511
+#define rb_node_newnode(type, a1, a2, a3, loc) node_newnode(p, (type), (a1), (a2), (a3), (loc))
+
+// node_newnode(): L12835
+static NODE*
+node_newnode(struct parser_params *p,
+             enum node_type type,
+             VALUE a0,
+             VALUE a1,
+             VALUE a2,
+             const rb_code_location_t *loc)
+{
+  NODE *n = rb_ast_newnode(p->ast, type);
+
+  rb_node_init(n, type, a0, a1, a2);
+
+  nd_set_loc(n, loc);
+  nd_set_node_id(n, parser_get_node_id(p));
+  return n;
 }
 ```
 
