@@ -4,24 +4,24 @@
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
     - [要作業] `++`に対して`+= 1`を表現する特殊なトークンを返す
 3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
-    - [要作業] `command_asgn`規則に`| var_lhs <TokenName> lex_ctxt`を追加する
+    - [要作業] `command_asgn`規則に`| var_lhs lex_ctxt <TokenName>`を追加する
     - [要作業] 構文規則に`command_asgn : var_lhs tOP_ASGN lex_ctxt command_rhs`を同じアクションを追加
 4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
 
 ```c
-command_asgn : var_lhs <TokenName> lex_ctxt
+command_asgn : var_lhs lex_ctxt <TokenName>
 {
-  $$ = new_op_assign(p, $1, $2, 1, $3, &@$);
+  NODE *rhs = NEW_FCALL(...); // TODO: command_rhsのアクションをもう少し深掘りする
+  $$ = new_op_assign(p, $1, $3, rhs, $2, &@$);
 }
 
 // static NODE *
-// new_op_assign(struct parser_params *p, => p  (struct parser_params)
+// new_op_assign(struct parser_params *p, => p
 //               NODE *lhs,               => $1 (var_lhsの値)
-//               ID op,                   => $2 (<TokenName>の値 (set_yylval_id('+');))
+//               ID op,                   => $2 (<TokenName>の値: set_yylval_id('+');)
 //               NODE *rhs,               => 1
-//               struct lex_context ctxt, => $3 (lex_ctxt)
+//               struct lex_context ctxt, => $3 (lex_ctxtの値)
 //               const YYLTYPE *loc)      => &@$
-
 ```
 
 #### メソッド呼び出しパターン
