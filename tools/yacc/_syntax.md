@@ -55,27 +55,39 @@
   - アクションの実行に必要なもの
 - yaccは規則部に記述した文法を`yyparse()`関数に変換する
 
-```
-/* e.g. */
-/* stmt (文) の定義 */
-stmt    : if_stmt               /* if_stmt (if文) */
-        | IDENTIFIER '=' expr   /* 代入           */
-        | expr                  /* expr (式)      */
+```c
+// e.g.
+// stmt (文) の定義
+stmt    : if_stmt               // if_stmt (if文)
+        | IDENTIFIER '=' expr   // 代入
+        | expr                  // expr (式)
 
-/* if_stmt (if文の定義) */
+// if_stmt (if文の定義)
 if_stmt : IF expr THEN stmt END
         | IF expr THEN stmt ELSE stmt END
 
-/* expr (式) の定義 */
-expr    : IDENTIFIER            /* 変数参照 */
-        | NUMBER                /* 整数定数 */
-        | funcall               /* funcall (関数呼び出し) */
+// expr (式) の定義
+expr    : IDENTIFIER            // 変数参照
+        | NUMBER                // 整数定数
+        | funcall               // funcall (関数呼び出し)
 
-/* funcall (関数呼び出し) の定義 */
+// funcall (関数呼び出し) の定義
 funcall : IDENTIFIER '(' args ')'
 
-/* args (引数) の定義 */
+// args (引数) の定義
 args    : expr
+```
+
+```c
+%left '+' '-' // 優先度低
+%left '*' '/' // 優先度高
+%%
+expr : expr '+' expr
+     | expr '-' expr
+     | expr '*' expr
+     | expr '/' expr
+     | '-' expr %prec '*' // '-'の優先度を'*'と同じレベルに変更する
+     ;
 ```
 
 #### アクション内
