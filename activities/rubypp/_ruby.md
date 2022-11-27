@@ -1,10 +1,5 @@
 # Ruby
-#### tokenの定義 (L1301)
-
-```c
-%token tUPLUS  RUBY_TOKEN(UPLUS)  "unary+"
-```
-
+## スキャナ
 #### Lexer Buffer (`p = struct parser_params *p`) の構造 (L261)
 
 ```c
@@ -43,19 +38,6 @@ struct parser_params {
 # define SET_LEX_STATE(ls) parser_set_lex_state(p, ls, __LINE__)
 
 // struct parser_params p->lex.state = ls (L10901)
-```
-
-#### `IS_BEG`マクロ
-
-```c
-#define IS_lex_state_for(x, ls)     ((x) & (ls))
-#define IS_lex_state_all_for(x, ls) (((x) & (ls)) == (ls))
-#define IS_lex_state(ls)            IS_lex_state_for(p->lex.state, (ls))
-#define IS_lex_state_all(ls)        IS_lex_state_all_for(p->lex.state, (ls))
-
-// lex_stateがEXPR_BEG_ANY
-// もしくはEXPR_ARG|EXPR_LABELED
-#define IS_BEG() (IS_lex_state(EXPR_BEG_ANY) || IS_lex_state_all(EXPR_ARG|EXPR_LABELED))
 ```
 
 #### `yylex()` (L9813)
@@ -104,46 +86,7 @@ return warn_balanced('+', "+", "unary operator"); // 警告
 even though it seems like unary operator
 ```
 
-#### `method_call`
-
-```c
-// method_call : primary_value call_op operation2 opt_paren_args
-// {
-//   $$ = new_qcall(p, $2, $1, $3, $4, &@3, &@$); // 構文木に新しいノードを追加する
-//   nd_set_line($$, @3.end_pos.lineno);          // 行番号のセット
-// }
-//
-// primary_value  = primary
-// call_op        = '.' / tANDDOT
-// operation2     = operation (tIDENTIFIER / tCONSTANT / tFID) / op (演算子)
-// opt_paren_args = none / paren_args
-
-
-// new_qcall(): L10517
-static NODE *
-new_qcall(struct parser_params* p,
-          ID atype,
-          NODE *recv,
-          ID mid,
-          NODE *args,
-          const YYLTYPE *op_loc,
-          const YYLTYPE *loc)
-{
-  NODE *qcall = NEW_QCALL(atype, recv, mid, args, loc); // 新しいノード (NODE_QCALL or NODE_CALL) を追加する
-  nd_set_line(qcall, op_loc->beg_pos.lineno);
-  return qcall;
-}
-
-// NEW_QCALL: L477
-#define NEW_QCALL(q,r,m,a,loc) NEW_NODE(NODE_CALL_Q(q),r,m,a,loc)
-
-// NODE_CALL_Q: L476 (NODE_QCALL = "safe method invocation" / NODE_CALL = "method invocation")
-#define NODE_CALL_Q(q) (CALL_Q_P(q) ? NODE_QCALL : NODE_CALL)
-
-// nd_set_line: node.h L204
-#define nd_set_line(n,l) (n)->flags=(((n)->flags&~((VALUE)(-1)<<NODE_LSHIFT))|((VALUE)((l)&NODE_LMASK)<<NODE_LSHIFT))
-```
-
+## パーサ
 #### `command_asgn`
 
 ```c
@@ -152,12 +95,16 @@ new_qcall(struct parser_params* p,
 //   $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
 // }
 //
-// var_lhs      = user_variable (tIDENTIFIER / tCONSTANT / nonlocal_var)
-// lex_ctxt     = none (p->ctxt)
-// command_rhs  = command_call %prec tOP_ASGN { value_expr($1); $$ = $1; }
-// command_call = command
-// command      = fcall command_args { $1->nd_args = $2; ... $$ = $1; }
-// fcall        = operation (tIDENTIFIER / tCONSTANT / tFID) { $$ = NEW_FCALL($1, 0, &@$); }
+// var_lhs       = user_variable { $$ = assignable(p, $1, 0, &@$); }
+// user_variable = tIDENTIFIER / tCONSTANT / nonlocal_var
+// tOP_ASGN      = '+='
+// lex_ctxt      = none { $$ = p->ctxt; }
+// command_rhs   = command_call %prec tOP_ASGN { value_expr($1); $$ = $1; }
+// command_call  = command
+// command       = fcall command_args %prec tLOWEST { $1->nd_args = $2; nd_set_last_loc(...); $$ = $1; }
+// fcall         = operation { $$ = NEW_FCALL($1, 0, &@$); nd_set_line($$, p->tokline); }
+// operation     = tIDENTIFIER / tCONSTANT / tFID
+// command_args
 
 // value_expr: L552
 #define value_expr(node) value_expr_gen(p, (node))
@@ -235,8 +182,8 @@ gettable(struct parser_params *p, ID id, const YYLTYPE *loc)
       if (dyna_in_block(p) && dvar_defined_ref(p, id, &vidp)) {
         if (NUMPARAM_ID_P(id) && numparam_nested_p(p)) return 0;
         if (id == p->cur_arg) {
-                compile_error(p, "circular argument reference - %"PRIsWARN, rb_id2str(id));
-                return 0;
+          compile_error(p, "circular argument reference - %"PRIsWARN, rb_id2str(id));
+          return 0;
         }
         if (vidp) *vidp |= LVAR_USED;
         node = NEW_DVAR(id, loc);
