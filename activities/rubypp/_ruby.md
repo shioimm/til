@@ -152,17 +152,40 @@ new_qcall(struct parser_params* p,
 //   $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
 // }
 //
-// var_lhs     = user_variable (tIDENTIFIER /  tCONSTANT / nonlocal_var)
-// lex_ctxt    = none (p->ctxt)
-// command_rhs = command_call %prec tOP_ASGN / command_call modifier_rescue stmt / command_asgn
+// var_lhs      = user_variable (tIDENTIFIER / tCONSTANT / nonlocal_var)
+// lex_ctxt     = none (p->ctxt)
+// command_rhs  = command_call %prec tOP_ASGN { value_expr($1); $$ = $1; }
+// command_call = command
+// command      = fcall command_args { $1->nd_args = $2; ... $$ = $1; }
+// fcall        = operation (tIDENTIFIER / tCONSTANT / tFID) { $$ = NEW_FCALL($1, 0, &@$); }
 
+// value_expr: L552
+#define value_expr(node) value_expr_gen(p, (node))
+
+// value_expr_gen: L11715
+static int
+value_expr_gen(struct parser_params *p, NODE *node)
+{
+  NODE *void_node = value_expr_check(p, node);
+  if (void_node) {
+    yyerror1(&void_node->nd_loc, "void value expression");
+    /* or "control never reach"? */
+    return FALSE;
+  }
+  return TRUE;
+}
+
+// NEW_FCALL: node.h L359
+#define NEW_FCALL(m,a,loc) NEW_NODE(NODE_FCALL,0,m,a,loc)
+
+// new_op_assign: L12578
 static NODE *
 new_op_assign(
   struct parser_params *p,
-  NODE *lhs, // 左辺
-  ID op,     // 演算子
-  NODE *rhs, // 右辺
-  struct lex_context ctxt,
+  NODE *lhs,               // 左辺
+  ID op,                   // 演算子
+  NODE *rhs,               // 右辺
+  struct lex_context ctxt, // Ractor対応
   const YYLTYPE *loc)
 {
   NODE *asgn;
@@ -170,15 +193,27 @@ new_op_assign(
   if (lhs) {
     ID vid = lhs->nd_vid;
     YYLTYPE lhs_loc = lhs->nd_loc;
+    int shareable = ctxt.shareable_constant_value;
+    if (shareable) {
+      // ...
+    }
     // ...
-    asgn = lhs;
 
-    // 右辺を計算するノードを作成
-    rhs = NEW_CALL(gettable(p, vid, &lhs_loc), op, NEW_LIST(rhs, &rhs->nd_loc), loc);
-    // ...
-    // 左辺に代入する値として右辺を計算するノードをセットする
-    asgn->nd_value = rhs;
-    nd_set_loc(asgn, loc);
+    if (op == tOROP) {
+      // ...
+    } else if (op == tANDOP) {
+      // ...
+    } else {
+      asgn = lhs;
+      // 右辺を計算するノードを作成
+      rhs = NEW_CALL(gettable(p, vid, &lhs_loc), op, NEW_LIST(rhs, &rhs->nd_loc), loc);
+      if (shareable) {
+        rhs = shareable_constant_value(p, shareable, lhs, rhs, &rhs->nd_loc);
+      }
+      // 左辺に代入する値として右辺を計算するノードをセットする
+      asgn->nd_value = rhs;
+      nd_set_loc(asgn, loc);
+    }
   } else {
     // ...
   }
