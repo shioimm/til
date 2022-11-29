@@ -27,6 +27,17 @@ Hello { yylval = atoi(yytext); return GREETING; }
 - `yylval` - トークンの値を`<FileName>.y`内の正則表現部のアクションで取り出す (`$n`) ための変数
   - パーサが`%union`を定義している場合は`yylval.<メンバ名> = `でアクセスできる
 
+```c
+static int
+yylex()
+{
+  yylval.str = next_token();
+  return STRING;
+}
+
+// yylvalのstrメンバにnext_token()の値を代入し、STRINGトークンを返す
+```
+
 #### 宣言部
 - 正則表現部やプログラム部で使用する変数、関数、マクロを宣言する
   - トークン種別番号を表す定数宣言など (yaccを使用する場合は自動生成される)
