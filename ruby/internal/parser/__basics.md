@@ -7,9 +7,11 @@
 5. lex.cをparse.cにinclude
 6. parse.cをコンパイル (cc) し、パーサ実行ファイルparse.oを生成
 
-## 字句解析・構文解析のコールスタック
+## 字句解析・構文解析のコールグラフ
 1. `parser_compile_string()` / `rb_parser_compile_file_path()` / `rb_parser_compile_generic()`
+    - Rubyの文字列オブジェクト、IOオブジェクト、`AbstractSyntaxTree.of`などからプログラムの情報を読み込む
 2. `yycompile()`
+    - 1から渡された情報からソースコードを読み込み、最終的にASTを返す
 3. `yycompile0()`
 4. `yyparse()`
 5. `yylex()` -> `parser_yylex()`
