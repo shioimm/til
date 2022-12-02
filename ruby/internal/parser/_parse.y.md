@@ -1,4 +1,19 @@
 # parse.y
+## YYSTYPE定義
+
+```c
+%union {
+  VALUE val;
+  NODE *node;
+  ID id;
+  int num;
+  st_table *tbl;
+  const struct vtable *vars;
+  struct rb_strterm_struct *strterm;
+  struct lex_context ctxt;
+}
+```
+
 ## 記号
 
 | 種類                     | 規則       | 例                                                |
