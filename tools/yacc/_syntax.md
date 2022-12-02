@@ -134,6 +134,27 @@ typedef struct YYLTYPE {
 } YYLTYPE;
 ```
 
+## 頻出語
+
+| 意味             | 例                                       |
+| -                | -                                        |
+| プログラム全体   | program, prog, file, input, stmts, whole |
+| 文 (構文木の幹)  | stmt, statement                          |
+| 式 (構文木の枝)  | expr, expression                         |
+| 項 (構文木の葉)  | prim, primary                            |
+| 代入の左辺       | lhs (left hand side)                     |
+| 代入の右辺       | rhs (right hand side)                    |
+| 関数呼び出し     | funcall, call, function                  |
+| メソッド呼び出し | method, call                             |
+| 引数             | arg, argument                            |
+| 関数定義         | defun, definition, function, fndef       |
+| 宣言一般         | declaration, decl                        |
+| ( )              | paren, parentheses                       |
+| { }              | braces                                   |
+| [ ]              | brackets                                 |
+| 文を終端する記号 | terms, terminators                       |
+| 省略可能         | opt, optional                            |
+
 ## 参照
 - [yacc](https://ja.wikipedia.org/wiki/Yacc)
 - [第9章 速習yacc](https://i.loveruby.net/ja/rhg/book/yacc.html)
