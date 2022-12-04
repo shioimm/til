@@ -60,7 +60,7 @@ i += 1
 # Reading a token
 # lex_state: BEG -> END at line 8679                            parse_numeric()
 # lex_state: END -> END at line 7973                            set_number_literal()
-# Next token is token "integer literal" (1.4-1.5: 0)
+# Next token is token "integer literal" (1.4-1.5: 0)            tINTEGER (0) を読み込み
 # Shifting token "integer literal" (1.4-1.5: 0)                 tINTEGER (0) をシフト
 #
 # Entering state 41
@@ -89,8 +89,8 @@ i += 1
 # Entering state 90
 # Stack now 0 2 87 343 582 90
 # Reading a token
-# lex_state: END -> BEG at line 9565
-# Next token is token '\n' (1.5-1.5: )                          '\n' をシフト
+# lex_state: END -> BEG at line 9565                            parser_yylex() case '-1'
+# Next token is token '\n' (1.5-1.5: )                          '\n' を読み込み
 # Reducing stack by rule 263 (line 2716):                       arg を還元 (primary)
 #    $1 = nterm primary (1.4-1.5: NODE_LIT)
 # -> $$ = nterm arg (1.4-1.5: NODE_LIT)
@@ -159,140 +159,163 @@ i += 1
 # Stack now 0 2 71 313
 # Reading a token
 # lex_state: BEG -> CMDARG at line 9407
-# lex_state: CMDARG -> END|LABEL at line 9425
+# lex_state: CMDARG -> END|LABEL at line 9425                   parse_ident()
 # Next token is token "local variable or method" (2.0-2.1: i)
-# Shifting token "local variable or method" (2.0-2.1: i)
+# Shifting token "local variable or method" (2.0-2.1: i)        tIDENTIFIER (i) をシフト
+#
 # Entering state 35
 # Stack now 0 2 71 313 35
 # Reading a token
-# lex_state: END|LABEL -> BEG at line 9835
-# Next token is token "operator-assignment" (2.2-2.4: +)
-# Reducing stack by rule 652 (line 5193):
+# lex_state: END|LABEL -> BEG at line 9835                      parser_yylex() case '='
+# Next token is token "operator-assignment" (2.2-2.4: +)        tOP_ASGN (+=) を読み込み
+# Reducing stack by rule 652 (line 5193):                       user_variable を還元 (tIDENTIFIER)
 #    $1 = token "local variable or method" (2.0-2.1: i)
 # -> $$ = nterm user_variable (2.0-2.1: )
+#
 # Entering state 122
 # Stack now 0 2 71 313 122
 # Next token is token "operator-assignment" (2.2-2.4: +)
-# Reducing stack by rule 664 (line 5229):
+# Reducing stack by rule 664 (line 5229):                       var_lhs を還元 (user_variable)
 #    $1 = nterm user_variable (2.0-2.1: )
 # -> $$ = nterm var_lhs (2.0-2.1: NODE_LASGN)
+#
 # Entering state 125
 # Stack now 0 2 71 313 125
 # Next token is token "operator-assignment" (2.2-2.4: +)
-# Shifting token "operator-assignment" (2.2-2.4: +)
+# Shifting token "operator-assignment" (2.2-2.4: +)             tOP_ASGN (+=) をシフト
+#
 # Entering state 429
 # Stack now 0 2 71 313 125 429
-# Reducing stack by rule 781 (line 5914):
+# Reducing stack by rule 781 (line 5914):                       none を還元 (空)
 # -> $$ = nterm none (2.4-2.4: )
+#
 # Entering state 577
 # Stack now 0 2 71 313 125 429 577
-# Reducing stack by rule 270 (line 2739):
+# Reducing stack by rule 270 (line 2739):                       lex_ctxt を還元 (none)
 #    $1 = nterm none (2.4-2.4: )
 # -> $$ = nterm lex_ctxt (2.4-2.4: )
+#
 # Entering state 658
 # Stack now 0 2 71 313 125 429 658
 # Reading a token
-# lex_state: BEG -> END at line 8679
-# lex_state: END -> END at line 7973
-# Next token is token "integer literal" (2.5-2.6: 1)
-# Shifting token "integer literal" (2.5-2.6: 1)
+# lex_state: BEG -> END at line 8679                            parse_numeric()
+# lex_state: END -> END at line 7973                            set_number_literal()
+# Next token is token "integer literal" (2.5-2.6: 1)            tINTEGER (1) を読み込み
+# Shifting token "integer literal" (2.5-2.6: 1)                 tINTEGER (1) をシフト
+#
 # Entering state 41
 # Stack now 0 2 71 313 125 429 658 41
-# Reducing stack by rule 645 (line 5182):
+# Reducing stack by rule 645 (line 5182):                       simple_numeric を還元 (tINTEGER)
 #    $1 = token "integer literal" (2.5-2.6: 1)
 # -> $$ = nterm simple_numeric (2.5-2.6: NODE_LIT)
+#
 # Entering state 120
 # Stack now 0 2 71 313 125 429 658 120
-# Reducing stack by rule 643 (line 5171):
+# Reducing stack by rule 643 (line 5171):                       numeric を還元 (simple_numeric)
 #    $1 = nterm simple_numeric (2.5-2.6: NODE_LIT)
 # -> $$ = nterm numeric (2.5-2.6: NODE_LIT)
+#
 # Entering state 119
 # Stack now 0 2 71 313 125 429 658 119
-# Reducing stack by rule 595 (line 4797):
+# Reducing stack by rule 595 (line 4797):                       literal を還元 (numeric)
 #    $1 = nterm numeric (2.5-2.6: NODE_LIT)
 # -> $$ = nterm literal (2.5-2.6: NODE_LIT)
+#
 # Entering state 106
 # Stack now 0 2 71 313 125 429 658 106
-# Reducing stack by rule 310 (line 3028):
+# Reducing stack by rule 310 (line 3028):                       primary を還元 (literal)
 #    $1 = nterm literal (2.5-2.6: NODE_LIT)
 # -> $$ = nterm primary (2.5-2.6: NODE_LIT)
+#
 # Entering state 90
 # Stack now 0 2 71 313 125 429 658 90
 # Reading a token
-# lex_state: END -> BEG at line 9565
-# Next token is token '\n' (2.6-2.6: )
-# Reducing stack by rule 263 (line 2716):
+# lex_state: END -> BEG at line 9565                            parser_yylex() case '-1'
+# Next token is token '\n' (2.6-2.6: )                          '\n' を読み込み
+# Reducing stack by rule 263 (line 2716):                       arg を還元 (primary)
 #    $1 = nterm primary (2.5-2.6: NODE_LIT)
 # -> $$ = nterm arg (2.5-2.6: NODE_LIT)
+#
 # Entering state 832
 # Stack now 0 2 71 313 125 429 658 832
 # Next token is token '\n' (2.6-2.6: )
-# Reducing stack by rule 276 (line 2773):
+# Reducing stack by rule 276 (line 2773):                       arg_rhs を還元 (arg   %prec tOP_ASGN)
 #    $1 = nterm arg (2.5-2.6: NODE_LIT)
 # -> $$ = nterm arg_rhs (2.5-2.6: NODE_LIT)
+#
 # Entering state 833
 # Stack now 0 2 71 313 125 429 658 833
-# Reducing stack by rule 217 (line 2446):
+# Reducing stack by rule 217 (line 2446):                       arg を還元 (var_lhs tOP_ASGN lex_ctxt arg_rhs)
 #    $1 = nterm var_lhs (2.0-2.1: NODE_LASGN)
 #    $2 = token "operator-assignment" (2.2-2.4: +)
 #    $3 = nterm lex_ctxt (2.4-2.4: )
 #    $4 = nterm arg_rhs (2.5-2.6: NODE_LIT)
 # -> $$ = nterm arg (2.0-2.6: NODE_LASGN)
+#
 # Entering state 88
 # Stack now 0 2 71 313 88
 # Next token is token '\n' (2.6-2.6: )
-# Reducing stack by rule 65 (line 1861):
+# Reducing stack by rule 65 (line 1861):                        expr を還元 (arg %prec tLBRACE_ARG)
 #    $1 = nterm arg (2.0-2.6: NODE_LASGN)
 # -> $$ = nterm expr (2.0-2.6: NODE_LASGN)
+#
 # Entering state 75
 # Stack now 0 2 71 313 75
 # Next token is token '\n' (2.6-2.6: )
-# Reducing stack by rule 37 (line 1663):
+# Reducing stack by rule 37 (line 1663):                        stmt を還元 (expr)
 #    $1 = nterm expr (2.0-2.6: NODE_LASGN)
 # -> $$ = nterm stmt (2.0-2.6: NODE_LASGN)
+#
 # Entering state 73
 # Stack now 0 2 71 313 73
 # Next token is token '\n' (2.6-2.6: )
-# Reducing stack by rule 7 (line 1445):
+# Reducing stack by rule 7 (line 1445):                         top_stmt を還元 (stmt)
 #    $1 = nterm stmt (2.0-2.6: NODE_LASGN)
 # -> $$ = nterm top_stmt (2.0-2.6: NODE_LASGN)
+#
 # Entering state 520
 # Stack now 0 2 71 313 520
-# Reducing stack by rule 6 (line 1436):
+# Reducing stack by rule 6 (line 1436):                         top_stmts を還元 (top_stmts terms top_stmt)
 #    $1 = nterm top_stmts (1.0-1.5: NODE_LASGN)
 #    $2 = nterm terms (1.5-1.5: )
 #    $3 = nterm top_stmt (2.0-2.6: NODE_LASGN)
 # -> $$ = nterm top_stmts (1.0-2.6: NODE_BLOCK)
+#
 # Entering state 71
 # Stack now 0 2 71
 # Next token is token '\n' (2.6-2.6: )
-# Shifting token '\n' (2.6-2.6: )
+# Shifting token '\n' (2.6-2.6: )                               '\n' をシフト
+#
 # Entering state 310
 # Stack now 0 2 71 310
-# Reducing stack by rule 778 (line 5906):
+# Reducing stack by rule 778 (line 5906):                       term を還元 ('\n')
 #    $1 = token '\n' (2.6-2.6: )
 # -> $$ = nterm term (2.6-2.6: )
+#
 # Entering state 312
 # Stack now 0 2 71 312
-# Reducing stack by rule 779 (line 5909):
+# Reducing stack by rule 779 (line 5909):                       terms を還元 (term)
 #    $1 = nterm term (2.6-2.6: )
 # -> $$ = nterm terms (2.6-2.6: )
+#
 # Entering state 313
 # Stack now 0 2 71 313
 # Reading a token
 # Now at end of input.
-# Reducing stack by rule 769 (line 5885):
+# Reducing stack by rule 769 (line 5885):                       opt_terms を還元 (terms)
 #    $1 = nterm terms (2.6-2.6: )
 # -> $$ = nterm opt_terms (2.6-2.6: )
+#
 # Entering state 311
 # Stack now 0 2 71 311
-# Reducing stack by rule 3 (line 1416):
+# Reducing stack by rule 3 (line 1416):                         top_compstmt を還元 (top_stmts opt_terms)
 #    $1 = nterm top_stmts (1.0-2.6: NODE_BLOCK)
 #    $2 = nterm opt_terms (2.6-2.6: )
 # -> $$ = nterm top_compstmt (1.0-2.6: NODE_BLOCK)
+#
 # Entering state 70
 # Stack now 0 2 70
-# Reducing stack by rule 2 (line 1390):
+# Reducing stack by rule 2 (line 1390):                         program を還元
 #    $1 = nterm $@1 (1.0-1.0: )
 #    $2 = nterm top_compstmt (1.0-2.6: NODE_BLOCK)
 # vtable_free:12800: p->lvtbl->args(0x00006000024232e0)
@@ -300,10 +323,12 @@ i += 1
 # cmdarg_stack(pop): 0 at line 12802
 # cond_stack(pop): 0 at line 12803
 # -> $$ = nterm program (1.0-2.6: )
+#
 # Entering state 1
 # Stack now 0 1
 # Now at end of input.
-# Shifting token "end-of-input" (2.6-2.6: )
+# Shifting token "end-of-input" (2.6-2.6: )                     END_OF_INPUT をシフト
+#
 # Entering state 3
 # Stack now 0 1 3
 # Stack now 0 1 3
