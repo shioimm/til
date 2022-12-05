@@ -90,6 +90,32 @@ $ make distclean # -> configureスクリプトの実行からやり直す
       workdir/build/で`$ make run`すると手順2、3をまとめて実行できる
     - minirubyではなくRubyをビルドする場合はworkdir/build/で`$ make runruby`を実行する
 
+## パーサのステート一覧を出力する
+
+```
+$ touch workdir/ruby/parse.y
+$ cd workdir/build/
+
+# ステート一覧を出力したファイルaを作成
+$ YFLAGS=" --report=states,itemsets,lookaheads,solved --report-file=a" make main
+```
+
+```
+# a
+# <ステート番号>
+#   <ルール番号> <還元先の非終端記号名>: "<還元元となる終端記号>" •<次のトークン>
+#     "<次のトークン>"         <指示>  (<還元先の非終端記号>)
+
+State 35
+
+  652 user_variable: "local variable or method" •  ["end-of-input", "`rescue'", ...]
+  ...
+
+    "end-of-input"         reduce using rule 652 (user_variable)
+    "`rescue'"             reduce using rule 652 (user_variable)
+    ...
+```
+
 ## MRIコースコードの構造
 - [MRI のソースコードの構造の紹介](https://github.com/ko1/rubyhackchallenge/blob/master/JA/2_mri_structure.md#mri-%E3%81%AE%E3%82%BD%E3%83%BC%E3%82%B9%E3%82%B3%E3%83%BC%E3%83%89%E3%81%AE%E6%A7%8B%E9%80%A0%E3%81%AE%E7%B4%B9%E4%BB%8B)
 
