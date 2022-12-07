@@ -103,14 +103,12 @@ $ YFLAGS=" --report=states,itemsets,lookaheads,solved --report-file=a" make main
 ```
 # a
 # <ステート番号>
-#   <ルール番号> <還元先の非終端記号名>: "<還元元となる終端記号>" •<次のトークン>
+#   <ルール番号> <還元先の非終端記号名>: "<還元元となる終端記号>" • <次のトークン>
 #     "<次のトークン>"         <指示>  (<還元先の非終端記号>)
 
 State 35
-
-  652 user_variable: "local variable or method" •  ["end-of-input", "`rescue'", ...]
+  652 user_variable: "local variable or method" • ["end-of-input", "`rescue'", ...]
   ...
-
     "end-of-input"         reduce using rule 652 (user_variable)
     "`rescue'"             reduce using rule 652 (user_variable)
     ...
