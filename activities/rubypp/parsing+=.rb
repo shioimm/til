@@ -439,7 +439,7 @@ i += 1
 # -> $$ = nterm top_stmts (1.0-2.6: NODE_BLOCK)               top_stmtsへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts terms top_stmts
+# top_stmts
 # ----------------------------
 #
 # Entering state 71                                           termへの還元を開始 (-> '\n'が必要)
@@ -448,7 +448,7 @@ i += 1
 # Shifting token '\n' (2.6-2.6: )                             -> ('\n') トークンをシフト / State 310
 #
 # ----- semantic stack -------
-# top_stmts terms top_stmts '\n'
+# top_stmts '\n'
 # ----------------------------
 #
 # Entering state 310                                          termへの還元を開始
@@ -458,7 +458,7 @@ i += 1
 # -> $$ = nterm term (2.6-2.6: )                              termへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts terms top_stmts term
+# top_stmts term
 # ----------------------------
 #
 # Entering state 312                                          termsへの還元を開始
@@ -468,71 +468,63 @@ i += 1
 # -> $$ = nterm terms (2.6-2.6: )                             termsへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts terms top_stmts terms
+# top_stmts terms
 # ----------------------------
 #
-# Entering state 313                                          opt_termsへの還元を開始 (-> "end-of-input"が必要)
+# Entering state 313                                          opt_termsへの還元を開始 (-> END_OF_INPUTが必要)
 # Stack now 0 2 71 313
 # Reading a token                                             トークンを読み込み
-# Now at end of input.                                        次のトークンは"end-of-input"
-# Reducing stack by rule 769 (line 5885):                     -> ("end-of-input") opt_terms : terms
+# Now at end of input.                                        次のトークンはEND_OF_INPUT
+# Reducing stack by rule 769 (line 5885):                     -> (END_OF_INPUT) opt_terms : terms
 #    $1 = nterm terms (2.6-2.6: )
 # -> $$ = nterm opt_terms (2.6-2.6: )                         opt_termsへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts terms top_stmts opt_terms
+# top_stmts opt_terms
 # ----------------------------
 #
-# Entering state 311                                          --WIP--
+# Entering state 311                                          top_compstmtへの還元を開始
 # Stack now 0 2 71 311
-# Reducing stack by rule 3 (line 1416):                       -> top_compstmtを還元 (top_stmts opt_terms)
+# Reducing stack by rule 3 (line 1416):                       -> ($default) top_compstmt : top_stmts opt_terms
 #    $1 = nterm top_stmts (1.0-2.6: NODE_BLOCK)
 #    $2 = nterm opt_terms (2.6-2.6: )
-# -> $$ = nterm top_compstmt (1.0-2.6: NODE_BLOCK)
+# -> $$ = nterm top_compstmt (1.0-2.6: NODE_BLOCK)            top_compstmtへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts
-# terms
 # top_compstmt
 # ----------------------------
 #
-# Entering state 70
+# Entering state 70                                           programへの還元を開始
 # Stack now 0 2 70
-# Reducing stack by rule 2 (line 1390):                       -> programを還元
+# Reducing stack by rule 2 (line 1390):                       ($default) program : $@1 top_compstmt
 #    $1 = nterm $@1 (1.0-1.0: )
 #    $2 = nterm top_compstmt (1.0-2.6: NODE_BLOCK)
 # vtable_free:12800: p->lvtbl->args(0x00006000024232e0)
 # vtable_free:12801: p->lvtbl->vars(0x0000600002423300)
 # cmdarg_stack(pop): 0 at line 12802                          local_pop() cmdarg_stackをpop
 # cond_stack(pop): 0 at line 12803                            local_pop() cond_stackをpop
-# -> $$ = nterm program (1.0-2.6: )
+# -> $$ = nterm program (1.0-2.6: )                           programへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts
-# terms
 # program
 # ----------------------------
 #
-# Entering state 1                                            $acceptへの還元を開始
+# Entering state 1                                            $acceptへの還元を開始 (-> END_OF_INPUTが必要)
 # Stack now 0 1
-# Now at end of input.                                        インプットなし
+# Now at end of input.                                        次のトークンはEND_OF_INPUT
 # Shifting token "end-of-input" (2.6-2.6: )                   END_OF_INPUTをシフト
 #
 # ----- semantic stack -------
-# top_stmts
-# terms
 # program END_OF_INPUT
 # ----------------------------
 #
-# Entering state 3                                            $acceptへ還元
+# Entering state 3                                            $acceptへの還元を開始
 # Stack now 0 1 3
 # Stack now 0 1 3
 # Cleanup: popping token "end-of-input" (2.6-2.6: )
 # Cleanup: popping nterm program (1.0-2.6: )
-# Syntax OK
+# Syntax OK                                                   -> ($default) acceptへの還元が完了
 #
 # ----- semantic stack -------
-# top_stmts
-# terms
 # $accept
 # ----------------------------
