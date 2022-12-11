@@ -95,7 +95,7 @@ even though it seems like unary operator
 // }
 //
 // var_lhs        = user_variable { $$ = assignable(p, $1, 0, &@$); }
-// user_variable  = tIDENTIFIER / tCONSTANT / nonlocal_var
+// user_variable  = tIDENTIFIER
 // tOP_ASGN       = '+='
 // lex_ctxt       = none { $$ = p->ctxt; }
 // arg_rhs        = arg %prec tOP_ASGN { value_expr($1); $$ = $1; }
