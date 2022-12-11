@@ -87,25 +87,46 @@ even though it seems like unary operator
 ```
 
 ## パーサ
-#### `command_asgn`
 
 ```c
-// command_asgn : var_lhs tOP_ASGN lex_ctxt command_rhs
+// arg : var_lhs tOP_ASGN lex_ctxt arg_rhs
 // {
 //   $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
 // }
 //
-// var_lhs       = user_variable { $$ = assignable(p, $1, 0, &@$); }
-// user_variable = tIDENTIFIER / tCONSTANT / nonlocal_var
-// tOP_ASGN      = '+='
-// lex_ctxt      = none { $$ = p->ctxt; }
-// command_rhs   = command_call %prec tOP_ASGN { value_expr($1); $$ = $1; }
-// command_call  = command
-// command       = fcall command_args %prec tLOWEST { $1->nd_args = $2; nd_set_last_loc(...); $$ = $1; }
-// fcall         = operation { $$ = NEW_FCALL($1, 0, &@$); nd_set_line($$, p->tokline); }
-// operation     = tIDENTIFIER / tCONSTANT / tFID
-// command_args
+// var_lhs        = user_variable { $$ = assignable(p, $1, 0, &@$); }
+// user_variable  = tIDENTIFIER / tCONSTANT / nonlocal_var
+// tOP_ASGN       = '+='
+// lex_ctxt       = none { $$ = p->ctxt; }
+// arg_rhs        = arg %prec tOP_ASGN { value_expr($1); $$ = $1; }
+// arg            = primary { $$ = $1; }
+// primary        = literal
+// literal        = numeric
+// numeric        = simple_numeric { $$ = $2; RB_OBJ_WRITE(p->ast, &$$->nd_lit, negate_lit(p, $$->nd_lit)); }
+// simple_numeric = tINTEGER
+```
 
+```c
+// set_number_literal: L7965
+// += の後、数値が読み込まれた際に呼ばれる
+static enum yytokentype
+set_number_literal(struct parser_params *p, VALUE v, enum yytokentype type, int suffix)
+{
+  // ...
+  set_yylval_literal(v);
+  SET_LEX_STATE(EXPR_END);
+  return type;
+}
+
+// L5941
+# define set_yylval_literal(x) \
+do { \
+  set_yylval_node(NEW_LIT(x, &_cur_loc)); \
+  RB_OBJ_WRITTEN(p->ast, Qnil, x); \
+} while(0)
+```
+
+```c
 // value_expr: L552
 #define value_expr(node) value_expr_gen(p, (node))
 

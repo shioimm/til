@@ -2,24 +2,27 @@
 #### 代入パターン
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
-    - [要作業] `++`に対して`+= 1`を表現する特殊なトークンを返す
+    - [要作業] `++`を表現するトークン`TokenName`を追加
+    - [要作業] `++`を読み込み時、`<TokenName>`をシフト
 3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
-    - [要作業] `command_asgn`規則に`| var_lhs lex_ctxt <TokenName>`を追加する
-    - [要作業] 構文規則に`command_asgn : var_lhs tOP_ASGN lex_ctxt command_rhs`を同じアクションを追加
+    - [要作業] `arg`規則に`| var_lhs lex_ctxt <TokenName>`を追加する
+    - [要作業] 追加した構文規則にアクションを追加
 4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
 
 ```c
-command_asgn : var_lhs lex_ctxt <TokenName>
+arg : var_lhs lex_ctxt <TokenName>
 {
-  NODE *rhs = NEW_FCALL(...); // TODO: command_rhsのアクションをもう少し深掘りする
-  $$ = new_op_assign(p, $1, $3, rhs, $2, &@$);
+  // TODO:
+  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
+  // 生成されたNODE構造体のポインタを取得する
+  $$ = new_op_assign(p, $1, $3, NODE *rhs (数値1を表すノード), $2, &@$);
 }
 
 // static NODE *
 // new_op_assign(struct parser_params *p, => p
 //               NODE *lhs,               => $1 (var_lhsの値)
 //               ID op,                   => $2 (<TokenName>の値: set_yylval_id('+');)
-//               NODE *rhs,               => 1
+//               NODE *rhs,               => 数値1を表すノード
 //               struct lex_context ctxt, => $3 (lex_ctxtの値)
 //               const YYLTYPE *loc)      => &@$
 ```
