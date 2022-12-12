@@ -31,14 +31,47 @@ arg : var_lhs lex_ctxt <TokenName>
 #### スキャナパターン (2)
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
-    - 次のトークンが`+`だった場合: スキャナがpcurを進めてトークンを読み込み
-      - 次のトークンが`+`だった場合: pushbackして`tOP_ASGN`を返す (前方の'+')
-      - 次のトークンが`\n`だった場合: さらにpushback
-        - 前のトークンが`+`だった場合: `nextc(p)` + `parse_numeric(p, '1')`を返す
-        - 前のトークンが`+`以外だった場合: `nextc(p)` + 条件式から抜ける (規定の処理に進む)
+    - 次のトークンが`+`だった場合: pcurを一つ進める
+      - 次のトークンが`\n`だった場合: pcurを二つ戻す
+        - 二つ前のトークンが`+`だった場合: pcurを一つ進める + `parse_numeric(p, '1')`を返す
+        - 二つ前のトークンが`+`以外だった場合: pcurを一つ進める + 条件式から抜ける (規定の処理に進む)
+      - 次のトークンが`+`だった場合: pcurを一つ戻し、`tOP_ASGN`を返す (前方の'+')
       - 次のトークンが`+` / `\n`以外だった場合: 規定の処理に進む
 3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
 4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
+
+```c
+// parse.y
+
+%token <id> tINCOP_ASGN "operator-assignment"
+
+%%
+
+arg : var_lhs tINCOP_ASGN lex_ctxt arg_rhs
+{
+  $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
+}
+
+%%
+
+static enum yytokentype
+parser_yylex(struct parser_params *p)
+{
+  // ...
+  while (1) {
+    switch (c = nextc(p)) {
+    // ...
+    case '+':
+      c = nextc(p);
+      if (c == '+') {
+        set_yylval_id('+');
+        SET_LEX_STATE(EXPR_BEG);
+        return tINCOP_ASGN;
+      }
+    }
+  }
+}
+```
 
 #### メソッド呼び出しパターン
 1. `yyparse()`がソースコードを読み込む
