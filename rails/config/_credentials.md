@@ -30,12 +30,15 @@ Rails.application.credential.some_api_key # => SOMEKEY
 ```
 
 ### `secret_key_base`
-- `key_generator`メソッドのsecret入力として使われる値
+- `Rails.application.key_generator`メソッドのsecret入力として使われる値
 
-#### `key_generator`メソッドと`secret_key_base`の利用箇所
-- 暗号化cookieで使うキーの導出: coookies.encryptedでアクセス可能
-- HMAC署名されたcookieで使うキーの導出: cookies.encryptedでアクセス可能
-- アプリのすべての名前付き`message_verifier`インスタンスで使うキーの導出
+#### `Rails.application.key_generator`メソッド
+- `ActiveSupport::CachingKeyGenerator`インスタンス (アプリケーションのKeyGenerator) を返す
+- `ActiveSupport::CachingKeyGenerator#generate_key`でキーを導出し、内部のハッシュにキャッシュして保存する
+- 導出したキーは以下の箇所で使用される
+  - 暗号化cookie: coookies.encryptedでアクセス可能
+  - HMAC署名されたcookie: cookies.encryptedでアクセス可能
+  - アプリのすべての名前付き`message_verifier`インスタンス
 
 ## 参照
 - Ruby on Rails 6エンジニア養成読本 押さえておきたい！Rails 6で改善された機能一覧
