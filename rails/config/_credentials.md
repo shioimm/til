@@ -4,32 +4,44 @@
 - デフォルトでアプリケーションの`secret_key_base`が含まれる
 - 外部API向けのアクセスキーなどのcredentialも追加できる
 
-#### `config/master.key` or `ENV[RAILS_MASTER_KEY]`
-- credentialファイルを暗号化・復号するためのマスターキー
-
 ```
 # 表示
 $ rails credentials:show
 
 # 編集
-# credentials.yml.encが存在しない場合はconfig/配下に新たにcredentials.yml.enc、master.keyが追加される
+# credentials.yml.encが存在しない場合: config/配下に新たにcredentials.yml.enc、master.keyが追加される
 # 同時に.gitignoreに/config/master.keyが追記される
 $ rails credentials:edit
+
+# 環境別の編集
+# credentials.yml.encが存在しない場合: config/配下に新たにcredentials/<環境>.yml.enc、<環境>.keyが追加される
+# 同時に.gitignoreに/config/<環境>.keyが追記される
+
+$ rails credentials:edit --environment <環境>
 ```
 
 ```yml
-# config/credentials.yml.enc (復号)
+# config/credentials.yml (復号済み)
+
 secret_key_base: 3b7cd72...
 some_api_key: SOMEKEY
 ```
 
-```
+```ruby
 # credentialファイル内の秘密情報へのアクセス
 
 Rails.application.credential.some_api_key # => SOMEKEY
 ```
 
-### `secret_key_base`
+#### `config/master.key` / `config/credentials/<環境>.key`
+- credentialファイルを暗号化・復号するためのマスターキー
+
+#### `ENV[RAILS_MASTER_KEY]`
+- ソースコードに埋め込むマスターキー
+- デフォルトでは`config/master.key`
+- 環境ごとにキーを追加した場合は明示的に`ENV[RAILS_MASTER_KEY] = <環境>.key`の指定が必要
+
+#### `secret_key_base`
 - `Rails.application.key_generator`メソッドのsecret入力として使われる値
 
 #### `Rails.application.key_generator`メソッド
