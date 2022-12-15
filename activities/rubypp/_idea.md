@@ -1,8 +1,57 @@
 # 実装メモ
+### パーサパターン
+1. `yyparse()`がソースコードを読み込む
+2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
+    - `++`を表現するトークン`TokenName`を追加
+    - `++`を読み込み時、`<TokenName>`をシフト
+3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
+    - `arg`規則に`| var_lhs lex_ctxt <TokenName>`を追加する
+    - 追加した構文規則にアクションを追加
+4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
+
+```c
+arg : var_lhs lex_ctxt <TokenName>
+{
+  // TODO:
+  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
+  // 生成されたNODE構造体のポインタを取得する
+  $$ = new_op_assign(p, $1, $3, NODE *rhs (数値1を表すノード), $2, &@$);
+}
+
+// static NODE *
+// new_op_assign(struct parser_params *p, => p
+//               NODE *lhs,               => $1 (var_lhsの値)
+//               ID op,                   => $2 (<TokenName>の値: set_yylval_id('+');)
+//               NODE *rhs,               => 数値1を表すノード
+//               struct lex_context ctxt, => $3 (lex_ctxtの値)
+//               const YYLTYPE *loc)      => &@$
+```
+
+```c
+%token <id> tINCOP_ASGN        "incremental-operator-assignment" /* ++ */
+// ...
+%right '=' tOP_ASGN tINCOP_ASGN
+// ...
+
+| var_lhs lex_ctxt tINCOP_ASGN
+  {
+    printf("$3 = %c\n", $3);
+    // $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
+  }
+
+// ...
+
+if (c == '+') {
+  set_yylval_id('+');
+  SET_LEX_STATE(EXPR_BEG);
+  return tINCOP_ASGN;
+}
+```
+
 ### スキャナパターン
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
-    - 次のトークンが`+`だった場合: pcurを一つ進める
+    - 次のトークンが`+`だった場合: pcurを一つ進める (最初の`c = next(p);`)
       - 次のトークンが`\n`だった場合: pcurを二つ戻す
         - 二つ前のトークンが`+`だった場合: pcurを一つ進める + `parse_numeric(p, '1')`を返す
         - 二つ前のトークンが`+`以外だった場合: pcurを一つ進める + 条件式から抜ける (規定の処理に進む)
@@ -44,32 +93,26 @@ parser_yylex(struct parser_params *p)
 }
 ```
 
-### パーサーパターン
-1. `yyparse()`がソースコードを読み込む
-2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
-    - `++`を表現するトークン`TokenName`を追加
-    - `++`を読み込み時、`<TokenName>`をシフト
-3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
-    - `arg`規則に`| var_lhs lex_ctxt <TokenName>`を追加する
-    - 追加した構文規則にアクションを追加
-4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
-
 ```c
-arg : var_lhs lex_ctxt <TokenName>
-{
-  // TODO:
-  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
-  // 生成されたNODE構造体のポインタを取得する
-  $$ = new_op_assign(p, $1, $3, NODE *rhs (数値1を表すノード), $2, &@$);
-}
+// parse.y
 
-// static NODE *
-// new_op_assign(struct parser_params *p, => p
-//               NODE *lhs,               => $1 (var_lhsの値)
-//               ID op,                   => $2 (<TokenName>の値: set_yylval_id('+');)
-//               NODE *rhs,               => 数値1を表すノード
-//               struct lex_context ctxt, => $3 (lex_ctxtの値)
-//               const YYLTYPE *loc)      => &@$
+static enum yytokentype
+parser_yylex(struct parser_params *p)
+{
+  // ...
+  while (1) {
+    switch (c = nextc(p)) {
+    // ...
+    case '+':
+      c = nextc(p);
+      if (c == '+') {
+          set_yylval_id('+');
+          SET_LEX_STATE(EXPR_BEG);
+          return tOP_ASGN;
+      }
+    }
+  }
+}
 ```
 
 #### メソッド呼び出しパターン
