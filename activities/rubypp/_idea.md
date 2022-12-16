@@ -1,4 +1,57 @@
 # 実装メモ
+#### WIP
+- スキャナパターンの場合:
+  - `parse_numeric()`がどこから呼ばれたかを確認する (`SET_LEX_STATE(EXPR_END)`に対応する`EXPR_BEG`がある?)
+- パーサパターンの場合:
+  - `new_op_assign()`実行前に`set_number_literal()`を呼ぶ
+
+### 数値1のスキャン
+#### `parse_numeric()`
+
+```c
+static enum yytokentype
+parse_numeric(struct parser_params *p, int c)
+{
+  // SET_LEX_STATE(EXPR_END);
+  // newtok(p);
+  // if (c == '0') -> true
+  //   if (c == 'x' || c == 'X') -> true (hexadecimal)
+  //     if (c != -1 && ISXDIGIT(c)) -> true
+  //       while ((c = nextc(p)) != -1)
+  //         if (!ISXDIGIT(c)) でbreak
+  //
+  //   return set_integer_literal(p, rb_cstr_to_inum(tok(p), 16, FALSE), suffix);`
+  //     (tok(p) - 10ffff (16進数))
+  //     (suffix - 0)
+}
+```
+
+#### `set_integer_literal()`
+
+```c
+static enum yytokentype
+set_integer_literal(struct parser_params *p, VALUE v, int suffix)
+{
+  // enum yytokentype type = tINTEGER;
+  // return set_number_literal(p, v, type, suffix);
+  //   (v = rb_cstr_to_inum(tok(p), 16, FALSE); の返り値)
+  //   (suffix = 0)
+
+}
+```
+
+#### `set_number_literal()`
+
+```c
+static enum yytokentype
+set_number_literal(struct parser_params *p, VALUE v,enum yytokentype type, int suffix)
+{
+  // set_yylval_literal(v); // (v = rb_cstr_to_inum(tok(p), 16, FALSE); の返り値)
+  // SET_LEX_STATE(EXPR_END);
+  // return type;
+}
+```
+
 ### パーサパターン
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
