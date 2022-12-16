@@ -1,4 +1,21 @@
 # 実装メモ
+### 数値1のスキャン
+#### `parse_numeric()`
+- `SET_LEX_STATE(EXPR_END);`
+- `newtok(p);`
+- `if (c == '0')` -> true
+  - `if (c == 'x' || c == 'X')` -> true (hexadecimal)
+    - `if (c != -1 && ISXDIGIT(c))` -> true
+      - `while ((c = nextc(p)) != -1)`
+        - `if (!ISXDIGIT(c))`でbreak
+  - `return set_integer_literal(p, rb_cstr_to_inum(tok(p), 16, FALSE), suffix);`
+    - `p`      - `struct parser_params *p`
+    - `tok(p)` - 10ffff (16進数) (1114111 (10進数))
+    - `suffix` - 0
+
+#### `set_integer_literal()`
+WIP
+
 ### パーサパターン
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
