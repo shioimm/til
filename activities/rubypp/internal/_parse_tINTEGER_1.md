@@ -65,6 +65,7 @@ do {
 ```
 
 #### `NEW_LIT`
+- 新しいNODEを作成
 
 ```c
 // node.h
@@ -106,7 +107,43 @@ node_newnode(
 ```
 
 #### `set_yylval_node()`
-WIP
+- `yylval.node`に`NEW_LIT(x, &_cur_loc)`で作成したNODEを格納する
+- `yylloc`に現在のソースコードの位置を格納
+
+```c
+// (x = NEW_LIT(x, &_cur_loc))
+# define set_yylval_node(x) {
+  YYLTYPE _cur_loc;
+  rb_parser_set_location(p, &_cur_loc);
+  yylval.node = (x);
+}
+
+// rb_parser_set_location()
+// (yylloc = &_cur_loc)
+YYLTYPE *
+rb_parser_set_location(struct parser_params *p, YYLTYPE *yylloc)
+{
+  int sourceline = p->ruby_sourceline;
+  int beg_pos = (int)(p->lex.ptok - p->lex.pbeg);
+  int end_pos = (int)(p->lex.pcur - p->lex.pbeg);
+  return rb_parser_set_pos(yylloc, sourceline, beg_pos, end_pos);
+}
+
+// rb_parser_set_pos()
+// (yylloc = &_cur_loc)
+// (sourceline = p->ruby_sourceline)
+// (beg_pos = (int)(p->lex.ptok - p->lex.pbeg))
+// (end_pos = (int)(p->lex.pcur - p->lex.pbeg))
+static YYLTYPE *
+rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
+{
+  yylloc->beg_pos.lineno = sourceline;
+  yylloc->beg_pos.column = beg_pos;
+  yylloc->end_pos.lineno = sourceline;
+  yylloc->end_pos.column = end_pos;
+  return yylloc;
+}
+```
 
 #### `RB_OBJ_WRITTEN` (include/ruby/internal/rgengc.h)
 WIP
