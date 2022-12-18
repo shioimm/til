@@ -89,6 +89,7 @@ do {
 // (loc = &_cur_loc)
 #define rb_node_newnode(type, a1, a2, a3, loc) node_newnode(p, (type), (a1), (a2), (a3), (loc))
 
+// parse.y
 static NODE*
 node_newnode(
   struct parser_params *p,
@@ -146,6 +147,19 @@ rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
 ```
 
 #### `RB_OBJ_WRITTEN` (include/ruby/internal/rgengc.h)
-WIP
+- 古い世代から若い世代への新しい参照のための書き込みバリア
+- 値を書き込まずWB宣言のみを書き込む
+
+```c
+// (old = p->ast)
+// (oldv = Qnil)
+// (young = rb_cstr_to_inum(tok(p), 16, FALSE))
+#define RB_OBJ_WRITTEN(old, oldv, young)
+  RBIMPL_CAST(rb_obj_written((VALUE)(old),
+              (VALUE)(oldv),
+              (VALUE)(young),
+              __FILE__,
+              __LINE__))
+```
 
 - https://github.com/ruby/ruby/blob/master/parse.y
