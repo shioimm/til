@@ -52,7 +52,20 @@ arg : var_lhs lex_ctxt <TokenName>
 
     SET_LEX_STATE(EXPR_END);
 
+    /*%%%*/
     $$ = new_op_assign(p, $1, $3, x, $2, &@$);
+    /*% %*/
+    // WIP:
+    // compiling ripper.c
+    // ripper.y:2476:64:
+    // error: called object type 'NODE *' (aka 'struct RNode *') is not a function or function pointer
+    // {VALUE v1,v2,v3,v4;
+    //    v1=(yyvsp[-2].val);
+    //    v2=(yyvsp[0].val);
+    //    v3=x(); <------------------------- xを関数として呼び出そうとしているのでNODEを関数にする方法を探す
+    //    v4=dispatch3(opassign,v1,v2,v3);
+    //    (yyval.val)=v4;}
+    /*% ripper: opassign!($1, $3, x) %*/
   }
 
 // ...
