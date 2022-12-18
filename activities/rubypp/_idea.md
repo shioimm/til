@@ -35,13 +35,24 @@ arg : var_lhs lex_ctxt <TokenName>
 
 | var_lhs lex_ctxt tINCOP_ASGN
   {
-    rb_cstr_to_inum("10ffff", 16, FALSE); // VALUE
-    // TODO: VALUEからRNodeを作成する
-    // set_yylval_node(NEW_LIT(x, &_cur_loc));
-    // RB_OBJ_WRITTEN(p->ast, Qnil, x);
+    VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+
+    // # define set_yylval_literal(x) \
+    // do { \
+    //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
+    //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
+    // } while(0)
+
+    NODE *x = NEW_LIT(v, &NULL_LOC);
+    YYLTYPE _cur_loc;
+    rb_parser_set_location(p, &_cur_loc);
+    yylval.node = (x);
+
+    RB_OBJ_WRITTEN(p->ast, Qnil, x);
 
     SET_LEX_STATE(EXPR_END);
-    // $$ = new_op_assign(p, $1, $3, <struct RNode *>, $2, &@$);
+
+    $$ = new_op_assign(p, $1, $3, x, $2, &@$);
   }
 
 // ...
