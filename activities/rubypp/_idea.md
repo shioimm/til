@@ -59,12 +59,14 @@ arg : var_lhs lex_ctxt <TokenName>
     // compiling ripper.c
     // ripper.y:2476:64:
     // error: called object type 'NODE *' (aka 'struct RNode *') is not a function or function pointer
-    // {VALUE v1,v2,v3,v4;
-    //    v1=(yyvsp[-2].val);
-    //    v2=(yyvsp[0].val);
-    //    v3=x(); <------------------------- xを関数として呼び出そうとしているのでNODEを関数にする方法を探す
-    //    v4=dispatch3(opassign,v1,v2,v3);
-    //    (yyval.val)=v4;}
+    // {
+    //   VALUE v1,v2,v3,v4;
+    //   v1=(yyvsp[-2].val);
+    //   v2=(yyvsp[0].val);
+    //   v3=x(); <------------------------- xを関数として呼び出そうとしているのでNODEを関数にする方法を探す
+    //   v4=dispatch3(opassign,v1,v2,v3);
+    //   (yyval.val)=v4;
+    // }
     /*% ripper: opassign!($1, $3, x) %*/
   }
 
@@ -80,6 +82,30 @@ parser_yylex(struct parser_params *p)
     return tINCOP_ASGN;
   }
   // ...
+}
+```
+
+```c
+// 失敗ケース
+arg : var_lhs lex_ctxt tINCOP_ASGN
+{
+  VALUE v1,v2,v3,v4;
+  v1=$1;
+  v2=$3;
+  v3=v(); <------------------------- xを関数として呼び出そうとしているのでNODEを関数にする方法を探す
+  v4=dispatch3(opassign,v1,v2,v3);
+  $$=v4;
+}
+
+// 成功ケース
+arg : var_lhs tOP_ASGN lex_ctxt arg_rhs
+{
+  VALUE v1,v2,v3,v4;
+  v1=$1;
+  v2=$2;
+  v3=$4;
+  v4=dispatch3(opassign,v1,v2,v3);
+  $$=v4;
 }
 ```
 
