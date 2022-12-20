@@ -34,3 +34,24 @@ embedstr("str") // "s = str"
 #undef  N
 #define N 200
 ```
+
+## 文字列化演算子`#`
+
+```c
+#define N(x) #x
+puts(N(10)); // "10"
+
+#define PRINTN(x) N(x)
+puts(PRINTN(10)); // "10"
+```
+
+## トークン連結演算子`##`
+
+```c
+#define var(i) v ## i
+
+int v1 = 10;
+int v2 = 20;
+puts(var(1)); // 10 (v1が出力されている)
+puts(var(2)); // 20 (v2が出力されている)
+```

@@ -46,12 +46,15 @@ arg : var_lhs lex_ctxt tINCOP_ASGN
 ```
 
 ```c
-// n = parser_params*
+// n = opassign
 // a = var_lhs
 // b = tINCOP_ASGN
 // c = struct RNode *
 
 #define dispatch3(n,a,b,c)  ripper_dispatch3(p, TOKEN_PASTE(ripper_id_, n), (a), (b), (c))
+
+// version.h
+#define TOKEN_PASTE(x,y) x##y
 
 static VALUE
 ripper_dispatch3(struct parser_params *p, ID mid, VALUE a, VALUE b, VALUE c)
