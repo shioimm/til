@@ -10,21 +10,45 @@
 4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
 
 ```c
+// TODO:
+// tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
+// 生成されたNODE構造体のポインタを取得する
 arg : var_lhs lex_ctxt <TokenName>
 {
-  // TODO:
-  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
-  // 生成されたNODE構造体のポインタを取得する
-  $$ = new_op_assign(p, $1, $3, NODE *rhs (数値1を表すノード), $2, &@$);
-}
+  /*%%%*/
+  // 通常
+  // VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+  // # define set_yylval_literal(x) \
+  // do { \
+  //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
+  //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
+  // } while(0)
 
-// static NODE *
-// new_op_assign(struct parser_params *p, => p
-//               NODE *lhs,               => $1 (var_lhsの値)
-//               ID op,                   => $2 (<TokenName>の値: set_yylval_id('+');)
-//               NODE *rhs,               => 数値1を表すノード
-//               struct lex_context ctxt, => $3 (lex_ctxtの値)
-//               const YYLTYPE *loc)      => &@$
+  // # define set_yylval_node(x) {\
+  //   YYLTYPE _cur_loc;\
+  //   rb_parser_set_location(p, &_cur_loc);\
+  //   yylval.node = (x);\
+  // }
+
+  // static NODE *
+  // new_op_assign(struct parser_params *p, => p
+  //               NODE *lhs,               => $1 (var_lhsの値)
+  //               ID op,                   => $2 (<TokenName>の値: set_yylval_id('+');)
+  //               NODE *rhs,               => 数値1を表すノード
+  //               struct lex_context ctxt, => $3 (lex_ctxtの値)
+  //               const YYLTYPE *loc)      => &@$
+  $$ = new_op_assign(p, $1, $3, NODE *rhs (数値1を表すノード), $2, &@$);
+
+  /*% %*/
+  // Ripper
+  // VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+  // # define set_yylval_literal(x) \
+  //   add_mark_object(p, (x))
+  // # define set_yylval_node(x) \
+  //   (yylval.val = ripper_new_yylval(p, 0, 0, STR_NEW(p->lex.ptok, p->lex.pcur-p->lex.ptok)))
+
+  /*% ripper: opassign!($1, $3, v) %*/
+}
 ```
 
 ```c
@@ -35,13 +59,9 @@ arg : var_lhs lex_ctxt <TokenName>
 
 | var_lhs lex_ctxt tINCOP_ASGN
   {
+    /*%%%*/
+    // 通常
     VALUE v = rb_cstr_to_inum("1", 16, FALSE);
-
-    // # define set_yylval_literal(x) \
-    // do { \
-    //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
-    //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
-    // } while(0)
 
     NODE *x = NEW_LIT(v, &NULL_LOC);
     YYLTYPE _cur_loc;
@@ -52,9 +72,11 @@ arg : var_lhs lex_ctxt <TokenName>
 
     SET_LEX_STATE(EXPR_END);
 
-    /*%%%*/
     $$ = new_op_assign(p, $1, $3, x, $2, &@$);
+
     /*% %*/
+    // Ripper
+
     // WIP:
     // compiling ripper.c
     // ripper.y:2476:64:
