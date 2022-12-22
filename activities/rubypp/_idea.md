@@ -18,12 +18,13 @@ arg : var_lhs lex_ctxt <TokenName>
   /*%%%*/
   // 通常
   // VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+  //
   // # define set_yylval_literal(x) \
   // do { \
   //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
   //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
   // } while(0)
-
+  //
   // # define set_yylval_node(x) {\
   //   YYLTYPE _cur_loc;\
   //   rb_parser_set_location(p, &_cur_loc);\
@@ -42,8 +43,9 @@ arg : var_lhs lex_ctxt <TokenName>
   /*% %*/
   // Ripper
   // VALUE v = rb_cstr_to_inum("1", 16, FALSE);
-  // # define set_yylval_literal(x) \
-  //   add_mark_object(p, (x))
+  //
+  // # define set_yylval_literal(x) add_mark_object(p, (x))
+  //
   // # define set_yylval_node(x) \
   //   (yylval.val = ripper_new_yylval(p, 0, 0, STR_NEW(p->lex.ptok, p->lex.pcur-p->lex.ptok)))
 
