@@ -1,4 +1,4 @@
-# "#define dispatch3"
+# Ripper
 
 ```c
 // 成功ケース
@@ -33,7 +33,7 @@ arg : var_lhs lex_ctxt tINCOP_ASGN
     }
 
 // compiling ripper.c
-// ripper.y:2476:64:
+// build/ext/ripper/ripper.y:2476:64:
 // error: called object type 'NODE *' (aka 'struct RNode *') is not a function or function pointer
 // {
 //   VALUE v1,v2,v3,v4;
@@ -44,6 +44,18 @@ arg : var_lhs lex_ctxt tINCOP_ASGN
 //   (yyval.val)=v4;
 //  }
 ```
+
+### `parse.y`
+
+```c
+# define set_yylval_literal(x) \
+  add_mark_object(p, (x))
+
+# define set_yylval_node(x) \
+  (yylval.val = ripper_new_yylval(p, 0, 0, STR_NEW(p->lex.ptok, p->lex.pcur-p->lex.ptok)))
+```
+
+### `build/ext/ripper/ripper.y`
 
 ```c
 // n = opassign
@@ -63,5 +75,29 @@ ripper_dispatch3(struct parser_params *p, ID mid, VALUE a, VALUE b, VALUE c)
   validate(b);
   validate(c);
   return rb_funcall(p->value, mid, 3, a, b, c);
+}
+
+// vm_eval.c
+VALUE
+rb_funcall(VALUE recv, ID mid, int n, ...)
+{
+  VALUE *argv;
+  va_list ar;
+
+  if (n > 0) {
+    long i;
+
+    va_start(ar, n);
+
+    argv = ALLOCA_N(VALUE, n);
+
+    for (i = 0; i < n; i++) {
+      argv[i] = va_arg(ar, VALUE);
+    }
+    va_end(ar);
+  } else {
+    argv = 0;
+  }
+  return rb_funcallv(recv, mid, n, argv);
 }
 ```
