@@ -12,10 +12,18 @@
 ```c
 arg : var_lhs lex_ctxt <TokenName>
 {
-  /*%%%*/
-  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
-  // 生成されたNODE構造体のポインタを取得する
+  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行する
+  // 1を表すNODE構造体を作成し、それを利用してset_number_literal()内の処理を実装する
+  //
+  // static enum yytokentype
+  // set_number_literal(struct parser_params *p, VALUE v, enum yytokentype type, int suffix)
+  // {
+  //   set_yylval_literal(v);
+  //   SET_LEX_STATE(EXPR_END);
+  //   return type;
+  // }
 
+  /*%%%*/
   // static NODE *
   // new_op_assign(struct parser_params *p, => p
   //               NODE *lhs,               => $1 (var_lhsの値)
@@ -27,22 +35,14 @@ arg : var_lhs lex_ctxt <TokenName>
 
   // Ripper: set_yylval_literal(v); + SET_LEX_STATE(EXPR_END);
   /*%
-    VALUE v = rb_cstr_to_inum("1", 16, FALSE);
-    add_mark_object(p, (v));
-
-    VALUE v1, v2, v3, v4;
-    v1 = (yyvsp[-2].val);
-    v2 = (yyvsp[0].val);
-    v3 = v;
-    v4 = dispatch3(p, v1, v2, v3);
-    (yyval.val) = v4;
-
-    SET_LEX_STATE(EXPR_END);
+  // Ripper用の実装
   %*/
 }
 ```
 
 ```c
+// parse.y
+
 %token <id> tINCOP_ASGN        "incremental-operator-assignment" /* ++ */
 // ...
 %right '=' tOP_ASGN tINCOP_ASGN
@@ -52,13 +52,6 @@ arg : var_lhs lex_ctxt <TokenName>
   {
     /*%%%*/
     VALUE v = rb_cstr_to_inum("1", 16, FALSE);
-
-    // # define set_yylval_literal(x) \
-    // do { \
-    //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
-    //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
-    // } while(0)
-
     NODE *x = NEW_LIT(v, &NULL_LOC);
     YYLTYPE _cur_loc;
     rb_parser_set_location(p, &_cur_loc);
@@ -99,29 +92,18 @@ parser_yylex(struct parser_params *p)
   }
   // ...
 }
-```
 
-```c
-// 失敗ケース
-arg : var_lhs lex_ctxt tINCOP_ASGN
-{
-  VALUE v1,v2,v3,v4;
-  v1=$1;
-  v2=$3;
-  v3=v(); <------------------------- xを関数として呼び出そうとしているのでNODEを関数にする方法を探す
-  v4=dispatch3(opassign,v1,v2,v3);
-  $$=v4;
-}
+// ext/ripper/eventids2.c
 
-// 成功ケース
-arg : var_lhs tOP_ASGN lex_ctxt arg_rhs
+static ID
+ripper_token2eventid(enum yytokentype tok)
 {
-  VALUE v1,v2,v3,v4;
-  v1=$1;
-  v2=$2;
-  v3=$4;
-  v4=dispatch3(opassign,v1,v2,v3);
-  $$=v4;
+#define O(member) (int)offsetof(ripper_scanner_ids_t, ripper_id_##member)+1
+  static const unsigned short offsets[] = {
+    // ...
+    [tINCOP_ASGN]  = O(op),
+    // ...
+  }
 }
 ```
 
