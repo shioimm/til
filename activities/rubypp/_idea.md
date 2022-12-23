@@ -10,26 +10,11 @@
 4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
 
 ```c
-// TODO:
-// tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
-// 生成されたNODE構造体のポインタを取得する
 arg : var_lhs lex_ctxt <TokenName>
 {
   /*%%%*/
-  // 通常
-  // VALUE v = rb_cstr_to_inum("1", 16, FALSE);
-  //
-  // # define set_yylval_literal(x) \
-  // do { \
-  //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
-  //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
-  // } while(0)
-  //
-  // # define set_yylval_node(x) {\
-  //   YYLTYPE _cur_loc;\
-  //   rb_parser_set_location(p, &_cur_loc);\
-  //   yylval.node = (x);\
-  // }
+  // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行し、
+  // 生成されたNODE構造体のポインタを取得する
 
   // static NODE *
   // new_op_assign(struct parser_params *p, => p
@@ -40,16 +25,20 @@ arg : var_lhs lex_ctxt <TokenName>
   //               const YYLTYPE *loc)      => &@$
   $$ = new_op_assign(p, $1, $3, NODE *rhs (数値1を表すノード), $2, &@$);
 
-  /*% %*/
-  // Ripper
-  // VALUE v = rb_cstr_to_inum("1", 16, FALSE);
-  //
-  // # define set_yylval_literal(x) add_mark_object(p, (x))
-  //
-  // # define set_yylval_node(x) \
-  //   (yylval.val = ripper_new_yylval(p, 0, 0, STR_NEW(p->lex.ptok, p->lex.pcur-p->lex.ptok)))
+  // Ripper: set_yylval_literal(v); + SET_LEX_STATE(EXPR_END);
+  /*%
+    VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+    add_mark_object(p, (v));
 
-  /*% ripper: opassign!($1, $3, v) %*/
+    VALUE v1, v2, v3, v4;
+    v1 = (yyvsp[-2].val);
+    v2 = (yyvsp[0].val);
+    v3 = v;
+    v4 = dispatch3(p, v1, v2, v3);
+    (yyval.val) = v4;
+
+    SET_LEX_STATE(EXPR_END);
+  %*/
 }
 ```
 
@@ -62,8 +51,13 @@ arg : var_lhs lex_ctxt <TokenName>
 | var_lhs lex_ctxt tINCOP_ASGN
   {
     /*%%%*/
-    // 通常
     VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+
+    // # define set_yylval_literal(x) \
+    // do { \
+    //   set_yylval_node(NEW_LIT(x, &_cur_loc)); \
+    //   RB_OBJ_WRITTEN(p->ast, Qnil, x); \
+    // } while(0)
 
     NODE *x = NEW_LIT(v, &NULL_LOC);
     YYLTYPE _cur_loc;
@@ -76,22 +70,20 @@ arg : var_lhs lex_ctxt <TokenName>
 
     $$ = new_op_assign(p, $1, $3, x, $2, &@$);
 
-    /*% %*/
-    // Ripper
+    // Ripper: set_yylval_literal(v); + SET_LEX_STATE(EXPR_END);
+    /*%
+    VALUE v = rb_cstr_to_inum("1", 16, FALSE);
+    add_mark_object(p, (v));
 
-    // WIP:
-    // compiling ripper.c
-    // ripper.y:2476:64:
-    // error: called object type 'NODE *' (aka 'struct RNode *') is not a function or function pointer
-    // {
-    //   VALUE v1,v2,v3,v4;
-    //   v1=(yyvsp[-2].val);
-    //   v2=(yyvsp[0].val);
-    //   v3=x(); <------------------------- xを関数として呼び出そうとしているのでNODEを関数にする方法を探す
-    //   v4=dispatch3(opassign,v1,v2,v3);
-    //   (yyval.val)=v4;
-    // }
-    /*% ripper: opassign!($1, $3, x) %*/
+    VALUE v1, v2, v3, v4;
+    v1 = (yyvsp[-2].val);
+    v2 = (yyvsp[0].val);
+    v3 = v;
+    v4 = dispatch3(p, v1, v2, v3);
+    (yyval.val) = v4;
+
+    SET_LEX_STATE(EXPR_END);
+    %*/
   }
 
 // ...
