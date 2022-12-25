@@ -59,38 +59,6 @@ add_mark_object(struct parser_params *p, VALUE obj)
   }
   return obj;
 }
-
-# define set_yylval_node(x) \
-  (yylval.val = ripper_new_yylval(p, 0, 0, STR_NEW(p->lex.ptok, p->lex.pcur-p->lex.ptok)))
-
-// ptr = p->lex.ptok
-// len = p->lex.pcur-p->lex.ptok)
-#define STR_NEW(ptr,len) rb_enc_str_new((ptr),(len),p->enc)
-
-// string.c
-VALUE
-rb_enc_str_new(const char *ptr, long len, rb_encoding *enc)
-{
-  VALUE str;
-
-  if (!enc) return rb_str_new(ptr, len);
-
-  str = str_new0(rb_cString, ptr, len, rb_enc_mbminlen(enc));
-  rb_enc_associate(str, enc);
-  return str;
-}
-
-// a = 0
-// b = 0
-// c = VALUE str
-static inline VALUE
-ripper_new_yylval(struct parser_params *p, ID a, VALUE b, VALUE c)
-{
-  if (ripper_is_node_yylval(c)) c = RNODE(c)->nd_cval;
-  add_mark_object(p, b);
-  add_mark_object(p, c);
-  return NEW_RIPPER(a, b, c, &NULL_LOC);
-}
 ```
 
 ### `build/ext/ripper/ripper.y`
