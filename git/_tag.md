@@ -1,7 +1,10 @@
 # tag
-- tag一覧を表示
 
 ```
+# リモートブランチからtagをfetch
+$ git fetch --tags
+
+# tag一覧を表示
 $ git tag
 
 # tagへcheckout
