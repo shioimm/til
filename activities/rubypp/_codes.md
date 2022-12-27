@@ -12,7 +12,7 @@
 ```
 
 ```c
-// パーサ
+// 構文解析
 arg : // ...
     | var_lhs lex_ctxt tINCOP_ASGN
     {
@@ -49,6 +49,7 @@ arg : // ...
 ```
 
 ```c
+// 字句解析
 static enum yytokentype
 parser_yylex(struct parser_params *p)
 {
@@ -71,6 +72,7 @@ parser_yylex(struct parser_params *p)
 #### ext/ripper/eventids2.c
 
 ```c
+// Ripper用のトークン追加
 static ID
 ripper_token2eventid(enum yytokentype tok)
 {
