@@ -31,6 +31,22 @@ postgres:/<DomainName>:<Password>@<URL>:<PortNumber>/<Path>
   - メンテナンス用作業メモリ (`meintenace_work_mem`) - バキューム、インデックス作成、外部キー追加時に使用
   - 一時バッファ (`temp_buffers`) - 一時テーブルアクセス時に使用
 
+## クエリの実行
+1. SQL文をパーサに入力 (字句解析 / 構文解析 / テーブル・カラムの存在性の確認)
+2. パーサが問い合わせツリーを出力
+3. 問い合わせツリーをリライタに入力
+4. リライタがDBのルールを参照して問い合わせツリーを修正
+5. 問い合わせツリーをプランナに入力
+6. プランナが実行計画 (テーブルに対するアクセス方法と結合方法) を出力
+7. 実行計画をエグゼキュータに入力
+8. エグゼキュータが実行計画に従った必要な行の集合を抽出
+
+## SQLの種類
+- DML - データ操作 (select、insert、update、delete)
+- DDL - データベースオブジェクトの生成、削除、変更 (create、drop、alter)
+- DCL - トランザクション制御 (begin、commit、rollback)
+- DDL、DCLは問い合わせツリーの作成後、プランナに入力されるが何も行われず、対応する個々のコマンドを実行する
+
 ## 構造
 #### データベース
 - インストール直後はデータベースとして`template0`、`template1` (テンプレート用)、`postgres`が作成される
@@ -47,4 +63,4 @@ postgres:/<DomainName>:<Password>@<URL>:<PortNumber>/<Path>
 
 ## 参照
 - [5.9. スキーマ](https://www.postgresql.jp/document/13/html/ddl-schemas.html)
-- 内部構造から学ぶpostgresql 設計 運用計画の鉄則 2.1~2.2
+- 内部構造から学ぶpostgresql 設計 運用計画の鉄則 2.1~2.2, 4.3
