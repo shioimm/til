@@ -1,27 +1,25 @@
 # `check_constraint`
 - テーブルにCHECK制約を設ける
 
+## 新規テーブル
+
 ```ruby
-# CHECK制約を追加
 create_table :TABLE_NAME do |t|
   ...
-  t.check_constraint [CONSTRAINT_NAME], [CONSTRAINT]
-
+  t.check_constraint <制約名>, <制約条件>
   # e.g. t.check_constraint "price_check", "price > 100"
 end
 ```
 
-```ruby
-# 既存のテーブルにCHECK制約を追加
-add_check_constraint :TABLE_NAME, :CONSTRAINT_CONDITION, name: "CONSTRAINT_NAME"
+## 既存テーブル
 
+```ruby
+# CHECK制約を追加
+add_check_constraint :<テーブル名>, "<制約条件>", name: "<制約名>"
 # e.g. add_check_constraint :books, "price > 100", name: "price_check"
-```
 
-```ruby
 # CHECK制約を削除
-remove_check_constraint :TABLE_NAME, name: "CONSTRAINT_NAME"
-
+remove_check_constraint :<テーブル名>, name: "<制約名>"
 # e.g. remove_check_constraint :books, name: "price_check"
 ```
 
