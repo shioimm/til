@@ -1,9 +1,10 @@
 # timestamp
+#### `CURRENT_TIMESTAMP`を使用する
+
 ```ruby
 t.datetime :x_date, default: -> { 'NOW()' }
 ```
 
-- `CURRENT_TIMESTAMP`を使用することができる
 - アプリケーションと別にDBのタイムゾーンの設定が必要
 
 ```console
