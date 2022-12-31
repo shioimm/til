@@ -46,7 +46,7 @@ type ReturnStatement struct {
   ReturnValue Expression
 }
 
-// 式ノード
+// ExpressionStatementノード
 type ExpressionStatement struct {
   Token toke.Token // 式の最初のトークン
   Expression Expression
