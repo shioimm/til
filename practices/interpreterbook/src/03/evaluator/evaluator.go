@@ -13,13 +13,15 @@ var (
   FALSE = &object.Boolean{Value: false}
 )
 
-func Eval(node ast.Node, env *object.Environment) object.Object {
+func Eval(node ast.Node) object.Object {
   switch node := node.(type) {
-  // 分
+  // 文
   case *ast.Program:
-    return evalProgram(node, env)
+    return evalProgram(node)
   case *ast.ExpressionStatement:
-    return Eval(node.Expression, env)
+    return Eval(node.Expression)
+  case *ast.BlockStatement:
+    return evalStatements(node.Statements)
 
   // 式
   case *ast.IntegerLiteral:
@@ -27,12 +29,14 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
   case *ast.Boolean:
     return nativeBoolToBooleanObject(node.Value)
   case *ast.PrefixExpression:
-    right := Eval(node.Right, env)
+    right := Eval(node.Right)
     return evalPrefixExpression(node.Operator, right)
   case *ast.InfixExpression:
-    left := Eval(node.Left, env)
-    right := Eval(node.Right, env)
+    left := Eval(node.Left)
+    right := Eval(node.Right)
     return evalInfixExpression(node.Operator, left. right)
+  case *ast.IfExpression:
+    return evalIfExpression(node)
   }
 
   return nil
@@ -46,13 +50,6 @@ func evalStatements(stmts []ast.Statement) object.Object {
   }
 
   return result
-}
-
-func nativeBoolToBooleanObject(input bool) *object.Boolean {
-  if input {
-    return TRUE
-  }
-  return FALSE
 }
 
 func evalPrefixExpression(operator string, right object.Object) object.Object {
@@ -125,4 +122,37 @@ func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
 
   value := right.(*object.Integer).Value
   return &object.Integer{Value: -value}
+}
+
+func evalIfExpression(ie *ast.IfExpression) object.Object {
+  condition := Eval(ie.Condition)
+
+  if isTruthy(condition) {
+    return Eval(ie.Consequence)
+  } else if ie.Alternative != nil {
+    return Eval(ie.Alternative)
+  } else {
+    return NULL
+  }
+}
+
+// ヘルパー関数
+func nativeBoolToBooleanObject(input bool) *object.Boolean {
+  if input {
+    return TRUE
+  }
+  return FALSE
+}
+
+func isTruthy(obj object.Object) bool {
+  switch obj {
+  case NULL:
+    return false
+  case TRUE:
+    return true
+  case FALSE:
+    return false
+  default:
+    return true
+  }
 }
