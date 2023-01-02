@@ -89,7 +89,7 @@ type IfExpression struct {
 // FunctionLiteralノード
 type FunctionLiteral struct {
   Token      token.Token     // fnトークン
-  Parameters []*Identifier   // 識別子 (関数名)
+  Parameters []*Identifier   // 引数
   Body       *BlockStatement // 関数内部
 }
 
