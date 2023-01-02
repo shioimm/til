@@ -16,8 +16,26 @@ class Lexer
     when "="
       token.type = Token::ASSIGN
       token.literal = @char
+    when "!"
+      token.type = Token::BANG
+      token.literal = @char
     when "+"
       token.type = Token::PLUS
+      token.literal = @char
+    when "-"
+      token.type = Token::MINUS
+      token.literal = @char
+    when "*"
+      token.type = Token::ASTERISK
+      token.literal = @char
+    when "/"
+      token.type = Token::SLASH
+      token.literal = @char
+    when "<"
+      token.type = Token::LT
+      token.literal = @char
+    when ">"
+      token.type = Token::GT
       token.literal = @char
     when "("
       token.type = Token::LPAREN
