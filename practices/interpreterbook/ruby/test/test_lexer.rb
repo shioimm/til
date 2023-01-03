@@ -17,13 +17,13 @@ class TestLexer < MiniTest::Unit::TestCase
              1 < 2 > 1;
 
              if (1 < 2) {
-               return true
+               return true;
              } else {
-               return false
+               return false;
              }
 
-             1 == 1
-             1 != 2"
+             1 == 1;
+             1 != 2;"
 
     tests = [
       { type: Token::LET,       literal: "let" },
