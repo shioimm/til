@@ -14,11 +14,23 @@ class Lexer
 
     case @char
     when "="
-      token.type = Token::ASSIGN
-      token.literal = @char
+      if peek_char == "="
+        read_char
+        token.type = Token::EQ
+        token.literal = "=="
+      else
+        token.type = Token::ASSIGN
+        token.literal = @char
+      end
     when "!"
-      token.type = Token::BANG
-      token.literal = @char
+      if peek_char == "="
+        read_char
+        token.type = Token::NOT_EQ
+        token.literal = "!="
+      else
+        token.type = Token::BANG
+        token.literal = @char
+      end
     when "+"
       token.type = Token::PLUS
       token.literal = @char
@@ -87,6 +99,14 @@ class Lexer
 
     @current_pos = @next_pos
     @next_pos += 1
+  end
+
+  def peek_char
+    if @next_pos >= @input.size
+      ""
+    else
+      @input[@next_pos]
+    end
   end
 
   def read_indentifier
