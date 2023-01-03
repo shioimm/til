@@ -31,6 +31,28 @@ postgres:/<DomainName>:<Password>@<URL>:<PortNumber>/<Path>
   - メンテナンス用作業メモリ (`meintenace_work_mem`) - バキューム、インデックス作成、外部キー追加時に使用
   - 一時バッファ (`temp_buffers`) - 一時テーブルアクセス時に使用
 
+#### ファイル構成
+- `データベースクラスタ/`
+  - `base/`
+    - `各データベース/`
+      - テーブルファイル
+      - インデックスファイル
+      - TOASTファイル
+      - <テーブル及びインデックスを示す数字>_fsm (Free Space Mapファイル)
+      - <テーブル及びインデックスを示す数字>_vm (Visibility Mapファイル)
+  - `grobal/`
+    - クラスタ内で共有するテーブル群
+  - `pg_wal/`
+    - WALファイル
+  - `pg_xact/`
+    - トランザクションのコミット状態を管理するファイル群
+  - `pg_tblspc/`
+    - テーブル空間として作成されたディレクトリへのシンボリックリンク群
+  - `PG_VERSION`
+  - `postgresql.conf`
+  - `pg_hba.conf`
+  - `postmaster.pid`
+
 ## クエリの実行
 1. SQL文をパーサに入力 (字句解析 / 構文解析 / テーブル・カラムの存在性の確認)
 2. パーサが問い合わせツリーを出力

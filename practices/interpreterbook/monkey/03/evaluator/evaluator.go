@@ -17,24 +17,24 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
   switch node := node.(type) {
 
   // 文
-  case *ast.Program:
+  case *ast.Program: // すべてのプログラムが必ず最初に通る
     return evalProgram(node, env)
   case *ast.BlockStatement:
     return evalBlockStatement(node, env)
   case *ast.ExpressionStatement:
     return Eval(node.Expression, env)
   case *ast.ReturnStatement:
-    val := Eval(node.ReturnValue, env)
+    val := Eval(node.ReturnValue, env),
     if isError(val) {
       return val
     }
     return &object.ReturnValue{Value: val}
   case *ast.LetStatement:
-    val := Eval(node.Value, env)
+    val := Eval(node.Value, env) // node.Value (letの右辺) を評価
     if isError(val) {
       return val
     }
-    env.Set(node.Name.Value, val)
+    env.Set(node.Name.Value, val) // 現在の環境でnode.Name (letの識別子) にvalをセット
 
   // 式
   case *ast.IntegerLiteral:
@@ -42,44 +42,45 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
   case *ast.Boolean:
     return nativeBoolToBooleanObject(node.Value)
   case *ast.PrefixExpression:
-    right := Eval(node.Right, env)
+    right := Eval(node.Right, env) // node.Right (前置の右辺) を評価
     if isError(right) {
       return right
     }
+    // node.Operator (前置演算子) + right を評価
     return evalPrefixExpression(node.Operator, right)
   case *ast.InfixExpression:
-    left := Eval(node.Left, env)
+    left := Eval(node.Left, env) // node.Left (前置の左辺) を評価
     if isError(left) {
       return left
     }
-
-    right := Eval(node.Right, env)
+    right := Eval(node.Right, env) // node.Right (前置の右辺) を評価
     if isError(right) {
       return right
     }
-
+    // left + node.Operator (中置演算子) + rightを評価
     return evalInfixExpression(node.Operator, left, right)
   case *ast.IfExpression:
     return evalIfExpression(node, env)
   case *ast.Identifier:
     return evalIdentifier(node, env)
   case *ast.FunctionLiteral:
-    params := node.Parameters
-    body := node.Body
+    params := node.Parameters // 引数の配列
+    body := node.Body         // 関数内部の処理
     return &object.Function{Parameters: params, Env: env, Body: body}
-
   case *ast.CallExpression:
+    // node.Function (呼び出し関数) を評価
     function := Eval(node.Function, env)
+
     if isError(function) {
       return function
     }
 
-    args := evalExpressions(node.Arguments, env)
+    args := evalExpressions(node.Arguments, env) // node.Arguments (引数の配列) を評価
     if len(args) == 1 && isError(args[0]) {
       return args[0]
     }
 
-    return applyFunction(function, args)
+    return applyFunction(function, args) // 関数に引数の配列を渡して評価
   }
 
   return nil
@@ -89,8 +90,10 @@ func evalProgram(program *ast.Program, env *object.Environment) object.Object {
   var result object.Object
 
   for _, statement := range program.Statements {
+    // Eval(statement, env) の実行結果の値オブジェクトを取得
     result = Eval(statement, env)
 
+    // オブジェクトのtypeがReturnValueもしくはErrorの場合はその時点で値オブジェクトを返す
     switch result := result.(type) {
     case *object.ReturnValue:
       return result.Value
@@ -99,6 +102,7 @@ func evalProgram(program *ast.Program, env *object.Environment) object.Object {
     }
   }
 
+  // 値オブジェクトを返す
   return result
 }
 
@@ -186,15 +190,15 @@ func evalIntegerInfixExpression(
 }
 
 func evalIfExpression(ie *ast.IfExpression, env *object.Environment) object.Object {
-  condition := Eval(ie.Condition, env)
+  condition := Eval(ie.Condition, env)  // ie.Condition (条件) を評価
   if isError(condition) {
     return condition
   }
 
   if isTruthy(condition) {
-    return Eval(ie.Consequence, env)
+    return Eval(ie.Consequence, env) // ie.Consequence (真の場合の処理) を評価
   } else if ie.Alternative != nil {
-    return Eval(ie.Alternative, env)
+    return Eval(ie.Alternative, env) // ie.Alternative (偽の場合の処理) を評価
   } else {
     return NULL
   }
@@ -204,10 +208,11 @@ func evalBlockStatement(block *ast.BlockStatement, env *object.Environment) obje
   var result object.Object
 
   for _, statement := range block.Statements {
-    result = Eval(statement, env)
+    result = Eval(statement, env) // statement (ブロック内の処理) を評価
 
     if result != nil {
       rt := result.Type()
+      // 取得した値オブジェクトがRETURN_VALUE_OBJかERROR_OBJの場合はその時点で値オブジェクトを返す
       if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ {
         return result
       }
@@ -218,7 +223,7 @@ func evalBlockStatement(block *ast.BlockStatement, env *object.Environment) obje
 }
 
 func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object {
-  val, ok := env.Get(node.Value)
+  val, ok := env.Get(node.Value) // 現在の環境に存在する識別子を取得
   if !ok {
     return newError("identifier not found: " + node.Value)
   }
@@ -230,13 +235,14 @@ func evalExpressions(exps []ast.Expression, env *object.Environment) []object.Ob
   var result []object.Object
 
   for _, e := range exps {
-    evaluated := Eval(e, env)
+    evaluated := Eval(e, env) // 引数を評価
     if isError(evaluated) {
-      return []object.Object{evaluated    }
-    result = append(result, evaluated)
+      return []object.Object{evaluated
+    }
+    result = append(result, evaluated) // 評価結果を配列に加える
   }
 
-  return result
+  return result // 配列を返す
 }
 
 // ヘルパー関数
@@ -277,23 +283,23 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
     return newError("not a function: %s", fn.Type())
   }
 
-  extendedEnv := extendFunctionEnv(function, args)
-  evaluated := Eval(function.Body, extendedEnv)
-  return unwrapReturnValue(evaluated)
+  extendedEnv := extendFunctionEnv(function, args) // 関数実行時の環境を取得
+  evaluated := Eval(function.Body, extendedEnv) // 関数を実行・結果を評価
+  return unwrapReturnValue(evaluated) // 返り値の値を返す
 }
 
 func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Environment {
-  env := object.NewEnclosedEnvironment(fn.Env)
+  env := object.NewEnclosedEnvironment(fn.Env) // 関数実行時の環境を保存
 
   for paramIdx, param := range fn.Parameters {
-    env.Set(param.Value, args[paramIdx])
+    env.Set(param.Value, args[paramIdx]) // 関数実行時の環境に引数の値を保存
   }
 
   return env
 }
 
 func unwrapReturnValue(obj object.Object) object.Object {
-  if returnValue, ok := obj.(*object.ReturnValue); ok {
+  if returnValue, ok := obj.(*object.ReturnValue); ok { // ReturnValueがある場合はそのValueを返す
     return returnValue.Value
   }
 
