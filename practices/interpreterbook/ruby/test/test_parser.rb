@@ -56,4 +56,25 @@ class TestParser < MiniTest::Unit::TestCase
       # assert_equal test[:return_value], stmt.token_literal
     end
   end
+
+  def test_indentifier_expression
+    input = "foobar;"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 1
+
+    tests = [
+      { value: "foobar" }
+    ]
+
+    tests.each_with_index do |test, i|
+      stmt = program.statements[i]
+      ident = stmt.expression
+      assert_equal test[:value], ident.value
+      assert_equal test[:value], ident.token_literal
+    end
+  end
 end

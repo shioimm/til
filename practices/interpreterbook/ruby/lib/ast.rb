@@ -67,16 +67,16 @@ module AST
     end
   end
 
-  class ExpressionStatememt
-    attr_accessor :token, :expressiion
+  class ExpressionStatement
+    attr_accessor :token, :expression
 
-    def initialize(token: nil, expressiion: nil)
+    def initialize(token: nil, expression: nil)
       @token = token
-      @expressiion = expressiion
+      @expression = expression
     end
 
     def to_s
-      @expressiion.to_s
+      @expression.to_s
     end
   end
 end
