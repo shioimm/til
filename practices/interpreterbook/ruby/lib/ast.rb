@@ -50,4 +50,13 @@ module AST
       token.literal
     end
   end
+
+  class ExpressionStatememt
+    attr_accessor :token, :expressiion
+
+    def initialize(token: nil, expressiion: nil)
+      @token = token
+      @expressiion = expressiion
+    end
+  end
 end
