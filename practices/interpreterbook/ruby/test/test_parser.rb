@@ -5,7 +5,7 @@ require_relative "../lib/parser"
 
 MiniTest::Unit.autorun
 
-class TestAst < MiniTest::Unit::TestCase
+class TestParser < MiniTest::Unit::TestCase
   def test_let_statement
     input = "let x = 1;
              let y = 2;
