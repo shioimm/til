@@ -30,6 +30,8 @@ class Parser
     case @current_token.type
     when Token::LET
       parse_let_statement!
+    when Token::RETURN
+      parse_return_statement!
     else
       nil
     end
@@ -44,7 +46,14 @@ class Parser
 
     return nil if !expect_peek(Token::ASSIGN)
 
-    next_token while current_token?(Token::SEMICOLON)
+    next_token while !current_token?(Token::SEMICOLON) # TODO
+    stmt
+  end
+
+  def parse_return_statement!
+    stmt = ::AST::ReturnStatement.new(token: @current_token)
+    next_token
+    next_token while !current_token?(Token::SEMICOLON) # TODO
     stmt
   end
 

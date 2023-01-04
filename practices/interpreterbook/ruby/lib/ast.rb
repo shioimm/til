@@ -37,4 +37,17 @@ module AST
       token.literal
     end
   end
+
+  class ReturnStatement
+    attr_accessor :token, :return_value
+
+    def initialize(token: nil, return_value: nil)
+      @token = token
+      @return_value = return_value
+    end
+
+    def token_literal
+      token.literal
+    end
+  end
 end

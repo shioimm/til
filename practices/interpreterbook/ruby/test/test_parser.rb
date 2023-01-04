@@ -15,6 +15,8 @@ class TestAst < MiniTest::Unit::TestCase
     p = Parser.new(l)
     program = p.parse_program
 
+    assert_equal program.statements.size, 3
+
     tests = [
       { name: "x",      value: "1" },
       { name: "y",      value: "2" },
@@ -26,6 +28,32 @@ class TestAst < MiniTest::Unit::TestCase
       assert_equal "let", stmt.token_literal
       assert_equal test[:name], stmt.name.value
       assert_equal test[:name], stmt.name.token_literal
+    end
+  end
+
+  def test_return_statement
+    input = "return 1;
+             return 2;
+             return 838383;"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 3
+
+    tests = [
+      { return_value: "1" },
+      { return_value: "2" },
+      { return_value: "838383"},
+    ]
+
+    tests.each_with_index do |test, i|
+      stmt = program.statements[i]
+      assert_equal "return", stmt.token_literal
+      # TODO
+      # assert_equal test[:return_value], stmt.return_value
+      # assert_equal test[:return_value], stmt.token_literal
     end
   end
 end
