@@ -2,12 +2,16 @@ module AST
   class Program
     attr_accessor :statements
 
-    def initialize
-      @statements = []
+    def initialize(statements = [])
+      @statements = statements
     end
 
     def token_literal
       statements.size > 0 ? statements.first.token_literal : ""
+    end
+
+    def to_s
+      @statements.map(&:to_s).join
     end
   end
 
@@ -23,6 +27,10 @@ module AST
     def token_literal
       token.literal
     end
+
+    def to_s
+      "#{token_literal} #{@name} = #{@value.to_s};"
+    end
   end
 
   class Identifier
@@ -35,6 +43,40 @@ module AST
 
     def token_literal
       token.literal
+    end
+
+    def to_s
+      @value
+    end
+  end
+
+  class ReturnStatement
+    attr_accessor :token, :return_value
+
+    def initialize(token: nil, return_value: nil)
+      @token = token
+      @return_value = return_value
+    end
+
+    def token_literal
+      token.literal
+    end
+
+    def to_s
+      "#{token_literal} #{@return_value.to_s};"
+    end
+  end
+
+  class ExpressionStatement
+    attr_accessor :token, :expression
+
+    def initialize(token: nil, expression: nil)
+      @token = token
+      @expression = expression
+    end
+
+    def to_s
+      @expression.to_s
     end
   end
 end

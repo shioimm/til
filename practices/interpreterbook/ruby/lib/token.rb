@@ -49,4 +49,9 @@ class Token
   end
 
   attr_accessor :type, :literal
+
+  def initialize(type: nil, literal: nil)
+    @type = type
+    @literal = literal
+  end
 end
