@@ -11,6 +11,21 @@ class Parser
   PREFIX      = 5
   CALL        = 6
 
+  PRECEDENCES = {
+    Token::EQ       => EQUALS,
+    Token::NOT_EQ   => EQUALS,
+    Token::LT       => LESSGREATER,
+    Token::GT       => LESSGREATER,
+    Token::PLUS     => SUM,
+    Token::MINUS    => SUM,
+    Token::SLASH    => PRODUCT,
+    Token::ASTERISK => PRODUCT,
+    Token::LPAREN   => CALL,
+  }
+
+  class ParseError < StandardError
+  end
+
   def initialize(lexer)
     @lexer            = lexer
     @current_token    = nil
@@ -18,7 +33,22 @@ class Parser
     @prefix_parse_fns = {}
     @infix_parse_fns  = {}
 
-    @prefix_parse_fns[Token::IDENT] = self.method(:parse_indentifier)
+    @prefix_parse_fns[Token::IDENT]  = self.method(:parse_indentifier!)
+    @prefix_parse_fns[Token::INT]    = self.method(:parse_integer_literal!)
+    @prefix_parse_fns[Token::BANG]   = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::MINUS]  = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::TRUE]   = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::FALSE]  = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::LPAREN] = self.method(:parse_grouped_expression!)
+
+    @infix_parse_fns[Token::PLUS]     = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::MINUS]    = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::ASTERISK] = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::SLASH]    = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::EQ]       = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::NOT_EQ]   = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::LT]       = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::GT]       = self.method(:parse_infix_expression!)
 
     next_token
     next_token
@@ -81,11 +111,58 @@ class Parser
 
     return nil if prefix.nil?
 
-    return prefix.call
+    left_exp = prefix.call
+
+    while !next_token?(Token::SEMICOLON) && precedence < peek_precedence
+      infix = @infix_parse_fns[@next_token.type]
+      return left_exp if infix.nil?
+
+      next_token
+      left_exp = infix.call(left_exp)
+    end
+
+    return left_exp
   end
 
-  def parse_indentifier
+  def parse_indentifier!
     ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
+  end
+
+  def parse_integer_literal!
+    lit = ::AST::IntegerLiteral.new(token: @current_token)
+    raise ParseError unless @current_token.literal.respond_to? :to_i
+    lit.value = @current_token.literal.to_i
+    lit
+  end
+
+  def parse_prefix_expression!
+    expression = ::AST::PrefixExpression.new(token: @current_token, operator: @current_token.literal)
+    next_token
+    expression.right = parse_expression!(PREFIX)
+    expression
+  end
+
+  def parse_infix_expression!(left)
+    expression = ::AST::InfixExpression.new(token: @current_token,
+                                            operator: @current_token.literal,
+                                            left: left)
+    precedence = current_precedence
+    next_token
+    expression.right = parse_expression!(precedence)
+    expression
+  end
+
+  def parse_boolean!
+    ::AST::Boolean.new(token: @current_token, value: current_token?(Token::TRUE))
+  end
+
+  def parse_grouped_expression!
+    next_token
+    exp = parse_expression!(LOWEST)
+
+    return nil if !expect_peek(Token::RPAREN)
+
+    exp
   end
 
   def next_token
@@ -109,6 +186,14 @@ class Parser
       puts "Expected next token is #{token_type}, got #{@next_token.type} instead."
       false
     end
+  end
+
+  def peek_precedence
+    PRECEDENCES[@next_token.type]  || LOWEST
+  end
+
+  def current_precedence
+    PRECEDENCES[@current_token.type] || LOWEST
   end
 
   def register_prefix(token_type, &fn)
