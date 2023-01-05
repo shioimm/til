@@ -33,12 +33,13 @@ class Parser
     @prefix_parse_fns = {}
     @infix_parse_fns  = {}
 
-    @prefix_parse_fns[Token::IDENT] = self.method(:parse_indentifier!)
-    @prefix_parse_fns[Token::INT]   = self.method(:parse_integer_literal!)
-    @prefix_parse_fns[Token::BANG]  = self.method(:parse_prefix_expression!)
-    @prefix_parse_fns[Token::MINUS] = self.method(:parse_prefix_expression!)
-    @prefix_parse_fns[Token::TRUE]  = self.method(:parse_boolean!)
-    @prefix_parse_fns[Token::FALSE] = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::IDENT]  = self.method(:parse_indentifier!)
+    @prefix_parse_fns[Token::INT]    = self.method(:parse_integer_literal!)
+    @prefix_parse_fns[Token::BANG]   = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::MINUS]  = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::TRUE]   = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::FALSE]  = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::LPAREN] = self.method(:parse_grouped_expression!)
 
     @infix_parse_fns[Token::PLUS]     = self.method(:parse_infix_expression!)
     @infix_parse_fns[Token::MINUS]    = self.method(:parse_infix_expression!)
@@ -153,6 +154,15 @@ class Parser
 
   def parse_boolean!
     ::AST::Boolean.new(token: @current_token, value: current_token?(Token::TRUE))
+  end
+
+  def parse_grouped_expression!
+    next_token
+    exp = parse_expression!(LOWEST)
+
+    return nil if !expect_peek(Token::RPAREN)
+
+    exp
   end
 
   def next_token
