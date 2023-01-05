@@ -11,6 +11,9 @@ class Parser
   PREFIX      = 5
   CALL        = 6
 
+  class ParseError < StandardError
+  end
+
   def initialize(lexer)
     @lexer            = lexer
     @current_token    = nil
@@ -19,6 +22,7 @@ class Parser
     @infix_parse_fns  = {}
 
     @prefix_parse_fns[Token::IDENT] = self.method(:parse_indentifier)
+    @prefix_parse_fns[Token::INT]   = self.method(:parse_integer_literal)
 
     next_token
     next_token
@@ -86,6 +90,13 @@ class Parser
 
   def parse_indentifier
     ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
+  end
+
+  def parse_integer_literal
+    lit = ::AST::IntegerLiteral.new(token: @current_token)
+    raise ParseError unless @current_token.literal.respond_to? :to_i
+    lit.value = @current_token.literal.to_i
+    lit
   end
 
   def next_token

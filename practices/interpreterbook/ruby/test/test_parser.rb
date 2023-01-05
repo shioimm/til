@@ -77,4 +77,25 @@ class TestParser < MiniTest::Unit::TestCase
       assert_equal test[:value], ident.token_literal
     end
   end
+
+  def test_integer_literal_expression
+    input = "5;"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 1
+
+    tests = [
+      { value: 5 }
+    ]
+
+    tests.each_with_index do |test, i|
+      stmt = program.statements[i]
+      literal = stmt.expression
+      assert_equal test[:value].to_i, literal.value
+      assert_equal test[:value].to_s, literal.token_literal
+    end
+  end
 end

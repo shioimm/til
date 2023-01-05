@@ -79,4 +79,21 @@ module AST
       @expression.to_s
     end
   end
+
+  class IntegerLiteral
+    attr_accessor :token, :value
+
+    def initialize(token: nil, value: nil)
+      @token = token
+      @value = value
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      @token.literal
+    end
+  end
 end
