@@ -101,17 +101,21 @@ class TestParser < MiniTest::Unit::TestCase
 
   def test_parsing_prefix_expressions
     input = "!5;
-             -15;"
+             -15;
+             !true;
+             !false:"
 
     l = Lexer.new(input)
     p = Parser.new(l)
     program = p.parse_program
 
-    assert_equal program.statements.size, 2
+    assert_equal program.statements.size, 5
 
     tests = [
       { operator: "!", value: 5 },
       { operator: "-", value: 15 },
+      { operator: "!", value: true },
+      { operator: "!", value: false },
     ]
 
     tests.each_with_index do |test, i|
@@ -123,7 +127,7 @@ class TestParser < MiniTest::Unit::TestCase
     end
   end
 
-  def test_parsing_prefix_expressions
+  def test_parsing_infix_expressions
     input = "5 + 5;
              5 - 5;
              5 * 5;
@@ -131,23 +135,29 @@ class TestParser < MiniTest::Unit::TestCase
              5 > 5;
              5 < 5;
              5 == 5;
-             5 != 5;"
+             5 != 5;
+             true == true;
+             true != false;
+             false == false;"
 
     l = Lexer.new(input)
     p = Parser.new(l)
     program = p.parse_program
 
-    assert_equal program.statements.size, 8
+    assert_equal program.statements.size, 11
 
     tests = [
-      { left: 5, operator: "+", right: 5 },
-      { left: 5, operator: "-", right: 5 },
-      { left: 5, operator: "*", right: 5 },
-      { left: 5, operator: "/", right: 5 },
-      { left: 5, operator: ">", right: 5 },
-      { left: 5, operator: "<", right: 5 },
-      { left: 5, operator: "==", right: 5 },
-      { left: 5, operator: "!=", right: 5 },
+      { left: 5,     operator: "+",  right: 5 },
+      { left: 5,     operator: "-",  right: 5 },
+      { left: 5,     operator: "*",  right: 5 },
+      { left: 5,     operator: "/",  right: 5 },
+      { left: 5,     operator: ">",  right: 5 },
+      { left: 5,     operator: "<",  right: 5 },
+      { left: 5,     operator: "==", right: 5 },
+      { left: 5,     operator: "!=", right: 5 },
+      { left: true,  operator: "==", right: true },
+      { left: true,  operator: "!=", right: false },
+      { left: false, operator: "==", right: false },
     ]
 
     tests.each_with_index do |test, i|
@@ -158,6 +168,57 @@ class TestParser < MiniTest::Unit::TestCase
       assert_equal test[:operator], exp.operator
       assert_equal test[:right], exp.right.value
       assert_equal test[:right].to_s, exp.right.token_literal
+    end
+  end
+
+  def test_boolean
+    input = "true;
+             false;"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 2
+
+    tests = [
+      { value: true },
+      { value: false }
+    ]
+
+    tests.each_with_index do |test, i|
+      stmt = program.statements[i]
+      ident = stmt.expression
+      assert_equal test[:value], ident.value
+      assert_equal test[:value].to_s, ident.token_literal
+    end
+  end
+
+  def test_operator_precedence_parsing
+    tests = [
+      { input: "-a * b",                     expected: "((-a) * b)" },
+      { input: "!-a",                        expected: "(!(-a))" },
+      { input: "a + b + c",                  expected: "((a + b) + c)" },
+      { input: "a + b - c",                  expected: "((a + b) - c)" },
+      { input: "a * b * c",                  expected: "((a * b) * c)" },
+      { input: "a * b / c",                  expected: "((a * b) / c)" },
+      { input: "a + b / c",                  expected: "(a + (b / c))" },
+      { input: "a + b * c + d / e - f",      expected: "(((a + (b * c)) + (d / e)) - f)" },
+      { input: "3 + 4; -5 * 5",              expected: "(3 + 4)((-5) * 5)" },
+      { input: "5 > 4 == 3 < 4",             expected: "((5 > 4) == (3 < 4))" },
+      { input: "5 < 4 != 3 > 4",             expected: "((5 < 4) != (3 > 4))" },
+      { input: "3 + 4 * 5 == 3 * 1 + 4 * 5", expected: "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" },
+      { input: "true",                       expected: "true" },
+      { input: "false",                      expected: "false" },
+      { input: "3 > 5 == false",             expected: "((3 > 5) == false)" },
+      { input: "3 < 5 == true",              expected: "((3 < 5) == true)" },
+    ]
+
+    tests.each do |test|
+      l = Lexer.new(test[:input])
+      p = Parser.new(l)
+      program = p.parse_program
+      assert_equal test[:expected], program.to_s
     end
   end
 end

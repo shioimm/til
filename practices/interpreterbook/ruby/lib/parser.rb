@@ -37,6 +37,8 @@ class Parser
     @prefix_parse_fns[Token::INT]   = self.method(:parse_integer_literal!)
     @prefix_parse_fns[Token::BANG]  = self.method(:parse_prefix_expression!)
     @prefix_parse_fns[Token::MINUS] = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::TRUE]  = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::FALSE] = self.method(:parse_boolean!)
 
     @infix_parse_fns[Token::PLUS]     = self.method(:parse_infix_expression!)
     @infix_parse_fns[Token::MINUS]    = self.method(:parse_infix_expression!)
@@ -143,10 +145,14 @@ class Parser
     expression = ::AST::InfixExpression.new(token: @current_token,
                                             operator: @current_token.literal,
                                             left: left)
-    precedence = peek_precedence
+    precedence = current_precedence
     next_token
     expression.right = parse_expression!(precedence)
     expression
+  end
+
+  def parse_boolean!
+    ::AST::Boolean.new(token: @current_token, value: current_token?(Token::TRUE))
   end
 
   def next_token
