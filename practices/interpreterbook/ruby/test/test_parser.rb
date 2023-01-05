@@ -98,4 +98,28 @@ class TestParser < MiniTest::Unit::TestCase
       assert_equal test[:value].to_s, literal.token_literal
     end
   end
+
+  def test_parsing_prefix_expressions
+    input = "!5;
+             -15;"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 2
+
+    tests = [
+      { operator: "!", value: 5 },
+      { operator: "-", value: 15 },
+    ]
+
+    tests.each_with_index do |test, i|
+      stmt = program.statements[i]
+      exp = stmt.expression
+      assert_equal test[:operator], exp.operator
+      assert_equal test[:value], exp.right.value
+      assert_equal test[:value].to_s, exp.right.token_literal
+    end
+  end
 end

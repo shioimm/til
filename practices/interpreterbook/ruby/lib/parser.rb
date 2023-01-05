@@ -21,8 +21,10 @@ class Parser
     @prefix_parse_fns = {}
     @infix_parse_fns  = {}
 
-    @prefix_parse_fns[Token::IDENT] = self.method(:parse_indentifier)
-    @prefix_parse_fns[Token::INT]   = self.method(:parse_integer_literal)
+    @prefix_parse_fns[Token::IDENT] = self.method(:parse_indentifier!)
+    @prefix_parse_fns[Token::INT]   = self.method(:parse_integer_literal!)
+    @prefix_parse_fns[Token::BANG]  = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::MINUS] = self.method(:parse_prefix_expression!)
 
     next_token
     next_token
@@ -88,15 +90,22 @@ class Parser
     return prefix.call
   end
 
-  def parse_indentifier
+  def parse_indentifier!
     ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
   end
 
-  def parse_integer_literal
+  def parse_integer_literal!
     lit = ::AST::IntegerLiteral.new(token: @current_token)
     raise ParseError unless @current_token.literal.respond_to? :to_i
     lit.value = @current_token.literal.to_i
     lit
+  end
+
+  def parse_prefix_expression!
+    expression = ::AST::PrefixExpression.new(token: @current_token, operator: @current_token.literal)
+    next_token
+    expression.right = parse_expression!(PREFIX)
+    expression
   end
 
   def next_token

@@ -96,4 +96,22 @@ module AST
       @token.literal
     end
   end
+
+  class PrefixExpression
+    attr_accessor :token, :operator, :right
+
+    def initialize(token: nil, operator: nil, right: nil)
+      @token = token
+      @operator = operator
+      @right = right
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      "(#{@operator}#{@right.to_s})"
+    end
+  end
 end
