@@ -114,4 +114,23 @@ module AST
       "(#{@operator}#{@right.to_s})"
     end
   end
+
+  class InfixExpression
+    attr_accessor :token, :left, :operator, :right
+
+    def initialize(token: nil, left: nil, operator: nil, right: nil)
+      @token = token
+      @left = left
+      @operator = operator
+      @right = right
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      "(#{@left.to_s}#{@operator}#{@right.to_s})"
+    end
+  end
 end

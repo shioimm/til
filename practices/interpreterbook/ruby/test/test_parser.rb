@@ -122,4 +122,42 @@ class TestParser < MiniTest::Unit::TestCase
       assert_equal test[:value].to_s, exp.right.token_literal
     end
   end
+
+  def test_parsing_prefix_expressions
+    input = "5 + 5;
+             5 - 5;
+             5 * 5;
+             5 / 5;
+             5 > 5;
+             5 < 5;
+             5 == 5;
+             5 != 5;"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 8
+
+    tests = [
+      { left: 5, operator: "+", right: 5 },
+      { left: 5, operator: "-", right: 5 },
+      { left: 5, operator: "*", right: 5 },
+      { left: 5, operator: "/", right: 5 },
+      { left: 5, operator: ">", right: 5 },
+      { left: 5, operator: "<", right: 5 },
+      { left: 5, operator: "==", right: 5 },
+      { left: 5, operator: "!=", right: 5 },
+    ]
+
+    tests.each_with_index do |test, i|
+      stmt = program.statements[i]
+      exp = stmt.expression
+      assert_equal test[:left], exp.left.value
+      assert_equal test[:left].to_s, exp.left.token_literal
+      assert_equal test[:operator], exp.operator
+      assert_equal test[:right], exp.right.value
+      assert_equal test[:right].to_s, exp.right.token_literal
+    end
+  end
 end
