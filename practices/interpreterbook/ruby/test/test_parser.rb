@@ -194,6 +194,46 @@ class TestParser < MiniTest::Unit::TestCase
     end
   end
 
+  def test_if_expression
+    input = "if (x < y) { x }"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 1
+
+    stmt = program.statements.first
+    exp = stmt.expression
+    assert_equal "x", exp.condition.left.value
+    assert_equal "x", exp.condition.left.token_literal
+    assert_equal "<", exp.condition.operator
+    assert_equal "y", exp.condition.right.value
+    assert_equal "y", exp.condition.right.token_literal
+    assert_equal "x", exp.consequence.statements.first.expression.value
+    assert_equal "x", exp.consequence.statements.first.expression.token_literal
+
+    input = "if (x < y) { x } else { y }"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 1
+
+    stmt = program.statements.first
+    exp = stmt.expression
+    assert_equal "x", exp.condition.left.value
+    assert_equal "x", exp.condition.left.token_literal
+    assert_equal "<", exp.condition.operator
+    assert_equal "y", exp.condition.right.value
+    assert_equal "y", exp.condition.right.token_literal
+    assert_equal "x", exp.consequence.statements.first.expression.value
+    assert_equal "x", exp.consequence.statements.first.expression.token_literal
+    assert_equal "y", exp.alternative.statements.first.expression.value
+    assert_equal "y", exp.alternative.statements.first.expression.token_literal
+  end
+
   def test_operator_precedence_parsing
     tests = [
       { input: "-a * b",                     expected: "((-a) * b)" },

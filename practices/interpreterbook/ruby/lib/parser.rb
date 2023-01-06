@@ -40,6 +40,7 @@ class Parser
     @prefix_parse_fns[Token::TRUE]   = self.method(:parse_boolean!)
     @prefix_parse_fns[Token::FALSE]  = self.method(:parse_boolean!)
     @prefix_parse_fns[Token::LPAREN] = self.method(:parse_grouped_expression!)
+    @prefix_parse_fns[Token::IF]     = self.method(:parse_if_expression!)
 
     @infix_parse_fns[Token::PLUS]     = self.method(:parse_infix_expression!)
     @infix_parse_fns[Token::MINUS]    = self.method(:parse_infix_expression!)
@@ -163,6 +164,41 @@ class Parser
     return nil if !expect_peek(Token::RPAREN)
 
     exp
+  end
+
+  def parse_if_expression!
+    exp = ::AST::IfExpression.new(token: @current_token)
+
+    return nil if !expect_peek(Token::LPAREN)
+
+    next_token
+    exp.condition = parse_expression!(LOWEST)
+
+    return nil if !expect_peek(Token::RPAREN)
+    return nil if !expect_peek(Token::LBRACE)
+
+    exp.consequence = parse_block_statement!
+
+    if next_token?(Token::ELSE)
+      next_token
+      return nil if !expect_peek(Token::LBRACE)
+      exp.alternative = parse_block_statement!
+    end
+
+    exp
+  end
+
+  def parse_block_statement!
+    block = ::AST::BlockStatement.new(token: @current_token)
+    next_token
+
+    while !current_token?(Token::RBRACE) && !current_token?(Token::EOF)
+      stmt = parse_statement!
+      block.statements << stmt if !stmt.nil?
+      next_token
+    end
+
+    block
   end
 
   def next_token
