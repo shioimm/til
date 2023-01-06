@@ -257,6 +257,34 @@ class TestParser < MiniTest::Unit::TestCase
     assert_equal "y", fn.body.statements.first.expression.right.token_literal
   end
 
+  def test_call_expression_parsing
+    input = "add(1, 2 + 3, 4 * 5);"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 1
+
+    stmt = program.statements.first
+    exp = stmt.expression
+    assert_equal "add", exp.function.value
+    assert_equal "add", exp.function.token_literal
+    assert_equal 3, exp.args.size
+    assert_equal 1, exp.args[0].value
+    assert_equal "1", exp.args[0].token_literal
+    assert_equal 2, exp.args[1].left.value
+    assert_equal "2", exp.args[1].left.token_literal
+    assert_equal "+", exp.args[1].operator
+    assert_equal 3, exp.args[1].right.value
+    assert_equal "3", exp.args[1].right.token_literal
+    assert_equal 4, exp.args[2].left.value
+    assert_equal "4", exp.args[2].left.token_literal
+    assert_equal "*", exp.args[2].operator
+    assert_equal 5, exp.args[2].right.value
+    assert_equal "5", exp.args[2].right.token_literal
+  end
+
   def test_operator_precedence_parsing
     tests = [
       { input: "-a * b",                     expected: "((-a) * b)" },
@@ -280,6 +308,9 @@ class TestParser < MiniTest::Unit::TestCase
       { input: "2 / (5 + 5)",                expected: "(2 / (5 + 5))" },
       { input: "-(5 + 5)",                   expected: "(-(5 + 5))" },
       { input: "!(true == true)",            expected: "(!(true == true))" },
+      { input: "a + add(b * c) + d",         expected: "((a + add((b * c))) + d)" },
+      { input: "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", expected: "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" },
+      { input: "add(a + b + c * d / f + g)", expected: "add((((a + b) + ((c * d) / f)) + g))" },
     ]
 
     tests.each do |test|

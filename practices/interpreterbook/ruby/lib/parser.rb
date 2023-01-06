@@ -51,6 +51,7 @@ class Parser
     @infix_parse_fns[Token::NOT_EQ]   = self.method(:parse_infix_expression!)
     @infix_parse_fns[Token::LT]       = self.method(:parse_infix_expression!)
     @infix_parse_fns[Token::GT]       = self.method(:parse_infix_expression!)
+    @infix_parse_fns[Token::LPAREN]   = self.method(:parse_call_expression!)
 
     next_token
     next_token
@@ -229,6 +230,34 @@ class Parser
 
     next_token
     ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
+  end
+
+  def parse_call_expression!(function)
+    exp = ::AST::CallExpression.new(token: @current_token, function: function)
+    exp.args = parse_call_arguments!
+    exp
+  end
+
+  def parse_call_arguments!
+    args = []
+
+    if next_token?(Token::RPAREN)
+      next_token
+      return args
+    end
+
+    next_token
+    args << parse_expression!(LOWEST)
+
+    while next_token?(Token::COMMA)
+      next_token
+      next_token
+      args << parse_expression!(LOWEST)
+    end
+
+    return nil if !expect_peek(Token::RPAREN)
+
+    args
   end
 
   def next_token

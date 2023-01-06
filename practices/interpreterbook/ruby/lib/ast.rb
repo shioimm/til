@@ -205,4 +205,22 @@ module AST
       "#{token_literal}(#{params.join(", ")}) #{@body.to_s}"
     end
   end
+
+  class CallExpression
+    attr_accessor :token, :function, :args
+
+    def initialize(token: nil, function: nil, args: [])
+      @token = token
+      @function = function
+      @args = args
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      "#{@function.to_s}(#{@args&.join(", ")})"
+    end
+  end
 end
