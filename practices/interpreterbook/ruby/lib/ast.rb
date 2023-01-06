@@ -150,4 +150,77 @@ module AST
       @token.literal
     end
   end
+
+  class IfExpression
+    attr_accessor :token, :condition, :consequence, :alternative
+
+    def initialize(token: nil, condition: nil, conseqence: nil, alternative: nil)
+      @token = token
+      @condition = condition
+      @conseqence = conseqence
+      @alternative = alternative
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      alternative_expression = @alternative.nil? ? '' : " else #{@alternative.to_s}"
+      "if #{@condition.to_s} #{@conseqence.to_s}#{alternative_expression}"
+    end
+  end
+
+  class BlockStatement
+    attr_accessor :token, :statements
+
+    def initialize(token: nil, statements: [])
+      @token = token
+      @statements = statements
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      statements.map(&:to_s).join
+    end
+  end
+
+  class FunctionLiteral
+    attr_accessor :token, :params, :body
+
+    def initialize(token: nil, params: [], body: nil)
+      @token = token
+      @params = params
+      @body = body
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      "#{token_literal}(#{params.join(", ")}) #{@body.to_s}"
+    end
+  end
+
+  class CallExpression
+    attr_accessor :token, :function, :args
+
+    def initialize(token: nil, function: nil, args: [])
+      @token = token
+      @function = function
+      @args = args
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      "#{@function.to_s}(#{@args&.join(", ")})"
+    end
+  end
 end

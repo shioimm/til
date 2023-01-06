@@ -1,5 +1,6 @@
 require_relative "lexer"
 require_relative "token"
+require_relative "parser"
 
 PROMPT = ">> "
 
@@ -14,10 +15,9 @@ loop do
     next unless scanned
 
     lexer = Lexer.new(scanned)
-
-    while (token = lexer.next_token).type != Token::EOF
-      puts "<Token: type=\"#{token.type}\" literal=\"#{token.literal}\">"
-    end
+    parser = Parser.new(lexer)
+    program = parser.parse_program
+    puts program.to_s
   rescue Interrupt
     puts "!! Ctrl+C is entered. Shutdown..."
     exit 1
