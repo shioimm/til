@@ -187,4 +187,22 @@ module AST
       statements.map(&:to_s).join
     end
   end
+
+  class FunctionLiteral
+    attr_accessor :token, :params, :body
+
+    def initialize(token: nil, params: [], body: nil)
+      @token = token
+      @params = params
+      @body = body
+    end
+
+    def token_literal
+      @token.literal
+    end
+
+    def to_s
+      "#{token_literal}(#{params.join(", ")}) #{@body.to_s}"
+    end
+  end
 end

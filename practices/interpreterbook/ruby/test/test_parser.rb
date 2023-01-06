@@ -234,6 +234,29 @@ class TestParser < MiniTest::Unit::TestCase
     assert_equal "y", exp.alternative.statements.first.expression.token_literal
   end
 
+  def test_function_literal_parsing
+    input = "fn(x, y) { x + y; }"
+
+    l = Lexer.new(input)
+    p = Parser.new(l)
+    program = p.parse_program
+
+    assert_equal program.statements.size, 1
+
+    stmt = program.statements.first
+    fn = stmt.expression
+    assert_equal 2, fn.params.size
+    assert_equal "x", fn.params.first.value
+    assert_equal "x", fn.params.first.token_literal
+    assert_equal "y", fn.params.last.value
+    assert_equal "y", fn.params.last.token_literal
+    assert_equal "x", fn.body.statements.first.expression.left.value
+    assert_equal "x", fn.body.statements.first.expression.left.token_literal
+    assert_equal "+", fn.body.statements.first.expression.operator
+    assert_equal "y", fn.body.statements.first.expression.right.value
+    assert_equal "y", fn.body.statements.first.expression.right.token_literal
+  end
+
   def test_operator_precedence_parsing
     tests = [
       { input: "-a * b",                     expected: "((-a) * b)" },

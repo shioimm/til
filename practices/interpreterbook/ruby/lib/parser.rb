@@ -33,14 +33,15 @@ class Parser
     @prefix_parse_fns = {}
     @infix_parse_fns  = {}
 
-    @prefix_parse_fns[Token::IDENT]  = self.method(:parse_indentifier!)
-    @prefix_parse_fns[Token::INT]    = self.method(:parse_integer_literal!)
-    @prefix_parse_fns[Token::BANG]   = self.method(:parse_prefix_expression!)
-    @prefix_parse_fns[Token::MINUS]  = self.method(:parse_prefix_expression!)
-    @prefix_parse_fns[Token::TRUE]   = self.method(:parse_boolean!)
-    @prefix_parse_fns[Token::FALSE]  = self.method(:parse_boolean!)
-    @prefix_parse_fns[Token::LPAREN] = self.method(:parse_grouped_expression!)
-    @prefix_parse_fns[Token::IF]     = self.method(:parse_if_expression!)
+    @prefix_parse_fns[Token::IDENT]    = self.method(:parse_indentifier!)
+    @prefix_parse_fns[Token::INT]      = self.method(:parse_integer_literal!)
+    @prefix_parse_fns[Token::BANG]     = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::MINUS]    = self.method(:parse_prefix_expression!)
+    @prefix_parse_fns[Token::TRUE]     = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::FALSE]    = self.method(:parse_boolean!)
+    @prefix_parse_fns[Token::LPAREN]   = self.method(:parse_grouped_expression!)
+    @prefix_parse_fns[Token::IF]       = self.method(:parse_if_expression!)
+    @prefix_parse_fns[Token::FUNCTION] = self.method(:parse_function_literal!)
 
     @infix_parse_fns[Token::PLUS]     = self.method(:parse_infix_expression!)
     @infix_parse_fns[Token::MINUS]    = self.method(:parse_infix_expression!)
@@ -199,6 +200,35 @@ class Parser
     end
 
     block
+  end
+
+  def parse_function_literal!
+    lit = ::AST::FunctionLiteral.new(token: @current_token)
+
+    return nil if !expect_peek(Token::LPAREN)
+
+    lit.params << parse_function_params!
+
+    while next_token?(Token::COMMA)
+      next_token
+      lit.params << parse_function_params!
+    end
+
+    return nil if !expect_peek(Token::RPAREN)
+    return nil if !expect_peek(Token::LBRACE)
+
+    lit.body = parse_block_statement!
+    lit
+  end
+
+  def parse_function_params!
+    if next_token?(Token::RPAREN)
+      next_token
+      return
+    end
+
+    next_token
+    ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
   end
 
   def next_token
