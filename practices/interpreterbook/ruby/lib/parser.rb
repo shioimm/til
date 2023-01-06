@@ -110,7 +110,11 @@ class Parser
 
   def parse_expression!(precedence)
     prefix = @prefix_parse_fns[@current_token.type]
-    return nil if prefix.nil?
+
+    if prefix.nil?
+      puts "[WARN] no prefix parse function for #{@current_token.type} found"
+      return nil
+    end
 
     left_exp = prefix.call
 
@@ -263,7 +267,7 @@ class Parser
       next_token
       true
     else
-      puts "Expected next token is #{token_type}, got #{@next_token.type} instead."
+      puts "[WARN] Expected next token is #{token_type}, got #{@next_token.type} instead."
       false
     end
   end
