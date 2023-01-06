@@ -237,30 +237,26 @@ class Parser
 
   def parse_call_expression!(function)
     exp = ::AST::CallExpression.new(token: @current_token, function: function)
-    exp.args = parse_call_arguments!
-    exp
-  end
-
-  def parse_call_arguments!
-    args = []
-
-    if next_token?(Token::RPAREN)
-      next_token
-      return args
-    end
-
-    next_token
-    args << parse_expression!(LOWEST)
+    exp.args << parse_call_arguments!
 
     while next_token?(Token::COMMA)
       next_token
-      next_token
-      args << parse_expression!(LOWEST)
+      exp.args << parse_call_arguments!
     end
 
     return nil if !expect_peek(Token::RPAREN)
 
-    args
+    exp
+  end
+
+  def parse_call_arguments!
+    if next_token?(Token::RPAREN)
+      next_token
+      return
+    end
+
+    next_token
+    parse_expression!(LOWEST)
   end
 
   def next_token
