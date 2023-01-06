@@ -18,9 +18,9 @@ class TestParser < MiniTest::Unit::TestCase
     assert_equal program.statements.size, 3
 
     tests = [
-      { name: "x",      value: "1" },
-      { name: "y",      value: "2" },
-      { name: "foobar", value: "838383"},
+      { name: "x",      value: 1 },
+      { name: "y",      value: 2 },
+      { name: "foobar", value: 838383 },
     ]
 
     tests.each_with_index do |test, i|
@@ -28,6 +28,8 @@ class TestParser < MiniTest::Unit::TestCase
       assert_equal "let", stmt.token_literal
       assert_equal test[:name], stmt.name.value
       assert_equal test[:name], stmt.name.token_literal
+      assert_equal test[:value], stmt.value.value
+      assert_equal test[:value].to_s, stmt.value.token_literal
     end
   end
 
@@ -43,17 +45,16 @@ class TestParser < MiniTest::Unit::TestCase
     assert_equal program.statements.size, 3
 
     tests = [
-      { return_value: "1" },
-      { return_value: "2" },
-      { return_value: "838383"},
+      { return_value: 1 },
+      { return_value: 2 },
+      { return_value: 838383 },
     ]
 
     tests.each_with_index do |test, i|
       stmt = program.statements[i]
       assert_equal "return", stmt.token_literal
-      # TODO
-      # assert_equal test[:return_value], stmt.return_value
-      # assert_equal test[:return_value], stmt.token_literal
+      assert_equal test[:return_value], stmt.return_value.value
+      assert_equal test[:return_value].to_s, stmt.return_value.token_literal
     end
   end
 

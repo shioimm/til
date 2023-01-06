@@ -91,14 +91,17 @@ class Parser
 
     return nil if !expect_peek(Token::ASSIGN)
 
-    next_token while !current_token?(Token::SEMICOLON) # TODO
+    next_token
+    stmt.value = parse_expression!(LOWEST)
+    next_token if next_token?(Token::SEMICOLON)
     stmt
   end
 
   def parse_return_statement!
     stmt = ::AST::ReturnStatement.new(token: @current_token)
     next_token
-    next_token while !current_token?(Token::SEMICOLON) # TODO
+    stmt.return_value = parse_expression!(LOWEST)
+    next_token if next_token?(Token::SEMICOLON)
     stmt
   end
 
