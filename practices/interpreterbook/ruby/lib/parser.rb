@@ -73,10 +73,8 @@ class Parser
 
   def parse_statement!
     case @current_token.type
-    when Token::LET
-      parse_let_statement!
-    when Token::RETURN
-      parse_return_statement!
+    when Token::LET    then parse_let_statement!
+    when Token::RETURN then parse_return_statement!
     else
       parse_expression_statement!
     end
@@ -84,11 +82,9 @@ class Parser
 
   def parse_let_statement!
     stmt = ::AST::LetStatement.new(token: @current_token)
-
     return nil if !expect_peek(Token::IDENT)
 
     stmt.name = ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
-
     return nil if !expect_peek(Token::ASSIGN)
 
     next_token
@@ -114,7 +110,6 @@ class Parser
 
   def parse_expression!(precedence)
     prefix = @prefix_parse_fns[@current_token.type]
-
     return nil if prefix.nil?
 
     left_exp = prefix.call
@@ -137,6 +132,7 @@ class Parser
   def parse_integer_literal!
     lit = ::AST::IntegerLiteral.new(token: @current_token)
     raise ParseError unless @current_token.literal.respond_to? :to_i
+
     lit.value = @current_token.literal.to_i
     lit
   end
@@ -149,13 +145,11 @@ class Parser
   end
 
   def parse_infix_expression!(left)
-    expression = ::AST::InfixExpression.new(token: @current_token,
-                                            operator: @current_token.literal,
-                                            left: left)
+    exp = ::AST::InfixExpression.new(token: @current_token, operator: @current_token.literal, left: left)
     precedence = current_precedence
     next_token
-    expression.right = parse_expression!(precedence)
-    expression
+    exp.right = parse_expression!(precedence)
+    exp
   end
 
   def parse_boolean!
@@ -165,7 +159,6 @@ class Parser
   def parse_grouped_expression!
     next_token
     exp = parse_expression!(LOWEST)
-
     return nil if !expect_peek(Token::RPAREN)
 
     exp
@@ -173,7 +166,6 @@ class Parser
 
   def parse_if_expression!
     exp = ::AST::IfExpression.new(token: @current_token)
-
     return nil if !expect_peek(Token::LPAREN)
 
     next_token
@@ -187,6 +179,7 @@ class Parser
     if next_token?(Token::ELSE)
       next_token
       return nil if !expect_peek(Token::LBRACE)
+
       exp.alternative = parse_block_statement!
     end
 
@@ -208,7 +201,6 @@ class Parser
 
   def parse_function_literal!
     lit = ::AST::FunctionLiteral.new(token: @current_token)
-
     return nil if !expect_peek(Token::LPAREN)
 
     lit.params << parse_function_params!
@@ -226,10 +218,7 @@ class Parser
   end
 
   def parse_function_params!
-    if next_token?(Token::RPAREN)
-      next_token
-      return
-    end
+    next_token && return if next_token?(Token::RPAREN)
 
     next_token
     ::AST::Identifier.new(token: @current_token, value: @current_token.literal)
@@ -250,10 +239,7 @@ class Parser
   end
 
   def parse_call_arguments!
-    if next_token?(Token::RPAREN)
-      next_token
-      return
-    end
+    next_token && return if next_token?(Token::RPAREN)
 
     next_token
     parse_expression!(LOWEST)
