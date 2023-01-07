@@ -24,6 +24,10 @@ class Eval
         left = execute!(node.left)
         right = execute!(node.right)
         eval_infix_expression!(node.operator, left, right)
+      when ::AST::BlockStatement
+        eval_statements!(node.statements)
+      when ::AST::IfExpression
+        eval_if_expression!(node)
       else
         nil
       end
@@ -103,8 +107,30 @@ class Eval
       end
     end
 
+    def eval_if_expression!(node)
+      condition = execute!(node.condition)
+
+      if truthy?(condition)
+        execute!(node.consequence)
+      elsif !node.alternative.nil?
+        execute!(node.alternative)
+      else
+        nil
+      end
+    end
+
     def native_bool_to_boolean_object(bool)
       bool.is_a?(TrueClass) ? TRUE_OBJ : FALSE_OBJ
+    end
+
+    def truthy?(obj)
+      case obj.value
+      when NULL_OBJ.value  then false
+      when TRUE_OBJ.value  then true
+      when FALSE_OBJ.value then false
+      else
+        true
+      end
     end
   end
 end

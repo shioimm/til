@@ -76,6 +76,27 @@ class TestEvaluator < MiniTest::Unit::TestCase
     end
   end
 
+  def test_if_else_expression
+    tests = [
+      { input: "if (true) { 10 }",  output: 10 },
+      { input: "if (false) { 10 }", output: nil },
+      { input: "if (1) { 10 }",     output: 10 },
+      { input: "if (1 < 2) { 10 }", output: 10 },
+      { input: "if (1 > 2) { 10 }", output: nil },
+      { input: "if (1 < 2) { 10 } else { 20 }", output: 10 },
+      { input: "if (1 > 2) { 10 } else { 20 }", output: 20 },
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      if evaluated
+        test_integer_object(evaluated, test[:output])
+      else
+        test_null_object(evaluated)
+      end
+    end
+  end
+
   private
 
   def test_eval(input)
@@ -93,5 +114,9 @@ class TestEvaluator < MiniTest::Unit::TestCase
   def test_boolean_object(actual, expected)
     assert_equal [TrueClass, FalseClass].include?(actual.value.class), true
     assert_equal expected, actual.value
+  end
+
+  def test_null_object(actual)
+    assert_nil actual
   end
 end

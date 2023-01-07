@@ -36,6 +36,12 @@ module ObjectSystem
   end
 
   class NullObject
+    attr_reader :value
+
+    def initialize
+      @value = nil
+    end
+
     def object_type
       NULL_OBJ
     end
