@@ -97,6 +97,38 @@ class TestEvaluator < MiniTest::Unit::TestCase
     end
   end
 
+  def test_return_statements
+    tests = [
+      { input: "return 10;",          output: 10 },
+      { input: "return 10; 9",        output: 10 },
+      { input: "return 2 * 5; 9;",    output: 10 },
+      { input: "9; return 2 * 5; 9;", output: 10 },
+      { input: "if (10 > 1) { if (10 > 1) { return 10; } return 1; }", output: 10 }
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      test_integer_object(evaluated, test[:output])
+    end
+  end
+
+  def test_error_handling
+    tests = [
+      { input: "5 + true;",                     output: "type mismatch: INTEGER + BOOLEAN" },
+      { input: "5 + true; 5;",                  output: "type mismatch: INTEGER + BOOLEAN" },
+      { input: "-true;",                        output: "unknown operator: -BOOLEAN" },
+      { input: "true + false;",                 output: "unknown operator: BOOLEAN + BOOLEAN" },
+      { input: "5; true + false; 5;",           output: "unknown operator: BOOLEAN + BOOLEAN" },
+      { input: "if (10 > 1) { true + false; }", output: "unknown operator: BOOLEAN + BOOLEAN" },
+      { input: "if (10 > 1) { if (10 > 1) { true + false; } return 1; }", output: "unknown operator: BOOLEAN + BOOLEAN" }
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      assert_equal test[:output], evaluated.message
+    end
+  end
+
   private
 
   def test_eval(input)

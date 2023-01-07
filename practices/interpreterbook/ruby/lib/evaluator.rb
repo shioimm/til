@@ -10,7 +10,7 @@ class Eval
     def execute!(node)
       case node
       when ::AST::Program
-        eval_statements!(node.statements)
+        eval_program!(node)
       when ::AST::ExpressionStatement
         execute!(node.expression)
       when ::AST::IntegerLiteral
@@ -19,15 +19,22 @@ class Eval
         native_bool_to_boolean_object(node.value)
       when ::AST::PrefixExpression
         right = execute!(node.right)
+        return right if error?(right)
         eval_prefix_expression!(node.operator, right)
       when ::AST::InfixExpression
         left = execute!(node.left)
+        return left if error?(left)
         right = execute!(node.right)
+        return right if error?(right)
         eval_infix_expression!(node.operator, left, right)
       when ::AST::BlockStatement
-        eval_statements!(node.statements)
+        eval_block_statement!(node)
       when ::AST::IfExpression
         eval_if_expression!(node)
+      when ::AST::ReturnStatement
+        val = execute!(node.return_value)
+        return val if error?(val)
+        ObjectSystem::ReturnValueObject.new(value: val)
       else
         nil
       end
@@ -35,9 +42,18 @@ class Eval
 
     private
 
-    def eval_statements!(statements)
+    def eval_program!(program)
       result = nil
-      statements.each { |stmt| result = execute!(stmt) }
+      program.statements.each do |stmt|
+        result = execute!(stmt)
+
+        case result
+        when ObjectSystem::ReturnValueObject
+          return result.value
+        when ObjectSystem::ErrorObject
+          return result
+        end
+      end
       result
     end
 
@@ -48,7 +64,7 @@ class Eval
       when "-"
         eval_minus_prefix_operator_expression!(right)
       else
-        nil
+        new_error("unknown operator: #{operator}#{right.object_type}")
       end
     end
 
@@ -63,7 +79,7 @@ class Eval
     end
 
     def eval_minus_prefix_operator_expression!(right)
-      return nil if !right.value.is_a? Integer
+      return new_error("unknown operator: -#{right.object_type}") if !right.value.is_a? Integer
 
       ObjectSystem::IntegerObject.new(value: -right.value)
     end
@@ -76,8 +92,10 @@ class Eval
         native_bool_to_boolean_object(left.value == right.value)
       when operator == "!="
         native_bool_to_boolean_object(left.value != right.value)
+      when left.class != right.class
+        new_error("type mismatch: #{left.object_type} #{operator} #{right.object_type}")
       else
-        nil
+        new_error("unknown operator: #{left.object_type} #{operator} #{right.object_type}")
       end
     end
 
@@ -103,12 +121,13 @@ class Eval
       when "!="
         ObjectSystem::IntegerObject.new(value: left_val != right_val)
       else
-        nil
+        new_error("unknown operator: #{left.object_type} #{operator} #{right.object_type}")
       end
     end
 
     def eval_if_expression!(node)
       condition = execute!(node.condition)
+      return condition if error?(condition)
 
       if truthy?(condition)
         execute!(node.consequence)
@@ -117,6 +136,15 @@ class Eval
       else
         nil
       end
+    end
+
+    def eval_block_statement!(block)
+      result = nil
+      block.statements.each do |stmt|
+        result = execute!(stmt)
+        return result if [ObjectSystem::RETURN_VALUE_OBJ, ObjectSystem::ERROR_OBJ].include? result.object_type
+      end
+      result
     end
 
     def native_bool_to_boolean_object(bool)
@@ -131,6 +159,14 @@ class Eval
       else
         true
       end
+    end
+
+    def error?(obj)
+      obj.object_type == ObjectSystem::ErrorObject
+    end
+
+    def new_error(messages)
+      ObjectSystem::ErrorObject.new(message: Array(messages).join(", "))
     end
   end
 end
