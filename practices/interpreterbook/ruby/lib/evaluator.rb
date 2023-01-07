@@ -2,9 +2,9 @@ require_relative "ast"
 require_relative "object_system"
 
 class Eval
-  TRUE_OBJ  = ObjectSystem::BooleanObject.new(value: true)
-  FALSE_OBJ = ObjectSystem::BooleanObject.new(value: false)
-  NULL_OBJ  = ObjectSystem::NullObject.new
+  TRUE_OBJ  ||= ObjectSystem::BooleanObject.new(value: true)
+  FALSE_OBJ ||= ObjectSystem::BooleanObject.new(value: false)
+  NULL_OBJ  ||= ObjectSystem::NullObject.new
 
   class << self
     def execute!(node)
@@ -20,6 +20,10 @@ class Eval
       when ::AST::PrefixExpression
         right = execute!(node.right)
         eval_prefix_expression!(node.operator, right)
+      when ::AST::InfixExpression
+        left = execute!(node.left)
+        right = execute!(node.right)
+        eval_infix_expression!(node.operator, left, right)
       else
         nil
       end
@@ -58,6 +62,45 @@ class Eval
       return nil if !right.value.is_a? Integer
 
       ObjectSystem::IntegerObject.new(value: -right.value)
+    end
+
+    def eval_infix_expression!(operator, left, right)
+      case
+      when left.object_type == ObjectSystem::INTEGER_OBJ && right.object_type == ObjectSystem::INTEGER_OBJ
+        eval_integer_infix_expression!(operator, left, right)
+      when operator == "=="
+        native_bool_to_boolean_object(left.value == right.value)
+      when operator == "!="
+        native_bool_to_boolean_object(left.value != right.value)
+      else
+        nil
+      end
+    end
+
+    def eval_integer_infix_expression!(operator, left, right)
+      left_val = left.value
+      right_val = right.value
+
+      case operator
+      when "+"
+        ObjectSystem::IntegerObject.new(value: left_val + right_val)
+      when "-"
+        ObjectSystem::IntegerObject.new(value: left_val - right_val)
+      when "*"
+        ObjectSystem::IntegerObject.new(value: left_val * right_val)
+      when "/"
+        ObjectSystem::IntegerObject.new(value: left_val / right_val)
+      when "<"
+        ObjectSystem::IntegerObject.new(value: left_val < right_val)
+      when ">"
+        ObjectSystem::IntegerObject.new(value: left_val > right_val)
+      when "=="
+        ObjectSystem::IntegerObject.new(value: left_val == right_val)
+      when "!="
+        ObjectSystem::IntegerObject.new(value: left_val != right_val)
+      else
+        nil
+      end
     end
 
     def native_bool_to_boolean_object(bool)
