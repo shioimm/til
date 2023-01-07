@@ -19,6 +19,18 @@ class TestEvaluator < MiniTest::Unit::TestCase
     end
   end
 
+  def test_eval_boolean_expression
+    tests = [
+      { input: "true",  output: true },
+      { input: "false", output: false },
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      test_boolean_object(evaluated, test[:output])
+    end
+  end
+
   private
 
   def test_eval(input)
@@ -30,6 +42,11 @@ class TestEvaluator < MiniTest::Unit::TestCase
 
   def test_integer_object(actual, expected)
     assert_equal actual.value.class, Integer
+    assert_equal actual.value, expected
+  end
+
+  def test_boolean_object(actual, expected)
+    assert_equal [TrueClass, FalseClass].include?(actual.value.class), true
     assert_equal actual.value, expected
   end
 end
