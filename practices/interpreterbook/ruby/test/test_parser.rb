@@ -104,13 +104,13 @@ class TestParser < MiniTest::Unit::TestCase
     input = "!5;
              -15;
              !true;
-             !false:"
+             !false;"
 
     l = Lexer.new(input)
     p = Parser.new(l)
     program = p.parse_program
 
-    assert_equal program.statements.size, 5
+    assert_equal program.statements.size, 4
 
     tests = [
       { operator: "!", value: 5 },

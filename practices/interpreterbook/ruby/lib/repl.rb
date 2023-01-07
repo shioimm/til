@@ -1,6 +1,8 @@
 require_relative "lexer"
 require_relative "token"
 require_relative "parser"
+require_relative "evaluator"
+require_relative "environment"
 
 PROMPT = ">> "
 
@@ -11,13 +13,21 @@ loop do
   begin
     print PROMPT
     scanned = $stdin.gets&.chomp
+    env = ObjectSystem::Environment.new
 
     next unless scanned
 
     lexer = Lexer.new(scanned)
     parser = Parser.new(lexer)
     program = parser.parse_program
-    puts program.to_s
+    evaluated = Eval.execute!(program, env)
+
+    if evaluated.nil?
+      print program.to_s
+      puts "\n"
+    else
+      puts evaluated.inspect
+    end
   rescue Interrupt
     puts "!! Ctrl+C is entered. Shutdown..."
     exit 1
