@@ -4,6 +4,7 @@ require_relative "object_system"
 class Eval
   TRUE_OBJ  = ObjectSystem::BooleanObject.new(value: true)
   FALSE_OBJ = ObjectSystem::BooleanObject.new(value: false)
+  NULL_OBJ  = ObjectSystem::NullObject.new
 
   class << self
     def execute!(node)
