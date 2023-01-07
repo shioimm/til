@@ -134,9 +134,9 @@ class TestEvaluator < MiniTest::Unit::TestCase
   def test_let_statements
     tests = [
       { input: "let a = 5; a",             output: 5 },
-      # { input: "let a = 5 * 5; a;",        output: 25 },
-      # { input: "let a = 5; let b = a; b;", output: 5 },
-      # { input: "let a = 5; let b = a; let c = a + b + 5; c;", output: 15 }
+      { input: "let a = 5 * 5; a;",        output: 25 },
+      { input: "let a = 5; let b = a; b;", output: 5 },
+      { input: "let a = 5; let b = a; let c = a + b + 5; c;", output: 15 }
     ]
 
     tests.each do |test|
