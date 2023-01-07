@@ -3,6 +3,7 @@ require_relative "../lib/lexer"
 require_relative "../lib/token"
 require_relative "../lib/parser"
 require_relative "../lib/evaluator"
+require_relative "../lib/environment"
 
 MiniTest::Unit.autorun
 
@@ -120,12 +121,27 @@ class TestEvaluator < MiniTest::Unit::TestCase
       { input: "true + false;",                 output: "unknown operator: BOOLEAN + BOOLEAN" },
       { input: "5; true + false; 5;",           output: "unknown operator: BOOLEAN + BOOLEAN" },
       { input: "if (10 > 1) { true + false; }", output: "unknown operator: BOOLEAN + BOOLEAN" },
-      { input: "if (10 > 1) { if (10 > 1) { true + false; } return 1; }", output: "unknown operator: BOOLEAN + BOOLEAN" }
+      { input: "if (10 > 1) { if (10 > 1) { true + false; } return 1; }", output: "unknown operator: BOOLEAN + BOOLEAN" },
+      { input: "foobar", output: "identifier not found: foobar" }
     ]
 
     tests.each do |test|
       evaluated = test_eval(test[:input])
       assert_equal test[:output], evaluated.message
+    end
+  end
+
+  def test_let_statements
+    tests = [
+      { input: "let a = 5; a",             output: 5 },
+      # { input: "let a = 5 * 5; a;",        output: 25 },
+      # { input: "let a = 5; let b = a; b;", output: 5 },
+      # { input: "let a = 5; let b = a; let c = a + b + 5; c;", output: 15 }
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      test_integer_object(evaluated, test[:output])
     end
   end
 
@@ -135,7 +151,8 @@ class TestEvaluator < MiniTest::Unit::TestCase
     l = Lexer.new(input)
     p = Parser.new(l)
     program = p.parse_program
-    Eval.execute!(program)
+    env = ObjectSystem::Environment.new
+    Eval.execute!(program, env)
   end
 
   def test_integer_object(actual, expected)

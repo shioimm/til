@@ -7,34 +7,40 @@ class Eval
   NULL_OBJ  ||= ObjectSystem::NullObject.new
 
   class << self
-    def execute!(node)
+    def execute!(node, env)
       case node
       when ::AST::Program
-        eval_program!(node)
+        eval_program!(node, env)
       when ::AST::ExpressionStatement
-        execute!(node.expression)
+        execute!(node.expression, env)
       when ::AST::IntegerLiteral
         ObjectSystem::IntegerObject.new(value: node.value)
       when ::AST::Boolean
         native_bool_to_boolean_object(node.value)
       when ::AST::PrefixExpression
-        right = execute!(node.right)
+        right = execute!(node.right, env)
         return right if error?(right)
         eval_prefix_expression!(node.operator, right)
       when ::AST::InfixExpression
-        left = execute!(node.left)
+        left = execute!(node.left, env)
         return left if error?(left)
-        right = execute!(node.right)
+        right = execute!(node.right, env)
         return right if error?(right)
         eval_infix_expression!(node.operator, left, right)
       when ::AST::BlockStatement
-        eval_block_statement!(node)
+        eval_block_statement!(node, env)
       when ::AST::IfExpression
-        eval_if_expression!(node)
+        eval_if_expression!(node, env)
       when ::AST::ReturnStatement
-        val = execute!(node.return_value)
+        val = execute!(node.return_value, env)
         return val if error?(val)
         ObjectSystem::ReturnValueObject.new(value: val)
+      when ::AST::LetStatement
+        val = execute!(node.value, env)
+        return val if error?(val)
+        env.set(node.name.value, val)
+      when ::AST::Identifier
+        eval_identifier!(node, env)
       else
         nil
       end
@@ -42,10 +48,10 @@ class Eval
 
     private
 
-    def eval_program!(program)
+    def eval_program!(program, env)
       result = nil
       program.statements.each do |stmt|
-        result = execute!(stmt)
+        result = execute!(stmt, env)
 
         case result
         when ObjectSystem::ReturnValueObject
@@ -125,26 +131,32 @@ class Eval
       end
     end
 
-    def eval_if_expression!(node)
-      condition = execute!(node.condition)
+    def eval_if_expression!(node, env)
+      condition = execute!(node.condition, env)
       return condition if error?(condition)
 
       if truthy?(condition)
-        execute!(node.consequence)
+        execute!(node.consequence, env)
       elsif !node.alternative.nil?
-        execute!(node.alternative)
+        execute!(node.alternative, env)
       else
         nil
       end
     end
 
-    def eval_block_statement!(block)
+    def eval_block_statement!(block, env)
       result = nil
       block.statements.each do |stmt|
-        result = execute!(stmt)
+        result = execute!(stmt, env)
         return result if [ObjectSystem::RETURN_VALUE_OBJ, ObjectSystem::ERROR_OBJ].include? result.object_type
       end
       result
+    end
+
+    def eval_identifier!(node, env)
+      val = env.get(node.value)
+      return new_error("identifier not found: #{node.value}") if val.nil?
+      val
     end
 
     def native_bool_to_boolean_object(bool)
