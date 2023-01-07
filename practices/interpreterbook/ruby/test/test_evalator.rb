@@ -31,6 +31,22 @@ class TestEvaluator < MiniTest::Unit::TestCase
     end
   end
 
+  def test_bang_operator
+    tests = [
+      { input: "!true",   output: false },
+      { input: "!false",  output: true },
+      { input: "!5",      output: false },
+      { input: "!!true",  output: true },
+      { input: "!!false", output: false },
+      { input: "!!5",     output: true },
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      test_boolean_object(evaluated, test[:output])
+    end
+  end
+
   private
 
   def test_eval(input)
@@ -41,12 +57,12 @@ class TestEvaluator < MiniTest::Unit::TestCase
   end
 
   def test_integer_object(actual, expected)
-    assert_equal actual.value.class, Integer
-    assert_equal actual.value, expected
+    assert_equal Integer, actual.value.class
+    assert_equal expected, actual.value
   end
 
   def test_boolean_object(actual, expected)
     assert_equal [TrueClass, FalseClass].include?(actual.value.class), true
-    assert_equal actual.value, expected
+    assert_equal expected, actual.value
   end
 end
