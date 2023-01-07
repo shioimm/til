@@ -9,8 +9,10 @@ MiniTest::Unit.autorun
 class TestEvaluator < MiniTest::Unit::TestCase
   def test_eval_integer_expression
     tests = [
-      { input: "5",  output: 5 },
-      { input: "10", output: 10 },
+      { input: "5",   output: 5 },
+      { input: "10",  output: 10 },
+      { input: "-5",  output: -5 },
+      { input: "-10", output: -10 },
     ]
 
     tests.each do |test|

@@ -35,7 +35,10 @@ class Eval
 
     def eval_prefix_expression!(operator, right)
       case operator
-      when "!" then eval_bang_operator_expression!(right)
+      when "!"
+        eval_bang_operator_expression!(right)
+      when "-"
+        eval_minus_prefix_operator_expression!(right)
       else
         nil
       end
@@ -49,6 +52,12 @@ class Eval
       else
         FALSE_OBJ
       end
+    end
+
+    def eval_minus_prefix_operator_expression!(right)
+      return nil if !right.value.is_a? Integer
+
+      ObjectSystem::IntegerObject.new(value: -right.value)
     end
 
     def native_bool_to_boolean_object(bool)
