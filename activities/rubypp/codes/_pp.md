@@ -13,6 +13,7 @@
 
 ```c
 // 構文解析
+// parse_numeric() -> set_integer_literal() -> set_number_literal() -> set_yylval_literal() の動作を再現
 arg : // ...
     | var_lhs lex_ctxt tINCOP_ASGN
     {
