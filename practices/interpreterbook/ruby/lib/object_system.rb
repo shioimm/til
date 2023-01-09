@@ -1,9 +1,20 @@
+require_relative './ast'
+
 module ObjectSystem
   INTEGER_OBJ       = "INTEGER"
   BOOLEAN_OBJ       = "BOOLEAN"
   NULL_OBJ          = "NULL"
   RETURN_VALUE_OBJ  = "RETURN_OBJ"
   ERROR_OBJ         = "ERROR"
+  FUNCTION_OBJ      = "FUNCTION"
+
+  class Object
+    attr_accessor :evaluated
+
+    def initialize(evaluated: nil)
+      @evaluated = evaluated
+    end
+  end
 
   class IntegerObject
     attr_accessor :value
@@ -82,6 +93,24 @@ module ObjectSystem
 
     def inspect
       "[ERROR] #{@message}"
+    end
+  end
+
+  class FunctionObject
+    attr_accessor :params, :body, :env
+
+    def initialize(params: [], body: nil, env: nil)
+      @params = params
+      @body = body
+      @env = env
+    end
+
+    def object_type
+      FUNCTION_OBJ
+    end
+
+    def inspect
+      "fn(#{@params.join(', ')}) {\n  #{@body.to_s}\n}"
     end
   end
 end

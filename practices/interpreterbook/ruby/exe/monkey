@@ -1,0 +1,21 @@
+#! /usr/bin/env ruby
+
+require_relative "../lib/lexer"
+require_relative "../lib/token"
+require_relative "../lib/parser"
+require_relative "../lib/evaluator"
+require_relative "../lib/environment"
+
+env = ObjectSystem::Environment.new
+
+File.open(ARGV[0], "r+") do |f|
+  f.flock(File::LOCK_EX)
+  f.rewind;
+
+  lexer = Lexer.new(f.read)
+  parser = Parser.new(lexer)
+  program = parser.parse_program
+  evaluated = Eval.execute!(program, env)
+
+  puts evaluated.inspect
+end

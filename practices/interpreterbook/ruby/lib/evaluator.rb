@@ -41,6 +41,16 @@ class Eval
         env.set(node.name.value, val)
       when ::AST::Identifier
         eval_identifier!(node, env)
+      when ::AST::FunctionLiteral
+        params = node.params
+        body = node.body
+        ObjectSystem::FunctionObject.new(params: params, body: body, env: env)
+      when ::AST::CallExpression
+        function = execute!(node.function, env)
+        return function if error?(function)
+        args = eval_expressions!(node.args, env)
+        return args if args.first && error?(args.first)
+        apply_function(function, args)
       else
         nil
       end
@@ -159,6 +169,14 @@ class Eval
       val
     end
 
+    def eval_expressions!(exps, env)
+      exps.each_with_object([]) do |exp, result|
+        evaluated = execute!(exp, env)
+        return ObjectSystem::Object.new(evaluated: evaluated) if error?(evaluated)
+        result << evaluated
+      end
+    end
+
     def native_bool_to_boolean_object(bool)
       bool.is_a?(TrueClass) ? TRUE_OBJ : FALSE_OBJ
     end
@@ -179,6 +197,25 @@ class Eval
 
     def new_error(messages)
       ObjectSystem::ErrorObject.new(message: Array(messages).join(", "))
+    end
+
+    def apply_function(function, args)
+      extended_env = extended_function_env(function, args)
+      evaluated = execute!(function.body, extended_env)
+      unwrap_return_value(evaluated)
+    end
+
+    def extended_function_env(function, args)
+      env = ObjectSystem::Environment.new_closed_environment(function.env)
+      function.params.each_with_index do |param, i|
+        env.set(param.value, args[i])
+      end
+      env
+    end
+
+    def unwrap_return_value(obj)
+      obj.return_value if obj.respond_to?(:return_value)
+      obj
     end
   end
 end

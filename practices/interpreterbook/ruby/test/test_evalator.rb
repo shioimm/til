@@ -134,9 +134,35 @@ class TestEvaluator < MiniTest::Unit::TestCase
   def test_let_statements
     tests = [
       { input: "let a = 5; a",             output: 5 },
-      # { input: "let a = 5 * 5; a;",        output: 25 },
-      # { input: "let a = 5; let b = a; b;", output: 5 },
-      # { input: "let a = 5; let b = a; let c = a + b + 5; c;", output: 15 }
+      { input: "let a = 5 * 5; a;",        output: 25 },
+      { input: "let a = 5; let b = a; b;", output: 5 },
+      { input: "let a = 5; let b = a; let c = a + b + 5; c;", output: 15 }
+    ]
+
+    tests.each do |test|
+      evaluated = test_eval(test[:input])
+      test_integer_object(evaluated, test[:output])
+    end
+  end
+
+  def test_function_object
+    input = "fn(x) { x + 2; };"
+
+    evaluated = test_eval(input)
+
+    assert_equal 1, evaluated.params.size
+    assert_equal "x", evaluated.params.first.to_s
+    assert_equal "(x + 2)", evaluated.body.to_s
+  end
+
+  def test_function_application
+    tests = [
+      { input: "let identity = fn(x) { x; }; identity(5);",          output: 5 },
+      { input: "let identity = fn(x) { return x; }; identity(5)",    output: 5 },
+      { input: "let double = fn(x) { x * 2; }; double(5);",          output: 10 },
+      { input: "let add = fn(x, y) { x + y }; add(5, 5);",             output: 10 },
+      { input: "let add = fn(x, y) { x + y }; add(5 + 5, add(5, 5));", output: 20 },
+      { input: "fn(x) { x; }(5); ", output: 5 },
     ]
 
     tests.each do |test|
