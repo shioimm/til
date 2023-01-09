@@ -34,6 +34,10 @@ parser_yylex(struct parser_params *p)
 }
 ```
 
+- 1回目の`+`で次のトークンをpeekし、次のトークンも`+`だった場合にtruthyな値を保持するフラグが必要
+- 読み込んだトークンが`+`であり、かつフラグがtruthyであり、かつその次のトークンが-1である場合
+  `else`以下を実行するようにする
+
 ```c
 #define peekc(p) peekc_n(p, 0)
 #define peekc_n(p,n) (lex_eol_n_p(p, n) ? -1 : (unsigned char)(p)->lex.pcur[n])
