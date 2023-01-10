@@ -1,4 +1,4 @@
-# 実装メモ
+# 実装案
 ### パーサパターン
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
@@ -79,28 +79,6 @@ parser_yylex(struct parser_params *p)
         set_yylval_id('+');
         SET_LEX_STATE(EXPR_BEG);
         return tINCOP_ASGN;
-      }
-    }
-  }
-}
-```
-
-```c
-// parse.y
-
-static enum yytokentype
-parser_yylex(struct parser_params *p)
-{
-  // ...
-  while (1) {
-    switch (c = nextc(p)) {
-    // ...
-    case '+':
-      c = nextc(p);
-      if (c == '+') {
-          set_yylval_id('+');
-          SET_LEX_STATE(EXPR_BEG);
-          return tOP_ASGN;
       }
     }
   }
