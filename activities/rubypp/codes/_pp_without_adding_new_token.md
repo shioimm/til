@@ -8,6 +8,7 @@
 
 ```c
 int peek_char = 0;
+int is_increment_op = 0;
 
 static enum yytokentype
 parser_yylex(struct parser_params *p)
@@ -19,13 +20,14 @@ parser_yylex(struct parser_params *p)
     peek_char = peekc(p);
 
     if (peek_char == '+') {
+      is_increment_op = 1;
       set_yylval_id('+');
       SET_LEX_STATE(EXPR_BEG);
       return tOP_ASGN;
     } else {
       peek_char = peekc_n(p, 1);
-      if (peek_char == -1) {
-        return parse_numeric(p, '1'); // WARN: 式が複数行に渡る場合、SyntaxErrorになる
+      if (is_increment_op && peek_char == -1) {
+        return parse_numeric(p, '1');
       }
     }
     // ...
@@ -33,10 +35,6 @@ parser_yylex(struct parser_params *p)
   // ...
 }
 ```
-
-- 1回目の`+`で次のトークンをpeekし、次のトークンも`+`だった場合にtruthyな値を保持するフラグが必要
-- 読み込んだトークンが`+`であり、かつフラグがtruthyであり、かつその次のトークンが-1である場合
-  `else`以下を実行するようにする
 
 ```c
 #define peekc(p) peekc_n(p, 0)
