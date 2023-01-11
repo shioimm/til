@@ -27,7 +27,7 @@ parser_yylex(struct parser_params *p)
     } else {
       peek_char = peekc_n(p, 1);
       if (is_increment_op && peek_char == -1) {
-        return parse_numeric(p, '1');
+        return set_integer_literal(p, rb_cstr_to_inum("1", 16, FALSE), 0);
       }
     }
     // ...
@@ -35,6 +35,9 @@ parser_yylex(struct parser_params *p)
   // ...
 }
 ```
+
+- 元々は`return parse_numeric(p, '1');`にしていたが、トークンバッファの確保等の処理が不要なため
+  `return set_integer_literal(p, rb_cstr_to_inum("1", 16, FALSE), 0);`へ変更
 
 ```c
 #define peekc(p) peekc_n(p, 0)
