@@ -1,15 +1,28 @@
 # 実装案
 ### パーサパターン
+#### 動作フロー
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
-    - `++`を表現するトークン`TokenName`を追加
-    - `++`を読み込み時、`<TokenName>`をシフト
+    - トークン`+`を読み込む
+    - lex.pcurを一つ進めて次のトークンを取得
+    - 次のトークンが`+`の場合、インクリメント演算子を表すトークン`tINCOP_ASGN`をシフト
 3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
-    - `arg`規則に`| var_lhs lex_ctxt <TokenName>`を追加する
-    - 追加した構文規則にアクションを追加
 4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
 
+#### やること
+- `++`を表現するトークン`tINCOP_ASGN`を追加
+- `yylex()`内に`tINCOP_ASGN`を返すロジックを追加
+- 構文規則`var_lhs lex_ctxt tINCOP_ASGN`を追加
+- 構文規則`var_lhs lex_ctxt tINCOP_ASGN`のアクションで1を表すNODE構造体を作成し、
+  `$$ = new_op_assign(p, $1, $3, <1を表すNODE構造体>, $2, &@$);`を実行
+
 ```c
+// parse.y
+
+%token <id> tINCOP_ASGN "incremental-operator-assignment"
+
+%%
+
 arg : var_lhs lex_ctxt <TokenName>
 {
   // tINTEGER (1) が読み込まれてからarg_rhsに還元されるまでの処理を実行する
@@ -38,31 +51,6 @@ arg : var_lhs lex_ctxt <TokenName>
   // Ripper用の実装
   %*/
 }
-```
-
-### スキャナパターン
-1. `yyparse()`がソースコードを読み込む
-2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
-    - 次のトークンが`+`だった場合: pcurを一つ進める (最初の`c = next(p);`)
-      - 次のトークンが`\n`だった場合: pcurを二つ戻す
-        - 二つ前のトークンが`+`だった場合: pcurを一つ進める + `parse_numeric(p, '1')`を返す
-        - 二つ前のトークンが`+`以外だった場合: pcurを一つ進める + 条件式から抜ける (規定の処理に進む)
-      - 次のトークンが`+`だった場合: pcurを一つ戻し、`tOP_ASGN`を返す (前方の'+')
-      - 次のトークンが`+` / `\n`以外だった場合: 規定の処理に進む
-3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
-4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
-
-```c
-// parse.y
-
-%token <id> tINCOP_ASGN "operator-assignment"
-
-%%
-
-arg : var_lhs tINCOP_ASGN lex_ctxt arg_rhs
-{
-  $$ = new_op_assign(p, $1, $2, $4, $3, &@$);
-}
 
 %%
 
@@ -85,7 +73,24 @@ parser_yylex(struct parser_params *p)
 }
 ```
 
+### スキャナパターン
+#### 動作フロー
+1. `yyparse()`がソースコードを読み込む
+2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
+    - トークン`+`を読み込む
+    - 次のトークンをpeek
+      - 次のトークンが`+`の場合: インクリメント演算子であることを示すフラグをONにし、`tOP_ASSIGN`をシフト
+    - 次のトークン`+`を読み込む
+      - インクリメント演算子であることを示すフラグがONかつ行末の場合: `set_integer_literal()`を実行
+3. `yyparse()`が構文規則部の定義に基づきトークンを還元し、アクション内でASTを構築する
+4. compile.cがASTをYARV命令列へ変換する -> メソッドディスパッチを行う
+
+#### やること
+- `yylex()`内に動作フローを実現する処理を追加
+
 #### メソッド呼び出しパターン
+(レシーバが変数かそれ以外かによって処理を変更しなければならないため頓挫)
+
 1. `yyparse()`がソースコードを読み込む
 2. `yyparse()`が`yylex()`を呼び出しトークンを取得する
     - [要作業] `++`に対してメソッド呼び出しを表すトークンを返す
