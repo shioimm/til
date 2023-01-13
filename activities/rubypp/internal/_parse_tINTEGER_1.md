@@ -56,6 +56,7 @@ set_number_literal(struct parser_params *p, VALUE v,enum yytokentype type, int s
 
 ```c
 // (x = rb_cstr_to_inum(tok(p), 16, FALSE); の返り値)
+// (&_cur_loc = YYLTYPE _cur_loc; へのポインタ)
 
 # define set_yylval_literal(x)
 do {
@@ -71,6 +72,7 @@ do {
 // node.h
 // (l = rb_cstr_to_inum(tok(p), 16, FALSE);)
 // (loc = &_cur_loc)
+// 返り値: NODE*
 #define NEW_LIT(l,loc) NEW_NODE(NODE_LIT,l,0,0,loc)
 
 // node.h
@@ -79,6 +81,7 @@ do {
 // (a1 = 0)
 // (a2 = 0)
 // (loc = &_cur_loc)
+// 返り値: NODE*
 #define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc)
 
 // parse.y
@@ -87,29 +90,30 @@ do {
 // (a2 = (VALUE)0)
 // (a3 = (VALUE)0)
 // (loc = &_cur_loc)
+// 返り値: NODE*
 #define rb_node_newnode(type, a1, a2, a3, loc) node_newnode(p, (type), (a1), (a2), (a3), (loc))
 
 // parse.y
 static NODE*
 node_newnode(
   struct parser_params *p,
-  enum node_type type, // NODE_LIT
-  VALUE a0,            // (VALUE)rb_cstr_to_inum(tok(p), 16, FALSE);
-  VALUE a1,            // (VALUE)0
-  VALUE a2,            // (VALUE)0
-  const rb_code_location_t *loc)
+  enum node_type type,           // NODE_LIT
+  VALUE a0,                      // (VALUE)rb_cstr_to_inum(tok(p), 16, FALSE);
+  VALUE a1,                      // (VALUE)0
+  VALUE a2,                      // (VALUE)0
+  const rb_code_location_t *loc) // YYLTYPE _cur_loc; へのポインタ
 {
   NODE *n = rb_ast_newnode(p->ast, type);
-  rb_node_init(n, type, a0, a1, a2);
-  nd_set_loc(n, loc);
-  nd_set_node_id(n, parser_get_node_id(p));
-  return n; // NODE *n = rb_ast_newnode(p->ast, type); を返す
+  rb_node_init(n, type, a0, a1, a2);        // nのメンバを初期化
+  nd_set_loc(n, loc);                       // nのnd_locメンバに現在のカーソル位置を格納
+  nd_set_node_id(n, parser_get_node_id(p)); // nのnd_idメンバにidを格納
+  return n;                                 // NODE *n を返す
 }
 ```
 
 #### `set_yylval_node()`
 - `yylval.node`に`NEW_LIT(x, &_cur_loc)`で作成したNODEを格納する
-- `yylloc`に現在のソースコードの位置を格納
+- `yylloc`に現在のカーソル位置を格納
 
 ```c
 // (x = NEW_LIT(x, &_cur_loc))
