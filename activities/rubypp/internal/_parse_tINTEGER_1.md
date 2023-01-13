@@ -57,7 +57,6 @@ set_number_literal(struct parser_params *p, VALUE v,enum yytokentype type, int s
 ```c
 // (x = rb_cstr_to_inum(tok(p), 16, FALSE); の返り値)
 // (&_cur_loc = YYLTYPE _cur_loc; へのポインタ)
-
 # define set_yylval_literal(x)
 do {
   set_yylval_node(NEW_LIT(x, &_cur_loc)); // NEW_LIT = NODE*
@@ -139,6 +138,16 @@ rb_parser_set_location(struct parser_params *p, YYLTYPE *yylloc)
 // (sourceline = p->ruby_sourceline)
 // (beg_pos = (int)(p->lex.ptok - p->lex.pbeg))
 // (end_pos = (int)(p->lex.pcur - p->lex.pbeg))
+//
+// parse.y内でYYLTYPEマクロはrb_code_location_t型として定義されている
+//   (parse.y)
+//   define YYLTYPE rb_code_location_t
+//   (node.h)
+//   typedef struct rb_code_location_struct {
+//     rb_code_position_t beg_pos;
+//     rb_code_position_t end_pos;
+//   } rb_code_location_t;
+
 static YYLTYPE *
 rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
 {
@@ -155,15 +164,23 @@ rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
 - 値を書き込まずWB宣言のみを書き込む
 
 ```c
-// (old = p->ast)
-// (oldv = Qnil)
-// (young = rb_cstr_to_inum(tok(p), 16, FALSE))
+// (old = p->ast)                               An old object.
+// (oldv = Qnil)                                An object previously stored inside of `old`.
+// (young = rb_cstr_to_inum(tok(p), 16, FALSE)) A young object.
 #define RB_OBJ_WRITTEN(old, oldv, young)
-  RBIMPL_CAST(rb_obj_written((VALUE)(old),
-              (VALUE)(oldv),
-              (VALUE)(young),
-              __FILE__,
-              __LINE__))
+        RBIMPL_CAST(rb_obj_written((VALUE)(old), (VALUE)(oldv), (VALUE)(young), __FILE__, __LINE__))
+```
+
+```c
+// node.h
+// p->ast
+typedef struct rb_ast_struct {
+  VALUE flags;
+  node_buffer_t *node_buffer;
+  rb_ast_body_t body;
+} rb_ast_t;
+
+// yycompile() の中で作成され、p->ast に紐付けられる
 ```
 
 - https://github.com/ruby/ruby/blob/master/parse.y
