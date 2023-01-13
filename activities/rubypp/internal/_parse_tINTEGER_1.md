@@ -56,7 +56,7 @@ set_number_literal(struct parser_params *p, VALUE v,enum yytokentype type, int s
 
 ```c
 // (x = rb_cstr_to_inum(tok(p), 16, FALSE); の返り値)
-
+// (&_cur_loc = YYLTYPE _cur_loc; へのポインタ)
 # define set_yylval_literal(x)
 do {
   set_yylval_node(NEW_LIT(x, &_cur_loc)); // NEW_LIT = NODE*
@@ -71,6 +71,7 @@ do {
 // node.h
 // (l = rb_cstr_to_inum(tok(p), 16, FALSE);)
 // (loc = &_cur_loc)
+// 返り値: NODE*
 #define NEW_LIT(l,loc) NEW_NODE(NODE_LIT,l,0,0,loc)
 
 // node.h
@@ -79,6 +80,7 @@ do {
 // (a1 = 0)
 // (a2 = 0)
 // (loc = &_cur_loc)
+// 返り値: NODE*
 #define NEW_NODE(t,a0,a1,a2,loc) rb_node_newnode((t),(VALUE)(a0),(VALUE)(a1),(VALUE)(a2),loc)
 
 // parse.y
@@ -87,29 +89,30 @@ do {
 // (a2 = (VALUE)0)
 // (a3 = (VALUE)0)
 // (loc = &_cur_loc)
+// 返り値: NODE*
 #define rb_node_newnode(type, a1, a2, a3, loc) node_newnode(p, (type), (a1), (a2), (a3), (loc))
 
 // parse.y
 static NODE*
 node_newnode(
   struct parser_params *p,
-  enum node_type type, // NODE_LIT
-  VALUE a0,            // (VALUE)rb_cstr_to_inum(tok(p), 16, FALSE);
-  VALUE a1,            // (VALUE)0
-  VALUE a2,            // (VALUE)0
-  const rb_code_location_t *loc)
+  enum node_type type,           // NODE_LIT
+  VALUE a0,                      // (VALUE)rb_cstr_to_inum(tok(p), 16, FALSE);
+  VALUE a1,                      // (VALUE)0
+  VALUE a2,                      // (VALUE)0
+  const rb_code_location_t *loc) // YYLTYPE _cur_loc; へのポインタ
 {
   NODE *n = rb_ast_newnode(p->ast, type);
-  rb_node_init(n, type, a0, a1, a2);
-  nd_set_loc(n, loc);
-  nd_set_node_id(n, parser_get_node_id(p));
-  return n; // NODE *n = rb_ast_newnode(p->ast, type); を返す
+  rb_node_init(n, type, a0, a1, a2);        // nのメンバを初期化
+  nd_set_loc(n, loc);                       // nのnd_locメンバに現在のカーソル位置を格納
+  nd_set_node_id(n, parser_get_node_id(p)); // nのnd_idメンバにidを格納
+  return n;                                 // NODE *n を返す
 }
 ```
 
 #### `set_yylval_node()`
 - `yylval.node`に`NEW_LIT(x, &_cur_loc)`で作成したNODEを格納する
-- `yylloc`に現在のソースコードの位置を格納
+- `yylloc`に現在のカーソル位置を格納
 
 ```c
 // (x = NEW_LIT(x, &_cur_loc))
@@ -135,6 +138,16 @@ rb_parser_set_location(struct parser_params *p, YYLTYPE *yylloc)
 // (sourceline = p->ruby_sourceline)
 // (beg_pos = (int)(p->lex.ptok - p->lex.pbeg))
 // (end_pos = (int)(p->lex.pcur - p->lex.pbeg))
+//
+// parse.y内でYYLTYPEマクロはrb_code_location_t型として定義されている
+//   (parse.y)
+//   define YYLTYPE rb_code_location_t
+//   (node.h)
+//   typedef struct rb_code_location_struct {
+//     rb_code_position_t beg_pos;
+//     rb_code_position_t end_pos;
+//   } rb_code_location_t;
+
 static YYLTYPE *
 rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
 {
@@ -151,15 +164,23 @@ rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
 - 値を書き込まずWB宣言のみを書き込む
 
 ```c
-// (old = p->ast)
-// (oldv = Qnil)
-// (young = rb_cstr_to_inum(tok(p), 16, FALSE))
+// (old = p->ast)                               An old object.
+// (oldv = Qnil)                                An object previously stored inside of `old`.
+// (young = rb_cstr_to_inum(tok(p), 16, FALSE)) A young object.
 #define RB_OBJ_WRITTEN(old, oldv, young)
-  RBIMPL_CAST(rb_obj_written((VALUE)(old),
-              (VALUE)(oldv),
-              (VALUE)(young),
-              __FILE__,
-              __LINE__))
+        RBIMPL_CAST(rb_obj_written((VALUE)(old), (VALUE)(oldv), (VALUE)(young), __FILE__, __LINE__))
+```
+
+```c
+// node.h
+// p->ast
+typedef struct rb_ast_struct {
+  VALUE flags;
+  node_buffer_t *node_buffer;
+  rb_ast_body_t body;
+} rb_ast_t;
+
+// yycompile() の中で作成され、p->ast に紐付けられる
 ```
 
 - https://github.com/ruby/ruby/blob/master/parse.y
