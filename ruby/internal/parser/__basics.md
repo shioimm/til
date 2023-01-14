@@ -14,8 +14,8 @@
     - 1から渡された情報からソースコードを読み込み、最終的にASTを返す
 3. `yycompile0()`
 4. `yyparse()`
-5. `yylex()` -> `parser_yylex()`
-6. `yyreduce()` -> `yynewstate()` -> `yylex()` ...
+5. (`yychar == YYEMPTY`の場合) `yylex()` -> `parser_yylex()` -> トークンをシフト
+6. (還元が実行される場合) `yyreduce()` -> `yynewstate()` -> (`yychar == YYEMPTY`の場合) `yylex()` ...
 
 ## 参照
 - [第10章 パーサ](https://i.loveruby.net/ja/rhg/book/parser.html)
