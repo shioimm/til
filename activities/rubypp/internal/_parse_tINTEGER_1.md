@@ -160,8 +160,8 @@ rb_parser_set_pos(YYLTYPE *yylloc, int sourceline, int beg_pos, int end_pos)
 ```
 
 #### `RB_OBJ_WRITTEN` (include/ruby/internal/rgengc.h)
-- 古い世代から若い世代への新しい参照のための書き込みバリア
-- 値を書き込まずWB宣言のみを書き込む
+- 古い世代のオブジェクトから若い世代のオブジェクトへの新しい参照のためのライトバリア
+- 値を書き込まずライトバリア宣言のみを書き込む
 
 ```c
 // (old = p->ast)                               An old object.
