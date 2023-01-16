@@ -18,11 +18,8 @@ parser_yylex(struct parser_params *p)
       set_yylval_id('+');
       SET_LEX_STATE(EXPR_BEG);
       return tOP_ASGN;
-    } else {
-      peek_char = peekc_n(p, 1);
-      if (is_increment_op && peek_char == -1) {
-        return set_integer_literal(p, rb_cstr_to_inum("1", 16, FALSE), 0);
-      }
+    } else if (is_increment_op ) {
+      return set_integer_literal(p, rb_cstr_to_inum("1", 16, FALSE), 0);
     }
     // ...
   }
@@ -38,3 +35,5 @@ parser_yylex(struct parser_params *p)
 #define peekc_n(p,n) (lex_eol_n_p(p, n) ? -1 : (unsigned char)(p)->lex.pcur[n])
 #define lex_eol_n_p(p,n) ((p)->lex.pcur+(n) >= (p)->lex.pend)
 ```
+
+- 結合度の問題で意図しない挙動になるケースがあることが確認できた
