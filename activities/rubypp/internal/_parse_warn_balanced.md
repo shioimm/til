@@ -26,6 +26,7 @@ parser_yylex(struct parser_params *p)
 // op  = "+"
 // syn = "unary operator"
 
+// コンマ演算子 (左辺を評価して捨て、その後右被演算子を評価する)
 #define warn_balanced(tok, op, syn) (
   (void)(!IS_lex_state_for(last_state, EXPR_CLASS|EXPR_DOT|EXPR_FNAME|EXPR_ENDFN) &&
          space_seen &&
@@ -34,11 +35,7 @@ parser_yylex(struct parser_params *p)
   (enum yytokentype)(tok)
 )
 
-// (void)(!IS_lex_state_for(last_state, EXPR_CLASS|EXPR_DOT|EXPR_FNAME|EXPR_ENDFN) &&
-//        space_seen &&
-//        !ISSPACE('i') &&
-//        (ambiguous_operator('+', "op", "unary operator"), 0)),
-// (enum yytokentype)('+')
+// 条件に応じて ambiguous_operator() を実行し、その後 (enum yytokentype)(tok) を返す
 
 #define IS_lex_state_for(x, ls) ((x) & (ls))
 #define ambiguous_operator(tok, op, syn) (
