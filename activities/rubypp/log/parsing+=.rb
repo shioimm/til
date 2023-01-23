@@ -416,7 +416,7 @@ i += 1
 # -> $$ = nterm stmt (2.0-2.6: NODE_LASGN)                    stmtへの還元を完了
 #
 # ----- semantic stack -------
-# top_stmts terms expr
+# top_stmts terms stmt
 # ----------------------------
 #
 # Entering state 73                                           top_stmtへの還元を開始 (• '\n')
