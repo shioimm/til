@@ -29,7 +29,7 @@ parser_yylex(struct parser_params *p)
           token_flush(p);
           goto retry;
         }
-        newtok(p);
+        newtok(p); // 新しいトークンを開始する
         break;
     }
 
@@ -74,7 +74,7 @@ parse_ident(struct parser_params *p, int c, int cmd_state)
   } while (parser_is_identchar(p));
   // ...
 
-  tokfix(p); // ((p)->tokenbuf[(p)->tokidx]='\0')
+  tokfix(p); // バッファを終端する ((p)->tokenbuf[(p)->tokidx]='\0')
   // ...
 
   if (mb == ENC_CODERANGE_7BIT && (!IS_lex_state(EXPR_DOT) || enforce_keyword_end)) {
@@ -85,10 +85,6 @@ parse_ident(struct parser_params *p, int c, int cmd_state)
       enum lex_state_e state = p->lex.state;
       // ...
       SET_LEX_STATE(kw->state);
-      // ...
-      if (IS_lex_state(EXPR_BEG)) {
-        p->command_start = TRUE;
-      }
       // ...
       if (IS_lex_state_for(state, (EXPR_BEG | EXPR_LABELED | EXPR_CLASS))) {
         return kw->id[0];
