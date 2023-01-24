@@ -1,6 +1,8 @@
 # `struct parser_params`
 
 ```c
+// parse.y
+
 struct parser_params {
   rb_imemo_tmpbuf_t *heap;
 
@@ -44,7 +46,7 @@ struct parser_params {
   int heredoc_indent;
   int heredoc_line_indent;
 
-  struct local_vars *lvtbl;
+  struct local_vars *lvtbl; // ローカル変数の管理
   st_table *pvtbl;
   st_table *pktbl;
   int line_count;
@@ -129,11 +131,42 @@ struct parser_params {
 ```
 
 ```c
+// parse.y
+
 struct rb_strterm_struct {
   VALUE flags;
   union {
     rb_strterm_literal_t literal;
     rb_strterm_heredoc_t heredoc;
   } u;
+};
+```
+
+```c
+// parse.y
+
+struct vtable {
+  ID *tbl;
+  int pos;
+  int capa;
+  struct vtable *prev;
+};
+
+struct local_vars {
+  struct vtable *args;
+  struct vtable *vars;
+  struct vtable *used;
+
+# if WARN_PAST_SCOPE
+  struct vtable *past;
+# endif
+
+  struct local_vars *prev;
+
+# ifndef RIPPER
+  struct {
+    NODE *outer, *inner, *current;
+  } numparam;
+# endif
 };
 ```
