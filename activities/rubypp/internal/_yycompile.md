@@ -36,7 +36,7 @@ yycompile(VALUE vparser, struct parser_params *p, VALUE fname, int line)
   }
 
   p->ruby_sourceline = line - 1;
-  p->lvtbl = NULL;
+  p->lvtbl = NULL; // ローカルテーブルを初期化
   p->ast = ast = rb_ast_new(); // 新しい rb_ast_t ast を作成
 
   // (vm_trace.c) VALUE rb_suppress_tracing(VALUE (*func)(VALUE), VALUE arg)
@@ -47,6 +47,31 @@ yycompile(VALUE vparser, struct parser_params *p, VALUE fname, int line)
   RB_GC_GUARD(vparser); /* prohibit tail call optimization */
 
   while (p->lvtbl) local_pop(p);
+  // static void
+  // local_pop(struct parser_params *p)
+  // {
+  //   struct local_vars *local = p->lvtbl->prev;
+  //   if (p->lvtbl->used) {
+  //     warn_unused_var(p, p->lvtbl);
+  //     vtable_free(p->lvtbl->used);
+  //   }
+  //
+  // # if WARN_PAST_SCOPE
+  //   while (p->lvtbl->past) {
+  //     struct vtable *past = p->lvtbl->past;
+  //     p->lvtbl->past = past->prev;
+  //     vtable_free(past);
+  //   }
+  // # endif
+  //
+  //   vtable_free(p->lvtbl->args);
+  //   vtable_free(p->lvtbl->vars);
+  //   CMDARG_POP();
+  //   COND_POP();
+  //
+  //   ruby_sized_xfree(p->lvtbl, sizeof(*p->lvtbl));
+  //   p->lvtbl = local;
+  // }
 
   return ast;
 }
