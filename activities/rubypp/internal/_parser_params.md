@@ -32,8 +32,8 @@ struct parser_params {
     int brace_nest; // "{}" のネストレベル
   } lex;
 
-  stack_type cond_stack;
-  stack_type cmdarg_stack;
+  stack_type cond_stack;   // 条件式の深さを維持するスタック
+  stack_type cmdarg_stack; // 括弧なし引数の深さを維持するスタック
 
   int tokidx; // バッファの先頭からトークンの末尾
   int toksiz; // バッファ長
@@ -55,7 +55,9 @@ struct parser_params {
   VALUE ruby_sourcefile_string; // 現在のソース文字列
 
   rb_encoding *enc;
+
   token_info *token_info;
+
   VALUE case_labels;
   VALUE compile_option;
 
@@ -169,4 +171,14 @@ struct local_vars {
   } numparam;
 # endif
 };
+```
+
+```c
+typedef struct token_info {
+  const char *token;
+  rb_code_position_t beg;
+  int indent;
+  int nonspc;
+  struct token_info *next;
+} token_info;
 ```
