@@ -14,29 +14,6 @@
 }
 ```
 
-## 終端記号
-
-| 記号             | 意味                        |
-| -                | -                           |
-| `tIDENTIFIER`    | "local variable or method"  |
-| `tFID`           | "method" (?や!で終わるもの) |
-| `tGVAR`          | "global variable"           |
-| `tIVAR`          | "instance variable"         |
-| `tCONSTANT`      | "constant"                  |
-| `tCVAR`          | "class variable"            |
-| `tLABEL`         | "label"                     |
-| `tINTEGER`       | "integer literal"           |
-| `tFLOAT`         | "float literal"             |
-| `tRATIONAL`      | "rational literal"          |
-| `tIMAGINARY`     | "imaginary literal"         |
-| `tCHAR`          | "char literal"              |
-| `tNTH_REF`       | "numbered reference"        |
-| `tBACK_REF`      | "back reference"            |
-| `tSTRING_CONTENT`|  "literal content"          |
-| `tREGEXP_END`    |                             |
-| `tDUMNY_END`     | "dummy end"                 |
-
-
 ## 入力バッファ
 - ソースプログラムを読み込むためのバッファ
 - `parser_params`構造体の`lex`メンバ
@@ -53,9 +30,9 @@
   - `parser_params`構造体の`toksiz`メンバ - バッファ長
 
 #### 読み込みインターフェース
-- `newtok()` - 新しいトークンを開始する
-- `tokadd()` - バッファに文字を足す
-- `tokfix()` - バッファを終端する
+- `newtok()` - `parser_params`からたどれるトークン用のバッファを確保する
+- `tokadd()` - バッファに一文字を足す
+- `tokfix()` - バッファを終端させる
 - `tok()`    - バッファリングしている文字列の先頭へのポインタ
 - `toklen()` - バッファリングしている文字列の長さ
 
