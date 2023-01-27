@@ -1,15 +1,15 @@
 # Amazone RDS
-- フルマネージドRDB (CA型)
+- フルマネージドRDBサービス
 - 使用可能なDBエンジン: Amazon Aurora / PostgreSQL / MySQL / MariaDB / Oracle / SQL Server
 
 #### マネージドサービスとしてサポートする機能
 - スケールアップ・スケールダウン
-- 自動フェイルオーバー - 稼働中のシステムがダウンした際に待機系のシステムへ自動的に切り替え
+- 自動フェイルオーバー (稼働中のシステムがダウンした際に待機系のシステムへ自動的に切り替え)
   - RDSはプライマリ・スタンバイが同じDBエンドポイントを使用するため参照側でエンドポイントの切り替えが不要
   - Multi-AZ配置オプション - 別のAZにスタンバイDBを配置するオプション
-- 自動バックアップ - DBスナップショット (毎日) 及びトランザクションログ (5分ごと) をS3へ自動的に保存
-- DBパッチ適用 - DBエンジンのアップデートを自動的に実行
-- OSパッチ適用 - OSのソフトウェアアップデートを自動的に実行
+- 自動バックアップ (DBスナップショット (毎日) 及びトランザクションログ (5分ごと) をS3へ自動的に保存)
+- DBパッチ適用 (DBエンジンのアップデートを自動的に実行)
+- OSパッチ適用 (OSのソフトウェアアップデートを自動的に実行)
 
 #### RDSで作成したリードレプリカがサポートする機能
 - 読み込みアクセスが遅い場合、最大5台までリードレプリカを構築し負荷分散が可能
@@ -28,16 +28,8 @@
     - パラメータ - DBにおける設定値
 2. パラメータの編集
     - `utf8mb4`の設定
-      character_set_client
-      character_set_connection
-      character_set_database
-      character_set_database
-      character_set_server
     - `utf8mb4_general_ci`の設定
-      collation_connection
-      collation_server
     - `SET NAMES utf8mb4;`の設定
-      init_connect
 3. オプショングループの作成
 4. データベースの作成
     - エンジンの選択
