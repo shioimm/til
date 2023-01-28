@@ -11,8 +11,8 @@ struct parser_params {
 
   struct {
     rb_strterm_t *strterm; // 文字列モード
-    VALUE (*gets)(struct parser_params*,VALUE);
-    VALUE input;      // 入力
+    VALUE (*gets)(struct parser_params*,VALUE); // inputから行を取得して返す関数 (lex_getline())
+    VALUE input;      // 入力全体を表すRubyオブジェクト
     VALUE lastline;   // 読み込み中の行
     VALUE nextline;   // 次の行
     const char *pbeg; // バッファの先頭
