@@ -78,7 +78,12 @@ parse_ident(struct parser_params *p, int c, int cmd_state)
   // ...
 
   if (mb == ENC_CODERANGE_7BIT && (!IS_lex_state(EXPR_DOT) || enforce_keyword_end)) {
-    const struct kwtable *kw; // struct kwtable { short name, id[2], state; };
+    // struct kwtable {
+    //  short name, 予約語の名前
+    //  id[2],      id[0] = 予約語の記号 / id[1] = 予約語の修飾版の記号
+    //  state;      その予約語を読んだ後に移行すべきlex_state
+    // };a
+    const struct kwtable *kw;
     kw = rb_reserved_word(tok(p), toklen(p));
 
     if (kw) {
