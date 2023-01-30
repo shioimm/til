@@ -6,7 +6,18 @@
 struct parser_params {
   rb_imemo_tmpbuf_t *heap;
 
-  YYSTYPE *lval;
+  // union YYSTYPE {
+  //   VALUE val;
+  //   NODE *node;
+  //   ID id;
+  //   int num;
+  //   st_table *tbl;
+  //   const struct vtable *vars;
+  //   struct rb_strterm_struct *strterm;
+  //   struct lex_context ctxt;
+  // };
+  YYSTYPE *lval; // yylval
+
   YYLTYPE *yylloc;
 
   struct {
