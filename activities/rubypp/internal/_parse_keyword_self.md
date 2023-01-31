@@ -1,4 +1,5 @@
 # `keyword_self`の切り出し
+## 字句解析
 
 ```c
 // parse.y
@@ -88,10 +89,19 @@ parse_ident(struct parser_params *p, int c, int cmd_state)
 
     if (kw) {
       enum lex_state_e state = p->lex.state;
-      // ...
+
+      if (IS_lex_state_for(state, EXPR_FNAME)) {
+        // ケース (1)
+        SET_LEX_STATE(EXPR_ENDFN);
+        set_yylval_name(rb_intern2(tok(p), toklen(p)));
+        return kw->id[0];
+      }
+
       SET_LEX_STATE(kw->state);
       // ...
+
       if (IS_lex_state_for(state, (EXPR_BEG | EXPR_LABELED | EXPR_CLASS))) {
+        // ケース (2)
         return kw->id[0];
       }
       // ...
@@ -144,4 +154,21 @@ rb_reserved_word (register const char *str, register size_t len)
   }
   return 0;
 }
+```
+
+## 構文解析
+
+```c
+keyword_variable | keyword_self
+                 {
+                   // $1 = T_UNDEF
+                   $$ = KWD2EID(self, $1); // KWD2EID(t, v) keyword_##t
+                 }
+var_ref          | keyword_variable
+primary          | var_ref
+arg              | primary
+                 {
+                   // $1 = RNode ($1->flags = T_FIXNUM 28045)
+                   $$ = $1;
+                 }
 ```
