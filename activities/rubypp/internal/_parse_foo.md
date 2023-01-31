@@ -4,7 +4,7 @@
 def foo
 end
 
-foo
+foo()
 ```
 
 ## 字句解析
@@ -84,23 +84,23 @@ tokenize_ident(struct parser_params *p, const enum lex_state_e last_state)
 operation   : tIDENTIFIER
 fcall       : operation
             {
-              $$ = NEW_FCALL($1, 0, &@$);
-              nd_set_line($$, p->tokline);
+              $$ = NEW_FCALL($1, 0, &@$);  // ノードNODE_FCALLを作る
+              nd_set_line($$, p->tokline); // ノードのflagsを設定 (node.h)
               /*% %*/
               /*% ripper: $1 %*/
             }
 method_call : fcall paren_args
             {
               /*%%%*/
-              $$ = $1;
-              $$->nd_args = $2;
-              nd_set_last_loc($1, @2.end_pos);
+              $$ = $1;                         // $1 = ノードNODE_FCALL
+              $$->nd_args = $2;                // 引数ノードを nd_args に持たせる
+              nd_set_last_loc($1, @2.end_pos); // ((n)->nd_loc.end_pos) = (v) (node.h)
               /*% %*/
               /*% ripper: method_add_arg!(fcall!($1), $2) %*/
             }
 primary     : method_call
 arg         | primary
             {
-              $$ = $1;
+              $$ = $1; // $1 = ノードNODE_FCALL
             }
 ```
