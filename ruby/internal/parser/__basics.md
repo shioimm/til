@@ -32,8 +32,21 @@
 9. `yyparse()` (yyreduce)
     - セマンティックスタックのトークンを構文規則部の定義に基づいて還元し、yynewstateへ移行する
 10. `yyparse()` (yynewstate)
-    - 次のステートに移行する
+    - 次のステートに移行する (`yy_state_t *yyssp`をインクリメントする)
     - 移行先がyybackupであり、 `yychar == YYEMPTY` の場合は再び `yylex()` を呼ぶ
+
+#### parse.c内に用意されているテーブル
+- `YYTRANSLATE[TOKEN-NUM]` - トークン番号`TOKEN-NUM`に対応するシンボル番号
+- `YYRLINE[YYN]`           - ルール番号`YYN`が定義されたソース行 (`if YYDEBUG`)
+- `YYTNAME[SYMBOL-NUM]`    - シンボル番号に対応するシンボル名文字列
+- `YYPACT[STATE-NUM]`      - YYTABLEにおけるステート番号`STATE-NUM`が指すインデックス
+- `YYDEFACT[STATE-NUM]`    - ステート番号`STATE-NUM`におけるデフォルトの還元番号
+- `YYPGOTO[NTERM-NUM]`
+- `YYDEFGOTO[NTERM-NUM]`
+- `YYTABLE[YYPACT[STATE-NUM]]` - ステート番号`STATE-NUM`時の動作 (正の値ならシフト、負の値なら還元)
+- `YYSTOS[STATE-NUM]`          - ステート番号`STATE-NUM`時のアクセス記号の種別
+- `YYR1[RULE-NUM]`             - ルール番号`RULE-NUM`における構文規則の左辺
+- `YYR2[RULE-NUM] `            - ルール番号`RULE-NUM`における構文規則の右辺
 
 ## 参照
 - [第10章 パーサ](https://i.loveruby.net/ja/rhg/book/parser.html)
