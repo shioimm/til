@@ -1,69 +1,49 @@
-# YAMLファイル
-## リスト
-- 配列形式のデータ構造
+# YAMLフォーマット
+
 ```yml
-- a
-- b
-- c
-
-# => ["a", "b", "c"]
-
-- a
+# ["foo", "bar", ["baz"]]
+- foo
+- bar
 -
-  - b
-- c
+  - baz
 
-# => ["a", ["b"], "c"]
+# { "FOO" => "foo", "BAR" => { "X" => "x" }, "BAZ" => [{ "Y" => "y" }] }
+FOO: foo
+BAR:
+  X: x
+BAZ:
+  - Y: y
 ```
 
-## マップ
-- キーと値のペアを一つ以上持つオブジェクト
+## 複数行
+
 ```yml
-A: a
-B:
-   C: c
-D:
-  - d
-- E: e
+# { "foo": "bar\nbaz\n" }
+foo: |
+  bar
+  baz
 
-# => { "A" => "a", "B" => { "C" => c }, "D" => ["d"] }
-#    [{ "E" => "e" }]
-```
+# { "foo": "bar\nbaz" }
+foo: |-
+  bar
+  baz
 
-## スカラ
-- リスト・マップ以外のデータ型
-  - 真偽値
-  - NULL値
-  - 整数
-  - 浮動小数点数
-  - 文字列
-
-## 改行
-```yml
-run: | # \nで行を結合する
-  echo 'Hello' >> README.md
-  cat README.md
+# { "foo": "bar baz\n" }
+foo: >
+  bar
+  baz
 ```
 
 ## アンカー - エイリアス
-```yml
-default: &default_filters # アンカーの定義(&)
-  branches:
-    only: /.*/
-  tags:
-    only: /.*/
 
-workflows:
-  main:
-    jobs:
-      - test:
-        filters: *default_filters # アンカーの呼び出し(*)
-      - deploy:
-        filters:
-          <<: *default_filters # アンカーの呼び出しをマップに対してマージ
-          branches:
-            only: /master/
+```yml
+foo: &anchor # &<アンカー名>
+  foo
+
+# { "bar" => "foo" }
+bar:
+  <<*anchor # <<*<アンカー名>
 ```
 
-## 参照・引用
-- CitrcleCI実践入門 2.3
+## 参照
+- https://prograshi.com/language/json/what-are-yaml-and-yml/
