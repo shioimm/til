@@ -72,9 +72,20 @@
 - loops
   - 操作のループが発生した回数
 
-## 出力フォーマットの整形
+#### キャッシュヒット数も出力
+- 各処理に対して `Buffers: shared hit` としてバッファキャッシュヒット数を表示する
+  - 数値が大きいほどキャッシュが効いている
+
+```sql
+# explain (analyze, buffers) select * from users order by created_at limit 10;
 ```
+
+## 出力フォーマットの整形
+
+```sql
 # explain (analyze, format yaml) select * from users order by created_at limit 10;
+
+# explain (analyze, format json) select * from users order by created_at limit 10;
 ```
 
 ## 参照・引用
