@@ -1,10 +1,12 @@
 # WIP
 def foo
-  raise
-rescue => e
-  p e
+  raise LightningTalkTimeout if rand(30) > 15
+rescue
+  p "OMG"
 else
-  # unreached
+  p "Yaaaaaay"
 ensure
   p "Anyway, #ruby30th"
 end
+
+foo

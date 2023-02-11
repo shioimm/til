@@ -1,8 +1,9 @@
-MESSAGE = %w[# r u b y 3 0 t h]
-i = MESSAGE.length
+i = 0
 
-def foo(i)
-  yield foo(i - 1) { print MESSAGE[i] } if i >= -1
+def foo(&block)
+  block.call %w[# r u b y 3 0 t h]
+  foo(&block)
 end
 
-foo(i) { |f| f; puts "\n" }
+foo { |message| print message[i]; i += 1; break if i >= message.length }
+puts "\n"
