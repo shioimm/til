@@ -1,4 +1,5 @@
-reader, writer = IO.pipe
-writer.puts '#ruby30th'
-writer.close
-puts reader.read
+pid = fork do
+  exec "echo", "-n", "#ruby"
+end
+Process.waitpid(pid)
+system("echo 30th")

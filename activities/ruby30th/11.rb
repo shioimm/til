@@ -1,4 +1,3 @@
-# WIP
 def foo
   raise LightningTalkTimeout if rand(30) > 15
 rescue
