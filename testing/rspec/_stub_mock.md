@@ -4,10 +4,10 @@
 - スパイ - スタブを利用してモックをチェックするテストの構造
 
 ```ruby
-let(:***_client) { double('***::Client', to_jwt: 'token') }
+let(:foo_client) { double('Foo::Client', to_jwt: 'token') }
 
 before do
-  allow(:***_client_instance).to receive(:new).and_return '***_client_instance'
+  allow(:foo_client).to receive(:new).and_return 'foo_client_instance'
 end
 ```
 
@@ -19,10 +19,10 @@ end
 - 実際のクラス・インスタンスを用いたダブル
 
 ```ruby
-let(:***_client) { double('***::Client', to_jwt: 'token') }
+let(:foo_client_instance) { double('Foo::Client instance', to_jwt: 'token') }
 
 before do
-  allow(***::Client).to receive(:new).and_return xxx_rest_client_instance
+  allow(Foo::Client).to receive(:new).and_return foo_client_instance
 end
 ```
 
