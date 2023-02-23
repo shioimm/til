@@ -4,7 +4,7 @@ end
 
 def bar(arg: def m; 'This is an arg'; end)
   p arg # => :m
-  p self.method(:m).call # => 'This is an arg'
+  p self.method(arg).call # => 'This is an arg'
 end
 
 foo

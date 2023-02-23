@@ -80,7 +80,14 @@
 # explain (analyze, buffers) select * from users order by created_at limit 10;
 ```
 
-## 出力フォーマットの整形
+#### 追加情報の出力
+- 計画ツリー、スキーマ修飾テーブル、関数名内の各ノードに対して出力列リストを含める
+
+```sql
+# explain (verbose) select * from users order by created_at limit 10;
+```
+
+#### 出力フォーマットの整形
 
 ```sql
 # explain (analyze, format yaml) select * from users order by created_at limit 10;
