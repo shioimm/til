@@ -1,1 +1,2 @@
-'#ruby30th'.eql?((def m; '#ruby30th'; end; m))
+message = (() || (def foo = "#ruby30th"); foo)
+puts message
