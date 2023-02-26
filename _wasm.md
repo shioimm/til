@@ -1,15 +1,18 @@
 # WebAssembly (WASM) / WASI
 #### WebAssembly (WASM)
-- Webブラウザで高速、安全に実行で可能なバイナリソフトウェア形式
+- Webブラウザで高速、安全に実行で可能なバイナリソフトウェアフォーマット
 - 高級言語で開発したプログラムをコンパイルすることでバイナリを生成できる
 - 元々Webブラウザ上で高速、安全に実行可能なバイナリフォーマットとして開発されたが
-  その後Webブラウザだけでなく各OSやCDNエッジなどにもWebAssemblyを実行可能なランタイムが開発された
+  WASIの策定とブラウザから独立したランタイムの開発によりあらゆる環境にて
+  共通のバイナリで実行可能なバイナリフォーマットとなった
+- W3CのWebAssembly Community Groupが標準化を行う
 
 #### WASI (WebAssembly System Interface)
 - WebAssemblyをブラウザを介さずクロスプラットフォームで実行できるようにするためのインターフェース仕様
 - WASMアプリケーションに対してOSのシステムコールを抽象化することでOS依存をなくし、
   ポータブルなWASMアプリケーションを実現する
 - WASIに従って開発されたWebAssemblyアプリケーションはいずれのWASIに対応したWebAssemblyランタイムで実行可能
+- ByteCode Allianceが標準化を行う
 
 #### アセンブリ言語との違い
 - アセンブリ言語は各プロセッサ・アーキテクチャごとに対応する
@@ -24,6 +27,10 @@
 4. WebブラウザがWASMを解釈し実行する
     - JSと並行して動作する
     - JSからWASMを呼び出したりWASMからJSを呼び出すこともできる
+
+## 代表的なWebAssemblyランタイム
+- WasmTime (ByteCode Allianceによる) - 事実上のリファレンス実装
+- WasmEdge (Second Stateによる) - Dockerコンテナの業界標準であるOCIに対応
 
 ## Binaryen
 - [Binaryen](https://github.com/WebAssembly/binaryen)
