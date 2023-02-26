@@ -8,7 +8,8 @@ Foo.new.foo
 
 Bar = Class.new do
   define_method(:bar) do
-    IO.new(2).write "#ruby30th\n"
+    stdout = IO.new(2)
+    stdout.send(:write, "#ruby30th\n")
   end
 end
 
