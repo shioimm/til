@@ -1,4 +1,20 @@
 # 設定
+### `Rails.application.routes.default_url_options`
+
+```ruby
+class Application < Rails::Application
+  config.action_controller.default_url_options = { ... }
+
+  # URIスキーム
+  # デフォルトではリクエスト時のURIスキームを同じスキームをレスポンスを返す
+  # アプリケーション内部でURIを生成する際は default_url_options: :protocol が参照される
+  # config.action_controller.default_url_options = { protocol: 'https' }
+
+  # URLにtrailing slashを付与する
+  # config.action_controller.default_url_options = { trailing_slash: true }
+end
+```
+
 ### `config.action_dispatch.default_headers`
 - デフォルトのHTTPレスポンスヘッダ
 
