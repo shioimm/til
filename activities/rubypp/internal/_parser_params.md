@@ -57,7 +57,7 @@ struct parser_params {
   int heredoc_indent;
   int heredoc_line_indent;
 
-  struct local_vars *lvtbl; // ローカル変数の管理
+  struct local_vars *lvtbl; // 環境の情報を保存するテーブル
   st_table *pvtbl;
   st_table *pktbl;
   int line_count;
@@ -143,6 +143,8 @@ struct parser_params {
 };
 ```
 
+### `lvtbl`
+
 ```c
 // parse.y
 
@@ -193,3 +195,38 @@ typedef struct token_info {
   struct token_info *next;
 } token_info;
 ```
+
+#### `lvtbl`の操作
+
+```c
+static void
+local_push(struct parser_params *p, int toplevel_scope)
+{
+  struct local_vars *local; // p->lvtblに代入される情報
+  int inherits_dvars = toplevel_scope && compile_for_eval;
+  int warn_unused_vars = RTEST(ruby_verbose);
+
+  local = ALLOC(struct local_vars);
+  local->prev = p->lvtbl;
+  local->args = vtable_alloc(0);
+  local->vars = vtable_alloc(inherits_dvars ? DVARS_INHERIT : DVARS_TOPSCOPE);
+
+#ifndef RIPPER
+  if (toplevel_scope && compile_for_eval) warn_unused_vars = 0;
+  if (toplevel_scope && e_option_supplied(p)) warn_unused_vars = 0;
+  local->numparam.outer = 0;
+  local->numparam.inner = 0;
+  local->numparam.current = 0;
+#endif
+
+  local->used = warn_unused_vars ? vtable_alloc(0) : 0;
+
+# if WARN_PAST_SCOPE
+  local->past = 0;
+# endif
+
+  CMDARG_PUSH(0);
+  COND_PUSH(0);
+  p->lvtbl = local;
+}
+````
