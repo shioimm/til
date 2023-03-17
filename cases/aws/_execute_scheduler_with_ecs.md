@@ -24,5 +24,5 @@ $ aws cloudformation deploy --stack-name <スタック名> --template-file path/
 ```
 
 #### ワンショットタスクを今すぐ実行
-1. タスクの実行定義.jsonを用意
+1. `タスクの実行定義.json`を用意
 2. `$ aws ecs run-task --cli-input-json file://path/to/<タスクの実行定義.json`
