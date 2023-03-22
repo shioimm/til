@@ -86,7 +86,14 @@ key_block = PRF(master_secret, "key expansion", server_random + client_random)
 ```
 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 
-// TLS_鍵交換_認証_WITH_アルゴリズム_長さ_暗号化モード_MACまたは擬似乱数生成器
+// TLS    - 常にTLS
+// ECDHE  - 鍵交換アルゴリズム
+// RSA    - 認証アルゴリズム
+// WITH   - 常にWITH
+// AES    - 共通鍵暗号アルゴリズム
+// 128    - 長さ
+// GCM    - 暗号化モード
+// SHA256 - MACまたは擬似乱数生成器
 ```
 
 ## 参照
