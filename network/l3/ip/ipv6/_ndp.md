@@ -1,7 +1,7 @@
 # NDP (近隣探索プロトコル)
-- Neighbor Discovery Protocol(IPv6のみ)
+- Neighbor Discovery Protocol (IPv6のみ)
 - IPv4のARPとICMPリダイレクト、ICMPルーター選択メッセージなどの機能を組み合わせ持ち、
-  IPアドレスの自動設定などの機能(DHCPv6と併用する)も提供する
+  IPアドレスの自動設定などの機能 (DHCPv6と併用する) も提供する
 
 #### 仕組み
 1. 送信元ノードがEthernet上で近隣要請メッセージをマルチキャストする
