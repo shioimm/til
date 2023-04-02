@@ -1,7 +1,19 @@
 # NDP (近隣探索プロトコル)
 - Neighbor Discovery Protocol (IPv6のみ)
-- IPv4のARPとICMPリダイレクト、ICMPルーター選択メッセージなどの機能を組み合わせ持ち、
-  IPアドレスの自動設定などの機能 (DHCPv6と併用する) も提供する
+- IPv4のARPとICMPリダイレクト、ICMPルーター選択メッセージ、
+  IPアドレスの自動設定などの機能 (DHCPv6と併用する) を提供する
+
+#### 機能
+
+- Router Discovery - リンク上のルータを探す
+- Prefix Discovery - ルータを経由せずに到達できるIPv6アドレスの範囲を知る
+- Parameter Discovery - リンクのMTUなどの情報を知る
+- Address Autoconfiguration - インターフェースに対してステートレスにアドレスを割り当てる
+- Address Resolution - IPv6 アドレスからリンク層のアドレスを解決する
+- Next-hop Determination - 宛先アドレスをもとに、次にパケットを送出すべきIPv6アドレスを知る
+- Neighbor Unreachability Detection - 近隣ノードに到達できなくなったことを知る近隣不到達性検知
+- Duplicate Address Detection - 利用するアドレスが他のノードで使われていないかを確認する
+- Redirect - ルータからホストへ、より適切な送出先を伝える
 
 #### 仕組み
 1. 送信元ノードがEthernet上で近隣要請メッセージをマルチキャストする
@@ -11,6 +23,12 @@
 4. 送信元ノードは対象のノードが該当するIPアドレスとMACアドレスと紐づいていることを知る
   - IPアドレスとMACアドレスの対応関係はノードの近隣キャッシュに数分間キャッシュされる
 
+## メッセージタイプ
+- Router Solicitationメッセージ
+- Router Advertisementメッセージ
+- Neighbor Solicitationメッセージ
+- Neighbor Advertisementメッセージ
+- Redirectメッセージ
 
 ## 参照
 - Linuxプログラミングインターフェース 58章
