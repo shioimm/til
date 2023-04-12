@@ -14,19 +14,6 @@
 - Duplicate Address Detection - 利用するアドレスが他のノードで使われていないかを確認する
 - Redirect - ルータからホストへ、より適切な送出先を伝える
 
-#### 使用するICMPv6メッセージタイプ
-- Router Advertisementメッセージ
-  - ルータがRouter Advertisementメッセージを定期的にリンク内にマルチキャストすることにより
-    サブネット内のノードに自身の存在を通知する
-- Router Solicitationメッセージ
-  - Router Advertisementメッセージの送信をただちに行うように要求する
-- Neighbor Solicitationメッセージ
-  - 同一サブネット内に接続している近隣ノードのリンク層アドレスを得る
-- Neighbor Advertisementメッセージ
-  - Neighbor Solicitationメッセージに対して返答する
-- Redirectメッセージ
-  - ルータがホストに対して宛先に対するより最適な次ホップノードを伝える
-
 #### 仕組み
 1. 送信元ノードがEthernet上で近隣要請メッセージをマルチキャストする
   - 近隣要請メッセージはIPv6のマルチキャストアドレス (ff00::/8) を使用して送信される
