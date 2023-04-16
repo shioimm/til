@@ -53,6 +53,12 @@
 | SLAAC                  | NDP (Router Advertisementメッセージ) |
 | DHCPv6                 | ステートフルDHCPv6                   |
 
+#### 自動設定されたアドレスのステート
+- tentative (DADによりアドレスの重複がないか確認中)
+- preferred (有効・preferred-lifetime中)
+- deprecated (有効・valid-lifetime中)
+- invalid (無効)
+
 ## 参照
 - Linuxプログラミングインターフェース 58章
 - Software Design 2021年5月号 ハンズオンTCP/IP
