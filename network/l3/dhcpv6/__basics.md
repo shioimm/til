@@ -5,7 +5,7 @@
 
 ## 動作フロー
 1. DHCPv6クライアントがSolicit (要請) パケットをマルチキャスト
-    - 宛先: ff02::1:2
+    - 宛先: ff02::1:2 (`All_DHCP_Relay_Agents_and_Servers`)
 2. DHCPv6サーバーがAdvertise (広告) パケットを送信
     - 設定情報の送信
 3. DHCPv6クライアントがRequest (要求) パケットをマルチキャスト
