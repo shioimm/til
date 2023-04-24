@@ -43,8 +43,8 @@ struct parser_params {
     int brace_nest; // "{}" のネストレベル
   } lex;
 
-  stack_type cond_stack;   // 条件式の深さを維持するスタック
-  stack_type cmdarg_stack; // 括弧なし引数の深さを維持するスタック
+  stack_type cond_stack;   // while ... do などのdoの深さを維持するスタック
+  stack_type cmdarg_stack; // foo ... do などのdoの深さを維持するスタック
 
   int tokidx; // バッファの先頭からトークンの末尾
   int toksiz; // バッファ長
