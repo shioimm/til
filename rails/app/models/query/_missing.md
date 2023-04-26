@@ -1,13 +1,16 @@
 # `missing`
-- 関連元Foo - 関連先Bar
-- Barレコードを持たないFooレコード一式を取得する
+- 関連先レコードを持たないレコード一式を取得する
 
 ```ruby
-Foo.where.missing(:bar)
-```
+class Writer < ApplicationRecord
+  has_many :posts
+end
 
-または
+# Postレコードを持たないWriterレコードを取得する
+Writer.where.missing(:posts)
+Writer.left_outer_joins(:posts).where(posts: { id: nil })
 
-```ruby
-Foo.left_outer_joins(:bar).where(bar: { id: nil })
+# writer_idの存在しないPostレコードを取得する
+Post.where.missing(:writer)
+Post.left_joins(:writer).where(writers: { id: nil })
 ```

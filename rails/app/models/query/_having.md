@@ -1,13 +1,10 @@
 # `having`
-- 関連元Foo - 関連先Bar
-- Barレコードを持たないFooレコード一式を取得する
+- レコードを持たないレコード一式を取得する
 
 ```ruby
-Foo.left_outer_joins(:bar).group('foo.id').having('count(bar.id) = 0')
-```
+class Writer < ApplicationRecord
+  has_many :posts
+end
 
-または
-
-```ruby
-Foo.left_outer_joins(:bar).where(bar: { id: nil })
+Writer.left_joins(:posts).group('writers.id').having('count(posts.id) = 0')
 ```
