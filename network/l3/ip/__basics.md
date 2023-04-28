@@ -29,10 +29,12 @@
 - 終端ノードを示す識別子
 
 #### グローバルIPアドレスの付与
-- ICANN/IANAによって全世界的に一元管理される
-- ICANN/IANAはアドレスを地域レベルでアドレスを管理するRIRに割り振る
-- RIRに割り振られたアドレスは小地域レベルでアドレスを管理するLIRもしくはNIRに割り振られる
+- IPアドレスはICANN/IANAによって全世界的に一元管理される
+- ICANN/IANAはアドレスを地域レベルでアドレスを管理するRIR (Regional Internet Registry) に割り振る
+- RIRに割り振られたアドレスは小地域レベルでアドレスを管理するLIR (Local Internet Registry)
+  もしくはNIR (National Internet Registry) に割り振られる
 - LIRもしくはNIRに割り振られたアドレスはISPを介してエンドユーザーに割り当てられる
+- LIRもしくはNIRを介さずにユーザーが直接RIRからIPアドレスの割り当てを受けることもある
 
 ## IPv4 / IPv6におけるインターネットプロトコルの制御機能
 
