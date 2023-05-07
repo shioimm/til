@@ -5,6 +5,7 @@
 - BPF構文によるキャプチャフィルタを使用可能 (e.g. `$ tcpdump -r packets.pcap 'tcp dst port 80'`)
 
 ## TCPの表示項目
+
 ```
 src > dst: flags data-seqno ack window urg <options>
 ```
@@ -43,6 +44,7 @@ E..4.a@.@.H`.........1......<........(.....
 ```
 
 ## UDPの表示項目
+
 ```
 $ sudo tcpdump -i lo -tnlA "udp and port 54321"
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
@@ -54,6 +56,7 @@ E.."j`@.@..h.........`.1...!Hello
 ```
 
 # ICMPの表示項目
+
 ```
 $ sudo tcpdump -tn -i any icmp
 IP ***.***.***.*** > 8.8.8.8: ICMP echo request, id 5, seq 1, length 64
@@ -76,18 +79,6 @@ IP 8.8.8.8 > ***.***.***.***: ICMP echo reply,   id 5, seq 1, length 64
 - -x - パケットを16進数で表示する
 - -A - キャプチャした内容をASCII文字列として表示する
 - -B - バッファサイズを指定する
-
-## MacOSでパケットトレースを行う場合
-- [Recording a Packet Trace](https://developer.apple.com/documentation/network/recording_a_packet_trace#//apple_ref/doc/uid/DTS10001707-CH1-SECNOTES)
-
-```
-# ネットワークインターフェース名を取得
-$ networksetup -listallhardwareports
-
-# tcpdump(1)を実行
-$ sudo tcpdump -i ネットワークインターフェース -s 0 -B 524288 -w ~/Desktop/DumpFile01.pcap
-$ tcpdump -s 0 -n -e -x -vvv -r ~/Desktop/DumpFile01.pcap
-```
 
 ## 参照
 - Linuxプログラミングインターフェース 61章
