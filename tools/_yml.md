@@ -37,12 +37,13 @@ foo: >
 ## アンカー - エイリアス
 
 ```yml
-foo: &anchor # &<アンカー名>
-  foo
+foo: &anchor # アンカーを作成する
+  abc: "def"
 
-# { "bar" => "foo" }
-bar:
-  <<*anchor # <<*<アンカー名>
+bar: *anchor # アンカーを参照する
+
+baz: <<*anchor # アンカーをマージする
+  ghi: "jkl"
 ```
 
 ## 参照
