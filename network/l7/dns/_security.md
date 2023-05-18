@@ -27,6 +27,10 @@
 - 通信時にポート番号443を利用する
 - HoLブロッキングの問題を回避するため、主にHTTP/2、HTTP/3が利用される
 
+## Split-horizon DNS
+- DNS実装において、DNSリクエストを行ったソースアドレスによって異なるDNS回答を返す機能
+
 ## 参照
 - 図解即戦力　暗号と認証のしくみと理論がこれ1冊でしっかりわかる教科書
 - プロフェッショナルSSL/TLS
+- [Split-horizon DNS](https://en.wikipedia.org/wiki/Split-horizon_DNS)
