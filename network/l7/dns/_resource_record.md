@@ -15,10 +15,10 @@ OWNER TTL CLASS TYPE RDATA
 #### e.g. リソースレコードのリクエスト / レスポンス
 
 ```
-// リクエスト (ドメイン名jprs.jpのAレコードを要求)
+// Question (リクエスト: ドメイン名jprs.jpのAレコードを要求)
 jprs.jp       IN  A
 
-// レスポンス (ドメイン名jprs.jpのAレコードを回答)
+// Answer (レスポンス: ドメイン名jprs.jpのAレコードを回答)
 jprs.jp  300  IN  A  117.***.***.***
 ```
 
