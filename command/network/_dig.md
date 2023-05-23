@@ -12,24 +12,24 @@ $ dig -6 example.com # Ipv6で調べる
 ; <<>> DiG 9.10.6 <<>> example.com
 ;; global options: +cmd
 ;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR または NXDOMAIN, id: *****
-;; flags: 回答の意味を示すフラグ; QUERY: n (レコード数), ANSWER: n, AUTHORITY: n, ADDITIONAL: n
+;; ->>HEADER<<- opcode: QUERY, status: <応答コード>, id: *****
+;; flags: <ビットの立ったフラグ一覧>; QUERY: <n>, ANSWER: <n>, AUTHORITY: <n>, ADDITIONAL: <n>
 
 ;; OPT PSEUDOSECTION:
 ; EDNS: version: 0, flags:; udp: 512
 ;; QUESTION SECTION:
-;  問い合わせ内容
+;  <問い合わせのドメイン名とタイプ>
 
 ;; ANSWER SECTION:
-   問い合わせた内容に対応するリソースレコード
+   <問い合わせた内容に対応するリソースレコード>
 
 ;; AUTHORITY SECTION:
-   権威を持つDNSサーバ名(NSレコード)
+   <権威を持つDNSサーバ名 (NSレコード)>
 
-;; Query time: 問い合わせにかかった時間
-;; SERVER: 問い合わせたネームサーバー
-;; WHEN: 実行時刻
-;; MSG SIZE  rcvd: 受信メッセージサイズ
+;; Query time: <問い合わせにかかった時間>
+;; SERVER: <問い合わせ先のフルリゾルバのIPアドレス・ポート番号>
+;; WHEN: <実行時刻>
+;; MSG SIZE  rcvd: <受信メッセージサイズ>
 ```
 
 - `QR` - Query or Response
