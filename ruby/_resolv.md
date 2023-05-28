@@ -1,5 +1,5 @@
 # library resolv
-- Rubyで書かれたthread-awareなDNSリゾルバ
+- Rubyで書かれたthread-awareなDNSスタブリゾルバ
 - 複数のDNSリクエストを同時に処理することが可能
 
 ```ruby
@@ -16,6 +16,13 @@ Resolv::DNS.open do |dns|
   dns.getresources "www.ruby-lang.org", Resolv::DNS::Resource::IN::AAAA
 end
 ```
+
+## 構成クラス
+- `Resolv::Hosts` - システムの`hosts`ファイルを使用するローカルのHostnameリゾルバ
+- `Resolv::DNS`   - DNSスタブリゾルバ
+- `Resolv::IPv4`  - IPv4アドレスを表す
+- `Resolv::IPv6`  - IPv6アドレスを表す
+- `Resolv::MDNS`  - マルチキャストDNS (mDNS) リゾルバ
 
 ## 参照
 - [ruby/lib/resolv.rb](https://github.com/ruby/ruby/blob/master/lib/resolv.rb)
