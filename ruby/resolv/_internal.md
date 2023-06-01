@@ -46,8 +46,8 @@ end
 # Resolv::Hosts
 
 def each_address(name, &proc)
-  # Resolv::Hosts#lazy_initialize: mutexの中で@filenameを利用して@name2addr、@addr2nameに値を入れる
   lazy_initialize
+  # => Resolv::Hosts#lazy_initialize: mutexの中で@filenameを利用して@name2addr、@addr2nameに値を入れる
 
   # proc = <Proc:0x00000001074c9de0 /path/to/ruby/3.2.0/resolv.rb:116> (Resolv#each_addressのブロック)
   # @name2addr[name] で値が取得できる場合、それがprocのブロック引数になる
@@ -77,14 +77,13 @@ def each_resource(name, typeclass, &proc)
 end
 
 def fetch_resource(name, typeclass)
-  # Resolv::DNS#lazy_initialize: mutexの中でResolv::DNS::Config#lazy_initializeを実行
   lazy_initialize
+  # => mutexの中でResolv::DNS::Config#lazy_initializeを実行
 
   begin
-    # Resolv::DNS::Config#make_udp_requester:
-    #   @configのnameserver_portの数に応じて
-    #   Requester::ConnectedUDPもしくはRequester::UnconnectedUDPインスタンスを作成
     requester = make_udp_requester
+    # => requester: Resolv::DNS::Requester::ConnectedUDPインスタンス
+    #    (@configのnameserver_portの数によってはRequester::UnconnectedUDPインスタンス
   rescue Errno::EACCES
     # fall back to TCP
   end
@@ -106,9 +105,36 @@ end
 
 def resolv(name)
   candidates = generate_candidates(name)
+  # ...
+end
+
+def generate_candidates(name)
+  candidates = nil
+  name = Name.create(name)
+  # => #<Resolv::DNS::Name: example.com.>を生成
+  # ...
+
+  candidates = [Name.new(name.to_a)]
+  # => candidates: [#<Resolv::DNS::Name: example.com.>]
+
+  candidates.concat(@search.map {|domain| Name.new(name.to_a + domain)})
+  # => candidates: [#<Resolv::DNS::Name: example.com.>, #<Resolv::DNS::Name: example.com.local.>]
+
+  # ...
+  return candidates
+end
+```
+
+```ruby
+def resolv(name)
+  candidates = generate_candidates(name)
+  # candidates: [#<Resolv::DNS::Name: example.com.>, #<Resolv::DNS::Name: example.com.local.>]
+
   timeouts = @timeouts || generate_timeouts
+  # => timeouts: generate_timeoutsが呼ばれた場合 [5, 10, 20, 40]
+
   begin
-    candidates.each {|candidate|
+    candidates.each {|candidate| # candidate: Resolv::DNS::Nameのインスタンス
       begin
         timeouts.each {|tout|
           @nameserver_port.each {|nameserver, port|
