@@ -39,34 +39,90 @@ end
   @mutex=#<Thread::Mutex:0x0000000104cdd980>>]
 ```
 
-- `self`が`Resolv::Hosts`のインスタンスの場合:
+### `self`が`Resolv::Hosts`のインスタンスの場合
+- `Resolv::Hosts`の`@filename`で名前解決できる場合
 
 ```ruby
+# Resolv::Hosts
+
 def each_address(name, &proc)
+  # Resolv::Hosts#lazy_initialize: mutexの中で@filenameを利用して@name2addr、@addr2nameに値を入れる
   lazy_initialize
+
+  # proc = <Proc:0x00000001074c9de0 /path/to/ruby/3.2.0/resolv.rb:116> (Resolv#each_addressのブロック)
+  # @name2addr[name] で値が取得できる場合、それがprocのブロック引数になる
   @name2addr[name]&.each(&proc)
-end
-
-# lazy_initialize実行後、@addr2name、@mutex、@name2addrに値が入る
-
-def lazy_initialize # :nodoc:
-  @mutex.synchronize {
-    unless @initialized
-      @config.lazy_initialize
-      @initialized = true
-    end
-  }
-  self
 end
 ```
 
-- `self`が`Resolv::DNS`のインスタンスの場
+### `self`が`Resolv::DNS`のインスタンスの場合
 
 ```ruby
+# Resolv::DNS
+
 def each_address(name)
   each_resource(name, Resource::IN::A) {|resource| yield resource.address}
   if use_ipv6?
     each_resource(name, Resource::IN::AAAA) {|resource| yield resource.address}
+  end
+end
+
+# ...
+
+# name: "example.com" / typeclass: Resolv::DNS::Resource::IN::A
+def each_resource(name, typeclass, &proc)
+  fetch_resource(name, typeclass) {|reply, reply_name|
+    extract_resources(reply, reply_name, typeclass, &proc)
+  }
+end
+
+def fetch_resource(name, typeclass)
+  # Resolv::DNS#lazy_initialize: mutexの中でResolv::DNS::Config#lazy_initializeを実行
+  lazy_initialize
+
+  begin
+    # Resolv::DNS::Config#make_udp_requester:
+    #   @configのnameserver_portの数に応じて
+    #   Requester::ConnectedUDPもしくはRequester::UnconnectedUDPインスタンスを作成
+    requester = make_udp_requester
+  rescue Errno::EACCES
+    # fall back to TCP
+  end
+
+  senders = {}
+
+  begin
+    @config.resolv(name) {|candidate, tout, nameserver, port|
+      # ...
+    }
+  ensure
+    requester&.close
+  end
+end
+```
+
+```ruby
+# Resolv::DNS::Config
+
+def resolv(name)
+  candidates = generate_candidates(name)
+  timeouts = @timeouts || generate_timeouts
+  begin
+    candidates.each {|candidate|
+      begin
+        timeouts.each {|tout|
+          @nameserver_port.each {|nameserver, port|
+            begin
+              yield candidate, tout, nameserver, port
+            rescue ResolvTimeout
+            end
+          }
+        }
+        raise ResolvError.new("DNS resolv timeout: #{name}")
+      rescue NXDomain
+      end
+    }
+  rescue ResolvError
   end
 end
 ```
