@@ -163,17 +163,77 @@ def fetch_resource(name, typeclass)
 
   begin
     @config.resolv(name) {|candidate, tout, nameserver, port|
-      requester ||= make_tcp_requester(nameserver, port)
+      # ...
+
       msg = Message.new
+      # => #<Resolv::DNS::Message:0x0000000105c07f00
+      #       @aa=0,
+      #       @additional=[],
+      #       @answer=[],
+      #       @authority=[],
+      #       @id=0,
+      #       @opcode=0,
+      #       @qr=0,
+      #       @question=[],
+      #       @ra=0,
+      #       @rcode=0,
+      #       @rd=0,
+      #       @tc=0>
+
       msg.rd = 1
       msg.add_question(candidate, typeclass)
+      # => @question << [Name.create(candidate), typeclass]
 
       unless sender = senders[[candidate, nameserver, port]]
+        # nameserverはConfig.default_config_hashから (デフォルトでは/etc/resolv.conf)
+        # portはResolv::DNS::Portから
+
         sender = requester.sender(msg, candidate, nameserver, port)
         next if !sender
         senders[[candidate, nameserver, port]] = sender
       end
 
+      # ...
+    }
+  end
+end
+```
+
+```ruby
+# Resolv::DNS::Requester::ConnectedUDP
+
+def sender(msg, data, host=@host, port=@port)
+  lazy_initialize
+  # ...
+  id = DNS.allocate_request_id(@host, @port)
+  request = msg.encode
+  request[0,2] = [id].pack('n')
+  return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
+end
+
+def lazy_initialize
+  @mutex.synchronize {
+    next if @initialized
+    @initialized = true
+    is_ipv6 = @host.index(':')
+    sock = UDPSocket.new(is_ipv6 ? Socket::AF_INET6 : Socket::AF_INET)
+    @socks = [sock]
+    sock.do_not_reverse_lookup = true
+    DNS.bind_random_port(sock, is_ipv6 ? "::" : "0.0.0.0")
+    sock.connect(@host, @port) # => 接続を実施
+  }
+  self
+end
+```
+
+```ruby
+def fetch_resource(name, typeclass)
+  # ...
+  senders = {}
+
+  begin
+    @config.resolv(name) {|candidate, tout, nameserver, port|
+      # ...
       reply, reply_name = requester.request(sender, tout)
       case reply.rcode
       when RCode::NoError
