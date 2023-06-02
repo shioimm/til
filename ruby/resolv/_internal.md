@@ -134,9 +134,10 @@ def resolv(name)
   # => timeouts: generate_timeoutsが呼ばれた場合 [5, 10, 20, 40]
 
   begin
-    candidates.each {|candidate| # candidate: Resolv::DNS::Nameのインスタンス
+    candidates.each {|candidate|
       begin
         timeouts.each {|tout|
+          # @nameserver_port: [["<IPアドレス>", <ポート番号>]] のような配列
           @nameserver_port.each {|nameserver, port|
             begin
               yield candidate, tout, nameserver, port
@@ -150,5 +151,44 @@ def resolv(name)
     }
   rescue ResolvError
   end
+end
+```
+
+```ruby
+# Resolv::DNS
+
+def fetch_resource(name, typeclass)
+  # ...
+  senders = {}
+
+  begin
+    @config.resolv(name) {|candidate, tout, nameserver, port|
+      requester ||= make_tcp_requester(nameserver, port)
+      msg = Message.new
+      msg.rd = 1
+      msg.add_question(candidate, typeclass)
+
+      unless sender = senders[[candidate, nameserver, port]]
+        sender = requester.sender(msg, candidate, nameserver, port)
+        next if !sender
+        senders[[candidate, nameserver, port]] = sender
+      end
+
+      reply, reply_name = requester.request(sender, tout)
+      case reply.rcode
+      when RCode::NoError
+        # ...
+        yield(reply, reply_name) # Resolv::DNS#extract_resourcesに引数reply, reply_nameを渡して実行
+        return
+      # ...
+      end
+    }
+  ensure
+    requester&.close
+  end
+end
+
+def extract_resources(msg, name, typeclass) # :nodoc:
+  # WIP
 end
 ```
