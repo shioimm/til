@@ -5,9 +5,19 @@
 Resolv.getaddress("example.com")
 ```
 
-- `Resolv.getaddress` -> `Resolv#getaddress` -> `Resolv#each_address`
-
 ```ruby
+# Resolv
+
+def self.each_address(name, &block)
+  DefaultResolver.each_address(name, &block)
+end
+
+
+def getaddress(name)
+  each_address(name) {|address| return address}
+  raise ResolvError.new("no address for #{name}")
+end
+
 def each_address(name)
   # ...
   yielded = false
@@ -336,9 +346,10 @@ end
 ```
 
 ```ruby
-# Resolv::DNS#fetch_resourceを呼び出していた箇所
+# Resolv::DNS
 
 def each_resource(name, typeclass, &proc)
+  # Resolv::DNS#fetch_resourceを呼び出していた箇所
   fetch_resource(name, typeclass) {|reply, reply_name|
     # reply:      #<Resolv::DNS::Message:0x0000000108e8f018 ...>
     # reply_name: #<Resolv::DNS::Name: example.com.>
@@ -346,5 +357,83 @@ def each_resource(name, typeclass, &proc)
     # proc:       (元々の呼び出し) each_resource(name, Resource::IN::A) {|resource| yield resource.address}
     extract_resources(reply, reply_name, typeclass, &proc)
   }
+end
+
+def extract_resources(msg, name, typeclass) # :nodoc:
+  # ...
+  yielded = false
+  n0 = Name.create(name)
+
+  msg.each_resource {|n, ttl, data|
+    # n:    #<Resolv::DNS::Name: example.com.>
+    # ttl : 1540
+    # data: #<Resolv::DNS::Resource::IN::A:0x0000000103b21890 @address=#<Resolv::IPv4 *.*.*.*>, @ttl=1540>
+
+    if n0 == n
+      case data
+      when typeclass # <= ここを通る
+        yield data
+        # => Resolv::DNS#each_addressで呼び出しているResolv::DNS#each_resourceのブロックを実行
+        #      # Resolv::DNS
+        #      # def each_address(name)
+        #      #   each_resource(name, Resource::IN::A) { |resource|
+        #      #     yield resource.address # resource.address: #<Resolv::IPv4 *.*.*.*>
+        #      #     # => Resolv#each_addressが呼んでいるResolv::DNS#each_addressのブロックを実行
+        #      #    }
+        #      #  end
+
+        #      # Resolv::DNS#each_address
+        #      def each_address(name)
+        #        # ...
+        #        @resolvers.each {|r|
+        #          r.each_address(name) {|address|
+        #            yield address.to_s # ここでResolv::IPv4のアドレスを文字列に変換
+        #            # => Resolv#getaddressが呼んでいるResolv#each_addressのブロックを実行
+        #            yielded = true
+        #          }
+        #          return if yielded
+        #        }
+        #      end
+
+        #      # Resolv
+        #      def getaddress(name)
+        #        each_address(name) {|address| return address}
+        #        raise ResolvError.new("no address for #{name}")
+        #      end
+
+        yielded = true
+      when Resource::CNAME
+        n0 = data.name
+      end
+    end
+  }
+  # ...
+end
+```
+
+```ruby
+# Resolv::DNS::Message
+
+def each_resource
+  # 各ブロック内のyieldでResolv::DNS#each_resourceのブロックを実行している
+  each_answer {|name, ttl, data| yield name, ttl, data}
+  each_authority {|name, ttl, data| yield name, ttl, data}
+  each_additional {|name, ttl, data| yield name, ttl, data}
+end
+
+def each_answer
+  @answer.each {|name, ttl, data|
+    yield name, ttl, data
+  }
+end
+
+def each_authority
+  @authority.each {|name, ttl, data|
+    yield name, ttl, data
+  }
+end
+
+def add_additional(name, ttl, data)
+  @additional << [Name.create(name), ttl, data]
 end
 ```
