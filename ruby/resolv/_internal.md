@@ -185,7 +185,7 @@ def fetch_resource(name, typeclass)
       # => @question << [Name.create(candidate), typeclass]
 
       unless sender = senders[[candidate, nameserver, port]]
-        # nameserverはConfig.default_config_hashから (デフォルトでは/etc/resolv.conf)
+        # nameserverはConfig.default_config_hashから (デフォルトでは/etc/resolv.confを読み込み)
         # portはResolv::DNS::Portから
 
         sender = requester.sender(msg, candidate, nameserver, port)
@@ -208,6 +208,13 @@ def sender(msg, data, host=@host, port=@port)
   id = DNS.allocate_request_id(@host, @port)
   request = msg.encode
   request[0,2] = [id].pack('n')
+
+  # Sender.new(request, data, @socks[0])
+  # => #<Resolv::DNS::Requester::ConnectedUDP::Sender:0x00000001087ff7e8
+  #      @data=#<Resolv::DNS::Name: example.com.>,
+  #      @msg="\x10\x96\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\aexample\x03com\x00\x00\x01\x00\x01",
+  #      @sock=#<UDPSocket:fd 9, AF_INET, <@host>, <#bind_random_portでバインドされた適当なポート>>>}
+
   return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
 end
 
@@ -219,8 +226,8 @@ def lazy_initialize
     sock = UDPSocket.new(is_ipv6 ? Socket::AF_INET6 : Socket::AF_INET)
     @socks = [sock]
     sock.do_not_reverse_lookup = true
-    DNS.bind_random_port(sock, is_ipv6 ? "::" : "0.0.0.0")
-    sock.connect(@host, @port) # => 接続を実施
+    DNS.bind_random_port(sock, is_ipv6 ? "::" : "0.0.0.0") # UDPソケットを適当なポートへバインド
+    sock.connect(@host, @port) # => UDPでフルリゾルバへ接続を開始
   }
   self
 end
@@ -229,16 +236,95 @@ end
 ```ruby
 def fetch_resource(name, typeclass)
   # ...
-  senders = {}
+  begin
+    @config.resolv(name) {|candidate, tout, nameserver, port|
+      # ...
 
+      unless sender = senders[[candidate, nameserver, port]]
+        # ...
+      end
+
+      reply, reply_name = requester.request(sender, tout)
+      # ...
+    }
+  ensure
+    requester&.close
+  end
+end
+```
+
+```ruby
+# Resolv::DNS::Requester
+
+def request(sender, tout)
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  timelimit = start + tout
+
+  begin
+    sender.send # Resolv::DNS::Requester::ConnectedUDP::Sender#send (@sock.send(@msg, 0) するだけ)
+  rescue Errno::EHOSTUNREACH, # multi-homed IPv6 may generate this
+         Errno::ENETUNREACH
+    raise ResolvTimeout
+  end
+
+  while true
+    before_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    timeout = timelimit - before_select
+
+    # フルリゾルバからのレスポンスが返ってくる前にタイムアウトした場合の処理
+    if timeout <= 0
+      raise ResolvTimeout
+    end
+
+    # 受信したメッセージを読み取るソケットを特定
+    if @socks.size == 1
+      select_result = @socks[0].wait_readable(timeout) ? [ @socks ] : nil
+    else
+      select_result = IO.select(@socks, nil, nil, timeout)
+    end
+
+    # ...
+
+    begin
+      reply, from = recv_reply(select_result[0])
+      # => reply: select_result[0].recv(UDPSize), from: nil
+    rescue Errno::ECONNREFUSED, # GNU/Linux, FreeBSD
+           Errno::ECONNRESET # Windows
+      # No name server running on the server?
+      # Don't wait anymore.
+      raise ResolvTimeout
+    end
+
+    begin
+      msg = Message.decode(reply)
+      # => msgにreplyをデコードした結果を格納するResolv::DNS::Messageインスタンスを代入
+    rescue DecodeError
+      next # broken DNS message ignored
+    end
+    if sender == sender_for(from, msg)
+      break
+    else
+      # unexpected DNS message ignored
+    end
+  end
+
+  # return #<Resolv::DNS::Message:0x0000000108e8f018 ...>, #<Resolv::DNS::Name: example.com.>
+  return msg, sender.data
+end
+```
+
+```ruby
+def fetch_resource(name, typeclass)
+  # ...
   begin
     @config.resolv(name) {|candidate, tout, nameserver, port|
       # ...
       reply, reply_name = requester.request(sender, tout)
+
       case reply.rcode
       when RCode::NoError
         # ...
-        yield(reply, reply_name) # Resolv::DNS#extract_resourcesに引数reply, reply_nameを渡して実行
+        yield(reply, reply_name)
         return
       # ...
       end
@@ -247,8 +333,18 @@ def fetch_resource(name, typeclass)
     requester&.close
   end
 end
+```
 
-def extract_resources(msg, name, typeclass) # :nodoc:
-  # WIP
+```ruby
+# Resolv::DNS#fetch_resourceを呼び出していた箇所
+
+def each_resource(name, typeclass, &proc)
+  fetch_resource(name, typeclass) {|reply, reply_name|
+    # reply:      #<Resolv::DNS::Message:0x0000000108e8f018 ...>
+    # reply_name: #<Resolv::DNS::Name: example.com.>
+    # typeclass:  Resolv::DNS::Resource::IN::A
+    # proc:       (元々の呼び出し) each_resource(name, Resource::IN::A) {|resource| yield resource.address}
+    extract_resources(reply, reply_name, typeclass, &proc)
+  }
 end
 ```
