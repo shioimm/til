@@ -1,27 +1,4 @@
-# ptherad(3)
-
-```c
-#include <pthread.h>
-
-pthread_t tid;
-
-pthread_create(
-  &tid,
-  NULL, // スレッドの属性を指定する (NULL = デフォルトの属性)
-  <生成するスレッドで実行する関数へのポインタ>,
-  <生成するスレッドで実行する関数の引数となる変数アドレス>
-);
-
-// スレッドを待ち合わせる・待ち合わせたスレッドが終了したらそのスレッドコンテキストを破棄するようOSへ伝える
-pthread_join(
-  tid,
-  <生成したスレッドで実行した関数の返り値を格納するための変数アドレス>
-);
-
-// 終了したスレッドを誤って使用しないよう、スレッドIDを格納していた変数はNULLで初期化しておく
-tid = NULL;
-```
-
+# 排他制御
 ### Mutex
 
 ```c
@@ -42,6 +19,9 @@ pthread_mutex_unlock(m);
 // すでに別スレッドによってpthread_mutex_lock()実行済みの場合は非ゼロ、
 // そうでない場合はゼロを返す
 pthread_mutex_trylock(m);
+
+// main関数を修了する前に削除
+pthread_mutex_destroy(m);
 ```
 
 ### 条件変数
@@ -93,24 +73,4 @@ int main()
 }
 
 // Linuxによる並行プログラミング入門 P104
-```
-
-### タスクスケジューリング
-- スケジューリングの変更にはroot権限が必要
-- スケジューリングポリシーは`SCHED_FIFO`、`SCHED_RR`、`SCHED_OTHER`のいずれかを設定可能
-- 優先度は`SCHED_FIFO`または`SCHED_RR`の場合は1 (低) - 99 (高) を設定可能 (`SCHED_OTHER`は0のみ)
-- デフォルトではポリシーは`SCHED_OTHER`、優先度は0
-
-```c
-#include <pthread.h>
-
-pthread_t tid;
-struct sched_param sched;
-
-sched.sched_priority = 2; // 優先度の設定
-pthread_setschedparam(tid, SCHED_FIFO, &sched); // schedにスケジューリングポリシーを設定
-
-int policy;
-
-pthread_getschedparam(tid, &policy, &sched); // スケジューリングポリシーをpolicy, 優先度をschedに格納
 ```
