@@ -32,45 +32,47 @@ pthread_mutex_destroy(m);
 #include <pthread.h>
 #include <unistd.h>
 
-pthread_mutex_t mtx;
-pthread_cond_t  cnd;
-int x = 0; // 条件を表す変数
+pthread_mutex_t mutex;
+pthread_cond_t  cond;
 
-void write_a()
+void *tfunc()
 {
-  while(x < 20) {
-    pthread_mutex_lock(&mtx);
-    x += 3;
-    pthread_mutex_unlock(&mtx);
-    printf("a: x = %d\n", x);
-    if (x >= 10) pthread_cond_signal(&cnd); // xが10以上になったら合図を送る
-    usleep(200000);
-  }
-}
-
-void write_b()
-{
-  pthread_mutex_lock(&mtx);
-  while(x < 10) pthread_cond_wait(&cnd, &mtx); // xが10未満の場合は合図を待つ
-  puts("b: condition is now true");
-  pthread_mutex_unlock(&mtx);
+  pthread_mutex_lock(&mutex);
+  pthread_cond_wait(&cond, &mutex); // シグナルを待つ
+  puts("thread: got the signal);    // シグナルを補足したら実行
+  pthread_mutex_unlock(&mutex);
 }
 
 int main()
 {
-  pthread_t tid_a, tid_b;
+  pthread_t thread;
+  int x = 0; // 条件を表す変数
 
-  pthread_mutex_init(&mtx, NULL);
-  pthread_cond_init(&cnd, NULL);
+  pthread_mutex_init(&mutex, NULL);
+  pthread_cond_init(&cond, NULL);
+  pthread_create(&thread, NULL, &tfunc, &m); // 別スレッドを起動
 
-  pthread_create(&tid_a, NULL, (void *(*)(void *))write_a, &m);
-  pthread_create(&tid_b, NULL, (void *(*)(void *))write_b, &m);
+  while(x < 10) {
+    x++;
+    printf("main: x = %d\n", x);
 
-  pthread_join(tid_a, NULL);
-  pthread_join(tid_b, NULL);
+    if (x >= 5) pthread_cond_signal(&cond); // xが5以上になったら条件変数へシグナルを送る
+
+    usleep(200000);
+  }
+
+  pthread_join(thread, NULL);
 
   return 0;
 }
 
 // Linuxによる並行プログラミング入門 P104
 ```
+
+#### `pthread_cond_wait()`の動作
+1. (ユーザーが明示的にMutexをロックする)
+2. 条件変数を偽にする
+2. Mutexをアンロックする
+3. 条件変数が真になるまで待つ
+4. 条件変数が真になったらMutexをロックして任意の処理を行う
+5. (ユーザーが明示的にMutexをアンロックする)
