@@ -5,44 +5,34 @@ pthread_mutex_t m;
 int number;
 
 typedef struct {
-  char sign;
+  int count;
 } data;
 
-void *gate(void *arg)
+void *add(void *arg)
 {
   data *d = (data *)arg;
 
-  for (;;) {
+  for (int i = 0; i < d->count; i++) {
     pthread_mutex_lock(&m);
-    if (d->sign == 'a') {
-      number = -1;
-    } else if (d->sign == 'b') {
-      number = 1;
-    }
+    number = number + 1;
     pthread_mutex_unlock(&m);
-
-    if (number == 0 || number == -1 || number == 1) {
-      puts("OK");
-    } else {
-      puts("Error!");
-    }
   }
+  return NULL;
 }
 
 int main()
 {
-  pthread_t alice, bob;
-  data alice_arg = { 'a' };
-  data bob_arg   = { 'b' };
+  pthread_t threads[4];
+  data arg_data[4];
+
+  for (int i = 0; i < 4; i++) arg_data[i].count = 2500;
 
   pthread_mutex_init(&m, NULL);
 
-  pthread_create(&alice, NULL, &gate, (void *)&alice_arg);
-  pthread_create(&bob,   NULL, &gate, (void *)&bob_arg);
+  for (int i = 0; i < 4; i++) pthread_create(&threads[i], NULL, &add, &arg_data[i]);
+  for (int i = 0; i < 4; i++) pthread_join(threads[i], NULL);
 
-  pthread_join(alice, NULL);
-  pthread_join(bob,   NULL);
-
+  printf("expect 10000 / actual %d\n", number);
   pthread_mutex_destroy(&m);
 
   return 0;
