@@ -1,22 +1,22 @@
 #include <stdio.h>
 #include <pthread.h>
-#include <unistd.h>
 
 pthread_mutex_t mutex;
 pthread_cond_t  cond;
-int storage[100];
+int storage   = 0;
 
 void *put_request()
 {
   for (int i = 1; i <= 100; i++) {
     pthread_mutex_lock(&mutex);
 
-    storage[i] = i;
-    printf("client requests no. %d\n", storage[i]);
+    if (storage != 0) pthread_cond_wait(&cond, &mutex);
+
+    storage = i;
+    printf("client requests no. %d\n", storage);
 
     pthread_cond_signal(&cond);
     pthread_mutex_unlock(&mutex);
-    usleep(1);
   }
 
   return NULL;
@@ -29,10 +29,10 @@ void *get_request()
   for (int i = 1; i <= 100; i++) {
     pthread_mutex_lock(&mutex);
 
-    if (storage[i] == 0) pthread_cond_wait(&cond, &mutex);
+    if (storage == 0) pthread_cond_wait(&cond, &mutex);
 
-    request = storage[i];
-    storage[i] = 0;
+    request = storage;
+    storage = 0;
 
     printf("server handles no. %d\n", request);
     pthread_cond_signal(&cond);
