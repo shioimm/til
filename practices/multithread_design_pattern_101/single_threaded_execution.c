@@ -1,3 +1,5 @@
+// クリティカルセクションは一つのスレッドのみが実行する
+
 #include <stdio.h>
 #include <pthread.h>
 

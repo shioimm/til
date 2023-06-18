@@ -1,9 +1,11 @@
+// データの準備ができるまでスレッド同士が待ち合わせる
+
 #include <stdio.h>
 #include <pthread.h>
 
 pthread_mutex_t mutex;
 pthread_cond_t  cond;
-int storage   = 0;
+int storage = 0;
 
 void *put_request()
 {

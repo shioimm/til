@@ -1,3 +1,5 @@
+// 条件が真の場合は処理を行い、偽の場合は真になるまで待つ
+
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>

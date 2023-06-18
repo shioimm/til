@@ -1,3 +1,5 @@
+// データの参照中はロックを取らず、データの変更中はロックを取る
+
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
