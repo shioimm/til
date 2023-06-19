@@ -1,3 +1,5 @@
+// データの変更を行わず、参照のみを行う
+
 #include <stdio.h>
 #include <pthread.h>
 
