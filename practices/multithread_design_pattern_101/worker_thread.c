@@ -11,15 +11,17 @@ typedef struct {
 } Cond;
 
 Cond client_cond;
-Cond worker_conds[5];
+Cond worker_cond;
 
 typedef struct {
   int no;
+  int ready;
   int taken;
 } Request;
 
-Request reqests[100];
+Request requests[100];
 int working_size = 0; // テーブルサイズ
+int stop = 0;
 
 void *put()
 {
@@ -27,14 +29,35 @@ void *put()
     pthread_mutex_lock(&mutex);
     if (working_size >= 5) pthread_cond_wait(&client_cond.cond, &mutex);
 
-    reqests[i].no = i;
-    reqests[i].taken = 0;
+    requests[i].no = i;
+    requests[i].ready = 1;
+    requests[i].taken = 0;
     working_size++;
-    printf("client put no. %d\n", i);
-    printf("%d\n", working_size);
+    printf("client puts no. %d\n", i);
+    pthread_cond_broadcast(&worker_cond.cond);
 
     pthread_mutex_unlock(&mutex);
-    usleep(1);
+  }
+
+  return NULL;
+}
+
+void *take(void *arg)
+{
+  int no = (int )arg;
+
+  for (int i = 0; i < 100; i++) {
+    pthread_mutex_lock(&mutex);
+    if (requests[i].ready == 0) pthread_cond_wait(&worker_cond.cond, &mutex);
+
+    if (requests[i].taken == 0) {
+      printf("worker %d takes no. %d\n", no, requests[i].no);
+      requests[i].taken = 1;
+      working_size--;
+      pthread_cond_signal(&client_cond.cond);
+    }
+
+    pthread_mutex_unlock(&mutex);
   }
 
   return NULL;
@@ -48,12 +71,15 @@ int main()
   pthread_mutex_init(&mutex, NULL);
 
   pthread_cond_init(&client_cond.cond, NULL);
+  pthread_cond_init(&worker_cond.cond, NULL);
 
   pthread_create(&client, NULL, &put, NULL);
-  // for (int i = 0; i < 5; i++) pthread_create(&workers[i], NULL, &take, (void *)i);
-  // for (int i = 0; i < 5; i++) pthread_join(workers[i], NULL);
+  for (int i = 0; i < 100; i++) requests[i].ready = 0;
+  for (int i = 0; i < 5; i++) pthread_create(&workers[i], NULL, &take, i);
 
   pthread_join(client, NULL);
+  for (int i = 0; i < 5; i++) pthread_join(workers[i], NULL);
+
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&client_cond.cond);
 
