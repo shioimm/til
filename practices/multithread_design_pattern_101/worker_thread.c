@@ -5,29 +5,36 @@
 #include <unistd.h>
 
 pthread_mutex_t mutex;
-pthread_cond_t  cond;
+
+typedef struct {
+  pthread_cond_t cond;
+} Cond;
+
+Cond client_cond;
+Cond worker_conds[5];
 
 typedef struct {
   int no;
   int taken;
-} Task;
+} Request;
 
-Task tasks[100];
+Request reqests[100];
+int working_size = 0; // テーブルサイズ
 
-void *take_task(void *arg)
+void *put()
 {
-  int n = (int)arg;
-
   for (int i = 0; i < 100; i++) {
     pthread_mutex_lock(&mutex);
+    if (working_size >= 5) pthread_cond_wait(&client_cond.cond, &mutex);
 
-    if (tasks[i].taken == 0) {
-      tasks[i].taken = 1;
-      printf("worker %d handles no. %d\n", n, tasks[i].no);
-    }
+    reqests[i].no = i;
+    reqests[i].taken = 0;
+    working_size++;
+    printf("client put no. %d\n", i);
+    printf("%d\n", working_size);
 
     pthread_mutex_unlock(&mutex);
-    usleep(10);
+    usleep(1);
   }
 
   return NULL;
@@ -35,19 +42,20 @@ void *take_task(void *arg)
 
 int main()
 {
+  pthread_t client;
   pthread_t workers[5];
 
   pthread_mutex_init(&mutex, NULL);
 
-  for (int i = 0; i < 100; i++) {
-    tasks[i].no = i;
-    tasks[i].taken = 0;
-  }
+  pthread_cond_init(&client_cond.cond, NULL);
 
-  for (int i = 0; i < 5; i++) pthread_create(&workers[i], NULL, &take_task, (void *)i);
-  for (int i = 0; i < 5; i++) pthread_join(workers[i], NULL);
+  pthread_create(&client, NULL, &put, NULL);
+  // for (int i = 0; i < 5; i++) pthread_create(&workers[i], NULL, &take, (void *)i);
+  // for (int i = 0; i < 5; i++) pthread_join(workers[i], NULL);
 
+  pthread_join(client, NULL);
   pthread_mutex_destroy(&mutex);
+  pthread_cond_destroy(&client_cond.cond);
 
   return 0;
 }
