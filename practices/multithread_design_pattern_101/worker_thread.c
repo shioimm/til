@@ -1,5 +1,4 @@
-// Thread Per Message + Consumer-Producer
-
+// スレッド数を限定したThread Per Message + スレッド間通信にConsumer-Producerを使用
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
