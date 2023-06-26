@@ -1,14 +1,23 @@
 require 'resolv'
 require 'socket'
 
-# TODO:
-# AクエリとAAAAクエリをRFC8305に従ってそれぞれ送信する
-# 取得したIPv4/IPv6アドレスをソートする (後回し)
-# ソートしたアドレスをRFC8305に従って接続試行する
+class Client
+  # TODO: Threadをインスタンス変数に格納する
+  # (その時点ではThread#stopで止めておく。CONNECTION_ATTEMPT_DELAYが解除されたらrun開始)
+  attr_reader :sock, :addr
+
+  def initialize(sock, addr)
+    @sock = sock
+    @addr = addr
+  end
+end
 
 CONNECTION_ATTEMPT_DELAY = 0.25
 
 q = Queue.new
+# TODO: 順序が特定できるようにする必要あり。普通の配列にする
+# 接続確立後に他の接続スレッドをkillするため、接続待機中のスレッドを格納する配列とは別に
+# 接続中のスレッドを格納する配列を別で用意した方が良いかも
 
 # アドレス解決
 hostname = "localhost"
@@ -20,23 +29,32 @@ ipv6_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::AAAA)
 port = 9292
 ipv4_socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_resource.address.to_s)
-q.push({ sock: ipv4_socket, addr: ipv4_sockaddr})
+q.push(Client.new(ipv4_socket, ipv4_sockaddr))
 
 ipv6_socket = Socket.new(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
 ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_resource.address.to_s)
-q.push({ sock: ipv6_socket, addr: ipv6_sockaddr})
+q.push(Client.new(ipv6_socket, ipv6_sockaddr))
+
+# TODO:
+#   ConnectionAttemptDelayTimerスレッド
+#     1. 前のスレッドを表すインスタンスの接続開始時間を受け取り、タイマー計測
+#     2. タイマー時間を経過したら次のスレッドを表すインスタンスに通知
 
 main = Thread.new(q) do |q|
   while client = q.pop
     th = Thread.start do
-      result = client[:sock].connect(client[:addr])
-      # TODO: ここでCONNECTION_ATTEMPT_DELAY秒待つような仕組みが必要
+      # TODO:
+      #   CONNECTION_ATTEMPT_DELAY中
+      #     -> 通知が来るまで待機 (条件変数)
+      #   CONNECTION_ATTEMPT_DELAY中以外
+      #     -> 次のスレッドを表すインスタンスにCONNECTION_ATTEMPT_DELAYを開始、接続を開始
+      result = client.sock.connect(client.addr)
 
       if result == 0 # 成功
-        client[:sock].write "GET / HTTP/1.0\r\n\r\n"
-        print client[:sock].read
+        client.sock.write "GET / HTTP/1.0\r\n\r\n"
+        print client.sock.read
         q.push(nil)
-        # TODO: 接続待機または試行中の他のスレッドをkillする
+        # TODO: 他の接続スレッドをkillする
       end
     end
 
