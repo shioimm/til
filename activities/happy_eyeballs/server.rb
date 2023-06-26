@@ -20,11 +20,13 @@ class Server
     @socket.listen(5)
 
     loop do
+      trap(:INT) { shutdown }
       connection, client_addr = @socket.accept
       puts "#{version} received: #{connection.readpartial(128).gsub(/[\r\n]/,"")} from #{client_addr.ip_address}"
       connection.write("#{version}: ok\n")
       connection.close
     end
+
   end
 
   private
@@ -40,6 +42,11 @@ class Server
     else
       raise VersionError
     end
+  end
+
+  def shutdown
+    @socket.close
+    exit
   end
 end
 

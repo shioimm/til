@@ -53,6 +53,7 @@ main = Thread.new(q) do |q|
       if result == 0 # 成功
         client.sock.write "GET / HTTP/1.0\r\n\r\n"
         print client.sock.read
+        client.sock.close
         q.push(nil)
         # TODO: 他の接続スレッドをkillする
       end
