@@ -5,17 +5,19 @@ class Server
 
   PORT = 9292
 
-  def initialize(version, address)
+  def initialize(version, wait: 0)
     @version = version
+    @wait = wait
     @socket = Socket.new(domain, :STREAM)
-    address = Socket.pack_sockaddr_in(PORT, address)
-    @socket.bind(address)
+    sockaddr = Socket.pack_sockaddr_in(PORT, address)
+    @socket.bind(sockaddr)
   end
 
   def accept_loop
     puts "#{version} server started"
-    # コネクションを確立できないサーバー
-    #sleep
+
+    # 接続確立にかかる時間
+    sleep(@wait)
 
     @socket.listen(5)
 
@@ -26,7 +28,6 @@ class Server
       connection.write("#{version}: ok\n")
       connection.close
     end
-
   end
 
   private
@@ -44,6 +45,15 @@ class Server
     end
   end
 
+  def address
+    case @version
+    when :ipv6 then '::1'
+    when :ipv4 then '127.0.0.1'
+    else
+      raise VersionError
+    end
+  end
+
   def shutdown
     @socket.close
     exit
@@ -51,8 +61,8 @@ class Server
 end
 
 if child_pid = fork
-  Server.new(:ipv4, '127.0.0.1').accept_loop
+  Server.new(:ipv4, wait: 0).accept_loop
   Process.waitpid(child_pid)
 else
-  Server.new(:ipv6, '::1').accept_loop
+  Server.new(:ipv6, wait: 2).accept_loop
 end
