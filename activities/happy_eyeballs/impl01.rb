@@ -10,9 +10,30 @@ class Client
     @sock = sock
     @addr = addr
   end
+
+  def thread
+    Thread.start do
+      # TODO:
+      #   CONNECTION_ATTEMPT_DELAY中
+      #     -> 通知が来るまで待機 (条件変数)
+      #   CONNECTION_ATTEMPT_DELAY中以外
+      #     -> 次のスレッドを表すインスタンスにCONNECTION_ATTEMPT_DELAYを開始、接続を開始
+      Thread.stop
+
+      result = sock.connect(addr)
+
+      if result == 0 # 成功
+        sock.write "GET / HTTP/1.0\r\n\r\n"
+        print sock.read
+        sock.close
+        # TODO: 他の接続スレッドをkillする
+      end
+    end
+  end
 end
 
 CONNECTION_ATTEMPT_DELAY = 0.25
+MUTEX = Mutex.new
 
 waiting_sockets = []
 # TODO:
@@ -29,11 +50,11 @@ ipv6_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::AAAA)
 port = 9292
 ipv4_socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_resource.address.to_s)
-waiting_sockets.push(Client.new(ipv4_socket, ipv4_sockaddr))
+waiting_sockets.push Client.new(ipv4_socket, ipv4_sockaddr)
 
 ipv6_socket = Socket.new(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
 ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_resource.address.to_s)
-waiting_sockets.push(Client.new(ipv6_socket, ipv6_sockaddr))
+waiting_sockets.push Client.new(ipv6_socket, ipv6_sockaddr)
 
 # TODO:
 #   ConnectionAttemptDelayTimerスレッド
@@ -41,21 +62,8 @@ waiting_sockets.push(Client.new(ipv6_socket, ipv6_sockaddr))
 #     2. タイマー時間を経過したら次のスレッドを表すインスタンスに通知
 
 while client = waiting_sockets.shift
-  th = Thread.start do
-    # TODO:
-    #   CONNECTION_ATTEMPT_DELAY中
-    #     -> 通知が来るまで待機 (条件変数)
-    #   CONNECTION_ATTEMPT_DELAY中以外
-    #     -> 次のスレッドを表すインスタンスにCONNECTION_ATTEMPT_DELAYを開始、接続を開始
-    result = client.sock.connect(client.addr)
-
-    if result == 0 # 成功
-      client.sock.write "GET / HTTP/1.0\r\n\r\n"
-      print client.sock.read
-      client.sock.close
-      # TODO: 他の接続スレッドをkillする
-    end
-  end
-
-  th.join
+  t = client.thread
+  sleep 0.1 while t.status!= 'sleep'
+  t.run
+  t.join
 end
