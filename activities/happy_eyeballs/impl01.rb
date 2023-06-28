@@ -2,43 +2,46 @@ require 'resolv'
 require 'socket'
 
 class Client
-  # TODO: Threadをインスタンス変数に格納する
-  # (その時点ではThread#stopで止めておく。CONNECTION_ATTEMPT_DELAYが解除されたらrun開始)
-  attr_reader :sock, :addr
+  attr_accessor :connection_attempt_delaying
 
   def initialize(sock, addr)
     @sock = sock
     @addr = addr
+    @mutex = Mutex.new
+    @cond = ConditionVariable.new
+    @connection_attempt_delaying = true # デフォルトでfalseにするべき
   end
 
   def thread
-    Thread.start do
-      # TODO:
-      #   CONNECTION_ATTEMPT_DELAY中
-      #     -> 通知が来るまで待機 (条件変数)
-      #   CONNECTION_ATTEMPT_DELAY中以外
-      #     -> 次のスレッドを表すインスタンスにCONNECTION_ATTEMPT_DELAYを開始、接続を開始
-      Thread.stop
+    @thread ||= Thread.start do
+      @mutex.synchronize do
+        @cond.wait(@mutex) if connection_attempt_delaying
 
-      result = sock.connect(addr)
+        result = sock.connect(addr)
 
-      if result == 0 # 成功
-        sock.write "GET / HTTP/1.0\r\n\r\n"
-        print sock.read
-        sock.close
-        # TODO: 他の接続スレッドをkillする
+        if result == 0 # 成功
+          sock.write "GET / HTTP/1.0\r\n\r\n"
+          print sock.read
+          sock.close
+          # TODO: 他の接続スレッドをkillする
+        end
       end
     end
   end
+
+  def run
+    @cond.signal
+  end
+
+  private
+
+  attr_reader :sock, :addr
 end
 
 CONNECTION_ATTEMPT_DELAY = 0.25
-MUTEX = Mutex.new
 
 waiting_sockets = []
-# TODO:
-#   接続確立後に他の接続スレッドをkillするため、接続待機中のスレッドを格納する配列とは別に
-#   接続中のスレッドを格納する配列を別で用意した方が良いかも?
+# TODO: 接続確立後に他の接続スレッドをkillする必要あり。ThreadGroupを使う?
 
 # アドレス解決
 hostname = "localhost"
@@ -63,7 +66,13 @@ waiting_sockets.push Client.new(ipv6_socket, ipv6_sockaddr)
 
 while client = waiting_sockets.shift
   t = client.thread
-  sleep 0.1 while t.status!= 'sleep'
+  # TODO:
+  #   CONNECTION_ATTEMPT_DELAY中
+  #     -> client.connection_attempt_delaying = true
+  #   CONNECTION_ATTEMPT_DELAY中以外
+  #     -> client.connection_attempt_delaying = false
+  #     -> 次のclient.connection_attempt_delaying = true
+  client.connection_attempt_delaying = false
   t.run
   t.join
 end
