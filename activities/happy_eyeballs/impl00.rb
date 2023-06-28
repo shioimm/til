@@ -40,26 +40,22 @@ waiting_sockets.push(Client.new(ipv6_socket, ipv6_sockaddr))
 #     1. 前のスレッドを表すインスタンスの接続開始時間を受け取り、タイマー計測
 #     2. タイマー時間を経過したら次のスレッドを表すインスタンスに通知
 
-main = Thread.new(waiting_sockets) do |waiting_sockets|
-  while client = waiting_sockets.shift
-    th = Thread.start do
-      # TODO:
-      #   CONNECTION_ATTEMPT_DELAY中
-      #     -> 通知が来るまで待機 (条件変数)
-      #   CONNECTION_ATTEMPT_DELAY中以外
-      #     -> 次のスレッドを表すインスタンスにCONNECTION_ATTEMPT_DELAYを開始、接続を開始
-      result = client.sock.connect(client.addr)
+while client = waiting_sockets.shift
+  th = Thread.start do
+    # TODO:
+    #   CONNECTION_ATTEMPT_DELAY中
+    #     -> 通知が来るまで待機 (条件変数)
+    #   CONNECTION_ATTEMPT_DELAY中以外
+    #     -> 次のスレッドを表すインスタンスにCONNECTION_ATTEMPT_DELAYを開始、接続を開始
+    result = client.sock.connect(client.addr)
 
-      if result == 0 # 成功
-        client.sock.write "GET / HTTP/1.0\r\n\r\n"
-        print client.sock.read
-        client.sock.close
-        # TODO: 他の接続スレッドをkillする
-      end
+    if result == 0 # 成功
+      client.sock.write "GET / HTTP/1.0\r\n\r\n"
+      print client.sock.read
+      client.sock.close
+      # TODO: 他の接続スレッドをkillする
     end
-
-    th.join
   end
-end
 
-main.join
+  th.join
+end
