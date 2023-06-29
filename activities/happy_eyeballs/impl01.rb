@@ -11,7 +11,6 @@ class Client
     @mutex = Mutex.new
     @cond = ConditionVariable.new
     @connection_attempt_delaying = false
-    @starts_at = nil
   end
 
   def thread
@@ -19,7 +18,6 @@ class Client
       @mutex.synchronize do
         @cond.wait(@mutex) if connection_attempt_delaying
 
-        @starts_at = Time.now
         result = sock.connect(addr)
 
         if result == 0 # 成功
@@ -42,7 +40,7 @@ class Client
 end
 
 waiting_sockets = []
-# TODO: 接続確立後に他の接続スレッドをkillする必要あり。ThreadGroupを使う?
+# TODO: 接続確立後に他の接続スレッドをkillする必要あり。ThreadGroup#list.each(&:kill) など
 
 # アドレス解決
 hostname = "localhost"
@@ -60,11 +58,6 @@ ipv6_socket = Socket.new(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
 ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_resource.address.to_s)
 waiting_sockets.push Client.new(ipv6_socket, ipv6_sockaddr)
 
-# TODO:
-#   ConnectionAttemptDelayTimerスレッド
-#     1. 前のスレッドを表すインスタンスの接続開始時間を受け取り、タイマー計測
-#     2. タイマー時間を経過したら次のスレッドを表すインスタンスに通知
-
 class ConnectionAttemptDelayTimer
   CONNECTION_ATTEMPT_DELAY = 0.25
 
@@ -74,27 +67,25 @@ class ConnectionAttemptDelayTimer
   end
 
   def count
-    # CONNECTION_ATTEMPT_DELAY中
-    #   -> client.connection_attempt_delaying = true
-    # CONNECTION_ATTEMPT_DELAY中以外
-    #   -> client.connection_attempt_delaying = false
-    #   -> 次のclient.connection_attempt_delaying = true
-    @client.connection_attempt_delaying = true # CONNECTION_ATTEMPT_DELAYのときのみtrueにする仕組みが必要
-
     loop do
-      sleep 0.001
-
       if Time.now >= @timeout
         @client.connection_attempt_delaying = false
         @client.thread.run
         break
       end
+
+      sleep 0.001
     end
   end
 end
 
 waiting_sockets.each_with_index do |client, i|
-  ConnectionAttemptDelayTimer.new(Time.now, waiting_sockets[i + 1]).count if i + 1 < waiting_sockets.size
   t = client.thread
+
+  if (next_client = waiting_sockets[i + 1])
+    next_client.connection_attempt_delaying = true
+    ConnectionAttemptDelayTimer.new(Time.now, next_client).count
+  end
+
   t.join
 end
