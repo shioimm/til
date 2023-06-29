@@ -61,8 +61,8 @@ class Server
 end
 
 if child_pid = fork
-  Server.new(:ipv4, wait: 0).accept_loop
+  Server.new(:ipv4, wait: 5).accept_loop
   Process.waitpid(child_pid)
 else
-  Server.new(:ipv6, wait: 2).accept_loop
+  Server.new(:ipv6, wait: 0).accept_loop
 end
