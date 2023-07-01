@@ -1,6 +1,9 @@
 require 'resolv'
 require 'socket'
 
+WAITING_SOCKETS = []
+WORKING_THREADS = ThreadGroup.new
+
 class Client
   attr_accessor :connection_attempt_delaying
   attr_reader :starts_at
@@ -16,6 +19,8 @@ class Client
   def thread
     @thread ||= Thread.start do
       @mutex.synchronize do
+        WORKING_THREADS.add Thread.current
+
         @cond.wait(@mutex) if connection_attempt_delaying
 
         result = sock.connect(addr)
@@ -24,7 +29,7 @@ class Client
           sock.write "GET / HTTP/1.0\r\n\r\n"
           print sock.read
           sock.close
-          # TODO: 他の接続スレッドをkillする
+          (WORKING_THREADS.list - [Thread.current]).each(&:kill)
         end
       end
     end
@@ -39,9 +44,6 @@ class Client
   attr_reader :sock, :addr
 end
 
-waiting_sockets = []
-# TODO: 接続確立後に他の接続スレッドをkillする必要あり。ThreadGroup#list.each(&:kill) など
-
 # アドレス解決
 hostname = "localhost"
 resolver = Resolv::DNS.new
@@ -52,11 +54,11 @@ ipv6_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::AAAA)
 port = 9292
 ipv4_socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_resource.address.to_s)
-waiting_sockets.push Client.new(ipv4_socket, ipv4_sockaddr)
+WAITING_SOCKETS.push Client.new(ipv4_socket, ipv4_sockaddr)
 
 ipv6_socket = Socket.new(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
 ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_resource.address.to_s)
-waiting_sockets.push Client.new(ipv6_socket, ipv6_sockaddr)
+WAITING_SOCKETS.push Client.new(ipv6_socket, ipv6_sockaddr)
 
 class ConnectionAttemptDelayTimer
   CONNECTION_ATTEMPT_DELAY = 0.25
@@ -79,10 +81,10 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-waiting_sockets.each_with_index do |client, i|
+WAITING_SOCKETS.each_with_index do |client, i|
   t = client.thread
 
-  if (next_client = waiting_sockets[i + 1])
+  if (next_client = WAITING_SOCKETS[i + 1])
     next_client.connection_attempt_delaying = true
     ConnectionAttemptDelayTimer.new(Time.now, next_client).count
   end

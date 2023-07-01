@@ -11,6 +11,8 @@ class Server
     @socket = Socket.new(domain, :STREAM)
     sockaddr = Socket.pack_sockaddr_in(PORT, address)
     @socket.bind(sockaddr)
+
+    trap(:INT) { shutdown }
   end
 
   def accept_loop
@@ -22,7 +24,6 @@ class Server
     @socket.listen(5)
 
     loop do
-      trap(:INT) { shutdown }
       connection, client_addr = @socket.accept
       puts "#{version} received: #{connection.readpartial(128).gsub(/[\r\n]/,"")} from #{client_addr.ip_address}"
       connection.write("#{version}: ok\n")
