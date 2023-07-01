@@ -6,7 +6,6 @@ WORKING_THREADS = ThreadGroup.new
 
 class Client
   attr_accessor :connection_attempt_delaying
-  attr_reader :starts_at
 
   def initialize(sock, addr)
     @sock = sock
@@ -16,11 +15,9 @@ class Client
     @connection_attempt_delaying = false
   end
 
-  def thread
-    @thread ||= Thread.start do
+  def worker
+    @worker ||= Thread.start do
       @mutex.synchronize do
-        WORKING_THREADS.add Thread.current
-
         @cond.wait(@mutex) if connection_attempt_delaying
 
         result = sock.connect(addr)
@@ -72,7 +69,7 @@ class ConnectionAttemptDelayTimer
     loop do
       if Time.now >= @timeout
         @client.connection_attempt_delaying = false
-        @client.thread.run
+        @client.worker.run if @client.worker.status == 'sleep'
         break
       end
 
@@ -81,13 +78,18 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-WAITING_SOCKETS.each_with_index do |client, i|
-  t = client.thread
+WAITING_SOCKETS.each.with_index do |client, i|
+  t = Thread.start(client) { |client|
+    t = client.worker
 
-  if (next_client = WAITING_SOCKETS[i + 1])
-    next_client.connection_attempt_delaying = true
-    ConnectionAttemptDelayTimer.new(Time.now, next_client).count
-  end
+    if (next_client = WAITING_SOCKETS[i + 1])
+      next_client.connection_attempt_delaying = true
+      ConnectionAttemptDelayTimer.new(Time.now, next_client).count
+    end
 
-  t.join
+    t.join
+  }
+  WORKING_THREADS.add t
 end
+
+WORKING_THREADS.list.each(&:join)
