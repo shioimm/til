@@ -11,7 +11,6 @@ class Client
     @sock = sock
     @addr = addr
     @mutex = Mutex.new
-    @cond = ConditionVariable.new
     @connecting_starts_at = nil
   end
 
@@ -19,8 +18,7 @@ class Client
     @worker ||= Thread.start do
       @mutex.synchronize do
         if ConnectionAttemptDelayTimer.delaying?
-          ConnectionAttemptDelayTimer::DelayClient.new(self).attempt_to_connect
-          @cond.wait(@mutex)
+          ConnectionAttemptDelayTimer::DelayClient.attempt_to_connect.join
         end
 
         ConnectionAttemptDelayTimer::ConnectingClient.add self
@@ -35,10 +33,6 @@ class Client
         (WORKING_THREADS.list - [Thread.current]).each(&:kill)
       end
     end
-  end
-
-  def run
-    @cond.signal
   end
 
   private
@@ -69,7 +63,7 @@ class ConnectionAttemptDelayTimer
     ConnectingClient.exist? && !(ConnectingClient.timeout?)
   end
 
-  class ConnectingClient # TODO: Mutexで保護する必要あり
+  class ConnectingClient # TODO: 排他制御が必要な気がする
     class << self
       def exist?
         !(@clients ||= []).empty?
@@ -79,35 +73,27 @@ class ConnectionAttemptDelayTimer
         (@clients ||= []) << client
       end
 
-      def flush!
+      def update!
         (@clients ||= []).delete_at 0
       end
 
       def timeout?
-        p Time.now > @clients.first.connecting_starts_at + CONNECTION_ATTEMPT_DELAY
         Time.now > @clients.first.connecting_starts_at + CONNECTION_ATTEMPT_DELAY
       end
-    end
-
-    def initialize
-      @mutex = Mutex.new
     end
   end
 
   class DelayClient
-    def initialize(client)
-      @client = client
-    end
+    def self.attempt_to_connect
+      Thread.new do
+        loop do
+          if !ConnectionAttemptDelayTimer.delaying?
+            ConnectingClient.update!
+            break
+          end
 
-    def attempt_to_connect
-      loop do
-        if !ConnectionAttemptDelayTimer.delaying?
-          @client.run
-          ConnectingClient.flush!
-          break
+          sleep 0.001
         end
-
-        sleep 0.001
       end
     end
   end
