@@ -10,6 +10,7 @@ class Server
     @wait = wait
     @socket = Socket.new(domain, :STREAM)
     sockaddr = Socket.pack_sockaddr_in(PORT, address)
+    @socket.setsockopt(:SOCKET, :REUSEADDR, true)
     @socket.bind(sockaddr)
 
     trap(:INT) { shutdown }
@@ -62,8 +63,10 @@ class Server
 end
 
 if child_pid = fork
-  Server.new(:ipv4, wait: 120).accept_loop
+  Server.new(:ipv4, wait: 60 * 60 * 24).accept_loop
+  #Server.new(:ipv4, wait: 0).accept_loop
   Process.waitpid(child_pid)
 else
+  #Server.new(:ipv6, wait: 60 * 60 * 24).accept_loop
   Server.new(:ipv6, wait: 0).accept_loop
 end
