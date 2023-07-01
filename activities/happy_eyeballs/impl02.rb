@@ -1,6 +1,18 @@
+# 接続試行のみ
 require 'resolv'
 require 'socket'
 
+# ここまでの実装:
+#   アドレス解決 -> 同期的に実行
+#   接続試行     -> 実装済み、接続中スレッドの終了をThreadGroupで行っているのが気になる
+
+# アドレス解決
+hostname = "localhost"
+resolver = Resolv::DNS.new
+ipv4_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::A)
+ipv6_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::AAAA)
+
+# 接続試行
 WAITING_SOCKETS = []
 WORKING_THREADS = ThreadGroup.new
 
@@ -40,13 +52,6 @@ class Client
   attr_reader :sock, :addr
 end
 
-# アドレス解決
-hostname = "localhost"
-resolver = Resolv::DNS.new
-ipv4_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::A)
-ipv6_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::AAAA)
-
-# 接続試行
 port = 9292
 ipv4_socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
 ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_resource.address.to_s)

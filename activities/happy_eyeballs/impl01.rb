@@ -1,6 +1,10 @@
 require 'resolv'
 require 'socket'
 
+# ここまでの実装:
+#   アドレス解決 -> 同期的に実行
+#   接続試行     -> 実装済み、ConnectionAttemptDelayTimer周りの実装がもっさりしている
+
 WAITING_SOCKETS = []
 WORKING_THREADS = ThreadGroup.new
 
