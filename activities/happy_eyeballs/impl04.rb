@@ -18,7 +18,23 @@ class ClientSocket
 end
 
 class ConnectionAttempt
-  attr_reader :connecting_starts_at # ConnectionAttemptDelayTimerから参照する
+  class DelayingAttempt
+    def initialize(attempt)
+      @attempt = attempt
+    end
+
+    def try_to_attempt
+      loop do
+        if !ConnectionAttemptDelayTimer.delaying?
+          @attempt.resume
+          ConnectionAttemptDelayTimer.update
+          break
+        end
+
+        sleep 0.001
+      end
+    end
+  end
 
   def initialize
     @clients = {}
@@ -38,17 +54,18 @@ class ConnectionAttempt
     client = find_client(id)
 
     @mutex.synchronize do
+      DelayingAttempt.new(self).try_to_attempt if delaying?
       @connectable.wait(@mutex) if delaying?
+    end
 
-      @connecting_starts_at = Time.now
+    ConnectionAttemptDelayTimer.start_timer
+    result = client.sock.connect(client.addr)
 
-      result = client.sock.connect(client.addr)
-
-      if result == 0 # 成功
-        client.sock.write "GET / HTTP/1.0\r\n\r\n"
-        print client.sock.read
-        client.sock.close
-      end
+    if result == 0 # 成功
+      client.sock.write "GET / HTTP/1.0\r\n\r\n"
+      print client.sock.read
+      client.sock.close
+      # TODO: 他のスレッドを終了させる必要あり
     end
   end
 
@@ -70,9 +87,37 @@ end
 class ConnectionAttemptDelayTimer
   CONNECTION_ATTEMPT_DELAY = 0.25
 
-  def self.delaying?
-    # TODO: delayの条件を追加
-    false
+  @mutex = Mutex.new
+  @timers = []
+
+  class << self
+    def delaying?
+      !@timers.empty? && !timeout?
+    end
+
+    def start_timer
+      @mutex.synchronize do
+        @timers << self.new
+      end
+    end
+
+    def update
+      @mutex.synchronize do
+        @timers.delete_at 0
+      end
+    end
+
+    private
+
+    def timeout?
+      Time.now > @timers.first.connecting_starts_at + CONNECTION_ATTEMPT_DELAY
+    end
+  end
+
+  attr_reader :connecting_starts_at
+
+  def initialize
+    @connecting_starts_at = Time.now
   end
 end
 
@@ -89,11 +134,15 @@ waiting_sockets.push(ClientSocket.new(ipv6_socket, ipv6_sockaddr))
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
+num = 455675
+srand(num)
+
 while client = waiting_sockets.shift
+  id = rand(100)
+  client = { id => client }
   t = Thread.start(client) do |client|
-    id = rand(10)
-    connection_attempt.add_client({ id => client })
-    connection_attempt.attempt(id)
+    connection_attempt.add_client client
+    connection_attempt.attempt(client.keys.first)
   end
 
   WORKING_THREADS.add t
