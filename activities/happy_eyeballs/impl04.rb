@@ -65,7 +65,7 @@ class ConnectionAttempt
       client.sock.write "GET / HTTP/1.0\r\n\r\n"
       print client.sock.read
       client.sock.close
-      # TODO: 他のスレッドを終了させる必要あり
+      (WORKING_THREADS.list - [Thread.current]).each(&:kill)
     end
   end
 
