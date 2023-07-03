@@ -1,7 +1,10 @@
 require 'resolv'
 require 'socket'
 
-# TODO: 接続と終了のそれぞれの条件で待機できるかを検証する
+# ここまでの実装:
+#   アドレス解決 -> 同期的に実行
+#   接続試行     -> 実装済み、接続と終了のそれぞれの条件で待機したいが別インスタンスの条件変数を取得できない
+#                   インスタンスを共有してアドレスごとに別スレッドで立ち上げるのが良い?
 
 # アドレス解決
 hostname = "localhost"
@@ -21,12 +24,14 @@ class Client
     @addr = addr
     @mutex = Mutex.new
     @connectable = ConditionVariable.new
+    @cancelable = ConditionVariable.new
     @connecting_starts_at = nil
   end
 
   def worker
     @worker ||= Thread.start do
       connect!
+      cancel!
     end
   end
 
@@ -51,13 +56,25 @@ class Client
         sock.write "GET / HTTP/1.0\r\n\r\n"
         print sock.read
         sock.close
+        # 他のワーカーの@cancelableに対してsingalしたい
       end
-      (WORKING_THREADS.list - [Thread.current]).each(&:kill) # 終了条件を待って実行したい (#broadcastさせる)
     end
   end
 
   def delaying?
     ConnectionAttemptDelayTimer.delaying?
+  end
+
+  def cancel!
+    @mutex.synchronize do
+      @cancelable.wait(@mutex) if attempting_to_connect?
+
+      Thread.current.kill
+    end
+  end
+
+  def attempting_to_connect?
+    false
   end
 end
 
@@ -127,7 +144,7 @@ class ConnectionAttemptDelayTimer
 end
 
 WAITING_SOCKETS.each.with_index do |client, i|
-  t = Thread.start(client) { |client| t = client.worker; t.join }
+  t = Thread.start(client) { |client| t = client.worker; t.join; }
   WORKING_THREADS.add t
 end
 
