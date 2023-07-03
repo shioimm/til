@@ -1,6 +1,10 @@
 require 'resolv'
 require 'socket'
 
+# ここまでの実装:
+#   アドレス解決 -> 同期的に実行
+#   接続試行     -> 実装済み (ThreadGroupで終了させる。条件変数で終了を待つのは一旦保留)
+
 # アドレス解決
 hostname = "localhost"
 resolver = Resolv::DNS.new
@@ -8,12 +12,11 @@ ipv4_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::A)
 ipv6_resource = resolver.getresource(hostname, Resolv::DNS::Resource::IN::AAAA)
 
 # 接続試行
-class ClientSocket
-  attr_reader :sock, :addr
+class ClientAddrinfo
+  attr_reader :addrinfo
 
-  def initialize(sock, addr)
-    @sock = sock
-    @addr = addr
+  def initialize(addrinfo)
+    @addrinfo = addrinfo
   end
 end
 
@@ -44,9 +47,9 @@ class ConnectionAttempt
     @connecting_starts_at = nil
   end
 
-  def add_client(client_socket)
+  def add_client(client)
     @mutex.synchronize do
-      @clients.merge! client_socket
+      @clients.merge! client
     end
   end
 
@@ -59,14 +62,13 @@ class ConnectionAttempt
     end
 
     ConnectionAttemptDelayTimer.start_timer
-    result = client.sock.connect(client.addr)
 
-    if result == 0 # 成功
-      client.sock.write "GET / HTTP/1.0\r\n\r\n"
-      print client.sock.read
-      client.sock.close
-      (WORKING_THREADS.list - [Thread.current]).each(&:kill)
-    end
+    sock = client.addrinfo.connect
+    sock.write "GET / HTTP/1.0\r\n\r\n"
+    print sock.read
+    sock.close
+
+    (WORKING_THREADS.list - [Thread.current]).each(&:kill)
   end
 
   def resume
@@ -121,15 +123,16 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-waiting_sockets = []
+waiting_clients = []
 port = 9292
-ipv4_socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+# Socket.tcpはAddrinfo#connectが返すSocketでブロックを実行する
 ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_resource.address.to_s)
-waiting_sockets.push(ClientSocket.new(ipv4_socket, ipv4_sockaddr))
+ipv4_addrinfo = Addrinfo.new(ipv4_sockaddr, Socket::AF_INET, Socket::SOCK_STREAM, 0)
+waiting_clients.push(ClientAddrinfo.new(ipv4_addrinfo))
 
-ipv6_socket = Socket.new(Socket::AF_INET6, Socket::SOCK_STREAM, 0)
 ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_resource.address.to_s)
-waiting_sockets.push(ClientSocket.new(ipv6_socket, ipv6_sockaddr))
+ipv6_addrinfo = Addrinfo.new(ipv6_sockaddr, Socket::AF_INET6, Socket::SOCK_STREAM, 0)
+waiting_clients.push(ClientAddrinfo.new(ipv6_addrinfo))
 
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
@@ -137,7 +140,7 @@ connection_attempt = ConnectionAttempt.new
 num = 455675
 srand(num)
 
-while client = waiting_sockets.shift
+while client = waiting_clients.shift
   id = rand(100)
   client = { id => client }
   t = Thread.start(client) do |client|
