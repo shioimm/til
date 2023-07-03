@@ -40,22 +40,12 @@ class ConnectionAttempt
   end
 
   def initialize
-    @clients = {}
     @mutex = Mutex.new
     @connectable = ConditionVariable.new
-    @cancelable = ConditionVariable.new
     @connecting_starts_at = nil
   end
 
-  def add_client(client)
-    @mutex.synchronize do
-      @clients.merge! client
-    end
-  end
-
-  def attempt(id)
-    client = find_client(id)
-
+  def attempt(client)
     @mutex.synchronize do
       DelayingAttempt.new(self).try_to_attempt if delaying?
       @connectable.wait(@mutex) if delaying?
@@ -76,10 +66,6 @@ class ConnectionAttempt
   end
 
   private
-
-  def find_client(id)
-    @clients[id]
-  end
 
   def delaying?
     ConnectionAttemptDelayTimer.delaying?
@@ -137,15 +123,9 @@ waiting_clients.push(ClientAddrinfo.new(ipv6_addrinfo))
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
-num = 455675
-srand(num)
-
 while client = waiting_clients.shift
-  id = rand(100)
-  client = { id => client }
   t = Thread.start(client) do |client|
-    connection_attempt.add_client client
-    connection_attempt.attempt(client.keys.first)
+    connection_attempt.attempt(client)
   end
 
   WORKING_THREADS.add t
