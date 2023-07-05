@@ -109,17 +109,32 @@ addresses = []
 # TODO: 一旦スレッドでアドレス解決を行うようにしただけ
 type_classes.each do |type|
   addresses << Thread.new { resolver.getresource(hostname, type) }.value.address.to_s
+  # 返ってきたのがIPv6アドレスの場合、返ってきたことを示すフラグを立ててaddressesにClientAddrinfoを追加
+  # 返ってきたのがIPv4アドレスの場合、フラグを確認する
+  #   フラグが立っていればaddressesにClientAddrinfoを追加
+  #   フラグが立っていなければResolution Delay -> addressesにClientAddrinfoを追加
+  #   ClientAddrinfoを作るため、返ってきた文字列がIPv6なのかIPv4なのかを判断するための手段を用意する
+  #
+  # addressesは自身に値が追加されるのを待つ -> 値を追加したスレッドがConnectionAttemptを実施
+  #   addressesに値を追加したスレッドがaddressesにシグナルを送る
+  # addressesは値の追加の待機のキャンセルを待つ
+  #   ConnectionAttemptに成功したスレッドがaddressesにシグナルを送る
+  #   DNSクエリを行うtype_classesが尽きたらメインスレッドがaddressesにシグナルを送る
+  #
+  # 終了要件 (正常系) :
+  #   接続を確立したスレッドから接続ソケットを得ること
+  #   addressesの待機状態が解除されていること
+  #   接続を確立したスレッド以外のスレッドが終了していること
+  #
+  # 単一のスレッドがDNSクエリから接続試行まで行えば
+  # タイマーと動作中のスレッドを管理する機構だけが必要でaddressesに貯める処理は不要では?
+  #   -> DNS回答が複数のレコードを含んでいる場合には単一のアドレスファミリに複数のスレッドが必要
 end
-# addressesに値が入るのを待って条件に応じて接続 or 待機
-#   フルリゾルバから最初に有効なAAAA応答を受信した場合、クライアントは最初のIPv6接続を直ちに試行する
-#   フルリゾルバから最初に有効なA応答を受信した場合、50ms待つ
-# Resolution DelayとClientAddrinfoをつくる処理をどこで行うべきか
 
 # 接続試行
 waiting_clients = []
 port = 9292
 ipv6_addr, ipv4_addr = addresses
-# Addrinfo.newする際の処理を共通化するにはこの文字列がIPv6なのかIPv4なのかを判断する必要があるのでは
 
 ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_addr)
 ipv4_addrinfo = Addrinfo.new(ipv4_sockaddr, Socket::AF_INET, Socket::SOCK_STREAM, 0)
@@ -132,7 +147,6 @@ waiting_clients.push(ClientAddrinfo.new(ipv6_addrinfo))
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
-# whileする単位をtype_classesにした方が良いかも?
 while client = waiting_clients.shift
   t = Thread.start(client) do |client|
     connection_attempt.attempt(client)
