@@ -129,6 +129,11 @@ type_classes.each do |type|
   # 単一のスレッドがDNSクエリから接続試行まで行えば
   # タイマーと動作中のスレッドを管理する機構だけが必要でaddressesに貯める処理は不要では?
   #   -> DNS回答が複数のレコードを含んでいる場合には単一のアドレスファミリに複数のスレッドが必要
+  #
+  # Producer-Consumerパターンを利用する
+  #   Producer側はClientAddrinfoをaddressesに置く
+  #   Consumer側 (メインスレッド) はClientAddrinfoをaddressesから取り出し、スレッドを生成して接続試行
+  #     ConsumerがaddressesからClientAddrinfoを取り出すのを止める契機を用意する (タイムアウト?)
 end
 
 # 接続試行
