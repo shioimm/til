@@ -127,8 +127,10 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-waiting_clients = []
 port = 9292
+
+WORKING_THREADS = ThreadGroup.new
+connection_attempt = ConnectionAttempt.new
 
 # Concumer
 type_classes.size.times do # TODO: 暫定条件
@@ -143,15 +145,9 @@ type_classes.size.times do # TODO: 暫定条件
 
   sockaddr = Socket.sockaddr_in(port, address)
   addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
-  waiting_clients.push(addrinfo)
-end
 
-WORKING_THREADS = ThreadGroup.new
-connection_attempt = ConnectionAttempt.new
-
-while client = waiting_clients.shift # TODO: 暫定処置: 最終的にはConcumerループと統合する
-  t = Thread.start(client) do |client|
-    connection_attempt.attempt(client)
+  t = Thread.start(addrinfo) do |addrinfo|
+    connection_attempt.attempt(addrinfo)
   end
 
   WORKING_THREADS.add t
