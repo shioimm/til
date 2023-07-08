@@ -130,33 +130,35 @@ end
 
 address_storage = AddressStorage.new
 
+# Producer
 type_classes.each do |type|
   address_storage.append Thread.new { resolver.getresource(hostname, type) }.value.address.to_s
 end
 
 # 接続試行
-addresses = []
 waiting_clients = []
 port = 9292
 
+# Concumer
 type_classes.size.times do # TODO: 暫定条件
-  addresses << address_storage.take # TODO: takeするたびに新しいスレッドを生成し、接続試行する
+  address = address_storage.take # TODO: takeするたびに新しいスレッドを生成し、接続試行する
+
+  family = case address
+           when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+           when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+           else
+             raise StandardError
+           end
+
+  sockaddr = Socket.sockaddr_in(port, address)
+  addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+  waiting_clients.push(ClientAddrinfo.new(addrinfo))
 end
-
-ipv6_addr, ipv4_addr = addresses
-
-ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_addr)
-ipv4_addrinfo = Addrinfo.new(ipv4_sockaddr, Socket::AF_INET, Socket::SOCK_STREAM, 0)
-waiting_clients.push(ClientAddrinfo.new(ipv4_addrinfo))
-
-ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_addr)
-ipv6_addrinfo = Addrinfo.new(ipv6_sockaddr, Socket::AF_INET6, Socket::SOCK_STREAM, 0)
-waiting_clients.push(ClientAddrinfo.new(ipv6_addrinfo))
 
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
-while client = waiting_clients.shift
+while client = waiting_clients.shift # TODO: 暫定処置: 最終的にはConcumerループと統合する
   t = Thread.start(client) do |client|
     connection_attempt.attempt(client)
   end
