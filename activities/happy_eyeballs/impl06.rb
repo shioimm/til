@@ -1,14 +1,46 @@
 require 'resolv'
 require 'socket'
 
-class ClientAddrinfo
-  attr_reader :addrinfo
+HOSTNAME = "localhost"
+PORT = 9292
 
-  def initialize(addrinfo)
-    @addrinfo = addrinfo
+# アドレス解決
+class AddressResource
+  def initialize
+    @addresses = []
+    @mutex = Mutex.new
+    @cond = ConditionVariable.new
+  end
+
+  def add(address)
+    @mutex.synchronize do
+      @addresses.push address
+      @cond.signal
+    end
+  end
+
+  def take # TODO: consumerがtakeを中断するための処理を追加する
+    @mutex.synchronize do
+      while @addresses.size <= 0
+        @cond.wait(@mutex)
+      end
+
+      @addresses.shift
+    end
   end
 end
 
+address_resource = AddressResource.new
+resolver = Resolv::DNS.new
+type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
+
+# Producer
+type_classes.each do |type|
+  # TODO: Resolution Delayの実装を追加する
+  address_resource.add Thread.new { resolver.getresource(HOSTNAME, type) }.value.address.to_s
+end
+
+# 接続試行
 class ConnectionAttempt
   class DelayingAttempt
     def initialize(attempt)
@@ -34,7 +66,7 @@ class ConnectionAttempt
     @connecting_starts_at = nil
   end
 
-  def attempt(client)
+  def attempt(addrinfo)
     @mutex.synchronize do
       DelayingAttempt.new(self).try_to_attempt if delaying?
       @connectable.wait(@mutex) if delaying?
@@ -42,7 +74,7 @@ class ConnectionAttempt
 
     ConnectionAttemptDelayTimer.start_timer
 
-    sock = client.addrinfo.connect
+    sock = addrinfo.connect
     sock.write "GET / HTTP/1.0\r\n\r\n"
     print sock.read
     sock.close
@@ -98,67 +130,25 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-# アドレス解決
-hostname = "localhost"
-resolver = Resolv::DNS.new
-type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
-
-class AddressStorage
-  def initialize
-    @addresses = []
-    @mutex = Mutex.new
-    @cond = ConditionVariable.new
-  end
-
-  def append(address)
-    @mutex.synchronize do
-      @addresses.push address
-      @cond.signal
-    end
-  end
-
-  def take # TODO: consumerがtakeを中断するための処理を追加する
-    @mutex.synchronize do
-      while @addresses.size <= 0
-        @cond.wait(@mutex)
-      end
-
-      @addresses.shift
-    end
-  end
-end
-
-address_storage = AddressStorage.new
-
-type_classes.each do |type|
-  address_storage.append Thread.new { resolver.getresource(hostname, type) }.value.address.to_s
-end
-
-# 接続試行
-addresses = []
-waiting_clients = []
-port = 9292
-
-type_classes.size.times do # TODO: 暫定条件
-  addresses << address_storage.take # TODO: takeするたびに新しいスレッドを生成し、接続試行する
-end
-
-ipv6_addr, ipv4_addr = addresses
-
-ipv4_sockaddr = Socket.sockaddr_in(port, ipv4_addr)
-ipv4_addrinfo = Addrinfo.new(ipv4_sockaddr, Socket::AF_INET, Socket::SOCK_STREAM, 0)
-waiting_clients.push(ClientAddrinfo.new(ipv4_addrinfo))
-
-ipv6_sockaddr = Socket.sockaddr_in(port, ipv6_addr)
-ipv6_addrinfo = Addrinfo.new(ipv6_sockaddr, Socket::AF_INET6, Socket::SOCK_STREAM, 0)
-waiting_clients.push(ClientAddrinfo.new(ipv6_addrinfo))
-
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
-while client = waiting_clients.shift
-  t = Thread.start(client) do |client|
-    connection_attempt.attempt(client)
+# Concumer
+type_classes.size.times do # TODO: 暫定条件 (AddressResourceの終了条件を満たすまでループする必要がある)
+  address = address_resource.take
+
+  family = case address
+           when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+           when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+           else
+             raise StandardError
+           end
+
+  sockaddr = Socket.sockaddr_in(PORT, address)
+  addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+
+  t = Thread.start(addrinfo) do |addrinfo|
+    connection_attempt.attempt(addrinfo)
   end
 
   WORKING_THREADS.add t
