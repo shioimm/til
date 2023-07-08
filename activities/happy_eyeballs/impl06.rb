@@ -1,6 +1,9 @@
 require 'resolv'
 require 'socket'
 
+HOSTNAME = "localhost"
+PORT = 9292
+
 # アドレス解決
 class AddressResource
   def initialize
@@ -28,13 +31,13 @@ class AddressResource
 end
 
 address_resource = AddressResource.new
-hostname = "localhost"
 resolver = Resolv::DNS.new
 type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
 
 # Producer
 type_classes.each do |type|
-  address_resource.add Thread.new { resolver.getresource(hostname, type) }.value.address.to_s
+  # TODO: Resolution Delayの実装を追加する
+  address_resource.add Thread.new { resolver.getresource(HOSTNAME, type) }.value.address.to_s
 end
 
 # 接続試行
@@ -127,14 +130,12 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-port = 9292
-
 WORKING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
 # Concumer
-type_classes.size.times do # TODO: 暫定条件
-  address = address_resource.take # TODO: takeするたびに新しいスレッドを生成し、接続試行する
+type_classes.size.times do # TODO: 暫定条件 (AddressResourceの終了条件を満たすまでループする必要がある)
+  address = address_resource.take
 
   family = case address
            when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
@@ -143,7 +144,7 @@ type_classes.size.times do # TODO: 暫定条件
              raise StandardError
            end
 
-  sockaddr = Socket.sockaddr_in(port, address)
+  sockaddr = Socket.sockaddr_in(PORT, address)
   addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
 
   t = Thread.start(addrinfo) do |addrinfo|
