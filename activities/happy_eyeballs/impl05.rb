@@ -31,7 +31,6 @@ class ConnectionAttempt
   def initialize
     @mutex = Mutex.new
     @connectable = ConditionVariable.new
-    @connecting_starts_at = nil
   end
 
   def attempt(client)

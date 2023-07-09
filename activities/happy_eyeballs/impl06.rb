@@ -42,37 +42,12 @@ end
 
 # 接続試行
 class ConnectionAttempt
-  class DelayingAttempt
-    def initialize(attempt)
-      @attempt = attempt
-    end
-
-    def try_to_attempt
-      loop do
-        if !ConnectionAttemptDelayTimer.delaying?
-          @attempt.resume
-          ConnectionAttemptDelayTimer.update
-          break
-        end
-
-        sleep 0.001
-      end
-    end
-  end
-
-  def initialize
-    @mutex = Mutex.new
-    @connectable = ConditionVariable.new
-    @connecting_starts_at = nil
-  end
-
   def attempt(addrinfo)
-    @mutex.synchronize do
-      DelayingAttempt.new(self).try_to_attempt if delaying?
-      @connectable.wait(@mutex) if delaying?
+    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
+      sleep timer.waiting_time
     end
 
-    ConnectionAttemptDelayTimer.start_timer
+    ConnectionAttemptDelayTimer.start_new_timer
 
     sock = addrinfo.connect
     sock.write "GET / HTTP/1.0\r\n\r\n"
@@ -80,16 +55,6 @@ class ConnectionAttempt
     sock.close
 
     (WORKING_THREADS.list - [Thread.current]).each(&:kill)
-  end
-
-  def resume
-    @connectable.signal
-  end
-
-  private
-
-  def delaying?
-    ConnectionAttemptDelayTimer.delaying?
   end
 end
 
@@ -100,33 +65,30 @@ class ConnectionAttemptDelayTimer
   @timers = []
 
   class << self
-    def delaying?
-      !@timers.empty? && !timeout?
-    end
-
-    def start_timer
+    def start_new_timer
       @mutex.synchronize do
         @timers << self.new
       end
     end
 
-    def update
+    def take_timer
       @mutex.synchronize do
-        @timers.delete_at 0
+        @timers.shift
       end
-    end
-
-    private
-
-    def timeout?
-      Time.now > @timers.first.connecting_starts_at + CONNECTION_ATTEMPT_DELAY
     end
   end
 
-  attr_reader :connecting_starts_at
-
   def initialize
-    @connecting_starts_at = Time.now
+    @starts_at = Time.now
+    @ends_at = @starts_at + CONNECTION_ATTEMPT_DELAY
+  end
+
+  def timein?
+    @ends_at > Time.now
+  end
+
+  def waiting_time
+    @ends_at - Time.now
   end
 end
 
