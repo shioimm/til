@@ -54,7 +54,7 @@ class ConnectionAttempt
     print sock.read
     sock.close
 
-    (WORKING_THREADS.list - [Thread.current]).each(&:kill)
+    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
   end
 end
 
@@ -92,7 +92,7 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-WORKING_THREADS = ThreadGroup.new
+CONNECTING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
 # Concumer
@@ -113,7 +113,7 @@ type_classes.size.times do # TODO: 暫定条件 (AddressResourceの終了条件�
     connection_attempt.attempt(addrinfo)
   end
 
-  WORKING_THREADS.add t
+  CONNECTING_THREADS.add t
 end
 
-WORKING_THREADS.list.each(&:join)
+CONNECTING_THREADS.list.each(&:join)
