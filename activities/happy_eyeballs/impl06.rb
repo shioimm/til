@@ -1,10 +1,6 @@
 require 'resolv'
 require 'socket'
 
-HOSTNAME = "localhost"
-PORT = 9292
-
-# アドレス解決
 class AddressResource
   # RFC8305: Connection Attempts
   # the DNS client resolver SHOULD still process DNS replies from the network
@@ -32,10 +28,6 @@ class AddressResource
   end
 end
 
-address_resource = AddressResource.new
-type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
-
-# Producer
 class ResolutionDelayTimer
   RESOLUTION_DELAY = 0.05
 
@@ -82,30 +74,6 @@ class DNSResolution
   end
 end
 
-dns_resolution = DNSResolution.new
-
-type_classes.each do |type|
-  address_resource.add Thread.new { dns_resolution.resolv(HOSTNAME, type) }.value
-end
-
-# 接続試行
-class ConnectionAttempt
-  def attempt(addrinfo)
-    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
-      sleep timer.waiting_time
-    end
-
-    ConnectionAttemptDelayTimer.start_new_timer
-
-    sock = addrinfo.connect
-    sock.write "GET / HTTP/1.0\r\n\r\n"
-    print sock.read
-    sock.close
-
-    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
-  end
-end
-
 class ConnectionAttemptDelayTimer
   CONNECTION_ATTEMPT_DELAY = 0.25
 
@@ -140,10 +108,39 @@ class ConnectionAttemptDelayTimer
   end
 end
 
+class ConnectionAttempt
+  def attempt(addrinfo)
+    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
+      sleep timer.waiting_time
+    end
+
+    ConnectionAttemptDelayTimer.start_new_timer
+
+    # TODO: addrinfo.connectしたソケットを返すようにする
+    sock = addrinfo.connect
+    sock.write "GET / HTTP/1.0\r\n\r\n"
+    print sock.read
+    sock.close
+
+    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
+  end
+end
+
+HOSTNAME = "localhost"
+PORT = 9292
+
+# アドレス解決 (Producer)
+address_resource = AddressResource.new
+dns_resolution = DNSResolution.new
+
+[Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]↲.each do |type|
+  address_resource.add Thread.new { dns_resolution.resolv(HOSTNAME, type) }.value
+end
+
+# 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
-# Concumer
 loop do
   address = address_resource.take
 
