@@ -36,14 +36,49 @@ address_resource = AddressResource.new
 type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
 
 # Producer
+class ResolutionDelayTimer
+  RESOLUTION_DELAY = 0.05
+
+  @mutex = Mutex.new
+  @enable = false
+
+  class << self
+    def enable?
+      @mutex.synchronize do
+        @enable
+      end
+    end
+
+    def enable!
+      @mutex.synchronize do
+        @enable = true
+      end
+    end
+
+    def waiting_time
+      RESOLUTION_DELAY
+    end
+  end
+end
+
 class DNSResolution
   def initialize
     @resolver = Resolv::DNS.new
   end
 
   def resolv(hostname, type)
-    # TODO: Resolution Delayの実装を追加する
-    @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
+    addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
+
+    case type
+    when Resolv::DNS::Resource::IN::AAAA
+      ResolutionDelayTimer.enable!
+    when Resolv::DNS::Resource::IN::A
+      if ResolutionDelayTimer.enabled?
+        sleep ResolutionDelayTimer.waiting_time
+      end
+    end
+
+    addresses
   end
 end
 
