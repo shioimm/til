@@ -1,11 +1,4 @@
 # マイグレーションファイル
-#### `schema_migrations`
-- `$ rails db:migrate`によって実行されたマイグレーションファイルの日付情報を保存する内部テーブル
-- `$ rails db:migrate`時、`schema_migrations`テーブル内にレコードが存在しない日付に対応する
-  マイグレーションファイルのみが実行される
-- `schema_migrations`に日付情報があるが、それに対応するマイグレーションファイルがない場合、
-  `$ rails db:migrate:status`は`********** NO FILE **********`を表示する
-
 #### `config.active_record.schema_format`
 
 ```ruby
@@ -13,15 +6,6 @@
 # スキーマ情報をSQL (structure.sql) で保存する
 
 config.active_record.schema_format = :sql
-```
-
-#### 任意のSQLを実行
-
-```ruby
-def change
-  sql = "UPDATE books SET title = 'Unknown' WHERE title=NULL"
-  ActiveRecord::Base.connection.execute(sql)
-end
 ```
 
 #### マイグレーション実行時のログ出力
