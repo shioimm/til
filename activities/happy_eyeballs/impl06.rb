@@ -1,10 +1,6 @@
 require 'resolv'
 require 'socket'
 
-HOSTNAME = "localhost"
-PORT = 9292
-
-# アドレス解決
 class AddressResource
   # RFC8305: Connection Attempts
   # the DNS client resolver SHOULD still process DNS replies from the network
@@ -17,14 +13,14 @@ class AddressResource
     @cond = ConditionVariable.new
   end
 
-  def add(address)
+  def add(addresses)
     @mutex.synchronize do
-      @addresses.push address
+      @addresses.push(*addresses)
       @cond.signal
     end
   end
 
-  def take # TODO: consumerがtakeを中断するための処理を追加する
+  def take
     @mutex.synchronize do
       @cond.wait(@mutex, WAITING_DNS_REPLY_SECOND) if @addresses.size <= 0
       @addresses.shift
@@ -32,31 +28,49 @@ class AddressResource
   end
 end
 
-address_resource = AddressResource.new
-resolver = Resolv::DNS.new
-type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
+class ResolutionDelayTimer
+  RESOLUTION_DELAY = 0.05
 
-# Producer
-type_classes.each do |type|
-  # TODO: Resolution Delayの実装を追加する
-  address_resource.add Thread.new { resolver.getresource(HOSTNAME, type) }.value.address.to_s
-end
+  @mutex = Mutex.new
+  @enable = false
 
-# 接続試行
-class ConnectionAttempt
-  def attempt(addrinfo)
-    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
-      sleep timer.waiting_time
+  class << self
+    def enable?
+      @mutex.synchronize do
+        @enable
+      end
     end
 
-    ConnectionAttemptDelayTimer.start_new_timer
+    def enable!
+      @mutex.synchronize do
+        @enable = true
+      end
+    end
 
-    sock = addrinfo.connect
-    sock.write "GET / HTTP/1.0\r\n\r\n"
-    print sock.read
-    sock.close
+    def waiting_time
+      RESOLUTION_DELAY
+    end
+  end
+end
 
-    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
+class DNSResolution
+  def initialize
+    @resolver = Resolv::DNS.new
+  end
+
+  def resolv(hostname, type)
+    addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
+
+    case type
+    when Resolv::DNS::Resource::IN::AAAA
+      ResolutionDelayTimer.enable!
+    when Resolv::DNS::Resource::IN::A
+      if ResolutionDelayTimer.enabled?
+        sleep ResolutionDelayTimer.waiting_time
+      end
+    end
+
+    addresses
   end
 end
 
@@ -94,10 +108,39 @@ class ConnectionAttemptDelayTimer
   end
 end
 
+class ConnectionAttempt
+  def attempt(addrinfo)
+    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
+      sleep timer.waiting_time
+    end
+
+    ConnectionAttemptDelayTimer.start_new_timer
+
+    # TODO: addrinfo.connectしたソケットを返すようにする
+    sock = addrinfo.connect
+    sock.write "GET / HTTP/1.0\r\n\r\n"
+    print sock.read
+    sock.close
+
+    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
+  end
+end
+
+HOSTNAME = "localhost"
+PORT = 9292
+
+# アドレス解決 (Producer)
+address_resource = AddressResource.new
+dns_resolution = DNSResolution.new
+
+[Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]↲.each do |type|
+  address_resource.add Thread.new { dns_resolution.resolv(HOSTNAME, type) }.value
+end
+
+# 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
-# Concumer
 loop do
   address = address_resource.take
 
