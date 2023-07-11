@@ -6,6 +6,11 @@ PORT = 9292
 
 # アドレス解決
 class AddressResource
+  # RFC8305: Connection Attempts
+  # the DNS client resolver SHOULD still process DNS replies from the network
+  # for a short period of time (recommended to be 1 second)
+  WAITING_DNS_REPLY_SECOND = 1
+
   def initialize
     @addresses = []
     @mutex = Mutex.new
@@ -21,10 +26,7 @@ class AddressResource
 
   def take # TODO: consumerがtakeを中断するための処理を追加する
     @mutex.synchronize do
-      while @addresses.size <= 0
-        @cond.wait(@mutex)
-      end
-
+      @cond.wait(@mutex, WAITING_DNS_REPLY_SECOND) if @addresses.size <= 0
       @addresses.shift
     end
   end
@@ -54,7 +56,7 @@ class ConnectionAttempt
     print sock.read
     sock.close
 
-    (WORKING_THREADS.list - [Thread.current]).each(&:kill)
+    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
   end
 end
 
@@ -92,12 +94,14 @@ class ConnectionAttemptDelayTimer
   end
 end
 
-WORKING_THREADS = ThreadGroup.new
+CONNECTING_THREADS = ThreadGroup.new
 connection_attempt = ConnectionAttempt.new
 
 # Concumer
-type_classes.size.times do # TODO: 暫定条件 (AddressResourceの終了条件を満たすまでループする必要がある)
+loop do
   address = address_resource.take
+
+  break if address.nil?
 
   family = case address
            when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
@@ -113,7 +117,7 @@ type_classes.size.times do # TODO: 暫定条件 (AddressResourceの終了条件�
     connection_attempt.attempt(addrinfo)
   end
 
-  WORKING_THREADS.add t
+  CONNECTING_THREADS.add t
 end
 
-WORKING_THREADS.list.each(&:join)
+CONNECTING_THREADS.list.each(&:join)
