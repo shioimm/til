@@ -17,9 +17,9 @@ class AddressResource
     @cond = ConditionVariable.new
   end
 
-  def add(address)
+  def add(addresses)
     @mutex.synchronize do
-      @addresses.push address
+      @addresses.push(*addresses)
       @cond.signal
     end
   end
@@ -43,7 +43,7 @@ class DNSResolution
 
   def resolv(hostname, type)
     # TODO: Resolution Delayの実装を追加する
-    @resolver.getresource(hostname, type).address.to_s
+    @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
   end
 end
 
