@@ -24,7 +24,7 @@ class AddressResource
     end
   end
 
-  def take # TODO: consumerがtakeを中断するための処理を追加する
+  def take
     @mutex.synchronize do
       @cond.wait(@mutex, WAITING_DNS_REPLY_SECOND) if @addresses.size <= 0
       @addresses.shift
@@ -33,13 +33,24 @@ class AddressResource
 end
 
 address_resource = AddressResource.new
-resolver = Resolv::DNS.new
 type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
 
 # Producer
+class DNSResolution
+  def initialize
+    @resolver = Resolv::DNS.new
+  end
+
+  def resolv(hostname, type)
+    # TODO: Resolution Delayの実装を追加する
+    @resolver.getresource(hostname, type).address.to_s
+  end
+end
+
+dns_resolution = DNSResolution.new
+
 type_classes.each do |type|
-  # TODO: Resolution Delayの実装を追加する
-  address_resource.add Thread.new { resolver.getresource(HOSTNAME, type) }.value.address.to_s
+  address_resource.add Thread.new { dns_resolution.resolv(HOSTNAME, type) }.value
 end
 
 # 接続試行
