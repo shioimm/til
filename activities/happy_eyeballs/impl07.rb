@@ -115,14 +115,9 @@ class ConnectionAttempt
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
-
-    # TODO: addrinfo.connectしたソケットを返すようにする
     sock = addrinfo.connect
-    sock.write "GET / HTTP/1.0\r\n\r\n"
-    print sock.read
-    sock.close
-
     (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
+    sock
   end
 end
 
@@ -157,9 +152,15 @@ loop do
   addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
 
   t = Thread.start(addrinfo) do |addrinfo|
-    connection_attempt.attempt(addrinfo)
+    sock = connection_attempt.attempt(addrinfo)
+
+    # TODO: メインスレッドで接続済みのsockを取得した上で実行するようにする
+    sock.write "GET / HTTP/1.0\r\n\r\n"
+    print sock.read
+    sock.close
   end
 
+  # TODO: アドレス解決と接続試行を一つの処理にまとめ、接続済みのsockをスレッドのvalueから取得できるようにする
   CONNECTING_THREADS.add t
 end
 
