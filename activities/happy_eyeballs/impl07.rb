@@ -141,17 +141,16 @@ loop do
 
   break if address.nil?
 
-  family = case address
-           when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
-           when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
-           else
-             raise StandardError
-           end
+  t = Thread.start(address) do |address|
+    family = case address
+             when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+             when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+             else
+               raise StandardError
+             end
 
-  sockaddr = Socket.sockaddr_in(PORT, address)
-  addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
-
-  t = Thread.start(addrinfo) do |addrinfo|
+    sockaddr = Socket.sockaddr_in(PORT, address)
+    addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
     sock = connection_attempt.attempt(addrinfo)
 
     # TODO: メインスレッドで接続済みのsockを取得した上で実行するようにする
