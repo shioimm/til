@@ -115,14 +115,9 @@ class ConnectionAttempt
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
-
-    # TODO: addrinfo.connectしたソケットを返すようにする
     sock = addrinfo.connect
-    sock.write "GET / HTTP/1.0\r\n\r\n"
-    print sock.read
-    sock.close
-
     (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
+    sock
   end
 end
 
@@ -146,20 +141,25 @@ loop do
 
   break if address.nil?
 
-  family = case address
-           when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
-           when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
-           else
-             raise StandardError
-           end
+  t = Thread.start(address) do |address|
+    family = case address
+             when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+             when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+             else
+               raise StandardError
+             end
 
-  sockaddr = Socket.sockaddr_in(PORT, address)
-  addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+    sockaddr = Socket.sockaddr_in(PORT, address)
+    addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+    sock = connection_attempt.attempt(addrinfo)
 
-  t = Thread.start(addrinfo) do |addrinfo|
-    connection_attempt.attempt(addrinfo)
+    # TODO: メインスレッドで接続済みのsockを取得した上で実行するようにする
+    sock.write "GET / HTTP/1.0\r\n\r\n"
+    print sock.read
+    sock.close
   end
 
+  # TODO: アドレス解決と接続試行を一つの処理にまとめ、接続済みのsockをスレッドのvalueから取得できるようにする
   CONNECTING_THREADS.add t
 end
 
