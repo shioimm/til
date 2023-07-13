@@ -53,12 +53,13 @@ class ResolutionDelayTimer
   end
 end
 
-class DNSResolution
-  def initialize
+class HostnameResolution
+  def initialize(address_resource)
     @resolver = Resolv::DNS.new
+    @address_resource = address_resource
   end
 
-  def resolv(hostname, type)
+  def get_address_resources!(hostname, type)
     addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
 
     case type
@@ -70,7 +71,7 @@ class DNSResolution
       end
     end
 
-    addresses
+    @address_resource.add addresses
   end
 end
 
@@ -126,10 +127,10 @@ PORT = 9292
 
 # アドレス解決 (Producer)
 address_resource = AddressResource.new
-dns_resolution = DNSResolution.new
+hostname_resolution = HostnameResolution.new(address_resource)
 
 [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A].each do |type|
-  address_resource.add Thread.new { dns_resolution.resolv(HOSTNAME, type) }.value
+  Thread.new { hostname_resolution.get_address_resources!(HOSTNAME, type) }
 end
 
 # 接続試行 (Consumer)
