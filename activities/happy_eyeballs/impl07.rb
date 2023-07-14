@@ -1,6 +1,10 @@
 require 'resolv'
 require 'socket'
 
+# TODO:
+#   AddressResourceを汎用的にリソースを扱えるようなクラスにする
+#   #add_connected_socketと#take_connected_socketは削除
+#   WAITING_DNS_REPLY_SECONDは引数として渡す
 class AddressResource
   # RFC8305: Connection Attempts
   # the DNS client resolver SHOULD still process DNS replies from the network
@@ -9,6 +13,7 @@ class AddressResource
 
   def initialize
     @addresses = []
+    @connected_socket = nil
     @mutex = Mutex.new
     @cond = ConditionVariable.new
   end
@@ -22,8 +27,22 @@ class AddressResource
 
   def take
     @mutex.synchronize do
-      @cond.wait(@mutex, WAITING_DNS_REPLY_SECOND) if @addresses.size <= 0
+      @cond.wait(@mutex, WAITING_DNS_REPLY_SECOND) if @addresses.empty?
       @addresses.shift
+    end
+  end
+
+  def add_connected_socket(socket)
+    @mutex.synchronize do
+      @connected_socket = socket
+      @cond.signal
+    end
+  end
+
+  def take_connected_socket
+    @mutex.synchronize do
+      @cond.wait(@mutex) if @connected_socket.nil?
+      @connected_socket
     end
   end
 end
@@ -53,12 +72,13 @@ class ResolutionDelayTimer
   end
 end
 
-class DNSResolution
-  def initialize
+class HostnameResolution
+  def initialize(address_resource)
     @resolver = Resolv::DNS.new
+    @address_resource = address_resource
   end
 
-  def resolv(hostname, type)
+  def get_address_resources!(hostname, type)
     addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
 
     case type
@@ -70,7 +90,7 @@ class DNSResolution
       end
     end
 
-    addresses
+    @address_resource.add addresses
   end
 end
 
@@ -115,9 +135,7 @@ class ConnectionAttempt
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
-    sock = addrinfo.connect
-    (CONNECTING_THREADS.list - [Thread.current]).each(&:kill)
-    sock
+    addrinfo.connect
   end
 end
 
@@ -126,41 +144,48 @@ PORT = 9292
 
 # アドレス解決 (Producer)
 address_resource = AddressResource.new
-dns_resolution = DNSResolution.new
+hostname_resolution = HostnameResolution.new(address_resource)
 
 [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A].each do |type|
-  address_resource.add Thread.new { dns_resolution.resolv(HOSTNAME, type) }.value
+  Thread.new { hostname_resolution.get_address_resources!(HOSTNAME, type) }
 end
 
 # 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
+MUTEX = Mutex.new
+COND = ConditionVariable.new
 connection_attempt = ConnectionAttempt.new
+connected_sockets = []
 
 loop do
   address = address_resource.take
 
-  break if address.nil?
+  if !connected_sockets.empty?
+    # TODO: 接続ソケットのうち、実際に書き込むソケット以外はcloseする
+    CONNECTING_THREADS.list.each(&:kill)
+    break
+  elsif connected_sockets.empty? && address.nil?
+    # TODO: ここはもう少しきれいにしたい
+    connected_sockets << address_resource.take_connected_socket
+  else
+    CONNECTING_THREADS.add (Thread.start(address, address_resource) { |address, address_resource|
+      family = case address
+               when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+               when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+               else
+                 raise StandardError
+               end
 
-  t = Thread.start(address) do |address|
-    family = case address
-             when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
-             when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
-             else
-               raise StandardError
-             end
-
-    sockaddr = Socket.sockaddr_in(PORT, address)
-    addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
-    sock = connection_attempt.attempt(addrinfo)
-
-    # TODO: メインスレッドで接続済みのsockを取得した上で実行するようにする
-    sock.write "GET / HTTP/1.0\r\n\r\n"
-    print sock.read
-    sock.close
+      sockaddr = Socket.sockaddr_in(PORT, address)
+      addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+      address_resource.add_connected_socket connection_attempt.attempt(addrinfo)
+    })
   end
-
-  # TODO: アドレス解決と接続試行を一つの処理にまとめ、接続済みのsockをスレッドのvalueから取得できるようにする
-  CONNECTING_THREADS.add t
 end
 
 CONNECTING_THREADS.list.each(&:join)
+
+sock = connected_sockets.first
+sock.write "GET / HTTP/1.0\r\n\r\n"
+print sock.read
+sock.close
