@@ -26,9 +26,13 @@ class Server
 
     loop do
       connection, client_addr = @socket.accept
-      puts "#{version} received: #{connection.readpartial(128).gsub(/[\r\n]/,"")} from #{client_addr.ip_address}"
+      message = connection.readpartial(128).gsub(/[\r\n]/,"")
+      ip_address = client_addr.ip_address
+      puts "#{version} received: #{message} from #{ip_address}"
       connection.write("#{version}: ok\n")
       connection.close
+    rescue EOFError => e
+      puts "EOFError #{connection}: #{e}"
     end
   end
 
@@ -63,8 +67,8 @@ class Server
 end
 
 if child_pid = fork
-  Server.new(:ipv4, wait: 60 * 60 * 24).accept_loop
-  #Server.new(:ipv4, wait: 0).accept_loop
+  #Server.new(:ipv4, wait: 60 * 60 * 24).accept_loop
+  Server.new(:ipv4, wait: 0).accept_loop
   Process.waitpid(child_pid)
 else
   #Server.new(:ipv6, wait: 60 * 60 * 24).accept_loop

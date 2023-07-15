@@ -2,6 +2,8 @@ require 'resolv'
 require 'socket'
 
 class Repository
+  attr_accessor :collection
+
   def initialize
     @collection = []
     @mutex = Mutex.new
@@ -146,8 +148,8 @@ loop do
 
   # TODO: この辺りの条件分岐を整理する (connected_socketsを使わずに表現できないか検討)
   if !connected_sockets.empty?
-    # TODO: 接続ソケットのうち、実際に書き込むソケット以外はcloseする (collectionを露出させる)
-    CONNECTING_THREADS.list.each(&:kill)
+    CONNECTING_THREADS.list.each(&:exit)
+    socket_repository.collection.each(&:close)
     break
   elsif connected_sockets.empty? && address.nil?
     connected_socket = socket_repository.take
