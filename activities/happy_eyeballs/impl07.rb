@@ -111,13 +111,22 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def attempt(addrinfo)
+  def initialize(socket_repository)
+    @socket_repository = socket_repository
+  end
+
+  def attempt!(addrinfo)
     if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
       sleep timer.waiting_time
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
-    addrinfo.connect
+    connected_socket = addrinfo.connect
+
+    # TODO:
+    #   サーバに負荷をかけないように@socket_repository.collectionがemptyな場合のみaddした方が良いかも
+    #   (その場合はcollectionの参照にロックが必要)
+    @socket_repository.add(connected_socket)
   end
 end
 
@@ -134,8 +143,8 @@ end
 
 # 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
-connection_attempt = ConnectionAttempt.new
 socket_repository = Repository.new
+connection_attempt = ConnectionAttempt.new(socket_repository)
 connected_sockets = []
 
 # RFC8305: Connection Attempts
@@ -165,8 +174,7 @@ loop do
 
       sockaddr = Socket.sockaddr_in(PORT, address)
       addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
-      connected_socket = connection_attempt.attempt(addrinfo)
-      socket_repository.add(connected_socket)
+      connection_attempt.attempt!(addrinfo)
     })
   end
 end
