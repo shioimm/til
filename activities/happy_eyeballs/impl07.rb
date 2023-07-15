@@ -2,8 +2,6 @@ require 'resolv'
 require 'socket'
 
 class Repository
-  attr_accessor :collection
-
   def initialize
     @collection = []
     @mutex = Mutex.new
@@ -25,6 +23,12 @@ class Repository
     @mutex.synchronize do
       @cond.wait(@mutex, timeout) if @collection.empty?
       @collection.shift
+    end
+  end
+
+  def collection
+    @mutex.synchronize do
+      @collection
     end
   end
 end
@@ -116,16 +120,14 @@ class ConnectionAttempt
   end
 
   def attempt!(addrinfo)
+    return nil if !@socket_repository.collection.empty?
+
     if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
       sleep timer.waiting_time
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
     connected_socket = addrinfo.connect
-
-    # TODO:
-    #   サーバに負荷をかけないように@socket_repository.collectionがemptyな場合のみaddした方が良いかも
-    #   (その場合はcollectionの参照にロックが必要)
     @socket_repository.add(connected_socket)
   end
 end
