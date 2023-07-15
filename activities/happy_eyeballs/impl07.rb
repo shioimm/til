@@ -1,48 +1,30 @@
 require 'resolv'
 require 'socket'
 
-# TODO:
-#   AddressResourceを汎用的にリソースを扱えるようなクラスにする
-#   #add_connected_socketと#take_connected_socketは削除
-#   WAITING_DNS_REPLY_SECONDは引数として渡す
-class AddressResource
-  # RFC8305: Connection Attempts
-  # the DNS client resolver SHOULD still process DNS replies from the network
-  # for a short period of time (recommended to be 1 second)
-  WAITING_DNS_REPLY_SECOND = 1
+class Repository
+  attr_accessor :collection
 
   def initialize
-    @addresses = []
-    @connected_socket = nil
+    @collection = []
     @mutex = Mutex.new
     @cond = ConditionVariable.new
   end
 
-  def add(addresses)
+  def add(resource)
     @mutex.synchronize do
-      @addresses.push(*addresses)
+      if resource.is_a? Array
+        @collection.push(*resource)
+      else
+        @collection.push(resource)
+      end
       @cond.signal
     end
   end
 
-  def take
+  def take(timeout = nil)
     @mutex.synchronize do
-      @cond.wait(@mutex, WAITING_DNS_REPLY_SECOND) if @addresses.empty?
-      @addresses.shift
-    end
-  end
-
-  def add_connected_socket(socket)
-    @mutex.synchronize do
-      @connected_socket = socket
-      @cond.signal
-    end
-  end
-
-  def take_connected_socket
-    @mutex.synchronize do
-      @cond.wait(@mutex) if @connected_socket.nil?
-      @connected_socket
+      @cond.wait(@mutex, timeout) if @collection.empty?
+      @collection.shift
     end
   end
 end
@@ -73,9 +55,9 @@ class ResolutionDelayTimer
 end
 
 class HostnameResolution
-  def initialize(address_resource)
+  def initialize(address_repository)
     @resolver = Resolv::DNS.new
-    @address_resource = address_resource
+    @address_repository = address_repository
   end
 
   def get_address_resources!(hostname, type)
@@ -90,7 +72,7 @@ class HostnameResolution
       end
     end
 
-    @address_resource.add addresses
+    @address_repository.add addresses
   end
 end
 
@@ -129,13 +111,22 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def attempt(addrinfo)
+  def initialize(socket_repository)
+    @socket_repository = socket_repository
+  end
+
+  def attempt!(addrinfo)
     if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
       sleep timer.waiting_time
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
-    addrinfo.connect
+    connected_socket = addrinfo.connect
+
+    # TODO:
+    #   サーバに負荷をかけないように@socket_repository.collectionがemptyな場合のみaddした方が良いかも
+    #   (その場合はcollectionの参照にロックが必要)
+    @socket_repository.add(connected_socket)
   end
 end
 
@@ -143,8 +134,8 @@ HOSTNAME = "localhost"
 PORT = 9292
 
 # アドレス解決 (Producer)
-address_resource = AddressResource.new
-hostname_resolution = HostnameResolution.new(address_resource)
+address_repository = Repository.new
+hostname_resolution = HostnameResolution.new(address_repository)
 
 [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A].each do |type|
   Thread.new { hostname_resolution.get_address_resources!(HOSTNAME, type) }
@@ -152,23 +143,28 @@ end
 
 # 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
-MUTEX = Mutex.new
-COND = ConditionVariable.new
-connection_attempt = ConnectionAttempt.new
+socket_repository = Repository.new
+connection_attempt = ConnectionAttempt.new(socket_repository)
 connected_sockets = []
 
-loop do
-  address = address_resource.take
+# RFC8305: Connection Attempts
+# the DNS client resolver SHOULD still process DNS replies from the network
+# for a short period of time (recommended to be 1 second)
+WAITING_DNS_REPLY_SECOND = 1
 
+loop do
+  address = address_repository.take(WAITING_DNS_REPLY_SECOND)
+
+  # TODO: この辺りの条件分岐を整理する (connected_socketsを使わずに表現できないか検討)
   if !connected_sockets.empty?
-    # TODO: 接続ソケットのうち、実際に書き込むソケット以外はcloseする
-    CONNECTING_THREADS.list.each(&:kill)
+    CONNECTING_THREADS.list.each(&:exit)
+    socket_repository.collection.each(&:close)
     break
   elsif connected_sockets.empty? && address.nil?
-    # TODO: ここはもう少しきれいにしたい
-    connected_sockets << address_resource.take_connected_socket
+    connected_socket = socket_repository.take
+    connected_sockets.push(connected_socket)
   else
-    CONNECTING_THREADS.add (Thread.start(address, address_resource) { |address, address_resource|
+    CONNECTING_THREADS.add (Thread.start(address, socket_repository) { |address, socket_repository|
       family = case address
                when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
                when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
@@ -178,7 +174,7 @@ loop do
 
       sockaddr = Socket.sockaddr_in(PORT, address)
       addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
-      address_resource.add_connected_socket connection_attempt.attempt(addrinfo)
+      connection_attempt.attempt!(addrinfo)
     })
   end
 end
