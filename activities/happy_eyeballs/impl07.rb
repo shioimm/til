@@ -147,43 +147,40 @@ end
 CONNECTING_THREADS = ThreadGroup.new
 socket_repository = Repository.new
 connection_attempt = ConnectionAttempt.new(socket_repository)
-connected_sockets = []
 
 # RFC8305: Connection Attempts
 # the DNS client resolver SHOULD still process DNS replies from the network
 # for a short period of time (recommended to be 1 second)
 WAITING_DNS_REPLY_SECOND = 1
 
-loop do
+connected_socket = loop do
   address = address_repository.take(WAITING_DNS_REPLY_SECOND)
 
-  # TODO: この辺りの条件分岐を整理する (connected_socketsを使わずに表現できないか検討)
-  if !connected_sockets.empty?
+  if address.nil?
+    connected_socket = socket_repository.take
     CONNECTING_THREADS.list.each(&:exit)
     socket_repository.collection.each(&:close)
-    break
-  elsif connected_sockets.empty? && address.nil?
-    connected_socket = socket_repository.take
-    connected_sockets.push(connected_socket)
-  else
-    CONNECTING_THREADS.add (Thread.start(address, socket_repository) { |address, socket_repository|
-      family = case address
-               when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
-               when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
-               else
-                 raise StandardError
-               end
-
-      sockaddr = Socket.sockaddr_in(PORT, address)
-      addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
-      connection_attempt.attempt!(addrinfo)
-    })
+    break connected_socket
   end
+
+  t = Thread.start(address, socket_repository) do |address, socket_repository|
+    family = case address
+             when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+             when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+             else
+               raise StandardError
+             end
+
+    sockaddr = Socket.sockaddr_in(PORT, address)
+    addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+    connection_attempt.attempt!(addrinfo)
+  end
+
+  CONNECTING_THREADS.add(t)
 end
 
 CONNECTING_THREADS.list.each(&:join)
 
-sock = connected_sockets.first
-sock.write "GET / HTTP/1.0\r\n\r\n"
-print sock.read
-sock.close
+connected_socket.write "GET / HTTP/1.0\r\n\r\n"
+print connected_socket.read
+connected_socket.close
