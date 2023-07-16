@@ -120,11 +120,11 @@ class ConnectionAttempt
   end
 
   def attempt!(addrinfo)
-    return nil if !@socket_repository.collection.empty?
-
     if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
       sleep timer.waiting_time
     end
+
+    return nil if !@socket_repository.collection.empty?
 
     ConnectionAttemptDelayTimer.start_new_timer
     connected_socket = addrinfo.connect
