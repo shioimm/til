@@ -115,8 +115,9 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def initialize(socket_repository)
+  def initialize(socket_repository, address_repository)
     @socket_repository = socket_repository
+    @address_repository = address_repository
   end
 
   def attempt!(addrinfo)
@@ -128,7 +129,8 @@ class ConnectionAttempt
 
     ConnectionAttemptDelayTimer.start_new_timer
     connected_socket = addrinfo.connect
-    @socket_repository.add(connected_socket)
+    @address_repository.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    @socket_repository.add connected_socket
   end
 end
 
@@ -146,7 +148,7 @@ end
 # 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
 socket_repository = Repository.new
-connection_attempt = ConnectionAttempt.new(socket_repository)
+connection_attempt = ConnectionAttempt.new(socket_repository, address_repository)
 
 # RFC8305: Connection Attempts
 # the DNS client resolver SHOULD still process DNS replies from the network
