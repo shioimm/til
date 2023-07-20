@@ -1,10 +1,12 @@
 # ActiveSupport::CurrentAttributes
-- コントローラー以外で`Current.user`(`current_user`)を扱う
+- グローバルステートを扱うためのクラス
+
+## e.g. コントローラー以外で`current_user`を扱いたい
 
 ```ruby
-# app/models/current.rb
+# app/models/current_user.rb
 
-class Current < ActiveSupport::CurrentAttributes
+class CurrentUser < ActiveSupport::CurrentAttributes
   attribute :account, :user
 
   # NOTE: DO NOT USE EXCEPT IN ApplicationController#set_current_user
@@ -22,19 +24,19 @@ class ApplicationController < ActionController::Base
   private
 
     def set_current_user
-      Current.user = current_user
+      CurrentUser.user = current_user
     end
 end
 ```
 
-- テスト実行時、前回の`Current.user`の情報が残っている場合は`Current.reset`が必要
-
 ```ruby
+# テスト実行時、前回の`CurrentUser.user`の情報が残っている場合は`CurrentUser.reset`が必要
+
 require 'rails_helper'
 
 RSpec.describe User, type: :model do
   before do
-    Current.reset
+    CurrentUser.reset
   end
 end
 ```
