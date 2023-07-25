@@ -1,44 +1,19 @@
 # 状態遷移
-### IPv6スレッド
-#### `IPv6 DNSクエリ開始`
-- getaddrinfoを実行
-  - getaddrinfoが終了 -> `IPv6 DNSクエリ終了`へ遷移
 
-#### `IPv6 DNSクエリ終了`
-- 他のスレッドに通知
-  - -> `次の接続開始可能`へ (IPv6アドレス)
-
-### IPv4スレッド
-#### `IPv4 DNSクエリ開始`
-- getaddrinfoを実行
-  - getaddrinfoが終了 -> `IPv4 DNSクエリ終了`へ遷移
-
-#### `IPv4 DNSクエリ終了`
-- `IPv6 DNSクエリ終了`通知を受信済みの場合: -> `次の接続開始可能`へ (IPv4アドレス)
-- `IPv6 DNSクエリ終了`通知を受信していない場合: -> `Resolution Delay待機`へ
-
-#### `Resolution Delay待機`
-- 待機
-  - タイムアウト -> `次の接続開始可能`へ (IPv4アドレス)
-
-### 共通
-#### `次の接続開始可能`
-- 解決済みアドレスをリストに追加
-- Connection Attempt Delay中の場合: 待機
-  - 待機終了 -> `次の接続開始可能`へ (アドレスリストの先頭アドレス)
-- Connection Attempt Delayではない場合: アドレスリストの先頭アドレスで接続開始、Connection Attempt Delay開始
-  - TCP接続中に`IPv6 DNSクエリ終了`通知を受信した場合: -> 当該スレッドは`次の接続開始可能`へ (IPv6アドレス)
-  - TCP接続が確立した場合: -> `成功`へ
-  - TCP接続が確立しないままタイムアウトの場合: -> `次の接続開始可能`へ (アドレスリストの先頭アドレス)
-- 解決済みアドレスが枯渇の場合: -> `エラー`へ
-
-#### `成功`
-- 接続を確立していないソケットを破棄
-- 接続を確立したソケットを返す
-
-#### エラー
-- 接続を確立していないソケットを破棄
-- 例外を送出
+| 状態                 | 入力                                                | 次の状態             |
+| -                    | -                                                   | -                    |
+| `開始`               | getaddrinfo()の実行 (IPv6)                          | `IPv6 DNSクエリ開始` |
+| `開始`               | getaddrinfo()の実行 (IPv4)                          | `IPv4 DNSクエリ開始` |
+| `IPv6 DNSクエリ開始` | getaddrinfo()の終了 (IPv6)                          | `IPv6 DNSクエリ終了` |
+| `IPv6 DNSクエリ終了` | Repositoryにアドレスを追加 & Resolution Delay無効化 | `接続試行確認`       |
+| `IPv4 DNSクエリ開始` | getaddrinfo()の終了 (IPv4) & Resolution Delay有効   | `Resolution Delay`   |
+| `IPv4 DNSクエリ開始` | getaddrinfo()の終了 (IPv4) & Resolution Delay無効   | `IPv4 DNSクエリ終了` |
+| `Resolution Delay`   | 50ms待機                                            | `IPv4 DNSクエリ終了` |
+| `IPv4 DNSクエリ終了` | Repositoryにアドレスを追加                          | `接続試行確認`       |
+| `接続試行確認`       | Connection Attempt Delay有効 & 250ms待機            | `接続試行確認`       |
+| `接続試行確認`       | Connection Attempt Delay無効                        | `接続試行開始`       |
+| `接続試行開始`       | 接続確立                                            | `成功`               |
+| `接続試行開始`       | 接続失敗                                            | `エラー`             |
 
 ## 参照
 - [Happy Eyeballsとは](https://www.nic.ad.jp/ja/basics/terms/happy-eyeballs.html)
