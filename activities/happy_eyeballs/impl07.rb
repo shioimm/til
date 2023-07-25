@@ -31,34 +31,15 @@ class Repository
       @collection
     end
   end
-end
 
-class ResolutionDelayTimer
-  RESOLUTION_DELAY = 0.05
-
-  @mutex = Mutex.new
-  @enable = false
-
-  class << self
-    def enable?
-      @mutex.synchronize do
-        @enable
-      end
-    end
-
-    def enable!
-      @mutex.synchronize do
-        @enable = true
-      end
-    end
-
-    def waiting_time
-      RESOLUTION_DELAY
-    end
+  def include_ipv6?
+    @collection.any? { |address| address.is_a? Resolv::DNS::Resource::IN::AAAA }
   end
 end
 
 class HostnameResolution
+  RESOLUTION_DELAY = 0.05
+
   def initialize(address_repository)
     @resolver = Resolv::DNS.new
     @address_repository = address_repository
@@ -67,13 +48,8 @@ class HostnameResolution
   def get_address_resources!(hostname, type)
     addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
 
-    case type
-    when Resolv::DNS::Resource::IN::AAAA
-      ResolutionDelayTimer.enable!
-    when Resolv::DNS::Resource::IN::A
-      if ResolutionDelayTimer.enabled?
-        sleep ResolutionDelayTimer.waiting_time
-      end
+    if type == Resolv::DNS::Resource::IN::A && !@address_repository.include_ipv6?
+      sleep RESOLUTION_DELAY
     end
 
     @address_repository.add addresses
