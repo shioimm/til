@@ -1,6 +1,13 @@
 require 'resolv'
 require 'socket'
 
+# ここまでの実装:
+#   アドレス解決 -> 一旦スレッドでアドレス解決を行うようにしただけ (アドレス解決について理解を深めた)
+#   接続試行     -> 実装済み
+#   スレッド2つでアドレスファミリごとに一貫してアドレス解決から接続試行まで行うことも考えたが、
+#   実装05_01を踏まえて断念。
+#   次の実装ではProducer-Consumerパターンを試す
+
 class ClientAddrinfo
   attr_reader :addrinfo
 
@@ -105,7 +112,6 @@ type_classes = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
 addresses = []
 # 値が入るのを監視する必要あり。配列ではなく専用のクラスを用意してwaiting_clientsと合流させた方がいいかも
 
-# TODO: 一旦スレッドでアドレス解決を行うようにしただけ
 type_classes.each do |type|
   addresses << Thread.new { resolver.getresource(hostname, type) }.value.address.to_s
   # 返ってきたのがIPv6アドレスの場合、返ってきたことを示すフラグを立ててaddressesにClientAddrinfoを追加

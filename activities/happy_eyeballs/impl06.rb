@@ -1,6 +1,11 @@
 require 'resolv'
 require 'socket'
 
+# ここまでの実装:
+#   Producer-Consumerパターンへ移行済み
+#   アドレス解決 -> 非同期で実装済み (よく見るとResolutionDelayがおかしい。07で解消)
+#   接続試行     -> 実装済み、addrinfo.connectしたソケットを取得できるようにする必要あり
+
 class AddressResource
   # RFC8305: Connection Attempts
   # the DNS client resolver SHOULD still process DNS replies from the network
