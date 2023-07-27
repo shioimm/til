@@ -7,8 +7,9 @@ resolver = Resolv::DNS.new
 WORKING_THREADS = ThreadGroup.new
 
 # NOTE:
-#   DNS回答が複数レコードを含んでいる可能性があるため、
-#   アドレスファミリごとにスレッドを生成するのは不可能な気がする
+#   アドレスファミリごとのスレッドでアドレス解決から接続試行まで行えるようにしてみたもの
+#     DNS回答が複数レコードを含んでいる可能性があるため、
+#     アドレスファミリごとにスレッドを生成するのは不可能な気がする
 
 t1 = Thread.start(resolver) do |resolver|
   # 返り値が得られたらt2に通知する
