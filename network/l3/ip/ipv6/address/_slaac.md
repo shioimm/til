@@ -1,4 +1,6 @@
 # SLAAC (StateLess Address AutoConfiguration: ステートレスアドレス自動設定)
+- NDPとICMPv6メッセージを組み合わせて自動的にIPv6アドレスを生成する仕組み
+
 ## SLAACによるアドレス自動生成の流れ
 1. リンクローカルアドレスの自動生成
     - MACアドレスなどをもとにインターフェース識別子を生成
