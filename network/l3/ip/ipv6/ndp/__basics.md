@@ -1,9 +1,17 @@
 # NDP (Neighbor Discovery Protocol: 近隣探索プロトコル)
-- IPv4のARPとICMPリダイレクト、ICMPルーター選択メッセージ、
-  IPアドレスの自動設定などの機能 (DHCPv6と併用する) を提供する
-- ICMPv6メッセージのオプションデータを利用する
+- IPv4におけるARPとICMPリダイレクト、ICMPルータ選択メッセージ、
+  IPアドレスの自動設定 (SLAAC) などの機能を提供する
+- ICMPv6の近隣探索メッセージを組み合わせて利用し、それぞれのICMPv6メッセージが運ぶオプションデータによって
+  さまざまな機能を実現する
 
-#### 機能
+#### 使用されるICMPv6の近隣探索メッセージ
+- Router Advertisement メッセージ (ルータ広告)
+- Router Solicitation メッセージ (ルータ要請)
+- Neighbor Solicitation メッセージ (近隣要請)
+- Neighbor Advertisement メッセージ (近隣広告)
+- Redirectメッセージ
+
+## 機能
 - Router Discovery - リンク上のルータを探す
 - Prefix Discovery - ルータを経由せずに到達できるIPv6アドレスの範囲を知る
 - Parameter Discovery - リンクのMTUなどの情報を知る
@@ -13,14 +21,6 @@
 - Neighbor Unreachability Detection - 近隣ノードに到達できなくなったことを知る近隣不到達性検知
 - Duplicate Address Detection - 利用するアドレスが他のノードで使われていないかを確認する
 - Redirect - ルータからホストへ、より適切な送出先を伝える
-
-#### 仕組み
-1. 送信元ノードがEthernet上で近隣要請メッセージをマルチキャストする
-  - 近隣要請メッセージはIPv6のマルチキャストアドレス (ff00::/8) を使用して送信される
-2. マルチキャストの対象ノードがパケットを受信し、自身のIPアドレスを調べる
-3. 対象のノードが近隣告知メッセージに自身のMACアドレスを格納し返送する
-4. 送信元ノードは対象のノードが該当するIPアドレスとMACアドレスと紐づいていることを知る
-  - IPアドレスとMACアドレスの対応関係はノードの近隣キャッシュに数分間キャッシュされる
 
 ## 参照
 - Linuxプログラミングインターフェース 58章
