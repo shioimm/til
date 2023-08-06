@@ -45,6 +45,15 @@
 | リンク層アドレスからIPアドレスの解決 | RARP | 近隣探索 (ICMPv6) |
 | マルチキャストの機能                 | IGMP | MLD (ICMPv6)      |
 
+## IPv4 / IPv6におけるIPアドレスとDNSキャッシュサーバの自動設定
+
+| プロトコルバージョン | IPアドレスの自動設定    | キャッシュDNSサーバの設定      |
+| -                    | -                       | -                              |
+| IPv4                 | DHCP                    | DHCP                           |
+| IPv6                 | SLAAC                   | ステートレスDHCPv6             |
+| IPv6                 | SLAAC                   | Router Advertisementメッセージ |
+| IPv6                 | DHCPv6                  | ステートフルDHCPv6             |
+
 ## 参照
 - Linuxプログラミングインターフェース 58章
 - Software Design 2021年5月号 ハンズオンTCP/IP
