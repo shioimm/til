@@ -1,4 +1,6 @@
 # DHCPv6
+- IPv6アドレスの自動設定
+
 ### ステートレスDHCPv6
 - サーバーはDNSなどの情報のみを配布し、IPv6アドレス設定はクライアントが行う (SLAACなど)
 - DNS情報はNDPのRouter Advertisementメッセージを利用することでも得られるが
