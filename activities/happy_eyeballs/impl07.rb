@@ -1,6 +1,16 @@
 require 'resolv'
 require 'socket'
 
+# 追加で必要な機能
+#   Socket.tcpのインターフェースに関連するもの
+#     local_host
+#     local_port
+#     connect_timeout
+#     resolv_timeout
+#   Happy Eyeballsに関連するもの
+#     接続するアドレスを選択する
+#     ノンブロッキングモードで接続試行し、wait_writableの場合に再試行する
+
 class Repository
   def initialize
     @collection = []
