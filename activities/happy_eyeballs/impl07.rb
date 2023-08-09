@@ -1,6 +1,14 @@
 require 'resolv'
 require 'socket'
 
+# TL;DR
+#   アドレスファミリごとにスレッドを生成してそれぞれアドレス解決を試行
+#     それぞれのスレッド内でアドレス解決を終えたら (Resolution Delayを終えたら) Repositoryに書き込む
+#   メインスレッドでRepositoryからアドレスを取得できたら取得した順にスレッドを生成し接続試行
+#     接続試行ごとにConnection Attempt Delay Timerを生成
+#     Connection Attempt Delay Timerがある場合は終了まで待機
+#     ブロッキングモードで接続試行
+#
 # 追加で必要な機能
 #   Socket.tcpのインターフェースに関連するもの
 #     local_host
@@ -8,8 +16,14 @@ require 'socket'
 #     connect_timeout
 #     resolv_timeout
 #   Happy Eyeballsに関連するもの
-#     接続するアドレスを選択する
+#     アドレスファミリごとに接続するアドレスを選択する機能
+#
+# 修正を検討する機能
+#   接続試行をメインスレッドで行う
 #     ノンブロッキングモードで接続試行し、wait_writableの場合に再試行する
+#     作成したソケットのうち、接続に成功していないものを終了時にcloseする
+#   Repositoryを利用せずに実装できないか検討
+#     Queueを拡張する?
 
 class Repository
   def initialize
