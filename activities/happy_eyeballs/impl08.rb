@@ -1,58 +1,54 @@
 require 'resolv'
 require 'socket'
 
-class Repository
+class AddressStorage
   def initialize
-    @collection = []
+    @addresses = []
     @mutex = Mutex.new
     @cond = ConditionVariable.new
   end
 
   def add(resource)
     @mutex.synchronize do
-      if resource.is_a? Array
-        @collection.push(*resource)
-      else
-        @collection.push(resource)
-      end
+      @addresses.push(*resource)
       @cond.signal
     end
   end
 
   def take(timeout = nil)
     @mutex.synchronize do
-      @cond.wait(@mutex, timeout) if @collection.empty?
-      @collection.shift
+      @cond.wait(@mutex, timeout) if @addresses.empty?
+      @addresses.shift
     end
   end
 
-  def collection
+  def addresses
     @mutex.synchronize do
-      @collection
+      @addresses
     end
   end
 
   def include_ipv6?
-    @collection.any? { |address| address.is_a? Resolv::DNS::Resource::IN::AAAA }
+    @addresses.any? { |address| address.is_a? Resolv::DNS::Resource::IN::AAAA }
   end
 end
 
 class HostnameResolution
   RESOLUTION_DELAY = 0.05
 
-  def initialize(address_repository)
+  def initialize(address_storage)
     @resolver = Resolv::DNS.new
-    @address_repository = address_repository
+    @address_storage = address_storage
   end
 
   def get_address_resources!(hostname, type)
     addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
 
-    if type == Resolv::DNS::Resource::IN::A && !@address_repository.include_ipv6?
+    if type == Resolv::DNS::Resource::IN::A && !@address_storage.include_ipv6?
       sleep RESOLUTION_DELAY
     end
 
-    @address_repository.add addresses
+    @address_storage.add addresses
   end
 end
 
@@ -91,9 +87,9 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def initialize(connected_sockets, address_repository)
+  def initialize(connected_sockets, address_storage)
     @connected_sockets = connected_sockets
-    @address_repository = address_repository
+    @address_storage = address_storage
   end
 
   def attempt!(addrinfo)
@@ -105,7 +101,7 @@ class ConnectionAttempt
 
     ConnectionAttemptDelayTimer.start_new_timer
     connected_socket = addrinfo.connect
-    @address_repository.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    @address_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
     Mutex.new.synchronize { @connected_sockets.push connected_socket }
   end
 end
@@ -114,8 +110,8 @@ HOSTNAME = "localhost"
 PORT = 9292
 
 # アドレス解決 (Producer)
-address_repository = Repository.new
-hostname_resolution = HostnameResolution.new(address_repository)
+address_storage = AddressStorage.new
+hostname_resolution = HostnameResolution.new(address_storage)
 
 [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A].each do |type|
   Thread.new { hostname_resolution.get_address_resources!(HOSTNAME, type) }
@@ -124,7 +120,7 @@ end
 # 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
 connected_sockets = []
-connection_attempt = ConnectionAttempt.new(connected_sockets, address_repository)
+connection_attempt = ConnectionAttempt.new(connected_sockets, address_storage)
 
 # RFC8305: Connection Attempts
 # the DNS client resolver SHOULD still process DNS replies from the network
@@ -132,7 +128,7 @@ connection_attempt = ConnectionAttempt.new(connected_sockets, address_repository
 WAITING_DNS_REPLY_SECOND = 1
 
 connected_socket = loop do
-  address = address_repository.take(WAITING_DNS_REPLY_SECOND)
+  address = address_storage.take(WAITING_DNS_REPLY_SECOND)
 
   if address.nil?
     connected_socket = connected_sockets.shift
