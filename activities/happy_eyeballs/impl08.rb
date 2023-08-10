@@ -1,0 +1,164 @@
+require 'resolv'
+require 'socket'
+
+# TODO
+#   AddressStorageにアドレス選択機構を追加する
+#   #take -> #pick (最後に接続したアドレスファミリを引数で受け取り、異なるアドレスファミリのアドレスを返す)
+
+class AddressStorage
+  def initialize
+    @addresses = []
+    @mutex = Mutex.new
+    @cond = ConditionVariable.new
+  end
+
+  def add(resource)
+    @mutex.synchronize do
+      @addresses.push(*resource)
+      @cond.signal
+    end
+  end
+
+  def take(timeout = nil)
+    @mutex.synchronize do
+      @cond.wait(@mutex, timeout) if @addresses.empty?
+      @addresses.shift
+    end
+  end
+
+  def addresses
+    @mutex.synchronize do
+      @addresses
+    end
+  end
+
+  def include_ipv6?
+    @addresses.any? { |address| address.is_a? Resolv::DNS::Resource::IN::AAAA }
+  end
+end
+
+class HostnameResolution
+  RESOLUTION_DELAY = 0.05
+
+  def initialize(address_storage)
+    @resolver = Resolv::DNS.new
+    @address_storage = address_storage
+  end
+
+  def get_address_resources!(hostname, type)
+    addresses = @resolver.getresources(hostname, type).map { |resource| resource.address.to_s }
+
+    if type == Resolv::DNS::Resource::IN::A && !@address_storage.include_ipv6?
+      sleep RESOLUTION_DELAY
+    end
+
+    @address_storage.add addresses
+  end
+end
+
+class ConnectionAttemptDelayTimer
+  CONNECTION_ATTEMPT_DELAY = 0.25
+
+  @mutex = Mutex.new
+  @timers = []
+
+  class << self
+    def start_new_timer
+      @mutex.synchronize do
+        @timers << self.new
+      end
+    end
+
+    def take_timer
+      @mutex.synchronize do
+        @timers.shift
+      end
+    end
+  end
+
+  def initialize
+    @starts_at = Time.now
+    @ends_at = @starts_at + CONNECTION_ATTEMPT_DELAY
+  end
+
+  def timein?
+    @ends_at > Time.now
+  end
+
+  def waiting_time
+    @ends_at - Time.now
+  end
+end
+
+class ConnectionAttempt
+  def initialize(connected_sockets, address_storage)
+    @connected_sockets = connected_sockets
+    @address_storage = address_storage
+  end
+
+  def attempt!(addrinfo)
+    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
+      sleep timer.waiting_time
+    end
+
+    return if !@connected_sockets.empty?
+
+    ConnectionAttemptDelayTimer.start_new_timer
+    connected_socket = addrinfo.connect
+    @address_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    Mutex.new.synchronize { @connected_sockets.push connected_socket }
+  end
+end
+
+HOSTNAME = "localhost"
+PORT = 9292
+
+# アドレス解決 (Producer)
+address_storage = AddressStorage.new
+hostname_resolution = HostnameResolution.new(address_storage)
+
+[Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A].each do |type|
+  Thread.new { hostname_resolution.get_address_resources!(HOSTNAME, type) }
+end
+
+# 接続試行 (Consumer)
+CONNECTING_THREADS = ThreadGroup.new
+connected_sockets = []
+connection_attempt = ConnectionAttempt.new(connected_sockets, address_storage)
+
+# RFC8305: Connection Attempts
+# the DNS client resolver SHOULD still process DNS replies from the network
+# for a short period of time (recommended to be 1 second)
+WAITING_DNS_REPLY_SECOND = 1
+
+connected_socket = loop do
+  address = address_storage.take(WAITING_DNS_REPLY_SECOND)
+
+  if address.nil?
+    connected_socket = connected_sockets.shift
+    CONNECTING_THREADS.list.each(&:exit)
+    connected_sockets.each(&:close)
+    break connected_socket
+  end
+
+  t = Thread.start(address, connected_sockets) do |address, connected_sockets|
+    family = case address
+             when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
+             when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
+             else
+               raise StandardError
+             end
+
+    sockaddr = Socket.sockaddr_in(PORT, address)
+    addrinfo = Addrinfo.new(sockaddr, family, Socket::SOCK_STREAM, 0)
+    connection_attempt.attempt!(addrinfo)
+  end
+
+  CONNECTING_THREADS.add(t)
+end
+
+CONNECTING_THREADS.list.each(&:join)
+
+connected_socket.write "GET / HTTP/1.0\r\n\r\n"
+print connected_socket.read
+connected_socket.close
