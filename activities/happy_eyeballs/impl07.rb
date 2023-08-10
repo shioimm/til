@@ -1,6 +1,3 @@
-require 'resolv'
-require 'socket'
-
 # TL;DR
 #   アドレスファミリごとにスレッドを生成してそれぞれアドレス解決を試行
 #     それぞれのスレッド内でアドレス解決を終えたら (Resolution Delayを終えたら) Repositoryに書き込む
@@ -9,6 +6,15 @@ require 'socket'
 #     Connection Attempt Delay Timerがある場合は終了まで待機
 #     ブロッキングモードで接続試行
 #
+# PR#4038との違い
+#   アドレスの取得をRepositoryへの追加で表現している
+#   Resolution Delayに実行条件がある
+#   Resolution Delayの間、Repositoryへのアドレス追加を待機することによってこれを表現している
+#   (これによってRepository内のアドレスは良くも悪くもフラットに扱われる)
+#   接続試行を行うアドレスごとにスレッドを生成し、ブロッキングモードで接続試行を行なっている
+#   Connection Attempt Delayをタイマーの配列によって表現している
+#   WAITING_DNS_REPLY_SECONDを待っている
+#
 # 追加で必要な機能
 #   Socket.tcpのインターフェースに関連するもの
 #     local_host
@@ -16,14 +22,21 @@ require 'socket'
 #     connect_timeout
 #     resolv_timeout
 #   Happy Eyeballsに関連するもの
-#     アドレスファミリごとに接続するアドレスを選択する機能
+#     アドレス選択機能
+#       接続試行開始済みの場合、前回接続アドレスファミリとは異なるアドレスファミリを選択する
+#       接続試行開始前の場合、IPv6アドレスを優先する
+#       Repositoryを拡張し、アドレスファミリで選択できるようにする
+#       このために、ソケットの取得はRepositoryを利用せずに行うようにする (Queue?)
 #
-# 修正を検討する機能
+# 修正する機能
 #   接続試行をメインスレッドで行う
-#     ノンブロッキングモードで接続試行し、wait_writableの場合に再試行する
+#     ノンブロッキングモードで順に接続試行し、IO.selectでいずれかの接続を待つ
+#       接続中のソケットがある限りループさせ、その中でConnection Attempt Delayを表現する
+#       そうしないと接続試行中のソケットをcloseできない
 #     作成したソケットのうち、接続に成功していないものを終了時にcloseする
-#   Repositoryを利用せずに実装できないか検討
-#     Queueを拡張する?
+
+require 'resolv'
+require 'socket'
 
 class Repository
   def initialize
