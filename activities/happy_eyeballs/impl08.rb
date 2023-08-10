@@ -91,8 +91,8 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def initialize(socket_repository, address_repository)
-    @socket_repository = socket_repository
+  def initialize(connected_sockets, address_repository)
+    @connected_sockets = connected_sockets
     @address_repository = address_repository
   end
 
@@ -101,12 +101,12 @@ class ConnectionAttempt
       sleep timer.waiting_time
     end
 
-    return nil if !@socket_repository.collection.empty?
+    return if !@connected_sockets.empty?
 
     ConnectionAttemptDelayTimer.start_new_timer
     connected_socket = addrinfo.connect
     @address_repository.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
-    @socket_repository.add connected_socket
+    Mutex.new.synchronize { @connected_sockets.push connected_socket }
   end
 end
 
@@ -123,8 +123,8 @@ end
 
 # 接続試行 (Consumer)
 CONNECTING_THREADS = ThreadGroup.new
-socket_repository = Repository.new
-connection_attempt = ConnectionAttempt.new(socket_repository, address_repository)
+connected_sockets = []
+connection_attempt = ConnectionAttempt.new(connected_sockets, address_repository)
 
 # RFC8305: Connection Attempts
 # the DNS client resolver SHOULD still process DNS replies from the network
@@ -135,13 +135,13 @@ connected_socket = loop do
   address = address_repository.take(WAITING_DNS_REPLY_SECOND)
 
   if address.nil?
-    connected_socket = socket_repository.take
+    connected_socket = connected_sockets.shift
     CONNECTING_THREADS.list.each(&:exit)
-    socket_repository.collection.each(&:close)
+    connected_sockets.each(&:close)
     break connected_socket
   end
 
-  t = Thread.start(address, socket_repository) do |address, socket_repository|
+  t = Thread.start(address, connected_sockets) do |address, connected_sockets|
     family = case address
              when /\w*:+\w*/       then Socket::AF_INET6 # IPv6
              when /\d+.\d+.\d+.\d/ then Socket::AF_INET  # IPv4
