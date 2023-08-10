@@ -1,6 +1,10 @@
 require 'resolv'
 require 'socket'
 
+# TODO
+#   AddressStorageにアドレス選択機構を追加する
+#   #take -> #pick (最後に接続したアドレスファミリを引数で受け取り、異なるアドレスファミリのアドレスを返す)
+
 class AddressStorage
   def initialize
     @addresses = []
