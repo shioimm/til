@@ -1,8 +1,16 @@
 require 'socket'
 
-# TODO
-#   AddressResourceStorageにアドレス選択機構を追加する
-#   #take -> #pick (最後に接続したアドレスファミリを引数で受け取り、異なるアドレスファミリのアドレスを返す)
+# ここまでの実装:
+#   変更:
+#     アドレスを格納するチャネルを汎用的なキューからAddrinfoの格納に適したものへ変更した
+#     ResolvをAddrinfo.getaddrinfoへ置き換え、HostnameResolutionでは文字列ではなくAddrinfoを取得するようにした
+#   機能追加:
+#     AddressResourceStorage#pick (アドレスの取得を行う、最後に接続したアドレスがある場合は選択も行う)
+#   機能削除
+#     AddressResourceStorage#take (アドレスの取得のみを行う)
+#
+# 次にやること:
+#   接続試行をメインスレッドでノンブロッキングモードで行い、接続中のソケットをcloseできるようにする
 
 class AddressResourceStorage
   def initialize
