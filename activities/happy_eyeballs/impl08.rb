@@ -18,10 +18,15 @@ class AddressResourceStorage
     end
   end
 
-  def take(timeout = nil)
+  def pick(last_family = nil, timeout: nil)
     @mutex.synchronize do
       @cond.wait(@mutex, timeout) if @resources.empty?
-      @resources.shift
+
+      if last_family && (addrinfo = @resources.find { |addrinfo| !addrinfo.afamily == last_family })
+        @resources.delete addrinfo
+      else
+        @resources.shift
+      end
     end
   end
 
@@ -123,6 +128,7 @@ end
 CONNECTING_THREADS = ThreadGroup.new
 connected_sockets = []
 connection_attempt = ConnectionAttempt.new(connected_sockets, address_resource_storage)
+last_attemped_family = nil
 
 # RFC8305: Connection Attempts
 # the DNS client resolver SHOULD still process DNS replies from the network
@@ -130,7 +136,7 @@ connection_attempt = ConnectionAttempt.new(connected_sockets, address_resource_s
 WAITING_DNS_REPLY_SECOND = 1
 
 connected_socket = loop do
-  addrinfo = address_resource_storage.take(WAITING_DNS_REPLY_SECOND)
+  addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
 
   if addrinfo.nil?
     connected_socket = connected_sockets.shift
@@ -138,6 +144,8 @@ connected_socket = loop do
     connected_sockets.each(&:close)
     break connected_socket
   end
+
+  last_attemped_family = addrinfo.afamily
 
   t = Thread.start(addrinfo, connected_sockets) { |addrinfo, connected_sockets|
     connection_attempt.attempt!(addrinfo)
