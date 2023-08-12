@@ -2,11 +2,6 @@ require 'socket'
 
 # 追加の作業
 #   IO.select後の接続確認
-#   AddressResourceStorageに新しいメソッドを追加
-#     接続が完了した後にpickした場合は優先的にnilを取得できるようにする必要あり
-#     nilを先頭に置くためのメソッドを用意する
-#     もしくはAddressResourceStorageをシャットダウンするメソッドと
-#     終了状態を確認するメソッドを用意しても良いかも
 
 class AddressResourceStorage
   def initialize
@@ -93,10 +88,12 @@ end
 
 class ConnectionAttempt
   attr_reader :connected_sockets, :connecting_sockets
+  attr_accessor :completed
 
   def initialize
     @connected_sockets = []
     @connecting_sockets = []
+    @completed = false
   end
 
   def attempt(addrinfo)
@@ -144,19 +141,19 @@ last_attemped_family = nil
 WAITING_DNS_REPLY_SECOND = 1
 
 connected_socket = loop do
-  addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
-
-  if addrinfo.nil?
+  if connection_attempt.completed
     connected_socket = connection_attempt.take_connected_socket
     connection_attempt.close_all_sockets!
     break connected_socket
   end
 
+  addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
+
   last_attemped_family = addrinfo.afamily
   connection_attempt.attempt(addrinfo)
 
   if !connection_attempt.connected_sockets.empty?
-    address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    connection_attempt.completed = true
     next
   end
 
@@ -168,7 +165,7 @@ connected_socket = loop do
 
   if connected_sockets && !connected_sockets.empty?
     connection_attempt.connected_sockets.push *connected_sockets
-    address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    connection_attempt.completed = true
     next
   end
 end
