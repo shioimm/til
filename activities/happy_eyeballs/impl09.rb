@@ -1,9 +1,12 @@
 require 'socket'
 
-# 案
-#   ConnectionAttempt#attempt!では
-#   ConnectionAttemptDelayTimer#take_timer + Socket#connect_nonblockまで行う
-#   メインスレッドでIO.select + AddressResourceStorage#add nil + 残りの接続中のソケットを全てclose
+# 追加の作業
+#   IO.select後の接続確認
+#   AddressResourceStorageに新しいメソッドを追加
+#     接続が完了した後にpickした場合は優先的にnilを取得できるようにする必要あり
+#     nilを先頭に置くためのメソッドを用意する
+#     もしくはAddressResourceStorageをシャットダウンするメソッドと
+#     終了状態を確認するメソッドを用意しても良いかも
 
 class AddressResourceStorage
   def initialize
@@ -95,23 +98,34 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  attr_reader :connected_sockets
+  attr_reader :connected_sockets, :connecting_sockets
 
   def initialize
     @connected_sockets = []
+    @connecting_sockets = []
   end
 
-  def attempt!(addrinfo)
-    if (timer = ConnectionAttemptDelayTimer.take_timer) && timer.timein?
-      sleep timer.waiting_time
-    end
-
+  def attempt(addrinfo)
     return if !@connected_sockets.empty?
 
     socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
     ConnectionAttemptDelayTimer.start_new_timer
-    socket.connect(addrinfo)
-    @connected_sockets.push socket
+
+    case socket.connect_nonblock(addrinfo, exception: false)
+    when 0              then @connected_sockets.push socket
+    when :wait_writable then @connecting_sockets.push socket
+    end
+  end
+
+  def take_connected_socket
+    connected_socket = @connected_sockets.shift
+    @connecting_sockets.delete connected_socket
+    connected_socket
+  end
+
+  def close_all_sockets!
+    @connecting_sockets.each(&:close)
+    @connected_sockets.each(&:close)
   end
 end
 
@@ -139,14 +153,30 @@ connected_socket = loop do
   addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
 
   if addrinfo.nil?
-    connected_socket = connection_attempt.connected_sockets.shift
-    connection_attempt.connected_sockets.each(&:close)
+    connected_socket = connection_attempt.take_connected_socket
+    connection_attempt.close_all_sockets!
     break connected_socket
   end
 
   last_attemped_family = addrinfo.afamily
-  connection_attempt.attempt!(addrinfo)
-  address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+  connection_attempt.attempt(addrinfo)
+
+  if !connection_attempt.connected_sockets.empty?
+    address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    next
+  end
+
+  # NOTE
+  #   IO.selectのtimeoutでConnection Attempt Delayを表現する
+  #   タイムアウトした場合は新しいループに入り、次の接続試行を行う
+  timer = ConnectionAttemptDelayTimer.take_timer
+  _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, timer.waiting_time)
+
+  if connected_sockets && !connected_sockets.empty?
+    connection_attempt.connected_sockets.push *connected_sockets
+    address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
+    next
+  end
 end
 
 connected_socket.write "GET / HTTP/1.0\r\n\r\n"
