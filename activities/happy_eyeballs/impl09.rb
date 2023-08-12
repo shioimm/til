@@ -1,5 +1,10 @@
 require 'socket'
 
+# 案
+#   ConnectionAttempt#attempt!では
+#   ConnectionAttemptDelayTimer#take_timer + Socket#connect_nonblockまで行う
+#   メインスレッドでIO.select + AddressResourceStorage#add nil + 残りの接続中のソケットを全てclose
+
 class AddressResourceStorage
   def initialize
     @resources = []
@@ -90,9 +95,8 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def initialize(connected_sockets, address_resource_storage)
+  def initialize(connected_sockets)
     @connected_sockets = connected_sockets
-    @address_resource_storage = address_resource_storage
   end
 
   def attempt!(addrinfo)
@@ -104,7 +108,6 @@ class ConnectionAttempt
 
     ConnectionAttemptDelayTimer.start_new_timer
     connected_socket = addrinfo.connect
-    @address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
     Mutex.new.synchronize { @connected_sockets.push connected_socket }
   end
 end
@@ -122,7 +125,7 @@ end
 
 # 接続試行 (Consumer)
 connected_sockets = []
-connection_attempt = ConnectionAttempt.new(connected_sockets, address_resource_storage)
+connection_attempt = ConnectionAttempt.new(connected_sockets)
 last_attemped_family = nil
 
 # RFC8305: Connection Attempts
@@ -141,6 +144,7 @@ connected_socket = loop do
 
   last_attemped_family = addrinfo.afamily
   connection_attempt.attempt!(addrinfo)
+  address_resource_storage.add nil # WAITING_DNS_REPLY_SECONDを待たずに接続試行を終了させる
 end
 
 connected_socket.write "GET / HTTP/1.0\r\n\r\n"
