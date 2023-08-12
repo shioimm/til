@@ -95,8 +95,10 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  def initialize(connected_sockets)
-    @connected_sockets = connected_sockets
+  attr_reader :connected_sockets
+
+  def initialize
+    @connected_sockets = []
   end
 
   def attempt!(addrinfo)
@@ -106,9 +108,10 @@ class ConnectionAttempt
 
     return if !@connected_sockets.empty?
 
+    socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
     ConnectionAttemptDelayTimer.start_new_timer
-    connected_socket = addrinfo.connect
-    Mutex.new.synchronize { @connected_sockets.push connected_socket }
+    socket.connect(addrinfo)
+    @connected_sockets.push socket
   end
 end
 
@@ -124,8 +127,7 @@ hostname_resolution = HostnameResolution.new(address_resource_storage)
 end
 
 # 接続試行 (Consumer)
-connected_sockets = []
-connection_attempt = ConnectionAttempt.new(connected_sockets)
+connection_attempt = ConnectionAttempt.new
 last_attemped_family = nil
 
 # RFC8305: Connection Attempts
@@ -137,8 +139,8 @@ connected_socket = loop do
   addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
 
   if addrinfo.nil?
-    connected_socket = connected_sockets.shift
-    connected_sockets.each(&:close)
+    connected_socket = connection_attempt.connected_sockets.shift
+    connection_attempt.connected_sockets.each(&:close)
     break connected_socket
   end
 
