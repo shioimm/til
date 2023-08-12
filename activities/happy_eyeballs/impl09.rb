@@ -34,12 +34,6 @@ class AddressResourceStorage
     end
   end
 
-  def resources
-    @mutex.synchronize do
-      @resources
-    end
-  end
-
   def include_ipv6?
     @resources.any?(&:ipv6?)
   end
