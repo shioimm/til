@@ -1,5 +1,20 @@
 require 'socket'
 
+# ここまでの実装:
+#   変更:
+#     接続試行をノンブロッキングモードで行うようにした
+#       アドレスの在庫が枯渇した後、接続中のソケットが残っている場合は接続確立を待機するようにした
+#     Connection Attempt DelayをIO.selectのtimeoutで行うようにした
+#   機能追加:
+#     AddressResourceStorage#out_of_stock?
+#     ConnectionAttempt#completed
+#     ConnectionAttempt#connecting_sockets
+#     ConnectionAttempt#connected_sockets
+#     ConnectionAttempt#take_connected_socket
+#     ConnectionAttempt#close_all_sockets
+#   機能削除:
+#     AddressResourceStorage#resources (使ってなかった)
+#
 # 追加の作業
 #   IO.select後の接続確認
 
