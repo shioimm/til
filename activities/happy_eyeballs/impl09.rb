@@ -32,6 +32,10 @@ class AddressResourceStorage
   def include_ipv6?
     @resources.any?(&:ipv6?)
   end
+
+  def out_of_stock?
+    @resources.empty?
+  end
 end
 
 class HostnameResolution
@@ -149,6 +153,22 @@ connected_socket = loop do
 
   addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
 
+  if !addrinfo && !connection_attempt.connecting_sockets.empty?
+    # NOTE
+    #   このIO.selectはアドレス在庫が枯渇しており、接続中のソケットがある場合に接続を待機するためのもの
+    #   なおSocket.tcpにおいて、connect_timeoutがある場合はErrno::ETIMEDOUTを送出する
+    #   そうでない場合は永久に待機
+    _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets)
+
+    if connected_sockets && !connected_sockets.empty?
+      connection_attempt.connected_sockets.push *connected_sockets
+      connection_attempt.completed = true
+      next
+    elsif !connection_attempt.connecting_sockets.empty?
+      next
+    end
+  end
+
   last_attemped_family = addrinfo.afamily
   connection_attempt.attempt(addrinfo)
 
@@ -157,8 +177,12 @@ connected_socket = loop do
     next
   end
 
+  if address_resource_storage.out_of_stock? &&connection_attempt.connecting_sockets.empty?
+    next
+  end
+
   # NOTE
-  #   IO.selectのtimeoutでConnection Attempt Delayを表現する
+  #   このIO.selectはtimeoutでConnection Attempt Delayを表現するためのもの
   #   タイムアウトした場合は新しいループに入り、次の接続試行を行う
   timer = ConnectionAttemptDelayTimer.take_timer
   _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, timer.waiting_time)
