@@ -179,6 +179,7 @@ WAITING_DNS_REPLY_SECOND = 1
 connected_socket = loop do
   if connection_attempt.completed?
     connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
+    next unless connected_socket
     connection_attempt.close_all_sockets!
     break connected_socket
   end
