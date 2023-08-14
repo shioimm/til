@@ -107,7 +107,6 @@ end
 
 class ConnectionAttempt
   attr_reader :connected_sockets, :connecting_sockets
-  attr_accessor :completed
 
   def initialize
     @connected_sockets = []
@@ -147,6 +146,14 @@ class ConnectionAttempt
     @connecting_sockets.each(&:close)
     @connected_sockets.each(&:close)
   end
+
+  def complete!
+    @completed = true
+  end
+
+  def completed?
+    @completed
+  end
 end
 
 HOSTNAME = "localhost"
@@ -170,7 +177,7 @@ last_attemped_addrinfo = nil
 WAITING_DNS_REPLY_SECOND = 1
 
 connected_socket = loop do
-  if connection_attempt.completed
+  if connection_attempt.completed?
     connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
     connection_attempt.close_all_sockets!
     break connected_socket
@@ -187,7 +194,7 @@ connected_socket = loop do
 
     if connected_sockets && !connected_sockets.empty?
       connection_attempt.connected_sockets.push *connected_sockets
-      connection_attempt.completed = true
+      connection_attempt.complete!
       next
     elsif !connection_attempt.connecting_sockets.empty?
       next
@@ -198,7 +205,7 @@ connected_socket = loop do
   connection_attempt.attempt(addrinfo)
 
   if !connection_attempt.connected_sockets.empty?
-    connection_attempt.completed = true
+    connection_attempt.complete!
     next
   end
 
@@ -214,7 +221,7 @@ connected_socket = loop do
 
   if connected_sockets && !connected_sockets.empty?
     connection_attempt.connected_sockets.push *connected_sockets
-    connection_attempt.completed = true
+    connection_attempt.complete!
     next
   end
 end
