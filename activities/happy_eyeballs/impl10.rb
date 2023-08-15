@@ -36,22 +36,16 @@ class AddressResourceStorage
   end
 end
 
-class HostnameResolution
-  RESOLUTION_DELAY = 0.05
+RESOLUTION_DELAY = 0.05
 
-  def initialize(address_resource_storage)
-    @address_resource_storage = address_resource_storage
+def hostname_resolution(hostname, port, family, address_resource_storage)
+  resources = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
+
+  if family == :PF_INET4 && !address_resource_storage.include_ipv6?
+    sleep RESOLUTION_DELAY
   end
 
-  def get_address_resources!(hostname, port, family)
-    resources = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
-
-    if family == :PF_INET4 && !@address_resource_storage.include_ipv6?
-      sleep RESOLUTION_DELAY
-    end
-
-    @address_resource_storage.add resources
-  end
+  address_resource_storage.add resources
 end
 
 class ConnectionAttemptDelayTimer
@@ -151,10 +145,9 @@ PORT = 9292
 # アドレス解決 (Producer)
 resolv_timeout = nil # NOTE Socket.tcpにおいてユーザーから渡される可能性あり
 address_resource_storage = AddressResourceStorage.new(resolv_timeout)
-hostname_resolution = HostnameResolution.new(address_resource_storage)
 
 [:PF_INET6, :PF_INET].each do |family|
-  Thread.new { hostname_resolution.get_address_resources!(HOSTNAME, PORT, family) }
+  Thread.new { hostname_resolution(HOSTNAME, PORT, family, address_resource_storage) }
 end
 
 # 接続試行 (Consumer)
