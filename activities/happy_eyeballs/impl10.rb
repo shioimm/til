@@ -6,22 +6,29 @@ class AddressResourceStorage
     @mutex = Mutex.new
     @cond = ConditionVariable.new
     @resolv_timeout = resolv_timeout
+    @ipv6_resource_resolved = false
+    @ipv4_resource_resolved = false
   end
 
-  def add(resource)
+  def add(resources)
+    # NOTE
+    #   現状ではアドレスファミリごとにAddrinfo.getaddrinfoが呼ばれる実装なのでこれでも動作する
+    #   アドレスファミリによらずアドレスを一つずつ非同期に取得する方法で取得するような場合は修正が必要
+    case resources.first.afamily
+    when Socket::AF_INET6 then @ipv6_resource_resolved = true
+    when Socket::AF_INET  then @ipv4_resource_resolved = true
+    end
+
     @mutex.synchronize do
-      @resources.push(*resource)
+      @resources.push(*resources)
       @cond.signal
     end
   end
 
   def pick(last_family = nil)
+    return nil if @ipv6_resource_resolved && @ipv4_resource_resolved
+
     @mutex.synchronize do
-      # FIXME
-      #   @resolv_timeoutが指定されていない、かつ接続が終わらない場合 sleep_forever になってしまう
-      #   リソースがこれ以上追加されないことがわかった時点でストレージを締め切ることを表現する何かが必要
-      #     追加されたリソースのファミリをマークしておき、IPv6/v4いずれもマーク済みになったら
-      #     ストレージを閉じるなど
       @cond.wait(@mutex, @resolv_timeout) if @resources.empty?
 
       if last_family && (addrinfo = @resources.find { |addrinfo| !addrinfo.afamily == last_family })
@@ -46,7 +53,7 @@ RESOLUTION_DELAY = 0.05
 def hostname_resolution(hostname, port, family, address_resource_storage)
   resources = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
 
-  if family == :PF_INET4 && !address_resource_storage.include_ipv6?
+  if family == Socket::AF_INET && !address_resource_storage.include_ipv6?
     sleep RESOLUTION_DELAY
   end
 
