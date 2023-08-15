@@ -107,7 +107,6 @@ end
 
 class ConnectionAttempt
   attr_reader :connected_sockets, :connecting_sockets
-  attr_accessor :completed
 
   def initialize
     @connected_sockets = []
@@ -127,15 +126,33 @@ class ConnectionAttempt
     end
   end
 
-  def take_connected_socket
-    connected_socket = @connected_sockets.shift
-    @connecting_sockets.delete connected_socket
-    connected_socket
+  def take_connected_socket(addrinfo)
+    @connected_sockets.find do |socket|
+      begin
+        socket.connect_nonblock(addrinfo)
+        true
+      rescue Errno::EISCONN # already connected
+        @connected_sockets.delete socket
+        @connecting_sockets.delete socket
+        true
+      rescue => e
+        socket.close unless socket.closed?
+        false
+      end
+    end
   end
 
   def close_all_sockets!
     @connecting_sockets.each(&:close)
     @connected_sockets.each(&:close)
+  end
+
+  def complete!
+    @completed = true
+  end
+
+  def completed?
+    @completed
   end
 end
 
@@ -152,7 +169,7 @@ end
 
 # 接続試行 (Consumer)
 connection_attempt = ConnectionAttempt.new
-last_attemped_family = nil
+last_attemped_addrinfo = nil
 
 # RFC8305: Connection Attempts
 # the DNS client resolver SHOULD still process DNS replies from the network
@@ -160,13 +177,14 @@ last_attemped_family = nil
 WAITING_DNS_REPLY_SECOND = 1
 
 connected_socket = loop do
-  if connection_attempt.completed
-    connected_socket = connection_attempt.take_connected_socket
+  if connection_attempt.completed?
+    connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
+    next unless connected_socket
     connection_attempt.close_all_sockets!
     break connected_socket
   end
 
-  addrinfo = address_resource_storage.pick(last_attemped_family, timeout: WAITING_DNS_REPLY_SECOND)
+  addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily, timeout: WAITING_DNS_REPLY_SECOND)
 
   if !addrinfo && !connection_attempt.connecting_sockets.empty?
     # NOTE
@@ -177,18 +195,18 @@ connected_socket = loop do
 
     if connected_sockets && !connected_sockets.empty?
       connection_attempt.connected_sockets.push *connected_sockets
-      connection_attempt.completed = true
+      connection_attempt.complete!
       next
     elsif !connection_attempt.connecting_sockets.empty?
       next
     end
   end
 
-  last_attemped_family = addrinfo.afamily
+  last_attemped_addrinfo = addrinfo
   connection_attempt.attempt(addrinfo)
 
   if !connection_attempt.connected_sockets.empty?
-    connection_attempt.completed = true
+    connection_attempt.complete!
     next
   end
 
@@ -204,7 +222,7 @@ connected_socket = loop do
 
   if connected_sockets && !connected_sockets.empty?
     connection_attempt.connected_sockets.push *connected_sockets
-    connection_attempt.completed = true
+    connection_attempt.complete!
     next
   end
 end
