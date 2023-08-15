@@ -17,6 +17,11 @@ class AddressResourceStorage
 
   def pick(last_family = nil)
     @mutex.synchronize do
+      # FIXME
+      #   @resolv_timeoutが指定されていない、かつ接続が終わらない場合 sleep_forever になってしまう
+      #   リソースがこれ以上追加されないことがわかった時点でストレージを締め切ることを表現する何かが必要
+      #     追加されたリソースのファミリをマークしておき、IPv6/v4いずれもマーク済みになったら
+      #     ストレージを閉じるなど
       @cond.wait(@mutex, @resolv_timeout) if @resources.empty?
 
       if last_family && (addrinfo = @resources.find { |addrinfo| !addrinfo.afamily == last_family })
