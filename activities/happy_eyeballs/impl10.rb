@@ -1,25 +1,11 @@
 require 'socket'
 
-# ここまでの実装:
-#   変更:
-#     接続試行をノンブロッキングモードで行うようにした
-#       アドレスの在庫が枯渇した後、接続中のソケットが残っている場合は接続確立を待機するようにした
-#     Connection Attempt DelayをIO.selectのtimeoutで行うようにした
-#   機能追加:
-#     AddressResourceStorage#out_of_stock?
-#     ConnectionAttempt#completed
-#     ConnectionAttempt#connecting_sockets
-#     ConnectionAttempt#connected_sockets
-#     ConnectionAttempt#take_connected_socket
-#     ConnectionAttempt#close_all_sockets
-#   機能削除:
-#     AddressResourceStorage#resources (使ってなかった)
-
 class AddressResourceStorage
-  def initialize
+  def initialize(resolv_timeout = nil)
     @resources = []
     @mutex = Mutex.new
     @cond = ConditionVariable.new
+    @resolv_timeout = resolv_timeout
   end
 
   def add(resource)
@@ -29,9 +15,9 @@ class AddressResourceStorage
     end
   end
 
-  def pick(last_family = nil, timeout: nil)
+  def pick(last_family = nil)
     @mutex.synchronize do
-      @cond.wait(@mutex, timeout) if @resources.empty?
+      @cond.wait(@mutex, @resolv_timeout) if @resources.empty?
 
       if last_family && (addrinfo = @resources.find { |addrinfo| !addrinfo.afamily == last_family })
         @resources.delete addrinfo
@@ -103,7 +89,7 @@ class ConnectionAttemptDelayTimer
 end
 
 class ConnectionAttempt
-  attr_reader :connected_sockets, :connecting_sockets
+  attr_reader :connected_sockets, :connecting_sockets, :last_error
 
   def initialize
     @connected_sockets = []
@@ -117,9 +103,14 @@ class ConnectionAttempt
     socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
     ConnectionAttemptDelayTimer.start_new_timer
 
-    case socket.connect_nonblock(addrinfo, exception: false)
-    when 0              then @connected_sockets.push socket
-    when :wait_writable then @connecting_sockets.push socket
+    begin
+      case socket.connect_nonblock(addrinfo, exception: false)
+      when 0              then @connected_sockets.push socket
+      when :wait_writable then @connecting_sockets.push socket
+      end
+    rescue SystemCallError => e
+      @last_error = e
+      soket.close unless socket.closed?
     end
   end
 
@@ -133,6 +124,7 @@ class ConnectionAttempt
         @connecting_sockets.delete socket
         true
       rescue => e
+        @last_error = e
         socket.close unless socket.closed?
         false
       end
@@ -157,7 +149,8 @@ HOSTNAME = "localhost"
 PORT = 9292
 
 # アドレス解決 (Producer)
-address_resource_storage = AddressResourceStorage.new
+resolv_timeout = nil # NOTE Socket.tcpにおいてユーザーから渡される可能性あり
+address_resource_storage = AddressResourceStorage.new(resolv_timeout)
 hostname_resolution = HostnameResolution.new(address_resource_storage)
 
 [:PF_INET6, :PF_INET].each do |family|
@@ -168,11 +161,6 @@ end
 connection_attempt = ConnectionAttempt.new
 last_attemped_addrinfo = nil
 
-# RFC8305: Connection Attempts
-# the DNS client resolver SHOULD still process DNS replies from the network
-# for a short period of time (recommended to be 1 second)
-WAITING_DNS_REPLY_SECOND = 1
-
 connected_socket = loop do
   if connection_attempt.completed?
     connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
@@ -181,10 +169,11 @@ connected_socket = loop do
     break connected_socket
   end
 
-  addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily, timeout: WAITING_DNS_REPLY_SECOND)
+  addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily)
 
   if !addrinfo && !connection_attempt.connecting_sockets.empty?
     # NOTE
+    #   アドレス在庫が枯渇しており、接続中のソケットがあるパターン
     #   このIO.selectはアドレス在庫が枯渇しており、接続中のソケットがある場合に接続を待機するためのもの
     #   なおSocket.tcpにおいて、connect_timeoutがある場合はErrno::ETIMEDOUTを送出する
     #   そうでない場合は永久に待機
@@ -197,6 +186,12 @@ connected_socket = loop do
     elsif !connection_attempt.connecting_sockets.empty?
       next
     end
+  elsif !addrinfo && connection_attempt.last_error
+    # NOTE アドレス在庫が枯渇しており、全てのソケットの接続に失敗しているパターン
+    raise connection_attempt.last_error
+  elsif !addrinfo
+    # NOTE resolv_timeoutまでに名前解決できなかったパターン
+    raise Errno::ETIMEDOUT, 'user specified timeout'
   end
 
   last_attemped_addrinfo = addrinfo
@@ -207,7 +202,7 @@ connected_socket = loop do
     next
   end
 
-  if address_resource_storage.out_of_stock? &&connection_attempt.connecting_sockets.empty?
+  if address_resource_storage.out_of_stock? && connection_attempt.connecting_sockets.empty?
     next
   end
 
