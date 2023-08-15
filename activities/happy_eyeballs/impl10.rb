@@ -153,6 +153,7 @@ end
 # 接続試行 (Consumer)
 connection_attempt = ConnectionAttempt.new
 last_attemped_addrinfo = nil
+connect_timeout = nil # TODO ユーザーから渡される引数。ちゃんと時間を測る
 
 connected_socket = loop do
   if connection_attempt.completed?
@@ -167,15 +168,18 @@ connected_socket = loop do
   if !addrinfo && !connection_attempt.connecting_sockets.empty?
     # NOTE
     #   アドレス在庫が枯渇しており、接続中のソケットがあるパターン
-    #   このIO.selectはアドレス在庫が枯渇しており、接続中のソケットがある場合に接続を待機するためのもの
-    #   なおSocket.tcpにおいて、connect_timeoutがある場合はErrno::ETIMEDOUTを送出する
+    #   この接続はtimeoutでユーザーから渡されたconnect_timeoutを表現するためのもの
+    #   Socket.tcpにおいてはconnect_timeoutによって待機状態から解除された場合はErrno::ETIMEDOUTを送出する
     #   そうでない場合は永久に待機
-    _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets)
+    _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connect_timeout)
 
     if connected_sockets && !connected_sockets.empty?
       connection_attempt.connected_sockets.push *connected_sockets
       connection_attempt.complete!
       next
+    elsif connected_sockets.nil?
+      # NOTE connect_timeoutまでに名前解決できなかったパターン
+      raise Errno::ETIMEDOUT, 'user specified timeout'
     elsif !connection_attempt.connecting_sockets.empty?
       next
     end
