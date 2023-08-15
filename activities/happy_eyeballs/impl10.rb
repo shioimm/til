@@ -178,28 +178,31 @@ connected_socket = loop do
   addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily)
 
   if !addrinfo && !connection_attempt.connecting_sockets.empty?
+    # アドレス在庫が枯渇しており、接続中のソケットがある場合
+
     # NOTE
-    #   アドレス在庫が枯渇しており、接続中のソケットがあるパターン
     #   この接続はtimeoutでユーザーから渡されたconnect_timeoutを表現するためのもの
     #   Socket.tcpにおいてはconnect_timeoutによって待機状態から解除された場合はErrno::ETIMEDOUTを送出する
     #   そうでない場合は永久に待機
     _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connect_timeout)
 
     if connected_sockets && !connected_sockets.empty?
+      # connect_timeout終了前に接続できたソケットがある場合
       connection_attempt.connected_sockets.push *connected_sockets
       connection_attempt.complete!
       next
     elsif connected_sockets.nil?
-      # NOTE connect_timeoutまでに名前解決できなかったパターン
+      # connect_timeoutまでに名前解決できなかった場合
       raise Errno::ETIMEDOUT, 'user specified timeout'
     elsif !connection_attempt.connecting_sockets.empty?
+      # FIXME そんなことある?
       next
     end
   elsif !addrinfo && connection_attempt.last_error
-    # NOTE アドレス在庫が枯渇しており、全てのソケットの接続に失敗しているパターン
+    # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
     raise connection_attempt.last_error
   elsif !addrinfo
-    # NOTE resolv_timeoutまでに名前解決できなかったパターン
+    # resolv_timeoutまでに名前解決できなかった場合
     raise Errno::ETIMEDOUT, 'user specified timeout'
   end
 
@@ -207,11 +210,13 @@ connected_socket = loop do
   connection_attempt.attempt(addrinfo)
 
   if !connection_attempt.connected_sockets.empty?
+    # 最初の接続試行で接続できたソケットがある場合
     connection_attempt.complete!
     next
   end
 
   if address_resource_storage.out_of_stock? && connection_attempt.connecting_sockets.empty?
+    # アドレスリソースが枯渇済みで、接続中のソケットがない場合
     next
   end
 
@@ -222,6 +227,7 @@ connected_socket = loop do
   _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, timer.waiting_time)
 
   if connected_sockets && !connected_sockets.empty?
+    # Connection Attempt Delayが終了する前に接続できたソケットがある場合
     connection_attempt.connected_sockets.push *connected_sockets
     connection_attempt.complete!
     next
