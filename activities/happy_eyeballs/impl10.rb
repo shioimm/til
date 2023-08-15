@@ -194,9 +194,6 @@ connected_socket = loop do
     elsif connected_sockets.nil?
       # connect_timeoutまでに名前解決できなかった場合
       raise Errno::ETIMEDOUT, 'user specified timeout'
-    elsif !connection_attempt.connecting_sockets.empty?
-      # FIXME そんなことある?
-      next
     end
   elsif !addrinfo && connection_attempt.last_error
     # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
