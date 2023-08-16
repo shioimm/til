@@ -116,7 +116,7 @@ class ConnectionAttempt
       end
     rescue SystemCallError => e
       @last_error = e
-      soket.close unless socket.closed?
+      socket.close unless socket.closed?
     end
   end
 
