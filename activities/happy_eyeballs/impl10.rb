@@ -126,13 +126,14 @@ class ConnectionAttempt
         socket.connect_nonblock(addrinfo)
         true
       rescue Errno::EISCONN # already connected
-        @connected_sockets.delete socket
-        @connecting_sockets.delete socket
         true
       rescue => e
         @last_error = e
         socket.close unless socket.closed?
         false
+      ensure
+        @connected_sockets.delete socket
+        @connecting_sockets.delete socket
       end
     end
   end
@@ -151,8 +152,10 @@ class ConnectionAttempt
   end
 end
 
-HOSTNAME = "localhost"
-PORT = 9292
+HOSTNAME = "www.google.com"
+PORT = 80
+#HOSTNAME = "localhost"
+#PORT = 9292
 
 # アドレス解決 (Producer)
 resolv_timeout = nil # NOTE Socket.tcpにおいてユーザーから渡される可能性あり
