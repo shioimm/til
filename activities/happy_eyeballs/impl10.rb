@@ -1,5 +1,16 @@
 require 'socket'
 
+# ここまでの実装:
+#   変更:
+#     (アドレス解決) AddressResourceStorageで全てのアドレスファミリ取得済みの場合はpickを待たないようにした
+#     (接続試行) Socket.tcpで扱う引数を利用してresolv_timeout / connect_timeoutを処理するようにした
+#     (接続試行) attempt実行時にSystemCallErrorをrescueするようにした
+#     (接続試行) take_connected_socket実行時に対象のソケットを必ずcloseするようにした
+#   機能追加:
+#     hostname_resolutionメソッド
+#   機能削除:
+#     HostnameResolutionクラス
+
 class AddressResourceStorage
   def initialize(resolv_timeout = nil)
     @resources = []
