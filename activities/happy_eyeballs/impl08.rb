@@ -155,9 +155,7 @@ connected_socket = loop do
 
   last_attemped_family = addrinfo.afamily
 
-  t = Thread.start(addrinfo, connected_sockets) { |addrinfo, connected_sockets|
-    connection_attempt.attempt!(addrinfo)
-  }
+  t = Thread.start(addrinfo) { |addrinfo| connection_attempt.attempt!(addrinfo) }
 
   CONNECTING_THREADS.add(t)
 end
