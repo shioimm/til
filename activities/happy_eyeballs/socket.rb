@@ -152,6 +152,13 @@ class ConnectionAttempt
   end
 end
 
+# TODO
+#   テストが通るようにする
+#   connect_timeoutの計測を行う
+#   タイムアウト系の処理に Process.clock_gettime(Process::CLOCK_MONOTONIC) を利用する
+#   local_host / local_portを考慮する
+#   ブロックを実行できるようにする
+
 class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     # アドレス解決 (Producer)
