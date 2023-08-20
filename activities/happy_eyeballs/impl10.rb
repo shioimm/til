@@ -11,6 +11,22 @@ require 'socket'
 #   機能削除:
 #     HostnameResolutionクラス
 
+
+# HOSTNAME = "www.google.com"
+# PORT = 80
+HOSTNAME = "localhost"
+PORT = 9292
+
+# 名前解決動作確認用
+# Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+#   if family == :PF_INET
+#     sleep 0.025
+#     [Addrinfo.tcp("127.0.0.1", PORT)]
+#   else
+#     [Addrinfo.tcp("::1", PORT)]
+#   end
+# end
+
 class AddressResourceStorage
   def initialize(resolv_timeout = nil)
     @resources = []
@@ -162,11 +178,6 @@ class ConnectionAttempt
     @completed
   end
 end
-
-HOSTNAME = "www.google.com"
-PORT = 80
-#HOSTNAME = "localhost"
-#PORT = 9292
 
 # アドレス解決 (Producer)
 resolv_timeout = nil # NOTE Socket.tcpにおいてユーザーから渡される可能性あり
