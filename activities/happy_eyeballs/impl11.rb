@@ -1,5 +1,8 @@
 require 'socket'
 
+# ここまでの実装
+#   インターフェースをSocket.tcpに寄せた
+
 class AddressResourceStorage
   def initialize(resolv_timeout = nil)
     @resources = []
@@ -152,80 +155,71 @@ class ConnectionAttempt
   end
 end
 
-# TODO
-#   テストが通るようにする
-#   connect_timeoutの計測を行う
-#   タイムアウト系の処理に Process.clock_gettime(Process::CLOCK_MONOTONIC) を利用する
-#   local_host / local_portを考慮する
-#   ブロックを実行できるようにする
+def tcp(hostname, port, resolv_timeout: nil, connect_timeout: nil)
+  # アドレス解決 (Producer)
+  address_resource_storage = AddressResourceStorage.new(resolv_timeout)
 
-class Socket
-  def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
-    # アドレス解決 (Producer)
-    address_resource_storage = AddressResourceStorage.new(resolv_timeout)
+  [:PF_INET6, :PF_INET].each do |family|
+    Thread.new { hostname_resolution(hostname, port, family, address_resource_storage) }
+  end
 
-    [:PF_INET6, :PF_INET].each do |family|
-      Thread.new { hostname_resolution(host, port, family, address_resource_storage) }
+  # 接続試行 (Consumer)
+  connection_attempt = ConnectionAttempt.new
+  last_attemped_addrinfo = nil
+
+  ret = loop do
+    if connection_attempt.completed?
+      connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
+      next unless connected_socket
+      connection_attempt.close_all_sockets!
+      break connected_socket
     end
 
-    # 接続試行 (Consumer)
-    connection_attempt = ConnectionAttempt.new
-    last_attemped_addrinfo = nil
+    addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily)
 
-    ret = loop do
-      if connection_attempt.completed?
-        connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
-        next unless connected_socket
-        connection_attempt.close_all_sockets!
-        break connected_socket
-      end
-
-      addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily)
-
-      if !addrinfo && !connection_attempt.connecting_sockets.empty?
-        # アドレス在庫が枯渇しており、接続中のソケットがある場合
-        _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connect_timeout)
-
-        if connected_sockets && !connected_sockets.empty?
-          # connect_timeout終了前に接続できたソケットがある場合
-          connection_attempt.connected_sockets.push *connected_sockets
-          connection_attempt.complete!
-          next
-        elsif connected_sockets.nil?
-          # connect_timeoutまでに名前解決できなかった場合
-          raise Errno::ETIMEDOUT, 'user specified timeout'
-        end
-      elsif !addrinfo && connection_attempt.last_error
-        # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
-        raise connection_attempt.last_error
-      elsif !addrinfo
-        raise Errno::ETIMEDOUT, 'user specified timeout'
-      end
-
-      last_attemped_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo)
-
-      if !connection_attempt.connected_sockets.empty?
-        connection_attempt.complete!
-        next
-      end
-
-      if address_resource_storage.out_of_stock? && connection_attempt.connecting_sockets.empty?
-        next
-      end
-
-      timer = ConnectionAttemptDelayTimer.take_timer
-      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, timer.waiting_time)
+    if !addrinfo && !connection_attempt.connecting_sockets.empty?
+      # アドレス在庫が枯渇しており、接続中のソケットがある場合
+      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connect_timeout)
 
       if connected_sockets && !connected_sockets.empty?
+        # connect_timeout終了前に接続できたソケットがある場合
         connection_attempt.connected_sockets.push *connected_sockets
         connection_attempt.complete!
         next
+      elsif connected_sockets.nil?
+        # connect_timeoutまでに名前解決できなかった場合
+        raise Errno::ETIMEDOUT, 'user specified timeout'
       end
+    elsif !addrinfo && connection_attempt.last_error
+      # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
+      raise connection_attempt.last_error
+    elsif !addrinfo
+      raise Errno::ETIMEDOUT, 'user specified timeout'
     end
 
-    ret
+    last_attemped_addrinfo = addrinfo
+    connection_attempt.attempt(addrinfo)
+
+    if !connection_attempt.connected_sockets.empty?
+      connection_attempt.complete!
+      next
+    end
+
+    if address_resource_storage.out_of_stock? && connection_attempt.connecting_sockets.empty?
+      next
+    end
+
+    timer = ConnectionAttemptDelayTimer.take_timer
+    _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, timer.waiting_time)
+
+    if connected_sockets && !connected_sockets.empty?
+      connection_attempt.connected_sockets.push *connected_sockets
+      connection_attempt.complete!
+      next
+    end
   end
+
+  ret
 end
 
 # HOSTNAME = "www.google.com"
@@ -246,7 +240,7 @@ PORT = 9292
 # 名前解決動作確認用 (タイムアウト)
 # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 
-connected_socket = Socket.tcp(HOSTNAME, PORT)
+connected_socket = tcp(HOSTNAME, PORT)
 connected_socket.write "GET / HTTP/1.0\r\n\r\n"
 print connected_socket.read
 connected_socket.close

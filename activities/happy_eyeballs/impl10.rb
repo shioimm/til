@@ -17,7 +17,7 @@ require 'socket'
 HOSTNAME = "localhost"
 PORT = 9292
 
-# 名前解決動作確認用
+# 名前解決動作確認用 (遅延)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
 #   if family == :PF_INET
 #     sleep 0.025
@@ -26,6 +26,9 @@ PORT = 9292
 #     [Addrinfo.tcp("::1", PORT)]
 #   end
 # end
+#
+# 名前解決動作確認用 (タイムアウト)
+# Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 
 class AddressResourceStorage
   def initialize(resolv_timeout = nil)
