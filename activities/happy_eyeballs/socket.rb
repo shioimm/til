@@ -205,6 +205,10 @@ class Socket
       last_attemped_addrinfo = addrinfo
       connection_attempt.attempt(addrinfo)
 
+      if connection_attempt.last_error && !address_resource_storage.out_of_stock?
+        next
+      end
+
       if !connection_attempt.connected_sockets.empty?
         connection_attempt.complete!
         next
