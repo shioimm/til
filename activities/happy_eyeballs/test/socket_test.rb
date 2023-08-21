@@ -66,7 +66,7 @@ class SocketTest < Minitest::Test
 
     _, port, = server.addr
 
-    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, _, _, _, _|
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == :PF_INET6
         sleep 0.025
         [Addrinfo.tcp("::1", port)]
@@ -94,8 +94,10 @@ class SocketTest < Minitest::Test
       exit
     end
 
-    _, port, = ipv6_server.connect_address.ip_port
-    ipv4_server = TCPServer.new("127.0.0.1", port)
+    port = ipv6_server.connect_address.ip_port
+    ipv4_server = Socket.new(:PF_INET, :STREAM)
+    ipv4_sockaddr = Socket.pack_sockaddr_in(port, "127.0.0.1")
+    ipv4_server.bind(ipv4_sockaddr)
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == :PF_INET6
@@ -106,7 +108,8 @@ class SocketTest < Minitest::Test
       end
     end
 
-    ipv4_server_thread = Thread.new { ipv4_server.accept }
+    ipv6_server_thread = Thread.new { sleep 1; ipv6_server.listen(1) }
+    ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
     connected_socket = Socket.tcp("localhost", port)
     ipv4_server_thread.join
 
@@ -114,15 +117,18 @@ class SocketTest < Minitest::Test
       connected_socket.remote_address.ipv4?,
       true
     )
+
+    ipv6_server.close
+    ipv6_server_thread.kill
   end
 
- def test_that_raises_ETIMEDOUT_with_resolv_timeout
-   Addrinfo.define_singleton_method(:getaddrinfo) {|*arg| sleep }
+  def test_that_raises_ETIMEDOUT_with_resolv_timeout
+    Addrinfo.define_singleton_method(:getaddrinfo) {|*arg| sleep }
 
-   sock = nil
+    sock = nil
 
-   assert_raises(Errno::ETIMEDOUT) do
-     sock = Socket.tcp("localhost", 9, resolv_timeout: 0.1)
-   end
- end
+    assert_raises(Errno::ETIMEDOUT) do
+      sock = Socket.tcp("localhost", 9, resolv_timeout: 0.1)
+    end
+  end
 end
