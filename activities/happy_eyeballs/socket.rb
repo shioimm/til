@@ -15,8 +15,8 @@ class AddressResourceStorage
     #   現状ではアドレスファミリごとにAddrinfo.getaddrinfoが呼ばれる実装なのでこれでも動作する
     #   アドレスファミリによらずアドレスを一つずつ非同期に取得する方法で取得するような場合は修正が必要
     case resources.first.afamily
-    when Socket::AF_INET6 then @ipv6_resource_resolved = true
-    when Socket::AF_INET  then @ipv4_resource_resolved = true
+    when :PF_INET6 then @ipv6_resource_resolved = true
+    when :PF_INET  then @ipv4_resource_resolved = true
     end
 
     @mutex.synchronize do
@@ -53,7 +53,7 @@ RESOLUTION_DELAY = 0.05
 def hostname_resolution(hostname, port, family, address_resource_storage)
   resources = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
 
-  if family == Socket::AF_INET && !address_resource_storage.include_ipv6?
+  if family == :PF_INET && !address_resource_storage.include_ipv6?
     sleep RESOLUTION_DELAY
   end
 
@@ -154,6 +154,8 @@ end
 
 # TODO
 #   テストが通るようにする
+#   Socket#connect_nonblock時のエラーハンドリング
+#     (ConnectionAttempt#take_connected_socketでSystemCallErrorになると無限ループになる)
 #   connect_timeoutの計測を行う
 #   タイムアウト系の処理に Process.clock_gettime(Process::CLOCK_MONOTONIC) を利用する
 #   local_host / local_portを考慮する
@@ -205,6 +207,10 @@ class Socket
       last_attemped_addrinfo = addrinfo
       connection_attempt.attempt(addrinfo)
 
+      if connection_attempt.last_error && !address_resource_storage.out_of_stock?
+        next
+      end
+
       if !connection_attempt.connected_sockets.empty?
         connection_attempt.complete!
         next
@@ -228,25 +234,25 @@ class Socket
   end
 end
 
-# HOSTNAME = "www.google.com"
-# PORT = 80
-HOSTNAME = "localhost"
-PORT = 9292
-
-# 名前解決動作確認用 (遅延)
-# Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-#   if family == :PF_INET
-#     sleep 0.025
-#     [Addrinfo.tcp("127.0.0.1", PORT)]
-#   else
-#     [Addrinfo.tcp("::1", PORT)]
-#   end
-# end
+# # HOSTNAME = "www.google.com"
+# # PORT = 80
+# HOSTNAME = "localhost"
+# PORT = 9292
 #
-# 名前解決動作確認用 (タイムアウト)
-# Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
-
-connected_socket = Socket.tcp(HOSTNAME, PORT)
-connected_socket.write "GET / HTTP/1.0\r\n\r\n"
-print connected_socket.read
-connected_socket.close
+# # # 名前解決動作確認用 (遅延)
+# # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+# #   if family == :PF_INET6
+# #     sleep 0.025
+# #     [Addrinfo.tcp("::1", PORT)]
+# #   else
+# #     [Addrinfo.tcp("127.0.0.1", PORT)]
+# #   end
+# # end
+#
+# # # 名前解決動作確認用 (タイムアウト)
+# # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+#
+# connected_socket = Socket.tcp(HOSTNAME, PORT)
+# connected_socket.write "GET / HTTP/1.0\r\n\r\n"
+# print connected_socket.read
+# connected_socket.close
