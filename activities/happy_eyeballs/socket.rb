@@ -147,6 +147,10 @@ class ConnectionAttempt
     @completed = true
   end
 
+  def incomplete!
+    @completed = false
+  end
+
   def completed?
     @completed
   end
@@ -177,7 +181,14 @@ class Socket
     ret = loop do
       if connection_attempt.completed?
         connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
-        next unless connected_socket
+
+        if connected_socket.nil? && connection_attempt.last_error
+          raise connection_attempt.last_error if address_resource_storage.out_of_stock?
+
+          connection_attempt.incomplete!
+          next
+        end
+
         connection_attempt.close_all_sockets!
         break connected_socket
       end
