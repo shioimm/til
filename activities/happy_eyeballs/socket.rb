@@ -15,8 +15,8 @@ class AddressResourceStorage
     #   現状ではアドレスファミリごとにAddrinfo.getaddrinfoが呼ばれる実装なのでこれでも動作する
     #   アドレスファミリによらずアドレスを一つずつ非同期に取得する方法で取得するような場合は修正が必要
     case resources.first.afamily
-    when :PF_INET6 then @ipv6_resource_resolved = true
-    when :PF_INET  then @ipv4_resource_resolved = true
+    when Socket::AF_INET6 then @ipv6_resource_resolved = true
+    when Socket::AF_INET  then @ipv4_resource_resolved = true
     end
 
     @mutex.synchronize do
@@ -26,7 +26,7 @@ class AddressResourceStorage
   end
 
   def pick(last_family = nil)
-    return nil if @ipv6_resource_resolved && @ipv4_resource_resolved
+    return nil if @ipv6_resource_resolved && @ipv4_resource_resolved && @resources.empty?
 
     @mutex.synchronize do
       @cond.wait(@mutex, @resolv_timeout) if @resources.empty?
