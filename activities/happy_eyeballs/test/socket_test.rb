@@ -125,10 +125,27 @@ class SocketTest < Minitest::Test
   def test_that_raises_ETIMEDOUT_with_resolv_timeout
     Addrinfo.define_singleton_method(:getaddrinfo) {|*arg| sleep }
 
-    sock = nil
-
     assert_raises(Errno::ETIMEDOUT) do
-      sock = Socket.tcp("localhost", 9, resolv_timeout: 0.1)
+      Socket.tcp("localhost", 9, resolv_timeout: 0.1)
+    end
+  end
+
+  def test_that_raises_ECONNREFUSED_with_connection_failure
+    server = TCPServer.new("127.0.0.1", 0)
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == :PF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    server.close
+
+    assert_raises(Errno::ECONNREFUSED) do
+      Socket.tcp("localhost", port)
     end
   end
 end
