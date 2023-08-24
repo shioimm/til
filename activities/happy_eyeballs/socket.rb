@@ -165,13 +165,10 @@ def second_to_timeout(started_at, waiting_time)
 end
 
 # TODO
-#   テストが通るようにする
-#   Socket#connect_nonblock時のエラーハンドリング
-#     (ConnectionAttempt#take_connected_socketでSystemCallErrorになると無限ループになる)
-#   connect_timeoutの計測を行う
-#   タイムアウト系の処理に Process.clock_gettime(Process::CLOCK_MONOTONIC) を利用する
 #   local_host / local_portを考慮する
 #   ブロックを実行できるようにする
+#   アドレス解決のスレッドを終了させる
+#   AddressResourceStorageをQueueのサブクラスにできないか検討
 
 class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
@@ -222,6 +219,7 @@ class Socket
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise connection_attempt.last_error
       elsif !addrinfo
+        # Resolve Timeout
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
