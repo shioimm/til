@@ -130,6 +130,41 @@ class SocketTest < Minitest::Test
     end
   end
 
+  def test_that_raises_ETIMEDOUT_with_connection_timeout
+    begin
+      ipv6_server = Socket.new(:PF_INET6, :STREAM)
+      ipv6_sockaddr = Socket.pack_sockaddr_in(0, "::1")
+      ipv6_server.bind(ipv6_sockaddr)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    port = ipv6_server.connect_address.ip_port
+    ipv4_server = Socket.new(:PF_INET, :STREAM)
+    ipv4_sockaddr = Socket.pack_sockaddr_in(port, "127.0.0.1")
+    ipv4_server.bind(ipv4_sockaddr)
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == :PF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    ipv6_server_thread = Thread.new { sleep(1); ipv6_server.listen(1); }
+    ipv4_server_thread = Thread.new { sleep(1); ipv4_server.listen(1); }
+
+    assert_raises(Errno::ETIMEDOUT) do
+      Socket.tcp("localhost", port, connect_timeout: 0.1)
+    end
+
+    ipv4_server.close
+    ipv4_server_thread.kill
+    ipv6_server.close
+    ipv6_server_thread.kill
+  end
+
   def test_that_raises_ECONNREFUSED_with_connection_failure
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr

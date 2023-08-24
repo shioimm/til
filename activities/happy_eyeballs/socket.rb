@@ -15,8 +15,8 @@ class AddressResourceStorage
     #   現状ではアドレスファミリごとにAddrinfo.getaddrinfoが呼ばれる実装なのでこれでも動作する
     #   アドレスファミリによらずアドレスを一つずつ非同期に取得する方法で取得するような場合は修正が必要
     case resources.first.afamily
-    when :PF_INET6 then @ipv6_resource_resolved = true
-    when :PF_INET  then @ipv4_resource_resolved = true
+    when Socket::AF_INET6 then @ipv6_resource_resolved = true
+    when Socket::AF_INET  then @ipv4_resource_resolved = true
     end
 
     @mutex.synchronize do
@@ -26,7 +26,7 @@ class AddressResourceStorage
   end
 
   def pick(last_family = nil)
-    return nil if @ipv6_resource_resolved && @ipv4_resource_resolved
+    return nil if @ipv6_resource_resolved && @ipv4_resource_resolved && @resources.empty?
 
     @mutex.synchronize do
       @cond.wait(@mutex, @resolv_timeout) if @resources.empty?
@@ -156,6 +156,14 @@ class ConnectionAttempt
   end
 end
 
+def second_to_timeout(started_at, waiting_time)
+  return if waiting_time.nil?
+
+  elapsed_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+  timeout = waiting_time - elapsed_time
+  timeout.negative? ? 0 : timeout
+end
+
 # TODO
 #   テストが通るようにする
 #   Socket#connect_nonblock時のエラーハンドリング
@@ -175,6 +183,7 @@ class Socket
     end
 
     # 接続試行 (Consumer)
+    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     connection_attempt = ConnectionAttempt.new
     last_attemped_addrinfo = nil
 
@@ -197,7 +206,8 @@ class Socket
 
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
-        _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connect_timeout)
+        to_timeout = second_to_timeout(started_at, connect_timeout)
+        _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, to_timeout)
 
         if connected_sockets && !connected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
