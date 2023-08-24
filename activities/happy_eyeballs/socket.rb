@@ -166,7 +166,6 @@ end
 
 # TODO
 #   local_host / local_portを考慮する
-#   アドレス解決のスレッドを終了させる
 #   AddressResourceStorageをQueueのサブクラスにできないか検討
 
 class Socket
@@ -174,7 +173,7 @@ class Socket
     # アドレス解決 (Producer)
     address_resource_storage = AddressResourceStorage.new(resolv_timeout)
 
-    [:PF_INET6, :PF_INET].each do |family|
+    hostname_resolution_threads = [:PF_INET6, :PF_INET].map do |family|
       Thread.new { hostname_resolution(host, port, family, address_resource_storage) }
     end
 
@@ -252,11 +251,14 @@ class Socket
       begin
         yield ret
       ensure
+        hostname_resolution_threads.each {|th| th&.exit }
         ret.close
       end
     else
       ret
     end
+  ensure
+    hostname_resolution_threads.each {|th| th&.exit }
   end
 end
 
