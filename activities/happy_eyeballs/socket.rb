@@ -166,7 +166,6 @@ end
 
 # TODO
 #   local_host / local_portを考慮する
-#   ブロックを実行できるようにする
 #   アドレス解決のスレッドを終了させる
 #   AddressResourceStorageをQueueのサブクラスにできないか検討
 
@@ -249,7 +248,15 @@ class Socket
       end
     end
 
-    ret
+    if block_given?
+      begin
+        yield ret
+      ensure
+        ret.close
+      end
+    else
+      ret
+    end
   end
 end
 
@@ -271,7 +278,8 @@ end
 # # # 名前解決動作確認用 (タイムアウト)
 # # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 #
-# connected_socket = Socket.tcp(HOSTNAME, PORT)
-# connected_socket.write "GET / HTTP/1.0\r\n\r\n"
-# print connected_socket.read
-# connected_socket.close
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+#   socket.close
+# end
