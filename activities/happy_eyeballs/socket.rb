@@ -165,20 +165,15 @@ def second_to_timeout(started_at, waiting_time)
 end
 
 # TODO
-#   テストが通るようにする
-#   Socket#connect_nonblock時のエラーハンドリング
-#     (ConnectionAttempt#take_connected_socketでSystemCallErrorになると無限ループになる)
-#   connect_timeoutの計測を行う
-#   タイムアウト系の処理に Process.clock_gettime(Process::CLOCK_MONOTONIC) を利用する
 #   local_host / local_portを考慮する
-#   ブロックを実行できるようにする
+#   AddressResourceStorageをQueueのサブクラスにできないか検討
 
 class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     # アドレス解決 (Producer)
     address_resource_storage = AddressResourceStorage.new(resolv_timeout)
 
-    [:PF_INET6, :PF_INET].each do |family|
+    hostname_resolution_threads = [:PF_INET6, :PF_INET].map do |family|
       Thread.new { hostname_resolution(host, port, family, address_resource_storage) }
     end
 
@@ -222,6 +217,7 @@ class Socket
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise connection_attempt.last_error
       elsif !addrinfo
+        # Resolve Timeout
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
@@ -251,7 +247,18 @@ class Socket
       end
     end
 
-    ret
+    if block_given?
+      begin
+        yield ret
+      ensure
+        hostname_resolution_threads.each {|th| th&.exit }
+        ret.close
+      end
+    else
+      ret
+    end
+  ensure
+    hostname_resolution_threads.each {|th| th&.exit }
   end
 end
 
@@ -273,7 +280,8 @@ end
 # # # 名前解決動作確認用 (タイムアウト)
 # # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 #
-# connected_socket = Socket.tcp(HOSTNAME, PORT)
-# connected_socket.write "GET / HTTP/1.0\r\n\r\n"
-# print connected_socket.read
-# connected_socket.close
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+#   socket.close
+# end
