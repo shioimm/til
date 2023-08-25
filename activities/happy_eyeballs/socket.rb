@@ -97,7 +97,8 @@ end
 class ConnectionAttempt
   attr_reader :connected_sockets, :connecting_sockets, :last_error
 
-  def initialize
+  def initialize(local_addresses = [])
+    @local_addresses = local_addresses
     @connected_sockets = []
     @connecting_sockets = []
     @completed = false
@@ -107,6 +108,12 @@ class ConnectionAttempt
     return if !@connected_sockets.empty?
 
     socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+    if !@local_addresses.empty?
+      local_address = @local_addresses.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      socket.bind(local_address) if local_address
+    end
+
     ConnectionAttemptDelayTimer.start_new_timer
 
     begin
@@ -200,7 +207,7 @@ class Socket
 
     # 接続試行 (Consumer)
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    connection_attempt = ConnectionAttempt.new
+    connection_attempt = ConnectionAttempt.new(local_addresses)
     last_attemped_addrinfo = nil
 
     ret = loop do
