@@ -177,14 +177,24 @@ end
 
 class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
+    # アドレス解決 (Producer)
+    local_addresses = []
+    hostname_resolving_families = [:PF_INET6, :PF_INET]
+
     if !local_host.nil? || !local_port.nil?
-      # WIP
+      hostname_resolving_families = []
+      local_addresses = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
+
+      [Socket::AF_INET6, Socket::AF_INET].each do |family|
+        if local_addresses.any? { |local_ai| local_ai.pfamily === family }
+          hostname_resolving_families.push (family == Socket::AF_INET6 ? :PF_INET6 : :PF_INET)
+        end
+      end
     end
 
-    # アドレス解決 (Producer)
     address_resource_storage = AddressResourceStorage.new(resolv_timeout)
 
-    hostname_resolution_threads = [:PF_INET6, :PF_INET].map do |family|
+    hostname_resolution_threads = hostname_resolving_families.map do |family|
       Thread.new { hostname_resolution(host, port, family, address_resource_storage) }
     end
 
