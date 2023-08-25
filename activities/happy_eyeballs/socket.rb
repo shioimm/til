@@ -166,10 +166,21 @@ end
 
 # TODO
 #   local_host / local_portを考慮する
+#     (アドレス解決)
+#       指定のホスト名とポート番号でアドレス解決を行う
+#       アドレス解決の結果、取得できたアドレスファミリのみhostname_resolutionを行い、
+#       Addrinfoのリストを取得しておく
+#     (接続試行)
+#       これから接続試行を行うアドレスファミリと同じアドレスファミリのAddrinfoをリストから選び、
+#       接続試行を行うクライアントソケットにbindする
 #   AddressResourceStorageをQueueのサブクラスにできないか検討
 
 class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
+    if !local_host.nil? || !local_port.nil?
+      # WIP
+    end
+
     # アドレス解決 (Producer)
     address_resource_storage = AddressResourceStorage.new(resolv_timeout)
 
@@ -279,6 +290,14 @@ end
 #
 # # # 名前解決動作確認用 (タイムアウト)
 # # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+#
+# # # local_host / local_port を指定する場合
+# # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
+# #   p socket.addr
+# #   socket.write "GET / HTTP/1.0\r\n\r\n"
+# #   print socket.read
+# #   socket.close
+# # end
 #
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
