@@ -64,8 +64,8 @@ end
 class ConnectionAttempt
   attr_reader :connected_sockets, :connecting_sockets, :last_error
 
-  def initialize(local_addresses = [])
-    @local_addresses = local_addresses
+  def initialize(local_addrinfos = [])
+    @local_addrinfos = local_addrinfos
     @connected_sockets = []
     @connecting_sockets = []
     @completed = false
@@ -76,9 +76,9 @@ class ConnectionAttempt
 
     socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
-    if !@local_addresses.empty?
-      local_address = @local_addresses.find { |local_ai| local_ai.afamily == addrinfo.afamily }
-      socket.bind(local_address) if local_address
+    if !@local_addrinfos.empty?
+      local_addrinfo = @local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      socket.bind(local_addrinfo) if local_addrinfo
     end
 
     ConnectionAttemptDelayTimer.start_new_timer
@@ -144,7 +144,7 @@ class Socket
     cond = ConditionVariable.new
 
     # アドレス解決 (Producer)
-    local_addresses = []
+    local_addrinfos = []
     hostname_resolving_families = [:PF_INET6, :PF_INET]
     pickable_addrinfos = []
     ipv6_picked = false
@@ -152,10 +152,10 @@ class Socket
 
     if !local_host.nil? || !local_port.nil?
       hostname_resolving_families = []
-      local_addresses = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
+      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
 
       [Socket::AF_INET6, Socket::AF_INET].each do |family|
-        if local_addresses.any? { |local_ai| local_ai.pfamily === family }
+        if local_addrinfos.any? { |local_ai| local_ai.pfamily === family }
           hostname_resolving_families.push (family == Socket::AF_INET6 ? :PF_INET6 : :PF_INET)
         end
       end
@@ -167,7 +167,7 @@ class Socket
 
     # 接続試行 (Consumer)
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    connection_attempt = ConnectionAttempt.new(local_addresses)
+    connection_attempt = ConnectionAttempt.new(local_addrinfos)
     last_attemped_addrinfo = nil
 
     ret = loop do
