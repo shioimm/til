@@ -113,7 +113,6 @@ class Socket
 
     # アドレス解決 (Producer)
     local_addrinfos = []
-    hostname_resolving_families = [:PF_INET6, :PF_INET]
     pickable_addrinfos = []
     ipv6_picked = false
     ipv4_picked = false
@@ -127,6 +126,8 @@ class Socket
           hostname_resolving_families.push (family == Socket::AF_INET6 ? :PF_INET6 : :PF_INET)
         end
       end
+    else
+      hostname_resolving_families = [:PF_INET6, :PF_INET]
     end
 
     hostname_resolution_threads = hostname_resolving_families.map do |family|
