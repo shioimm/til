@@ -213,23 +213,20 @@ class Socket
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise connection_attempt.last_error
       elsif !addrinfo
-        # Resolve Timeout
+        # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
       last_attemped_addrinfo = addrinfo
       connection_attempt.attempt(addrinfo)
 
-      if connection_attempt.last_error && !pickable_addrinfos.empty?
-        next
-      end
-
       if !connection_attempt.connected_sockets.empty?
         connection_attempt.complete!
         next
       end
 
-      if pickable_addrinfos.empty? && connection_attempt.connecting_sockets.empty?
+      if (connection_attempt.last_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
+         (pickable_addrinfos.empty? && connection_attempt.connecting_sockets.empty?) # 別アドレスの取得を待機
         next
       end
 
