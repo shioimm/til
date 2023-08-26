@@ -1,144 +1,116 @@
 require 'socket'
 
-RESOLUTION_DELAY = 0.05
+class Socket
+  RESOLUTION_DELAY = 0.05
+  private_constant :RESOLUTION_DELAY
 
-def hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond)
-  resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
+  class ConnectionAttemptDelayTimer
+    CONNECTION_ATTEMPT_DELAY = 0.25
 
-  if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
-    sleep RESOLUTION_DELAY
-  end
+    @mutex = Mutex.new
+    @timers = []
 
-  mutex.synchronize do
-    pickable_addrinfos.push *resolved_addrinfos
-    cond.signal
-  end
-end
+    class << self
+      def start_new_timer
+        @mutex.synchronize do
+          @timers << self.new
+        end
+      end
 
-def pick_addrinfo(pickable_addrinfos, last_family, resolv_timeout, mutex, cond)
-  mutex.synchronize do
-    cond.wait(mutex, resolv_timeout) if pickable_addrinfos.empty?
-
-    if last_family && (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.afamily == last_family })
-      pickable_addrinfos.delete addrinfo
-    else
-      pickable_addrinfos.shift
-    end
-  end
-end
-
-class ConnectionAttemptDelayTimer
-  CONNECTION_ATTEMPT_DELAY = 0.25
-
-  @mutex = Mutex.new
-  @timers = []
-
-  class << self
-    def start_new_timer
-      @mutex.synchronize do
-        @timers << self.new
+      def take_timer
+        @mutex.synchronize do
+          @timers.shift
+        end
       end
     end
 
-    def take_timer
-      @mutex.synchronize do
-        @timers.shift
+    def initialize
+      @starts_at = Time.now
+      @ends_at = @starts_at + CONNECTION_ATTEMPT_DELAY
+    end
+
+    def timein?
+      @ends_at > Time.now
+    end
+
+    def waiting_time
+      @ends_at - Time.now
+    end
+  end
+
+  private_constant :ConnectionAttemptDelayTimer
+
+  class ConnectionAttempt
+    attr_reader :connected_sockets, :connecting_sockets, :last_error
+
+    def initialize(local_addrinfos = [])
+      @local_addrinfos = local_addrinfos
+      @connected_sockets = []
+      @connecting_sockets = []
+      @completed = false
+    end
+
+    def attempt(addrinfo)
+      return if !@connected_sockets.empty?
+
+      socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+      if !@local_addrinfos.empty?
+        local_addrinfo = @local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+        socket.bind(local_addrinfo) if local_addrinfo
       end
-    end
-  end
 
-  def initialize
-    @starts_at = Time.now
-    @ends_at = @starts_at + CONNECTION_ATTEMPT_DELAY
-  end
+      ConnectionAttemptDelayTimer.start_new_timer
 
-  def timein?
-    @ends_at > Time.now
-  end
-
-  def waiting_time
-    @ends_at - Time.now
-  end
-end
-
-class ConnectionAttempt
-  attr_reader :connected_sockets, :connecting_sockets, :last_error
-
-  def initialize(local_addrinfos = [])
-    @local_addrinfos = local_addrinfos
-    @connected_sockets = []
-    @connecting_sockets = []
-    @completed = false
-  end
-
-  def attempt(addrinfo)
-    return if !@connected_sockets.empty?
-
-    socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-    if !@local_addrinfos.empty?
-      local_addrinfo = @local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
-      socket.bind(local_addrinfo) if local_addrinfo
-    end
-
-    ConnectionAttemptDelayTimer.start_new_timer
-
-    begin
-      case socket.connect_nonblock(addrinfo, exception: false)
-      when 0              then @connected_sockets.push socket
-      when :wait_writable then @connecting_sockets.push socket
-      end
-    rescue SystemCallError => e
-      @last_error = e
-      socket.close unless socket.closed?
-    end
-  end
-
-  def take_connected_socket(addrinfo)
-    @connected_sockets.find do |socket|
       begin
-        socket.connect_nonblock(addrinfo)
-        true
-      rescue Errno::EISCONN # already connected
-        true
-      rescue => e
+        case socket.connect_nonblock(addrinfo, exception: false)
+        when 0              then @connected_sockets.push socket
+        when :wait_writable then @connecting_sockets.push socket
+        end
+      rescue SystemCallError => e
         @last_error = e
         socket.close unless socket.closed?
-        false
-      ensure
-        @connected_sockets.delete socket
-        @connecting_sockets.delete socket
       end
+    end
+
+    def take_connected_socket(addrinfo)
+      @connected_sockets.find do |socket|
+        begin
+          socket.connect_nonblock(addrinfo)
+          true
+        rescue Errno::EISCONN # already connected
+          true
+        rescue => e
+          @last_error = e
+          socket.close unless socket.closed?
+          false
+        ensure
+          @connected_sockets.delete socket
+          @connecting_sockets.delete socket
+        end
+      end
+    end
+
+    def close_all_sockets!
+      @connecting_sockets.each(&:close)
+      @connected_sockets.each(&:close)
+    end
+
+    def complete!
+      @completed = true
+    end
+
+    def incomplete!
+      @completed = false
+    end
+
+    def completed?
+      @completed
     end
   end
 
-  def close_all_sockets!
-    @connecting_sockets.each(&:close)
-    @connected_sockets.each(&:close)
-  end
+  private_constant :ConnectionAttempt
 
-  def complete!
-    @completed = true
-  end
-
-  def incomplete!
-    @completed = false
-  end
-
-  def completed?
-    @completed
-  end
-end
-
-def second_to_timeout(started_at, waiting_time)
-  return if waiting_time.nil?
-
-  elapsed_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
-  timeout = waiting_time - elapsed_time
-  timeout.negative? ? 0 : timeout
-end
-
-class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     mutex = Mutex.new
     cond = ConditionVariable.new
@@ -253,6 +225,45 @@ class Socket
   ensure
     hostname_resolution_threads.each {|th| th&.exit }
   end
+
+  def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond)
+    resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
+
+    if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
+      sleep RESOLUTION_DELAY
+    end
+
+    mutex.synchronize do
+      pickable_addrinfos.push *resolved_addrinfos
+      cond.signal
+    end
+  end
+
+  private_class_method :hostname_resolution
+
+  def self.pick_addrinfo(pickable_addrinfos, last_family, resolv_timeout, mutex, cond)
+    mutex.synchronize do
+      cond.wait(mutex, resolv_timeout) if pickable_addrinfos.empty?
+
+      if last_family && (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.afamily == last_family })
+        pickable_addrinfos.delete addrinfo
+      else
+        pickable_addrinfos.shift
+      end
+    end
+  end
+
+  private_class_method :pick_addrinfo
+
+  def self.second_to_timeout(started_at, waiting_time)
+    return if waiting_time.nil?
+
+    elapsed_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+    timeout = waiting_time - elapsed_time
+    timeout.negative? ? 0 : timeout
+  end
+
+  private_class_method :second_to_timeout
 end
 
 # HOSTNAME = "www.google.com"
