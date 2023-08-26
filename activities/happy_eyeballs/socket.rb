@@ -172,14 +172,6 @@ def second_to_timeout(started_at, waiting_time)
 end
 
 # TODO
-#   local_host / local_portを考慮する
-#     (アドレス解決)
-#       指定のホスト名とポート番号でアドレス解決を行う
-#       アドレス解決の結果、取得できたアドレスファミリのみhostname_resolutionを行い、
-#       Addrinfoのリストを取得しておく
-#     (接続試行)
-#       これから接続試行を行うアドレスファミリと同じアドレスファミリのAddrinfoをリストから選び、
-#       接続試行を行うクライアントソケットにbindする
 #   AddressResourceStorageをQueueのサブクラスにできないか検討
 
 class Socket
