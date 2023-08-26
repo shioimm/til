@@ -7,20 +7,15 @@ class Socket
   class ConnectionAttemptDelayTimer
     CONNECTION_ATTEMPT_DELAY = 0.25
 
-    @mutex = Mutex.new
     @timers = []
 
     class << self
       def start_new_timer
-        @mutex.synchronize do
-          @timers << self.new
-        end
+        @timers << self.new
       end
 
       def take_timer
-        @mutex.synchronize do
-          @timers.shift
-        end
+        @timers.shift
       end
     end
 
