@@ -4,9 +4,10 @@ class Socket
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
 
-  class ConnectionAttemptDelayTimer
-    CONNECTION_ATTEMPT_DELAY = 0.25
+  CONNECTION_ATTEMPT_DELAY = 0.25
+  private_constant :CONNECTION_ATTEMPT_DELAY
 
+  class ConnectionAttemptDelayTimer
     @timers = []
 
     class << self
