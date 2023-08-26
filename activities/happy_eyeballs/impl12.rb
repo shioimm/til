@@ -1,5 +1,15 @@
 require 'socket'
 
+# ここまでの実装
+#   接続試行を行うAddrinfoを格納するために利用していたクラスを削除し、メソッドによる実装へ移行した
+#
+#   機能追加
+#     pickable_addrinfos
+#   機能削除
+#     AddressResourceStorage
+#   TODO
+#     ConnectionAttemptDelayTimer から Mutex を削除する
+
 class Socket
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
