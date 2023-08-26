@@ -50,14 +50,29 @@ end
 
 RESOLUTION_DELAY = 0.05
 
-def hostname_resolution(hostname, port, family, address_resource_storage)
-  resources = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
+def hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond)
+  resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
 
-  if family == :PF_INET && !address_resource_storage.include_ipv6?
+  if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
     sleep RESOLUTION_DELAY
   end
 
-  address_resource_storage.add resources
+  mutex.synchronize do
+    pickable_addrinfos.push *resolved_addrinfos
+    cond.signal
+  end
+end
+
+def pick_addrinfo(pickable_addrinfos, last_family, resolv_timeout, mutex, cond)
+  mutex.synchronize do
+    cond.wait(mutex, resolv_timeout) if pickable_addrinfos.empty?
+
+    if last_family && (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.afamily == last_family })
+      pickable_addrinfos.delete addrinfo
+    else
+      pickable_addrinfos.shift
+    end
+  end
 end
 
 class ConnectionAttemptDelayTimer
@@ -173,9 +188,15 @@ end
 
 class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
+    mutex = Mutex.new
+    cond = ConditionVariable.new
+
     # アドレス解決 (Producer)
     local_addresses = []
     hostname_resolving_families = [:PF_INET6, :PF_INET]
+    pickable_addrinfos = []
+    ipv6_picked = false
+    ipv4_picked = false
 
     if !local_host.nil? || !local_port.nil?
       hostname_resolving_families = []
@@ -188,10 +209,8 @@ class Socket
       end
     end
 
-    address_resource_storage = AddressResourceStorage.new(resolv_timeout)
-
     hostname_resolution_threads = hostname_resolving_families.map do |family|
-      Thread.new { hostname_resolution(host, port, family, address_resource_storage) }
+      Thread.new { hostname_resolution(host, port, family, pickable_addrinfos, mutex, cond) }
     end
 
     # 接続試行 (Consumer)
@@ -204,7 +223,7 @@ class Socket
         connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
 
         if connected_socket.nil? && connection_attempt.last_error
-          raise connection_attempt.last_error if address_resource_storage.out_of_stock?
+          raise connection_attempt.last_error if pickable_addrinfos.empty?
 
           connection_attempt.incomplete!
           next
@@ -214,7 +233,15 @@ class Socket
         break connected_socket
       end
 
-      addrinfo = address_resource_storage.pick(last_attemped_addrinfo&.afamily)
+      addrinfo =
+        if ipv6_picked && ipv4_picked && pickable_addrinfos.empty?
+          nil
+        else
+          pick_addrinfo(pickable_addrinfos, last_attemped_addrinfo&.afamily, resolv_timeout, mutex, cond)
+        end
+
+      ipv6_picked = true if !ipv6_picked && addrinfo&.ipv6?
+      ipv4_picked = true if !ipv4_picked && addrinfo&.ipv4?
 
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
@@ -241,7 +268,7 @@ class Socket
       last_attemped_addrinfo = addrinfo
       connection_attempt.attempt(addrinfo)
 
-      if connection_attempt.last_error && !address_resource_storage.out_of_stock?
+      if connection_attempt.last_error && !pickable_addrinfos.empty?
         next
       end
 
@@ -250,7 +277,7 @@ class Socket
         next
       end
 
-      if address_resource_storage.out_of_stock? && connection_attempt.connecting_sockets.empty?
+      if pickable_addrinfos.empty? && connection_attempt.connecting_sockets.empty?
         next
       end
 
