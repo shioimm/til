@@ -86,8 +86,7 @@ class Socket
     # アドレス解決 (Producer)
     local_addrinfos = []
     pickable_addrinfos = []
-    ipv6_picked = false
-    ipv4_picked = false
+    resolution_state = { ipv6_done: false, ipv4_done: false, error: [] }
 
     if !local_host.nil? || !local_port.nil?
       hostname_resolving_families = []
@@ -103,7 +102,7 @@ class Socket
     end
 
     hostname_resolution_threads = hostname_resolving_families.map do |family|
-      Thread.new { hostname_resolution(host, port, family, pickable_addrinfos, mutex, cond) }
+      Thread.new { hostname_resolution(host, port, family, pickable_addrinfos, mutex, cond, resolution_state) }
     end
 
     # 接続試行 (Consumer)
@@ -128,14 +127,11 @@ class Socket
       end
 
       addrinfo =
-        if ipv6_picked && ipv4_picked && pickable_addrinfos.empty?
+        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
           nil
         else
           pick_addrinfo(pickable_addrinfos, last_attemped_addrinfo&.afamily, resolv_timeout, mutex, cond)
         end
-
-      ipv6_picked = true if !ipv6_picked && addrinfo&.ipv6?
-      ipv4_picked = true if !ipv4_picked && addrinfo&.ipv4?
 
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
@@ -157,6 +153,12 @@ class Socket
       elsif !addrinfo
         # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
+      elsif resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
+            !pickable_addrinfos.empty? &&
+            !(errors = resolution_state[:error]).empty?
+        # 名前解決中にエラーが発生した場合
+        error = errors.shift until errors.empty?
+        raise error[:klass], error[:message]
       end
 
       last_attemped_addrinfo = addrinfo
@@ -197,7 +199,7 @@ class Socket
     hostname_resolution_threads.each {|th| th&.exit }
   end
 
-  def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond)
+  def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond, resolution_state)
     resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
 
     if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
@@ -208,6 +210,11 @@ class Socket
       pickable_addrinfos.push *resolved_addrinfos
       cond.signal
     end
+  rescue => e
+    resolution_state[:error].push({ klass: e.class, message: e.message })
+  ensure
+    family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
+    resolution_state[family_name] = true
   end
 
   private_class_method :hostname_resolution
