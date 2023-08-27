@@ -46,7 +46,7 @@ class Socket
       @completed = false
     end
 
-    def attempt(addrinfo)
+    def attempt(addrinfo, delay_timers)
       return if !@connected_sockets.empty?
 
       socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
@@ -56,7 +56,8 @@ class Socket
         socket.bind(local_addrinfo) if local_addrinfo
       end
 
-      ConnectionAttemptDelayTimer.start_new_timer
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      delay_timers.push now + CONNECTION_ATTEMPT_DELAY
 
       begin
         case socket.connect_nonblock(addrinfo, exception: false)
@@ -135,9 +136,10 @@ class Socket
     end
 
     # 接続試行 (Consumer)
-    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    started_at = current_clocktime
     connection_attempt = ConnectionAttempt.new(local_addrinfos)
     last_attemped_addrinfo = nil
+    connection_attempt_delay_timers = []
 
     ret = loop do
       if connection_attempt.completed?
@@ -187,7 +189,7 @@ class Socket
       end
 
       last_attemped_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo)
+      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers)
 
       if !connection_attempt.connected_sockets.empty?
         connection_attempt.complete!
@@ -199,8 +201,9 @@ class Socket
         next
       end
 
-      timer = ConnectionAttemptDelayTimer.take_timer
-      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, timer.waiting_time)
+      timer = connection_attempt_delay_timers.shift
+      connection_attempt_delay = timer - current_clocktime
+      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
 
       if connected_sockets && !connected_sockets.empty?
         connection_attempt.connected_sockets.push *connected_sockets
@@ -252,10 +255,16 @@ class Socket
 
   private_class_method :pick_addrinfo
 
+  def self.current_clocktime
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  private_class_method :current_clocktime
+
   def self.second_to_timeout(started_at, waiting_time)
     return if waiting_time.nil?
 
-    elapsed_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+    elapsed_time = current_clocktime - started_at
     timeout = waiting_time - elapsed_time
     timeout.negative? ? 0 : timeout
   end
