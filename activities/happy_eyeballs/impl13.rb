@@ -202,7 +202,7 @@ class Socket
       end
 
       timer = connection_attempt_delay_timers.shift
-      connection_attempt_delay = timer - current_clocktime
+      connection_attempt_delay = (delay_time = timer - current_clocktime).negative? ? 0 : delay_time
       _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
 
       if connected_sockets && !connected_sockets.empty?
