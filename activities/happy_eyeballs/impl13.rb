@@ -1,5 +1,14 @@
 require 'socket'
 
+# ここまでの実装
+#   Connection Attempt Delayのタイマーを格納するために利用していたクラスを削除し、配列による実装へ移行した
+#
+#   機能削除
+#     ConnectionAttemptDelayTimer
+#   TODO
+#     アドレス解決スレッド内で起こったエラーのハンドリング
+#     ConnectionAttemptもがんばればメソッドへ移行できそうだがどうするか
+
 class Socket
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
