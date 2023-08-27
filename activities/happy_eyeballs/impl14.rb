@@ -214,10 +214,14 @@ class Socket
       cond.signal
     end
   rescue => e
-    resolution_state[:error].push({ klass: e.class, message: e.message })
+    mutex.synchronize do
+      resolution_state[:error].push({ klass: e.class, message: e.message })
+    end
   ensure
     family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
-    resolution_state[family_name] = true
+    mutex.synchronize do
+      resolution_state[family_name] = true
+    end
   end
 
   private_class_method :hostname_resolution
