@@ -1,5 +1,8 @@
 require 'socket'
 
+# TODO
+#   SocketErrorのうち、該当のアドレスファミリ非対応 / 一時的なエラーは無視する
+
 class Socket
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
