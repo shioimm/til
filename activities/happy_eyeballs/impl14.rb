@@ -261,6 +261,15 @@ PORT = 9292
 # # # 名前解決動作確認用 (タイムアウト)
 # # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 #
+# 名前解決動作確認用 (例外)
+Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+  if family == :PF_INET6
+    [Addrinfo.tcp("::1", PORT)]
+  else
+    raise SocketError
+  end
+end
+#
 # # # local_host / local_port を指定する場合
 # # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
 # #   p socket.addr
