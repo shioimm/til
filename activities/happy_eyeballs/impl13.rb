@@ -7,35 +7,6 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
-  class ConnectionAttemptDelayTimer
-    @timers = []
-
-    class << self
-      def start_new_timer
-        @timers << self.new
-      end
-
-      def take_timer
-        @timers.shift
-      end
-    end
-
-    def initialize
-      @starts_at = Time.now
-      @ends_at = @starts_at + CONNECTION_ATTEMPT_DELAY
-    end
-
-    def timein?
-      @ends_at > Time.now
-    end
-
-    def waiting_time
-      @ends_at - Time.now
-    end
-  end
-
-  private_constant :ConnectionAttemptDelayTimer
-
   class ConnectionAttempt
     attr_reader :connected_sockets, :connecting_sockets, :last_error
 
