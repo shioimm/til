@@ -2,7 +2,8 @@
 
 require "minitest/autorun"
 # require "socket"
-require_relative "../socket"
+# require_relative "../socket"
+require_relative "../impl14"
 
 class SocketTest < Minitest::Test
   def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
@@ -120,6 +121,33 @@ class SocketTest < Minitest::Test
 
     ipv6_server.close
     ipv6_server_thread.kill
+  end
+
+  def test_that_returns_IPv6_connected_socket_when_IPv6_hostname_resolution_raises_SockerError
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == :PF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        raise SocketError
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
+
+    assert_equal(
+      connected_socket.remote_address.ipv6?,
+      true
+    )
   end
 
   def test_that_raises_ETIMEDOUT_with_resolv_timeout

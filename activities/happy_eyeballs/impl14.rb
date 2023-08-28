@@ -1,13 +1,7 @@
 require 'socket'
 
-# ここまでの実装
-#   Connection Attempt Delayのタイマーを格納するために利用していたクラスを削除し、配列による実装へ移行した
-#
-#   機能削除
-#     ConnectionAttemptDelayTimer
-#   TODO
-#     アドレス解決スレッド内で起こったエラーのハンドリング
-#     ConnectionAttemptもがんばればメソッドへ移行できそうだがどうするか
+# TODO
+#   SocketErrorのうち、該当のアドレスファミリ非対応 / 一時的なエラーは無視する
 
 class Socket
   RESOLUTION_DELAY = 0.05
@@ -95,8 +89,7 @@ class Socket
     # アドレス解決 (Producer)
     local_addrinfos = []
     pickable_addrinfos = []
-    ipv6_picked = false
-    ipv4_picked = false
+    resolution_state = { ipv6_done: false, ipv4_done: false, error: [] }
 
     if !local_host.nil? || !local_port.nil?
       hostname_resolving_families = []
@@ -112,7 +105,7 @@ class Socket
     end
 
     hostname_resolution_threads = hostname_resolving_families.map do |family|
-      Thread.new { hostname_resolution(host, port, family, pickable_addrinfos, mutex, cond) }
+      Thread.new { hostname_resolution(host, port, family, pickable_addrinfos, mutex, cond, resolution_state) }
     end
 
     # 接続試行 (Consumer)
@@ -137,14 +130,11 @@ class Socket
       end
 
       addrinfo =
-        if ipv6_picked && ipv4_picked && pickable_addrinfos.empty?
+        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
           nil
         else
           pick_addrinfo(pickable_addrinfos, last_attemped_addrinfo&.afamily, resolv_timeout, mutex, cond)
         end
-
-      ipv6_picked = true if !ipv6_picked && addrinfo&.ipv6?
-      ipv4_picked = true if !ipv4_picked && addrinfo&.ipv4?
 
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
@@ -166,6 +156,12 @@ class Socket
       elsif !addrinfo
         # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
+      elsif resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
+            !pickable_addrinfos.empty? &&
+            !(errors = resolution_state[:error]).empty?
+        # 名前解決中にエラーが発生した場合
+        error = errors.shift until errors.empty?
+        raise error[:klass], error[:message]
       end
 
       last_attemped_addrinfo = addrinfo
@@ -206,7 +202,7 @@ class Socket
     hostname_resolution_threads.each {|th| th&.exit }
   end
 
-  def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond)
+  def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond, resolution_state)
     resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
 
     if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
@@ -216,6 +212,15 @@ class Socket
     mutex.synchronize do
       pickable_addrinfos.push *resolved_addrinfos
       cond.signal
+    end
+  rescue => e
+    mutex.synchronize do
+      resolution_state[:error].push({ klass: e.class, message: e.message })
+    end
+  ensure
+    family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
+    mutex.synchronize do
+      resolution_state[family_name] = true
     end
   end
 
@@ -269,6 +274,15 @@ PORT = 9292
 #
 # # # 名前解決動作確認用 (タイムアウト)
 # # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+#
+# 名前解決動作確認用 (例外)
+Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+  if family == :PF_INET6
+    [Addrinfo.tcp("::1", PORT)]
+  else
+    raise SocketError
+  end
+end
 #
 # # # local_host / local_port を指定する場合
 # # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
