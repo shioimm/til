@@ -1,7 +1,8 @@
 # `Addrinfo.getaddrinfo`の実装
-https://github.com/ruby/ruby/blob/master/ext/socket/raddrinfo.c
 
 ```c
+// ext/socket/raddrinfo.c
+
 static VALUE
 addrinfo_s_getaddrinfo(int argc, VALUE *argv, VALUE self)
 {
@@ -21,6 +22,8 @@ addrinfo_s_getaddrinfo(int argc, VALUE *argv, VALUE self)
 ```
 
 ```c
+// ext/socket/raddrinfo.c
+
 static VALUE
 addrinfo_list_new(
   VALUE node,
@@ -63,6 +66,8 @@ addrinfo_list_new(
 ```
 
 ```c
+// ext/socket/raddrinfo.c
+
 static struct rb_addrinfo *
 call_getaddrinfo(
   VALUE node,
@@ -103,6 +108,8 @@ call_getaddrinfo(
 ```
 
 ```c
+// ext/socket/raddrinfo.c
+
 struct rb_addrinfo*
 rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_hack)
 {
@@ -121,7 +128,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
   }
   hints->ai_flags |= additional_flags;
 
-  // error = 0 もしくは EAI_FAIL (Non-recoverable failure in name resolution) を返す
+  // error = 0 か EAI_FAIL (Non-recoverable failure in name resolution) を返す
   error = numeric_getaddrinfo(hostp, portp, hints, &ai);
 
   if (error == 0) {
@@ -133,7 +140,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     int resolved = 0;
 
     if (scheduler != Qnil && hostp && !(hints->ai_flags & AI_NUMERICHOST)) {
-      // error = 0 もしくは EAI_FAIL / EAI_NONAME
+      // error = 0 か EAI_FAIL、もしくは EAI_NONAME (Hostname nor servname, or not known) を返す
       error = rb_scheduler_getaddrinfo(scheduler, host, portp, hints, &res);
 
       if (error != EAI_FAIL) {
@@ -152,7 +159,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       arg.hints = hints;
       arg.res = &ai;
 
-      // error = 0 もしくは EAI_NONAME
+      // error = 0 か EAI_NONAME、もしくはそれ以外の例外を表す数値を返す
       error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
 #endif
       if (error == 0) {
@@ -167,9 +174,79 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     if (hostp && hostp[strlen(hostp)-1] == '\n') {
       rb_raise(rb_eSocket, "newline at the end of hostname");
     }
+
+    // getaddrinfo() で発生したエラーは rsock_raise_socket_error() へ渡される
     rsock_raise_socket_error("getaddrinfo", error);
   }
 
   return res;
 }
+```
+
+```c
+// ext/socket/init.c
+
+void
+rsock_raise_socket_error(const char *reason, int error)
+{
+#ifdef EAI_SYSTEM
+  int e;
+  // EAI_SYSTEM = System error returned in errno
+  if (error == EAI_SYSTEM && (e = errno) != 0)
+    rb_syserr_fail(e, reason);
+#endif
+
+#ifdef _WIN32
+  rb_encoding *enc = rb_default_internal_encoding();
+  VALUE msg = rb_sprintf("%s: ", reason);
+  if (!enc) enc = rb_default_internal_encoding();
+  rb_str_concat(msg, rb_w32_conv_from_wchar(gai_strerrorW(error), enc));
+  rb_exc_raise(rb_exc_new_str(rb_eSocket, msg));
+
+#else
+  // 呼び出し: rsock_raise_socket_error("getaddrinfo", error);
+  // errorに実際のエラーコードが格納されている
+  rb_raise(rb_eSocket, "%s: %s", reason, gai_strerror(error));
+#endif
+```
+
+```c
+// ext/socket/getaddrinfo.c
+
+#ifndef HAVE_GAI_STRERROR
+#ifdef GAI_STRERROR_CONST
+const
+#endif
+char *
+gai_strerror(int ecode)
+{
+  if (ecode < 0 || ecode > EAI_MAX)
+    ecode = EAI_MAX;
+  return (char *)ai_errlist[ecode];
+}
+#endif
+```
+
+```c
+// ext/socket/getaddrinfo.c
+
+#ifndef HAVE_GAI_STRERROR
+static const char *const ai_errlist[] = {
+  "success.",
+  "address family for hostname not supported.",    /* EAI_ADDRFAMILY */
+  "temporary failure in name resolution.",         /* EAI_AGAIN      */
+  "invalid value for ai_flags.",                   /* EAI_BADFLAGS   */
+  "non-recoverable failure in name resolution.",   /* EAI_FAIL       */
+  "ai_family not supported.",                      /* EAI_FAMILY     */
+  "memory allocation failure.",                    /* EAI_MEMORY     */
+  "no address associated with hostname.",          /* EAI_NODATA     */
+  "hostname nor servname provided, or not known.", /* EAI_NONAME     */
+  "servname not supported for ai_socktype.",       /* EAI_SERVICE    */
+  "ai_socktype not supported.",                    /* EAI_SOCKTYPE   */
+  "system error returned in errno.",               /* EAI_SYSTEM     */
+  "invalid value for hints.",                      /* EAI_BADHINTS   */
+  "resolved protocol is unknown.",                 /* EAI_PROTOCOL   */
+  "unknown error.",                                /* EAI_MAX        */
+};
+#endif
 ```
