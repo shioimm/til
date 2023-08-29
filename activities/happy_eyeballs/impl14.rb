@@ -92,7 +92,7 @@ class Socket
     pickable_addrinfos = []
     resolution_state = { ipv6_done: false, ipv4_done: false, error: [] }
 
-    if !local_host.nil? || !local_port.nil?
+    if local_host && local_port
       hostname_resolving_families = []
       local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
 
