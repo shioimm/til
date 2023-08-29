@@ -121,6 +121,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
   }
   hints->ai_flags |= additional_flags;
 
+  // error = 0 もしくは EAI_FAIL (Non-recoverable failure in name resolution) を返す
   error = numeric_getaddrinfo(hostp, portp, hints, &ai);
 
   if (error == 0) {
@@ -132,6 +133,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     int resolved = 0;
 
     if (scheduler != Qnil && hostp && !(hints->ai_flags & AI_NUMERICHOST)) {
+      // error = 0 もしくは EAI_FAIL / EAI_NONAME
       error = rb_scheduler_getaddrinfo(scheduler, host, portp, hints, &res);
 
       if (error != EAI_FAIL) {
@@ -149,6 +151,8 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       arg.service = portp;
       arg.hints = hints;
       arg.res = &ai;
+
+      // error = 0 もしくは EAI_NONAME
       error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
 #endif
       if (error == 0) {
