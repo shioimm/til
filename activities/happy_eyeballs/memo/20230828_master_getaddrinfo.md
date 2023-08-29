@@ -250,3 +250,48 @@ static const char *const ai_errlist[] = {
 };
 #endif
 ```
+
+```c
+// error.c
+
+void
+rb_raise(VALUE exc, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  rb_vraise(exc, fmt, args);
+  va_end(args);
+}
+
+void
+rb_vraise(VALUE exc, const char *fmt, va_list ap)
+{
+  rb_exc_raise(rb_exc_new3(exc, rb_vsprintf(fmt, ap)));
+}
+```
+
+```c
+// eval.c
+
+/*!
+ * Raises an exception in the current thread.
+ * \param[in] mesg an Exception class or an \c Exception object.
+ * \exception always raises an instance of the given exception class or
+ *   the given \c Exception object.
+ * \ingroup exception
+ */
+void
+rb_exc_raise(VALUE mesg)
+{
+  rb_exc_exception(mesg, TAG_RAISE, Qundef);
+}
+
+static void
+rb_exc_exception(VALUE mesg, int tag, VALUE cause)
+{
+  if (!NIL_P(mesg)) {
+    mesg = make_exception(1, &mesg, FALSE);
+  }
+  rb_longjmp(GET_EC(), tag, mesg, cause);
+}
+```
