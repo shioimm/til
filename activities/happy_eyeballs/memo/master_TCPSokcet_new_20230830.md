@@ -294,12 +294,23 @@ init_inetsock_internal(VALUE v)
 ```
 
 ```c
-// WIP ----------------------------
 // ext/socket/init.c
+
+struct connect_arg {
+  int fd;
+  socklen_t len;
+  const struct sockaddr *sockaddr;
+};
 
 int
 rsock_connect(int fd, const struct sockaddr *sockaddr, int len, int socks, struct timeval *timeout)
 {
+  // 呼び出し側 (init_inetsock_internal())
+  // int status = rsock_connect(fd, res->ai_addr, res->ai_addrlen, (type == INET_SOCKS), tv);
+  //   fd  -> 接続を行うクライアントソケットのfd
+  //   res -> リモートアドレス
+  //   tv  -> connect_timeout
+
   int status;
   rb_blocking_function_t *func = connect_blocking;
   struct connect_arg arg;
@@ -307,9 +318,12 @@ rsock_connect(int fd, const struct sockaddr *sockaddr, int len, int socks, struc
   arg.fd = fd;
   arg.sockaddr = sockaddr;
   arg.len = len;
+
+// WIP ----------------------------
 #if defined(SOCKS) && !defined(SOCKS5)
   if (socks) func = socks_connect_blocking;
 #endif
+
   status = (int)BLOCKING_REGION_FD(func, &arg);
 
   if (status < 0) {
