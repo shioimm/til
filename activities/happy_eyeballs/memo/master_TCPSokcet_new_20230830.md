@@ -135,6 +135,7 @@ inetsock_cleanup(VALUE v)
   return Qnil;
 }
 
+// シーケンシャルかつ同期的にアドレス解決・接続を試行し、接続に成功したソケットを rsock_init_sock() に渡す
 static VALUE
 init_inetsock_internal(VALUE v)
 {
@@ -158,7 +159,8 @@ init_inetsock_internal(VALUE v)
     tv = &tv_storage;
   }
 
-  // rsock_addrinfo() は struct addrinfoに値をセットして rsock_getaddrinfo() を呼び出す関数
+  // rsock_addrinfo() (ext/socket/raddrinfo.c) は
+  // struct addrinfoに値をセットして rsock_getaddrinfo() を呼び出す関数
   arg->remote.res = rsock_addrinfo(
     arg->remote.host, // host
     arg->remote.serv, // port
@@ -215,11 +217,13 @@ init_inetsock_internal(VALUE v)
       }
     }
 
-    // WIP --------------------------------------------------
+    // rsock_socket() (ext/socket/init.c) は socket() を呼び出してそのfdを返す関数
+    // 失敗時は結果のステータスを返す
     status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     syscall = "socket(2)";
     fd = status;
 
+    // socket() 失敗時は次のループへスキップ
     if (fd < 0) {
       error = errno;
       continue;
@@ -228,13 +232,9 @@ init_inetsock_internal(VALUE v)
     arg->fd = fd;
 
     if (type == INET_SERVER) {
-#if !defined(_WIN32) && !defined(__CYGWIN__)
-      status = 1;
-      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&status, (socklen_t)sizeof(status));
-#endif
-      status = bind(fd, res->ai_addr, res->ai_addrlen);
-      syscall = "bind(2)";
-    } else {
+      // ...
+    } else { // TCPServer.new の場合typeは INET_CLIENT なのでここ
+      // local_host の指定がある場合は取得したアドレスのaddrinfoとbind
       if (lres) {
 #if !defined(_WIN32) && !defined(__CYGWIN__)
         status = 1;
@@ -245,12 +245,15 @@ init_inetsock_internal(VALUE v)
         syscall = "bind(2)";
       }
 
+      // ソケットの作成に成功している場合は rsock_connect() を呼び出す
       if (status >= 0) {
         status = rsock_connect(fd, res->ai_addr, res->ai_addrlen, (type == INET_SOCKS), tv);
         syscall = "connect(2)";
       }
     }
 
+    // rsock_connect() の実行結果が失敗の場合、エラーを保存してfdをcloseし、次のループへ
+    // そうでない場合はループから脱出
     if (status < 0) {
       error = errno;
       close(fd);
@@ -259,39 +262,39 @@ init_inetsock_internal(VALUE v)
     } else {
       break;
     }
-
-    if (status < 0) {
-      VALUE host, port;
-
-      if (local < 0) {
-        host = arg->local.host;
-        port = arg->local.serv;
-      } else {
-        host = arg->remote.host;
-        port = arg->remote.serv;
-      }
-
-      rsock_syserr_fail_host_port(error, syscall, host, port);
-    }
-
-    arg->fd = -1;
-
-    if (type == INET_SERVER) {
-      status = listen(fd, SOMAXCONN);
-      if (status < 0) {
-        error = errno;
-        close(fd);
-        rb_syserr_fail(error, "listen(2)");
-      }
-    }
-
-    /* create new instance */
-    return rsock_init_sock(arg->sock, fd);
   }
+
+  // ループから抜けた時点 (接続に成功したか、試行するアドレス在庫が尽きた) の状況を確認
+  // 失敗している場合は rsock_syserr_fail_host_port() を呼ぶ
+  if (status < 0) {
+    VALUE host, port;
+
+    if (local < 0) {
+      host = arg->local.host;
+      port = arg->local.serv;
+    } else {
+      host = arg->remote.host;
+      port = arg->remote.serv;
+    }
+
+    rsock_syserr_fail_host_port(error, syscall, host, port);
+  }
+
+  arg->fd = -1;
+
+  // TCPServer.new の場合typeは INET_CLIENT なのでここは通らない
+  if (type == INET_SERVER) {
+    // ...
+  }
+
+  /* create new instance */
+  // 接続済みのソケットを rsock_init_sock() に渡してSocketインスタンスをつくる
+  return rsock_init_sock(arg->sock, fd);
 }
 ```
 
 ```c
+// WIP ----------------------------
 // ext/socket/init.c
 
 int
