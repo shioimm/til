@@ -1,7 +1,8 @@
 require 'socket'
 
 # TODO
-#   SocketErrorのうち、該当のアドレスファミリ非対応 / 一時的なエラーは無視する
+#   SocketErrorのうち、該当のアドレスファミリ非対応 / 一時的なエラーは無視する必要あり
+#   エラーメッセージ以外の方法でエラーを確認するように修正するべき
 
 class Socket
   RESOLUTION_DELAY = 0.05
@@ -91,7 +92,7 @@ class Socket
     pickable_addrinfos = []
     resolution_state = { ipv6_done: false, ipv4_done: false, error: [] }
 
-    if !local_host.nil? || !local_port.nil?
+    if local_host && local_port
       hostname_resolving_families = []
       local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
 
@@ -214,8 +215,16 @@ class Socket
       cond.signal
     end
   rescue => e
-    mutex.synchronize do
-      resolution_state[:error].push({ klass: e.class, message: e.message })
+    ignoring_error_messages = [
+      "getaddrinfo: Address family for hostname not supported",
+      "getaddrinfo: Temporary failure in name resolution",
+    ]
+    if e.class.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
+      # ignore
+    else
+      mutex.synchronize do
+        resolution_state[:error].push({ klass: e.class, message: e.message })
+      end
     end
   ensure
     family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
