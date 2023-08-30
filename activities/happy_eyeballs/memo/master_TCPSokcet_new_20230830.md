@@ -17,6 +17,7 @@ rsock_init_tcpsocket(void)
 ```c
 // ext/socket/tcpsocket.c
 
+// 引数を確認して rsock_init_inetsock() を呼び出す
 static VALUE
 tcp_init(int argc, VALUE *argv, VALUE sock)
 {
@@ -52,6 +53,7 @@ tcp_init(int argc, VALUE *argv, VALUE sock)
 ```c
 // ext/socket/ipsocket.c
 
+// 引数を用意して init_inetsock_internal() inetsock_cleanup() を呼び出す
 VALUE
 rsock_init_inetsock(
   VALUE sock,
@@ -76,6 +78,7 @@ rsock_init_inetsock(
   arg.fd = -1;
   arg.resolv_timeout = resolv_timeout;
   arg.connect_timeout = connect_timeout;
+
   return rb_ensure(
     init_inetsock_internal,
     (VALUE)&arg,
@@ -88,37 +91,86 @@ rsock_init_inetsock(
 ```c
 // ext/socket/ipsocket.c
 
+struct inetsock_arg
+{
+  VALUE sock;
+
+  struct {
+    VALUE host, serv;
+    struct rb_addrinfo *res;
+  } remote, local;
+  // (ext/socket/rubysocket.h)
+  //   struct rb_addrinfo {
+  //     struct addrinfo *ai;
+  //     int allocated_by_malloc;
+  //   };
+
+  int type;
+  int fd;
+  VALUE resolv_timeout;
+  VALUE connect_timeout;
+};
+
+// 終了処理
+//   freeaddrinfo()を実行
+//   fdを閉じる
+static VALUE
+inetsock_cleanup(VALUE v)
+{
+  struct inetsock_arg *arg = (void *)v;
+
+  if (arg->remote.res) {
+    rb_freeaddrinfo(arg->remote.res);
+    arg->remote.res = 0;
+  }
+
+  if (arg->local.res) {
+    rb_freeaddrinfo(arg->local.res);
+    arg->local.res = 0;
+  }
+
+  if (arg->fd >= 0) {
+    close(arg->fd);
+  }
+  return Qnil;
+}
+
 static VALUE
 init_inetsock_internal(VALUE v)
 {
   struct inetsock_arg *arg = (void *)v;
+
   int error = 0;
   int type = arg->type;
   struct addrinfo *res, *lres;
   int fd, status = 0, local = 0;
   int family = AF_UNSPEC;
   const char *syscall = 0;
+
   VALUE connect_timeout = arg->connect_timeout;
+
   struct timeval tv_storage;
   struct timeval *tv = NULL;
 
+  // connect_timeout がある場合は tv にセット
   if (!NIL_P(connect_timeout)) {
     tv_storage = rb_time_interval(connect_timeout);
     tv = &tv_storage;
   }
 
+  // rsock_addrinfo() は struct addrinfoに値をセットして rsock_getaddrinfo() を呼び出す関数
   arg->remote.res = rsock_addrinfo(
-    arg->remote.host,
-    arg->remote.serv,
-    family,
-    SOCK_STREAM,
-    (type == INET_SERVER) ? AI_PASSIVE : 0
+    arg->remote.host, // host
+    arg->remote.serv, // port
+    family,           // family
+    SOCK_STREAM,      // socktype
+    (type == INET_SERVER) ? AI_PASSIVE : 0 // flags
   );
 
   /*
    * Maybe also accept a local address
    */
-
+  // TCPServer.new実行時、引数にlocal_hostやlocal_servが指定されている場合
   if (type != INET_SERVER && (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv))) {
     arg->local.res = rsock_addrinfo(
       arg->local.host,
@@ -131,20 +183,28 @@ init_inetsock_internal(VALUE v)
 
   arg->fd = fd = -1;
 
+  // addrinfo を順に試行する
   for (res = arg->remote.res->ai; res; res = res->ai_next) {
+
 #if !defined(INET6) && defined(AF_INET6)
+    // ホストがIPv6に対応していない場合、かつ ai_family がIPv6を指している場合はスキップ
     if (res->ai_family == AF_INET6) {
       continue;
     }
 #endif
+
     lres = NULL;
 
+    // TCPServer.new実行時、引数にlocal_hostやlocal_servが指定されている場合
     if (arg->local.res) {
+      // 現在試行しているリモートアドレスaddrinfoの ai_family と
+      // 同じ ai_family を持つローカルアドレスaddrinfoをlresに格納
       for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
         if (lres->ai_family == res->ai_family) {
           break;
         }
       }
+
       if (!lres) {
         if (res->ai_next || status < 0) {
           continue;
@@ -155,6 +215,7 @@ init_inetsock_internal(VALUE v)
       }
     }
 
+    // WIP --------------------------------------------------
     status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     syscall = "socket(2)";
     fd = status;
