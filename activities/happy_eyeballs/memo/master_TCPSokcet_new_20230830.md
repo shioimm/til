@@ -54,6 +54,7 @@ tcp_init(int argc, VALUE *argv, VALUE sock)
 // ext/socket/ipsocket.c
 
 // 引数を用意して init_inetsock_internal() inetsock_cleanup() を呼び出す
+// Socket系インスタンスを生成する際、initializeメソッドとして呼び出される
 VALUE
 rsock_init_inetsock(
   VALUE sock,
