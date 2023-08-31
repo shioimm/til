@@ -54,6 +54,7 @@ tcp_init(int argc, VALUE *argv, VALUE sock)
 // ext/socket/ipsocket.c
 
 // 引数を用意して init_inetsock_internal() inetsock_cleanup() を呼び出す
+// Socket系インスタンスを生成する際、initializeメソッドとして呼び出される
 VALUE
 rsock_init_inetsock(
   VALUE sock,
@@ -294,12 +295,23 @@ init_inetsock_internal(VALUE v)
 ```
 
 ```c
-// WIP ----------------------------
 // ext/socket/init.c
+
+struct connect_arg {
+  int fd;
+  socklen_t len;
+  const struct sockaddr *sockaddr;
+};
 
 int
 rsock_connect(int fd, const struct sockaddr *sockaddr, int len, int socks, struct timeval *timeout)
 {
+  // 呼び出し側 (init_inetsock_internal())
+  // int status = rsock_connect(fd, res->ai_addr, res->ai_addrlen, (type == INET_SOCKS), tv);
+  //   fd  -> 接続を行うクライアントソケットのfd
+  //   res -> リモートアドレス
+  //   tv  -> connect_timeout
+
   int status;
   rb_blocking_function_t *func = connect_blocking;
   struct connect_arg arg;
@@ -307,25 +319,35 @@ rsock_connect(int fd, const struct sockaddr *sockaddr, int len, int socks, struc
   arg.fd = fd;
   arg.sockaddr = sockaddr;
   arg.len = len;
+
 #if defined(SOCKS) && !defined(SOCKS5)
   if (socks) func = socks_connect_blocking;
 #endif
+
+  // (ext/socket/rubysocket.h)
+  //   #define BLOCKING_REGION_FD(func, arg) (long)rb_thread_io_blocking_region((func), (arg), (arg)->fd)
+  // func にはブロッキングモードで connect() を呼び、その結果をVALUE二キャストして返す関数が格納されている
+  // BLOCKING_REGION_FDは func の実行結果 (VALUE) を返す
+  // status にはそれをintとしてキャストした値が格納される
   status = (int)BLOCKING_REGION_FD(func, &arg);
 
+  // connect() が返ってきたが、再試行可能である場合は wait_connectable() を呼ぶ
   if (status < 0) {
     switch (errno) {
-      case EINTR:
+      case EINTR:       // 関数呼び出しが割り込まれた
 #ifdef ERESTART
-      case ERESTART:
+      case ERESTART:    // システムコールが中断され再スタートが必要
 #endif
-      case EAGAIN:
+      case EAGAIN:      // リソースが一時的に利用不可
 #ifdef EINPROGRESS
-      case EINPROGRESS:
+      case EINPROGRESS: // 操作が実行中
 #endif
         return wait_connectable(fd, timeout);
     }
   }
-    return status;
+
+  // 実行結果 (成功の場合は0、上記以外の失敗の場合は-1) を返す
+  return status;
 }
 ```
 
@@ -350,6 +372,66 @@ socks_connect_blocking(void *data)
 ```
 
 ```c
+// thread.c
+VALUE
+rb_thread_io_blocking_region(rb_blocking_function_t *func, void *data1, int fd)
+{
+  volatile VALUE val = Qundef; /* shouldn't be used */
+  rb_execution_context_t * volatile ec = GET_EC();
+  volatile int saved_errno = 0;
+  enum ruby_tag_type state;
+
+  struct waiting_fd waiting_fd = {
+    .fd = fd,
+    .th = rb_ec_thread_ptr(ec),
+    .busy = NULL,
+  };
+
+  // `errno` is only valid when there is an actual error - but we can't
+  // extract that from the return value of `func` alone, so we clear any
+  // prior `errno` value here so that we can later check if it was set by
+  // `func` or not (as opposed to some previously set value).
+  errno = 0;
+
+  RB_VM_LOCK_ENTER();
+  {
+    ccan_list_add(&rb_ec_vm_ptr(ec)->waiting_fds, &waiting_fd.wfd_node);
+  }
+  RB_VM_LOCK_LEAVE();
+
+  EC_PUSH_TAG(ec);
+  if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+    BLOCKING_REGION(waiting_fd.th, {
+      val = func(data1);
+      saved_errno = errno;
+    }, ubf_select, waiting_fd.th, FALSE);
+  }
+  EC_POP_TAG();
+
+  /*
+   * must be deleted before jump
+   * this will delete either from waiting_fds or on-stack struct rb_io_close_wait_list
+   */
+  rb_thread_io_wake_pending_closer(&waiting_fd);
+
+  if (state) {
+    EC_JUMP_TAG(ec, state);
+  }
+  /* TODO: check func() */
+  RUBY_VM_CHECK_INTS_BLOCKING(ec);
+
+  // If the error was a timeout, we raise a specific exception for that:
+  if (saved_errno == ETIMEDOUT) {
+    rb_raise(rb_eIOTimeoutError, "Blocking operation timed out!");
+  }
+
+  errno = saved_errno;
+
+  return val;
+}
+```
+
+```c
 // ext/socket/init.c
 
 static int
@@ -359,24 +441,27 @@ wait_connectable(int fd, struct timeval *timeout)
   socklen_t sockerrlen;
 
   sockerrlen = (socklen_t)sizeof(sockerr);
-  if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &sockerrlen) < 0)
-      return -1;
 
+  // 発生したエラーの種類を取得してerrnoへ格納
+  if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&sockerr, &sockerrlen) < 0)
+    return -1;
+
+  // WIP ----------------------------
   /* necessary for non-blocking sockets (at least ECONNREFUSED) */
   switch (sockerr) {
-    case 0:
+    case 0:        // 気のせい(?)
       break;
 #ifdef EALREADY
-    case EALREADY:
+    case EALREADY: // ソケットがノンブロッキングモードに設定されており、 前の接続が完了していない
 #endif
 #ifdef EISCONN
-    case EISCONN:
+    case EISCONN:  // 接続済み
 #endif
 #ifdef ECONNREFUSED
-    case ECONNREFUSED:
+    case ECONNREFUSED: // 接続先がlistenしていない
 #endif
 #ifdef EHOSTUNREACH
-    case EHOSTUNREACH:
+    case EHOSTUNREACH: // ネットワークまたはホストへの経路がない
 #endif
       errno = sockerr;
       return -1;
