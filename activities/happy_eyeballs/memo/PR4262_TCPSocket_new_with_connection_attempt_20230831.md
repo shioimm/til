@@ -175,9 +175,10 @@ init_inetsock_internal_happy(VALUE v)
 
     arg->fd = fd;
 
-    // -------------------- WIP -------------------
+    // 作成したソケットをノンブロッキングモードにする
     socket_nonblock_set(fd, true);
 
+    // local_host の指定がある場合は取得したアドレスのaddrinfoとbind
     if (lres) {
 #if !defined(_WIN32) && !defined(__CYGWIN__)
       status = 1;
@@ -189,27 +190,37 @@ init_inetsock_internal_happy(VALUE v)
       syscall = "bind(2)";
     }
 
+    // ソケットの作成に成功している場合 (status = fd) は connect(2) を呼び出す
     if (status >= 0) {
+      // fdがノンブロッキングモードなのでブロックしない
       status = connect(fd, res->ai_addr, res->ai_addrlen);
       syscall = "connect(2)";
     }
 
+    // connect(2) の実行結果が失敗であり、かつ EINPROGRESS (接続試行中) ではない場合
     if (status < 0 && errno != EINPROGRESS) {
+      // ソケットを閉じて次のループへスキップ
       error = errno;
       close(fd);
       arg->fd = fd = -1;
       continue;
-    } else {
-      rb_ary_push(fds_ary, INT2FIX(fd));
-      nfds = set_fds(fds_ary, &writefds);
+    } else { // connect() で接続できた場合もしくは EINPROGRESS の場合
+      rb_ary_push(fds_ary, INT2FIX(fd)); // fds_ary << 接続できたソケットのfd
+      nfds = set_fds(fds_ary, &writefds); // nfds は監視対象のfdの集合
+
       /* connection_attempt_delay may be modified by select(2) in linux */
       connection_attempt_delay.tv_sec = 0;
       connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
+
+      // select(2) を呼び出す、Connection Attempt Delayでタイムアウトを設定
       status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, &connection_attempt_delay);
       syscall = "select(2)";
 
+      // 接続完了、もしくはタイムアウト
       if (status >= 0) {
         arg->fd = fd = find_connected_socket(fds_ary, &writefds);
+        // 接続済みのソケットが見つかればこの時点でループから脱出
+        // arg->fd に対象のソケットの fd が格納されている
         if (fd >= 0) { break; }
         status = -1; // no connected socket found
       }
@@ -219,10 +230,13 @@ init_inetsock_internal_happy(VALUE v)
   }
 
   /* wait connection */
+  // 上記の find_connected_socket() が-1を返している (接続済みのソケットが見つからなかった) 場合
   while (fd < 0 && RARRAY_LEN(fds_ary) > 0) {
     struct timeval tv_storage, *tv = NULL;
+
     if (limit) { // if timeout is specified
       if (hrtime_update_expire(limit, end)) { // check if timeout has expired and update timeout
+        // connect_timeout した場合
         status = -1;
         error = ETIMEDOUT;
         break;
@@ -232,11 +246,14 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     nfds = set_fds(fds_ary, &writefds);
+    // 接続中のソケットに対して select(2) を呼び出す
     status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, tv);
     syscall = "select(2)";
 
     if (status > 0) {
       arg->fd = fd = find_connected_socket(fds_ary, &writefds);
+      // 接続済みのソケットが見つかればこの時点でループから脱出
+      // arg->fd に対象のソケットの fd が格納されている
       if (fd >= 0) { break; }
       status = -1; // no connected socket found
     }
@@ -244,12 +261,13 @@ init_inetsock_internal_happy(VALUE v)
   }
 
   /* close unused fds */
-  for (int i=0; i<RARRAY_LEN(fds_ary); i++) {
+  for (int i = 0; i < RARRAY_LEN(fds_ary); i++) {
     int _fd = FIX2INT(RARRAY_AREF(fds_ary, i));
     if (_fd != fd) { close(_fd); }
   }
   rb_ary_clear(fds_ary);
 
+  // 接続済みのソケットが見つからないままアドレス在庫が枯渇した場合
   if (status < 0) {
     VALUE host, port;
 
@@ -264,27 +282,35 @@ init_inetsock_internal_happy(VALUE v)
     rsock_syserr_fail_host_port(error, syscall, host, port);
   }
 
+  // ここまで到達した時点で arg->fd、fd には接続済みのソケットのfdが格納されている
   arg->fd = -1;
+  // 接続済みのソケットのfdをブロッキングモードへ戻す
   socket_nonblock_set(fd, false);
 
   /* create new instance */
   return rsock_init_sock(arg->sock, fd);
 }
 
+// fd に O_NONBLOCK をセットする
 static void
 socket_nonblock_set(int fd, int nonblock)
 {
+  // fd のファイル状態フラグを読み出してflagsに格納
   int flags = fcntl(fd, F_GETFL);
   if (flags == -1) { rb_sys_fail(0); }
 
   if (nonblock) {
-    ((flags & O_NONBLOCK) != 0) { return; }
-    ags |= O_NONBLOCK;
+    // flags に O_NONBLOCK がセットされていることを確認
+    //   セットされていればreturn
+    //   そうでなければ flags に O_NONBLOCK をセット
+    if ((flags & O_NONBLOCK) != 0) { return; }
+    flags |= O_NONBLOCK;
   } else {
-    ((flags & O_NONBLOCK) == 0) { return; }
-    ags &= ~O_NONBLOCK;
+    if ((flags & O_NONBLOCK) == 0) { return; }
+    flags &= ~O_NONBLOCK;
   }
 
+  // O_NONBLOCK をセットした flags を fd にセット
   if (fcntl(fd, F_SETFL, flags) == -1) { rb_sys_fail(0); }
   return;
 }
@@ -311,12 +337,15 @@ check_socket_error(const int fd) {
   return value;
 }
 
+// 接続ソケットの fd を格納した配列から接続済みのソケットの fd を見つけて返す
 static int
 find_connected_socket(VALUE fds, rb_fdset_t *writefds) {
-  for (int i=0; i<RARRAY_LEN(fds); i++) {
+  for (int i = 0; i < RARRAY_LEN(fds); i++) {
     int fd = FIX2INT(RARRAY_AREF(fds, i));
+
     if (rb_fd_isset(fd, writefds)) {
       int error = check_socket_error(fd);
+
       switch (error) {
         case 0: // success
           return fd;
@@ -336,16 +365,21 @@ find_connected_socket(VALUE fds, rb_fdset_t *writefds) {
 
 static int
 set_fds(const VALUE fds, rb_fdset_t *set) {
+  // fds は接続済みもしくは接続中のソケットのfdの配列
+
   int nfds = 0;
   rb_fd_init(set);
 
-  for (int i=0; i<RARRAY_LEN(fds); i++) {
+  for (int i = 0; i < RARRAY_LEN(fds); i++) {
+    // (include/ruby/internal/core/rarray.h)
+    //   #define RARRAY_AREF(a, i) RARRAY_CONST_PTR(a)[i]
+    // fds からソケットのfdを取り出す?
     int fd = FIX2INT(RARRAY_AREF(fds, i));
-    if (fd > nfds) { nfds = fd; }
+    if (fd > nfds) { nfds = fd; } // 監視対象のfdの最大値
     rb_fd_set(fd, set);
   }
 
-  nfds++;
+  nfds++; // select(2) の第一引数。監視対象のfdの最大値に1を足した数値
   return nfds;
 }
 
