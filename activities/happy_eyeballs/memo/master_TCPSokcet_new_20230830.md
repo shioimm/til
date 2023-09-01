@@ -326,12 +326,12 @@ rsock_connect(int fd, const struct sockaddr *sockaddr, int len, int socks, struc
 
   // (ext/socket/rubysocket.h)
   //   #define BLOCKING_REGION_FD(func, arg) (long)rb_thread_io_blocking_region((func), (arg), (arg)->fd)
-  // func にはブロッキングモードで connect() を呼び、その結果をVALUE二キャストして返す関数が格納されている
+  // func にはブロッキングモードで connect(2) を呼び、その結果をVALUE二キャストして返す関数が格納されている
   // BLOCKING_REGION_FDは func の実行結果 (VALUE) を返す
   // status にはそれをintとしてキャストした値が格納される
   status = (int)BLOCKING_REGION_FD(func, &arg);
 
-  // connect() が返ってきたが、再試行可能である場合は wait_connectable() を呼ぶ
+  // connect(2) が返ってきたが、再試行可能である場合は wait_connectable() を呼ぶ
   if (status < 0) {
     switch (errno) {
       case EINTR:       // 関数呼び出しが割り込まれた
