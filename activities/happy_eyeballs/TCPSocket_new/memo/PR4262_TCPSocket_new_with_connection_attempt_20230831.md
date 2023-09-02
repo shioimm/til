@@ -87,7 +87,7 @@ init_inetsock_internal_happy(VALUE v)
       family = AF_UNSPEC;
 
   const char *syscall = 0;
-  rb_fdset_t writefds;
+  rb_fdset_t writefds; // 書き込みが可能可動化を監視するFD群
   VALUE fds_ary = rb_ary_tmp_new(1);
   struct timeval connection_attempt_delay;
 
@@ -97,10 +97,10 @@ init_inetsock_internal_happy(VALUE v)
 
   // connect_timeout がある場合 rel, limit, end にセット
   if (!NIL_P(arg->connect_timeout)) {
-      struct timeval timeout = rb_time_interval(arg->connect_timeout);
-      rel = rb_timeval2hrtime(&timeout);
-      limit = &rel;
-      end = rb_hrtime_add(rb_hrtime_now(), rel);
+    struct timeval timeout = rb_time_interval(arg->connect_timeout);
+    rel = rb_timeval2hrtime(&timeout);
+    limit = &rel;
+    end = rb_hrtime_add(rb_hrtime_now(), rel);
   }
 
   // rsock_addrinfo() (ext/socket/raddrinfo.c) は
@@ -205,18 +205,22 @@ init_inetsock_internal_happy(VALUE v)
       arg->fd = fd = -1;
       continue;
     } else { // connect() で接続できた場合もしくは EINPROGRESS の場合
-      rb_ary_push(fds_ary, INT2FIX(fd)); // fds_ary << 接続できたソケットのfd
-      nfds = set_fds(fds_ary, &writefds); // nfds は監視対象のfdの集合
+      // fds_ary << 接続済みもしくは接続中のソケットのfd
+      rb_ary_push(fds_ary, INT2FIX(fd));
+
+      // fds_ary の fd を writefds にセットしている
+      nfds = set_fds(fds_ary, &writefds); // nfds は監視対象のfdの最大値
 
       /* connection_attempt_delay may be modified by select(2) in linux */
       connection_attempt_delay.tv_sec = 0;
       connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
 
-      // select(2) を呼び出す、Connection Attempt Delayでタイムアウトを設定
+      // 監視対象のfd群に対して select(2) を呼び出す、Connection Attempt Delayでタイムアウトを設定
       status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, &connection_attempt_delay);
       syscall = "select(2)";
 
-      // 接続完了、もしくはタイムアウト
+      // 書き込み可能になったfdがある場合、もしくはタイムアウトした場合
+      // タイムアウトの場合は速やかに次のループに入った方がいいんじゃないかなあ
       if (status >= 0) {
         arg->fd = fd = find_connected_socket(fds_ary, &writefds);
         // 接続済みのソケットが見つかればこの時点でループから脱出
@@ -229,8 +233,13 @@ init_inetsock_internal_happy(VALUE v)
     }
   }
 
+  // addrinfoループが終わるかaddrinfoループの中で接続完了したソケットがない限りここには到達しない
+  // 在庫がある限り接続試行を開始して在庫が枯渇したらあとは接続を待つ方のループに入る、という戦略
+  // (ただし接続試行中に前のループで試行開始したfdが書き込み可能になる可能性はあり)
+
   /* wait connection */
-  // 上記の find_connected_socket() が-1を返している (接続済みのソケットが見つからなかった) 場合
+  // addrinfoループの find_connected_socket() が最終的に-1を返している (接続済みのソケットが見つからなかった) 場合
+  // 既に接続済みソケットが見つかっている場合はここは飛ばして後処理に入る
   while (fd < 0 && RARRAY_LEN(fds_ary) > 0) {
     struct timeval tv_storage, *tv = NULL;
 
@@ -245,8 +254,12 @@ init_inetsock_internal_happy(VALUE v)
       tv = &tv_storage;
     }
 
+    // fds_ary は接続済みもしくは接続中のソケットのfdの配列
+    // writefds は書き込み可能か監視対象のfd群
+    // fds_ary の fd を writefds にセットしている
     nfds = set_fds(fds_ary, &writefds);
-    // 接続中のソケットに対して select(2) を呼び出す
+
+    // 監視対象のfd群に対して select(2) を呼び出す
     status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, tv);
     syscall = "select(2)";
 
@@ -366,6 +379,7 @@ find_connected_socket(VALUE fds, rb_fdset_t *writefds) {
 static int
 set_fds(const VALUE fds, rb_fdset_t *set) {
   // fds は接続済みもしくは接続中のソケットのfdの配列
+  // set は書き込み可能か監視対象のfd群
 
   int nfds = 0;
   rb_fd_init(set);
@@ -376,7 +390,7 @@ set_fds(const VALUE fds, rb_fdset_t *set) {
     // fds からソケットのfdを取り出す?
     int fd = FIX2INT(RARRAY_AREF(fds, i));
     if (fd > nfds) { nfds = fd; } // 監視対象のfdの最大値
-    rb_fd_set(fd, set);
+    rb_fd_set(fd, set); // 監視対象のfd群に接続済みもしくは接続中のソケットのfdを追加
   }
 
   nfds++; // select(2) の第一引数。監視対象のfdの最大値に1を足した数値
@@ -409,3 +423,31 @@ rb_hrtime_now(void)
   return rb_timespec2hrtime(&ts);
 }
 ```
+
+## TL;DR (`init_inetsock_internal()`)
+1. `AF_UNSPEC`をアドレス解決対象のファミリとしてaddrinfoを取得する
+2. 一連のaddrinfoで順に接続試行を行う 
+    - ソケットを作成
+    - 作成したソケットをノンブロッキングモードに設定
+    - connect(2)を呼び出す
+    - 接続完了した場合もしくは接続中の場合:
+      - 対象のfdを接続済み・接続中のfdの配列に格納
+      - select(2)を呼び出し、接続の完了もしくはConnection Attempt Delayを待機
+      - 書き込み可能になったfdがある場合、もしくはタイムアウトした場合:
+        - 接続済みのソケットのfdを取得
+          - 接続済みのソケットが見つかった場合:
+            - ループから脱出
+          - 接続済みのソケットが見つからなかった場合:
+            - 次のループへスキップ (addrinfoが枯渇するまで)
+    - 接続に失敗した場合:
+      - 作成したソケットを閉じて次のループへスキップ
+3. addrinfoループを抜けた時点で接続済みのソケットが見つからなかった場合、
+   接続中のfdの配列の長さ分のループを開始
+   - 接続中のfdの配列に対して select(2) を呼び出す
+    - 書き込み可能になったfdがある場合:
+      - 接続済みのソケットのfdを取得
+        - 接続済みのソケットが見つかった場合:
+          - ループから脱出
+        - 接続済みのソケットが見つからなかった場合:
+          - 次のループへスキップ (接続中のfdの在庫が枯渇するまで)
+4. 後処理
