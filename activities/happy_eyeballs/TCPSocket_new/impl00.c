@@ -1,11 +1,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdlib.h>    // exit
 #include <string.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#include <arpa/inet.h> // sockaddr_in, inet_pton
+#include <unistd.h>    // read, write, close
 
 // TODO アドレス解決してみる
 
@@ -15,20 +14,20 @@
 int main()
 {
   int sock;
-  struct sockaddr_in sockaddr;
+  struct sockaddr_in serveraddr;
   char buf[1024];
 
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    perror("socket");
+    perror("socket(2)");
     exit(1);
   }
 
-  memset(&sockaddr, 0, sizeof(sockaddr));
-  sockaddr.sin_family      = AF_INET;
-  sockaddr.sin_port        = htons(SERVER_PORT);
-  sockaddr.sin_addr.s_addr = inet_addr(SERVER_ADDR);
+  memset(&serveraddr, 0, sizeof(serveraddr));
+  serveraddr.sin_family      = AF_INET;
+  serveraddr.sin_port        = htons(SERVER_PORT);
+  inet_pton(AF_INET, SERVER_ADDR, &serveraddr.sin_addr.s_addr);
 
-  if (connect(sock, (struct sockaddr *)&sockaddr, sizeof(sockaddr)) < 0) {
+  if (connect(sock, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) {
     perror("connect");
     exit(1);
   }
