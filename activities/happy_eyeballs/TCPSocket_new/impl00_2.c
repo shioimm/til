@@ -7,11 +7,20 @@
 #include <unistd.h>    // read, write, close
 #include <netdb.h>     // addrinfo, getaddrinfo, freeaddrinfo
 
+struct selectable_addrinfo {
+  int              ai_family;
+  int              ai_socktype;
+  int              ai_protocol;
+  struct sockaddr *ai_addr;
+  socklen_t        ai_addrlen;
+};
+
 int main()
 {
   char *hostname = "localhost";
   char *service  = "9292";
   struct addrinfo hints, *res0, *res;
+  struct selectable_addrinfo selectable_addrinfos[10];
   int err;
   int sock;
 
@@ -24,25 +33,32 @@ int main()
     return 1;
   }
 
+  int index = 0;
   for (res = res0; res != NULL; res = res->ai_next) {
-    sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    selectable_addrinfos[index].ai_family   = res->ai_family;
+    selectable_addrinfos[index].ai_socktype = res->ai_socktype;
+    selectable_addrinfos[index].ai_protocol = res->ai_protocol;
+    selectable_addrinfos[index].ai_addr     = res->ai_addr;
+    selectable_addrinfos[index].ai_addrlen  = res->ai_addrlen;
+    index++;
+  }
+
+  for (int i = 0; i < 10; i++) {
+    struct selectable_addrinfo ai = selectable_addrinfos[i];
+    sock = socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol);
 
     if (sock < 0) continue;
 
-    if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
+    if (connect(sock, ai.ai_addr, ai.ai_addrlen) != 0) {
       close(sock);
       continue;
+    } else {
+      break;
     }
-
-    break;
   }
 
   freeaddrinfo(res0);
-
-  if (res == NULL) {
-    printf("failed to connect\n");
-    return 1;
-  }
+  freeaddrinfo(res);
 
   char buf[1024];
 

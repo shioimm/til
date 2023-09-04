@@ -7,6 +7,15 @@
 #include <unistd.h>    // read, write, close
 #include <netdb.h>     // addrinfo, getaddrinfo, freeaddrinfo
 
+struct addrinfo *next_addrinfo(struct addrinfo *res)
+{
+  if (res->ai_next) {
+    return res->ai_next;
+  } else {
+    return NULL;
+  }
+}
+
 int main()
 {
   char *hostname = "localhost";
@@ -24,25 +33,29 @@ int main()
     return 1;
   }
 
-  for (res = res0; res != NULL; res = res->ai_next) {
+  res = res0;
+
+  while (1) {
     sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
     if (sock < 0) continue;
 
     if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
       close(sock);
-      continue;
+      res = next_addrinfo(res);
+
+      if (res == NULL) {
+        printf("failed to connect\n");
+        return 1;
+      } else {
+        continue;
+      }
     }
 
-    break;
+    break; // 接続に成功
   }
 
   freeaddrinfo(res0);
-
-  if (res == NULL) {
-    printf("failed to connect\n");
-    return 1;
-  }
 
   char buf[1024];
 
