@@ -310,6 +310,7 @@ socket_nonblock_set(int fd, int nonblock)
 {
   // fd のファイル状態フラグを読み出してflagsに格納
   int flags = fcntl(fd, F_GETFL);
+  // フラグの読み出しに失敗した場合
   if (flags == -1) { rb_sys_fail(0); }
 
   if (nonblock) {
