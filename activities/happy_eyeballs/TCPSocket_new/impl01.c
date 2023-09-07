@@ -91,11 +91,21 @@ int main()
 
       switch (last_connecting_family) {
         case PF_INET6:
-          connecting_addrinfo = is_ipv4_initial_result_picked ? ipv4_result : next_addrinfo(ipv4_result);
+          if (is_ipv4_initial_result_picked) {
+            connecting_addrinfo = next_addrinfo(ipv4_result);
+          } else {
+            connecting_addrinfo = ipv4_result;
+            is_ipv4_initial_result_picked = 1;
+          }
           ipv4_result = connecting_addrinfo;
           break;
         case PF_INET:
-          connecting_addrinfo = is_ipv6_initial_result_picked ? ipv6_result : next_addrinfo(ipv6_result);
+          if (is_ipv6_initial_result_picked) {
+            connecting_addrinfo = next_addrinfo(ipv6_result);
+          } else {
+            connecting_addrinfo = ipv6_result;
+            is_ipv6_initial_result_picked = 1;
+          }
           ipv6_result = connecting_addrinfo;
           break;
       }
