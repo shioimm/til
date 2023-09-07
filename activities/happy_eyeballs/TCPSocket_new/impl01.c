@@ -6,6 +6,7 @@
 #include <arpa/inet.h> // sockaddr_in, inet_pton
 #include <unistd.h>    // read, write, close
 #include <netdb.h>     // addrinfo, getaddrinfo, freeaddrinfo
+#include <pthread.h>
 
 struct addrinfo *next_addrinfo(struct addrinfo *res)
 {
@@ -14,6 +15,12 @@ struct addrinfo *next_addrinfo(struct addrinfo *res)
   } else {
     return NULL;
   }
+}
+
+void *address_resolver(void *arg)
+{
+  puts("address_resolver() is called in other thread");
+  return NULL;
 }
 
 int main()
@@ -27,24 +34,42 @@ int main()
   int sock;
   int last_connecting_family;
   int is_ipv4_initial_result_picked, is_ipv6_initial_result_picked = 0;
+  pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
 
   memset(&ipv4_hints, 0, sizeof(ipv4_hints));
   ipv4_hints.ai_socktype = SOCK_STREAM;
   ipv4_hints.ai_family = PF_INET;
 
+  memset(&ipv6_hints, 0, sizeof(ipv6_hints));
+  ipv6_hints.ai_socktype = SOCK_STREAM;
+  ipv6_hints.ai_family = PF_INET6;
+
+  // TODO とりあえず別スレッドを生成しただけ
+  if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, NULL) != 0) {
+    printf("Error: Failed to create new rsolver thread.\n");
+    exit(1);
+  }
+
+  if (pthread_create(&ipv4_resolv_thread, NULL, address_resolver, NULL) != 0) {
+    printf("Error: Failed to create new rsolver thread.\n");
+    exit(1);
+  }
+
+  // TODO アドレス解決スレッドで実行する -------------
   if ((ipv4_err = getaddrinfo(hostname, service, &ipv4_hints, &ipv4_initial_result)) != 0) {
     printf("hostname resolution error (A) %d\n", ipv4_err);
     return 1;
   }
 
-  memset(&ipv6_hints, 0, sizeof(ipv6_hints));
-  ipv6_hints.ai_socktype = SOCK_STREAM;
-  ipv6_hints.ai_family = PF_INET6;
-
   if ((ipv6_err = getaddrinfo(hostname, service, &ipv6_hints, &ipv6_initial_result)) != 0) {
     printf("hostname resolution error (AAAA) %d\n", ipv6_err);
     return 1;
   }
+  // ------------------------------------------------
+
+  // FIXME joinしてしまうと実行が終わるまで待ってしまうので、最終的にはスレッド内からexitする必要あり
+  pthread_join(ipv6_resolv_thread, NULL);
+  pthread_join(ipv4_resolv_thread, NULL);
 
   ipv4_result = ipv4_initial_result;
   ipv6_result = ipv6_initial_result;
