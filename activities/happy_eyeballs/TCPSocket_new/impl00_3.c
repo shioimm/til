@@ -25,8 +25,8 @@ int main()
   struct addrinfo *connecting_addrinfo;
   int ipv4_err, ipv6_err;
   int sock;
-  int ipv4_sock, ipv6_sock;
-  int is_connecting_ipv6 = 0;
+  int last_connecting_family;
+  int is_ipv4_initial_result_picked, is_ipv6_initial_result_picked = 0;
 
   memset(&ipv4_hints, 0, sizeof(ipv4_hints));
   ipv4_hints.ai_socktype = SOCK_STREAM;
@@ -49,8 +49,8 @@ int main()
   ipv4_result = ipv4_initial_result;
   ipv6_result = ipv6_initial_result;
 
-  is_connecting_ipv6 = 1;
   connecting_addrinfo = ipv6_result;
+  is_ipv6_initial_result_picked = 1;
 
   while (1) {
     sock = socket(connecting_addrinfo->ai_family,
@@ -59,17 +59,20 @@ int main()
 
     if (sock < 0) continue;
 
+    last_connecting_family = connecting_addrinfo->ai_family;
+
     if (connect(sock, connecting_addrinfo->ai_addr, connecting_addrinfo->ai_addrlen) != 0) {
       close(sock);
 
-      if (is_connecting_ipv6) {
-        connecting_addrinfo = next_addrinfo(ipv4_result);
-        ipv4_result = connecting_addrinfo;
-        is_connecting_ipv6 = 0;
-      } else {
-        connecting_addrinfo = next_addrinfo(ipv6_result);
-        ipv6_result = connecting_addrinfo;
-        is_connecting_ipv6 = 1;
+      switch (last_connecting_family) {
+        case PF_INET6:
+          connecting_addrinfo = is_ipv4_initial_result_picked ? ipv4_result : next_addrinfo(ipv4_result);
+          ipv4_result = connecting_addrinfo;
+          break;
+        case PF_INET:
+          connecting_addrinfo = is_ipv6_initial_result_picked ? ipv6_result : next_addrinfo(ipv6_result);
+          ipv6_result = connecting_addrinfo;
+          break;
       }
 
       if (connecting_addrinfo == NULL) {
