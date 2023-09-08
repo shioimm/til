@@ -30,7 +30,10 @@ struct addrinfo *next_addrinfo(struct addrinfo *res)
 
 void *address_resolver(void *arg)
 {
+  struct address_resolver_data *data = (struct address_resolver_data *)arg;
+
   puts("address_resolver() is called in other thread");
+  printf("hints->ai_family %d\n", data->hints->ai_family);
   return NULL;
 }
 
@@ -66,12 +69,12 @@ int main()
   ipv4_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
 
   // TODO とりあえず別スレッドを生成しただけ
-  if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, NULL) != 0) {
+  if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, &ipv6_revolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
     exit(1);
   }
 
-  if (pthread_create(&ipv4_resolv_thread, NULL, address_resolver, NULL) != 0) {
+  if (pthread_create(&ipv4_resolv_thread, NULL, address_resolver, &ipv4_revolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
     exit(1);
   }
