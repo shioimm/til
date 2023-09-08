@@ -8,6 +8,17 @@
 #include <netdb.h>     // addrinfo, getaddrinfo, freeaddrinfo
 #include <pthread.h>
 
+#define HOSTNAME "localhost"
+#define SERVICE "9292"
+
+struct address_resolver_data {
+  struct addrinfo *hints;
+  struct addrinfo *initial_result;
+
+  // IPv6アドレス解決スレッドでは値を代入、IPv4アドレス解決スレッドでは値を参照しResolution Delayの実行を判断
+  int *is_ipv6_resolved;
+};
+
 struct addrinfo *next_addrinfo(struct addrinfo *res)
 {
   if (res->ai_next) {
@@ -25,8 +36,8 @@ void *address_resolver(void *arg)
 
 int main()
 {
-  char *hostname = "localhost";
-  char *service  = "9292";
+  char *hostname = HOSTNAME;
+  char *service  = SERVICE;
   struct addrinfo ipv4_hints, *ipv4_initial_result, *ipv4_result;
   struct addrinfo ipv6_hints, *ipv6_initial_result, *ipv6_result;
   struct addrinfo *connecting_addrinfo;
@@ -43,6 +54,16 @@ int main()
   memset(&ipv6_hints, 0, sizeof(ipv6_hints));
   ipv6_hints.ai_socktype = SOCK_STREAM;
   ipv6_hints.ai_family = PF_INET6;
+
+  // アドレス解決スレッド関数に渡す引数の準備
+  int is_ipv6_resolved = 0;
+  struct address_resolver_data ipv6_revolver_data, ipv4_revolver_data;
+  ipv6_revolver_data.hints            = &ipv6_hints;
+  ipv6_revolver_data.initial_result   = ipv6_initial_result;
+  ipv6_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
+  ipv4_revolver_data.hints            = &ipv4_hints;
+  ipv4_revolver_data.initial_result   = ipv4_initial_result;
+  ipv4_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
 
   // TODO とりあえず別スレッドを生成しただけ
   if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, NULL) != 0) {
