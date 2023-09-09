@@ -31,9 +31,16 @@ struct addrinfo *next_addrinfo(struct addrinfo *res)
 void *address_resolver(void *arg)
 {
   struct address_resolver_data *data = (struct address_resolver_data *)arg;
+  struct addrinfo *hints = data->hints;
+  char *hostname = HOSTNAME;
+  char *service  = SERVICE;
+  int err;
 
-  puts("address_resolver() is called in other thread");
-  printf("hints->ai_family %d\n", data->hints->ai_family);
+  if ((err = getaddrinfo(hostname, service, hints, &data->initial_result)) != 0) {
+    printf("hostname resolution error %d\n", err);
+    pthread_exit(NULL);
+  }
+
   return NULL;
 }
 
