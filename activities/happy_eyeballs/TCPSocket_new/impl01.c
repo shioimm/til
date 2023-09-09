@@ -45,24 +45,13 @@ void *address_resolver(void *arg)
 
 int main()
 {
-  char *hostname = HOSTNAME;
-  char *service  = SERVICE;
-  struct addrinfo ipv4_hints, *ipv4_initial_result, *ipv4_result;
-  struct addrinfo ipv6_hints, *ipv6_initial_result, *ipv6_result;
+  struct addrinfo *ipv4_result;
+  struct addrinfo *ipv6_result;
   struct addrinfo *connecting_addrinfo;
-  int ipv4_err, ipv6_err;
   int sock;
   int last_connecting_family;
   int is_ipv4_initial_result_picked, is_ipv6_initial_result_picked = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
-
-  memset(&ipv4_hints, 0, sizeof(ipv4_hints));
-  ipv4_hints.ai_socktype = SOCK_STREAM;
-  ipv4_hints.ai_family = PF_INET;
-
-  memset(&ipv6_hints, 0, sizeof(ipv6_hints));
-  ipv6_hints.ai_socktype = SOCK_STREAM;
-  ipv6_hints.ai_family = PF_INET6;
 
   // アドレス解決スレッド関数に渡す引数の準備
   int is_ipv6_resolved = 0;
@@ -88,27 +77,12 @@ int main()
     exit(1);
   }
 
-  // TODO アドレス解決スレッドで実行する -------------
-  if ((ipv4_err = getaddrinfo(hostname, service, &ipv4_hints, &ipv4_initial_result)) != 0) {
-    printf("hostname resolution error (A) %d\n", ipv4_err);
-    return 1;
-  }
-
-  if ((ipv6_err = getaddrinfo(hostname, service, &ipv6_hints, &ipv6_initial_result)) != 0) {
-    printf("hostname resolution error (AAAA) %d\n", ipv6_err);
-    return 1;
-  }
-  // ------------------------------------------------
-
   // FIXME joinしてしまうと実行が終わるまで待ってしまうので、最終的にはスレッド内からexitする必要あり
   pthread_join(ipv6_resolv_thread, NULL);
   pthread_join(ipv4_resolv_thread, NULL);
 
-  // TODO
-  //   ipv?_revolver_data->initial_result に置き換える
-  //   それができたら不要な関数呼び出しと変数宣言を削除
-  ipv4_result = ipv4_initial_result;
-  ipv6_result = ipv6_initial_result;
+  ipv4_result = ipv4_revolver_data.initial_result;
+  ipv6_result = ipv6_revolver_data.initial_result;
 
   connecting_addrinfo = ipv6_result;
   is_ipv6_initial_result_picked = 1;
@@ -157,8 +131,8 @@ int main()
     break; // 接続に成功
   }
 
-  freeaddrinfo(ipv4_initial_result);
-  freeaddrinfo(ipv6_initial_result);
+  freeaddrinfo(ipv4_revolver_data.initial_result);
+  freeaddrinfo(ipv6_revolver_data.initial_result);
 
   char buf[1024];
 
