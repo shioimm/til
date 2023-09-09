@@ -12,7 +12,7 @@
 #define SERVICE "9292"
 
 struct address_resolver_data {
-  struct addrinfo *hints;
+  struct addrinfo hints;
   struct addrinfo *initial_result;
 
   // IPv6アドレス解決スレッドでは値を代入、IPv4アドレス解決スレッドでは値を参照しResolution Delayの実行を判断
@@ -31,12 +31,11 @@ struct addrinfo *next_addrinfo(struct addrinfo *res)
 void *address_resolver(void *arg)
 {
   struct address_resolver_data *data = (struct address_resolver_data *)arg;
-  struct addrinfo *hints = data->hints;
   char *hostname = HOSTNAME;
   char *service  = SERVICE;
   int err;
 
-  if ((err = getaddrinfo(hostname, service, hints, &data->initial_result)) != 0) {
+  if ((err = getaddrinfo(hostname, service, &data->hints, &data->initial_result)) != 0) {
     printf("hostname resolution error %d\n", err);
     pthread_exit(NULL);
   }
@@ -68,14 +67,17 @@ int main()
   // アドレス解決スレッド関数に渡す引数の準備
   int is_ipv6_resolved = 0;
   struct address_resolver_data ipv6_revolver_data, ipv4_revolver_data;
-  ipv6_revolver_data.hints            = &ipv6_hints;
-  ipv6_revolver_data.initial_result   = ipv6_initial_result;
-  ipv6_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
-  ipv4_revolver_data.hints            = &ipv4_hints;
-  ipv4_revolver_data.initial_result   = ipv4_initial_result;
-  ipv4_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
 
-  // TODO とりあえず別スレッドを生成しただけ
+  memset(&ipv4_revolver_data.hints, 0, sizeof(ipv4_revolver_data.hints));
+  ipv4_revolver_data.hints.ai_socktype = SOCK_STREAM;
+  ipv4_revolver_data.hints.ai_family   = PF_INET;
+  ipv4_revolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+
+  memset(&ipv6_revolver_data.hints, 0, sizeof(ipv6_revolver_data.hints));
+  ipv6_revolver_data.hints.ai_socktype = SOCK_STREAM;
+  ipv6_revolver_data.hints.ai_family   = PF_INET6;
+  ipv6_revolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+
   if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, &ipv6_revolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
     exit(1);
@@ -102,6 +104,9 @@ int main()
   pthread_join(ipv6_resolv_thread, NULL);
   pthread_join(ipv4_resolv_thread, NULL);
 
+  // TODO
+  //   ipv?_revolver_data->initial_result に置き換える
+  //   それができたら不要な関数呼び出しと変数宣言を削除
   ipv4_result = ipv4_initial_result;
   ipv6_result = ipv6_initial_result;
 
