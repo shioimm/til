@@ -12,7 +12,7 @@
 #define SERVICE "9292"
 
 struct address_resolver_data {
-  struct addrinfo *hints;
+  struct addrinfo hints;
   struct addrinfo *initial_result;
 
   // IPv6アドレス解決スレッドでは値を代入、IPv4アドレス解決スレッドでは値を参照しResolution Delayの実行を判断
@@ -30,70 +30,59 @@ struct addrinfo *next_addrinfo(struct addrinfo *res)
 
 void *address_resolver(void *arg)
 {
-  puts("address_resolver() is called in other thread");
+  struct address_resolver_data *data = (struct address_resolver_data *)arg;
+  char *hostname = HOSTNAME;
+  char *service  = SERVICE;
+  int err;
+
+  if ((err = getaddrinfo(hostname, service, &data->hints, &data->initial_result)) != 0) {
+    printf("hostname resolution error %d\n", err);
+    pthread_exit(NULL);
+  }
+
   return NULL;
 }
 
 int main()
 {
-  char *hostname = HOSTNAME;
-  char *service  = SERVICE;
-  struct addrinfo ipv4_hints, *ipv4_initial_result, *ipv4_result;
-  struct addrinfo ipv6_hints, *ipv6_initial_result, *ipv6_result;
+  struct addrinfo *ipv4_result;
+  struct addrinfo *ipv6_result;
   struct addrinfo *connecting_addrinfo;
-  int ipv4_err, ipv6_err;
   int sock;
   int last_connecting_family;
   int is_ipv4_initial_result_picked, is_ipv6_initial_result_picked = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
 
-  memset(&ipv4_hints, 0, sizeof(ipv4_hints));
-  ipv4_hints.ai_socktype = SOCK_STREAM;
-  ipv4_hints.ai_family = PF_INET;
-
-  memset(&ipv6_hints, 0, sizeof(ipv6_hints));
-  ipv6_hints.ai_socktype = SOCK_STREAM;
-  ipv6_hints.ai_family = PF_INET6;
-
   // アドレス解決スレッド関数に渡す引数の準備
   int is_ipv6_resolved = 0;
-  struct address_resolver_data ipv6_revolver_data, ipv4_revolver_data;
-  ipv6_revolver_data.hints            = &ipv6_hints;
-  ipv6_revolver_data.initial_result   = ipv6_initial_result;
-  ipv6_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
-  ipv4_revolver_data.hints            = &ipv4_hints;
-  ipv4_revolver_data.initial_result   = ipv4_initial_result;
-  ipv4_revolver_data.is_ipv6_resolved = &is_ipv6_resolved;
+  struct address_resolver_data ipv6_resolver_data, ipv4_resolver_data;
 
-  // TODO とりあえず別スレッドを生成しただけ
-  if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, NULL) != 0) {
+  memset(&ipv4_resolver_data.hints, 0, sizeof(ipv4_resolver_data.hints));
+  ipv4_resolver_data.hints.ai_socktype = SOCK_STREAM;
+  ipv4_resolver_data.hints.ai_family   = PF_INET;
+  ipv4_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+
+  memset(&ipv6_resolver_data.hints, 0, sizeof(ipv6_resolver_data.hints));
+  ipv6_resolver_data.hints.ai_socktype = SOCK_STREAM;
+  ipv6_resolver_data.hints.ai_family   = PF_INET6;
+  ipv6_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+
+  if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, &ipv6_resolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
     exit(1);
   }
 
-  if (pthread_create(&ipv4_resolv_thread, NULL, address_resolver, NULL) != 0) {
+  if (pthread_create(&ipv4_resolv_thread, NULL, address_resolver, &ipv4_resolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
     exit(1);
   }
-
-  // TODO アドレス解決スレッドで実行する -------------
-  if ((ipv4_err = getaddrinfo(hostname, service, &ipv4_hints, &ipv4_initial_result)) != 0) {
-    printf("hostname resolution error (A) %d\n", ipv4_err);
-    return 1;
-  }
-
-  if ((ipv6_err = getaddrinfo(hostname, service, &ipv6_hints, &ipv6_initial_result)) != 0) {
-    printf("hostname resolution error (AAAA) %d\n", ipv6_err);
-    return 1;
-  }
-  // ------------------------------------------------
 
   // FIXME joinしてしまうと実行が終わるまで待ってしまうので、最終的にはスレッド内からexitする必要あり
   pthread_join(ipv6_resolv_thread, NULL);
   pthread_join(ipv4_resolv_thread, NULL);
 
-  ipv4_result = ipv4_initial_result;
-  ipv6_result = ipv6_initial_result;
+  ipv4_result = ipv4_resolver_data.initial_result;
+  ipv6_result = ipv6_resolver_data.initial_result;
 
   connecting_addrinfo = ipv6_result;
   is_ipv6_initial_result_picked = 1;
@@ -142,8 +131,8 @@ int main()
     break; // 接続に成功
   }
 
-  freeaddrinfo(ipv4_initial_result);
-  freeaddrinfo(ipv6_initial_result);
+  freeaddrinfo(ipv4_resolver_data.initial_result);
+  freeaddrinfo(ipv6_resolver_data.initial_result);
 
   char buf[1024];
 
