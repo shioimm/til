@@ -67,6 +67,9 @@ int main()
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
 
   // アドレス解決スレッド関数に渡す引数の準備
+  // TODO
+  //   スレッド内から条件変数にsignalを送出できるようにする
+  //   メインスレッドでアドレス解決を待機 (joinを消す)
   int is_ipv6_resolved, is_ipv4_resolved = 0;
   pthread_mutex_t mutex;
   pthread_mutex_init(&mutex, NULL);
