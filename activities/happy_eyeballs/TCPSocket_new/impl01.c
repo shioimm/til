@@ -17,6 +17,7 @@ struct address_resolver_data {
 
   // IPv6アドレス解決スレッドでは値を代入、IPv4アドレス解決スレッドでは値を参照しResolution Delayの実行を判断
   int *is_ipv6_resolved;
+  pthread_mutex_t *mutex;
 };
 
 struct addrinfo *next_addrinfo(struct addrinfo *res)
@@ -40,6 +41,14 @@ void *address_resolver(void *arg)
     pthread_exit(NULL);
   }
 
+  if (data->hints.ai_family == PF_INET6) {
+    pthread_mutex_lock(data->mutex);
+    *data->is_ipv6_resolved = 1;
+    pthread_mutex_unlock(data->mutex);
+  } else {
+    if (*data->is_ipv6_resolved == 0) usleep(50000); // Resolution Delay
+  }
+
   return NULL;
 }
 
@@ -55,17 +64,22 @@ int main()
 
   // アドレス解決スレッド関数に渡す引数の準備
   int is_ipv6_resolved = 0;
+  pthread_mutex_t mutex;
+  pthread_mutex_init(&mutex, NULL);
+
   struct address_resolver_data ipv6_resolver_data, ipv4_resolver_data;
 
   memset(&ipv4_resolver_data.hints, 0, sizeof(ipv4_resolver_data.hints));
   ipv4_resolver_data.hints.ai_socktype = SOCK_STREAM;
   ipv4_resolver_data.hints.ai_family   = PF_INET;
   ipv4_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+  ipv4_resolver_data.mutex             = &mutex;
 
   memset(&ipv6_resolver_data.hints, 0, sizeof(ipv6_resolver_data.hints));
   ipv6_resolver_data.hints.ai_socktype = SOCK_STREAM;
   ipv6_resolver_data.hints.ai_family   = PF_INET6;
   ipv6_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+  ipv6_resolver_data.mutex             = &mutex;
 
   if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, &ipv6_resolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
@@ -77,9 +91,10 @@ int main()
     exit(1);
   }
 
-  // FIXME joinしてしまうと実行が終わるまで待ってしまうので、最終的にはスレッド内からexitする必要あり
+  // FIXME joinしてしまうと実行が終わるまで待ってしまうので、最終的にはkillする必要あり
   pthread_join(ipv6_resolv_thread, NULL);
   pthread_join(ipv4_resolv_thread, NULL);
+  pthread_mutex_destroy(&mutex);
 
   ipv4_result = ipv4_resolver_data.initial_result;
   ipv6_result = ipv6_resolver_data.initial_result;
