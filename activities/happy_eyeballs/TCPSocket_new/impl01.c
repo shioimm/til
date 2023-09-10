@@ -15,8 +15,8 @@ struct address_resolver_data {
   struct addrinfo hints;
   struct addrinfo *initial_result;
 
-  // IPv6アドレス解決スレッドでは値を代入、IPv4アドレス解決スレッドでは値を参照しResolution Delayの実行を判断
   int *is_ipv6_resolved;
+  int *is_ipv4_resolved;
   pthread_mutex_t *mutex;
 };
 
@@ -46,6 +46,10 @@ void *address_resolver(void *arg)
     *data->is_ipv6_resolved = 1;
     pthread_mutex_unlock(data->mutex);
   } else {
+    pthread_mutex_lock(data->mutex);
+    *data->is_ipv4_resolved = 1;
+    pthread_mutex_unlock(data->mutex);
+
     if (*data->is_ipv6_resolved == 0) usleep(50000); // Resolution Delay
   }
 
@@ -63,7 +67,7 @@ int main()
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
 
   // アドレス解決スレッド関数に渡す引数の準備
-  int is_ipv6_resolved = 0;
+  int is_ipv6_resolved, is_ipv4_resolved = 0;
   pthread_mutex_t mutex;
   pthread_mutex_init(&mutex, NULL);
 
@@ -73,12 +77,14 @@ int main()
   ipv4_resolver_data.hints.ai_socktype = SOCK_STREAM;
   ipv4_resolver_data.hints.ai_family   = PF_INET;
   ipv4_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+  ipv4_resolver_data.is_ipv4_resolved  = &is_ipv4_resolved;
   ipv4_resolver_data.mutex             = &mutex;
 
   memset(&ipv6_resolver_data.hints, 0, sizeof(ipv6_resolver_data.hints));
   ipv6_resolver_data.hints.ai_socktype = SOCK_STREAM;
   ipv6_resolver_data.hints.ai_family   = PF_INET6;
   ipv6_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
+  ipv6_resolver_data.is_ipv4_resolved  = &is_ipv4_resolved;
   ipv6_resolver_data.mutex             = &mutex;
 
   if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, &ipv6_resolver_data) != 0) {
