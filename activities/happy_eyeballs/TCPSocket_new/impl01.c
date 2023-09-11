@@ -131,22 +131,19 @@ int main()
     if (connect(sock, connecting_addrinfo->ai_addr, connecting_addrinfo->ai_addrlen) != 0) {
       close(sock);
 
-      switch (last_connecting_family) {
-        case PF_INET6:
-          connecting_addrinfo = next_addrinfo(ipv4_result);
-          ipv4_result = connecting_addrinfo;
-          break;
-        case PF_INET:
-          connecting_addrinfo = next_addrinfo(ipv6_result);
-          ipv6_result = connecting_addrinfo;
-          break;
-      }
-
-      if (connecting_addrinfo == NULL) {
+      if (last_connecting_family == PF_INET6) {
+        connecting_addrinfo = next_addrinfo(ipv4_result);
+        ipv4_result = connecting_addrinfo;
+        // IPv6アドレス在庫が枯渇しており、かつIPv4アドレス解決が終わっていない場合は次のループへスキップ
+        if (connecting_addrinfo == NULL && !is_ipv4_resolved) continue;
+      } else if (last_connecting_family == PF_INET) {
+        connecting_addrinfo = next_addrinfo(ipv6_result);
+        ipv6_result = connecting_addrinfo;
+        // IPv4アドレス在庫が枯渇しており、かつIPv6アドレス解決が終わっていない場合は次のループへスキップ
+        if (connecting_addrinfo == NULL && !is_ipv6_resolved) continue;
+      } else {
         printf("failed to connect\n");
         return 1;
-      } else {
-        continue;
       }
     }
 
