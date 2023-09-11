@@ -108,10 +108,18 @@ int main()
   ipv4_result = ipv4_resolver_data.initial_result;
   ipv6_result = ipv6_resolver_data.initial_result;
 
-  connecting_addrinfo = ipv6_result;
-  is_ipv6_initial_result_picked = 1;
-
   while (1) {
+    // TODO pthread_cond_waitする
+
+    if (is_ipv6_resolved && !is_ipv6_initial_result_picked) {
+      connecting_addrinfo = ipv6_result;
+      is_ipv6_initial_result_picked = 1;
+    }
+    if (is_ipv4_resolved && !is_ipv4_initial_result_picked) {
+      connecting_addrinfo = ipv4_result;
+      is_ipv4_initial_result_picked = 1;
+    }
+
     sock = socket(connecting_addrinfo->ai_family,
                   connecting_addrinfo->ai_socktype,
                   connecting_addrinfo->ai_protocol);
@@ -125,21 +133,11 @@ int main()
 
       switch (last_connecting_family) {
         case PF_INET6:
-          if (is_ipv4_initial_result_picked) {
-            connecting_addrinfo = next_addrinfo(ipv4_result);
-          } else {
-            connecting_addrinfo = ipv4_result;
-            is_ipv4_initial_result_picked = 1;
-          }
+          connecting_addrinfo = next_addrinfo(ipv4_result);
           ipv4_result = connecting_addrinfo;
           break;
         case PF_INET:
-          if (is_ipv6_initial_result_picked) {
-            connecting_addrinfo = next_addrinfo(ipv6_result);
-          } else {
-            connecting_addrinfo = ipv6_result;
-            is_ipv6_initial_result_picked = 1;
-          }
+          connecting_addrinfo = next_addrinfo(ipv6_result);
           ipv6_result = connecting_addrinfo;
           break;
       }
