@@ -18,6 +18,7 @@ struct address_resolver_data {
   int *is_ipv6_resolved;
   int *is_ipv4_resolved;
   pthread_mutex_t *mutex;
+  pthread_cond_t  *cond;
 };
 
 struct addrinfo *next_addrinfo(struct addrinfo *res)
@@ -44,10 +45,12 @@ void *address_resolver(void *arg)
   if (data->hints.ai_family == PF_INET6) {
     pthread_mutex_lock(data->mutex);
     *data->is_ipv6_resolved = 1;
+    pthread_cond_signal(data->cond);
     pthread_mutex_unlock(data->mutex);
   } else {
     pthread_mutex_lock(data->mutex);
     *data->is_ipv4_resolved = 1;
+    pthread_cond_signal(data->cond);
     pthread_mutex_unlock(data->mutex);
 
     if (*data->is_ipv6_resolved == 0) usleep(50000); // Resolution Delay
@@ -63,7 +66,8 @@ int main()
   struct addrinfo *connecting_addrinfo;
   int sock;
   int last_connecting_family;
-  int is_ipv4_initial_result_picked, is_ipv6_initial_result_picked = 0;
+  int is_ipv4_initial_result_picked = 0;
+  int is_ipv6_initial_result_picked = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
 
   // アドレス解決スレッド関数に渡す引数の準備
@@ -73,6 +77,8 @@ int main()
   int is_ipv6_resolved, is_ipv4_resolved = 0;
   pthread_mutex_t mutex;
   pthread_mutex_init(&mutex, NULL);
+  pthread_cond_t cond;
+  pthread_cond_init(&cond, NULL);
 
   struct address_resolver_data ipv6_resolver_data, ipv4_resolver_data;
 
@@ -82,6 +88,7 @@ int main()
   ipv4_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
   ipv4_resolver_data.is_ipv4_resolved  = &is_ipv4_resolved;
   ipv4_resolver_data.mutex             = &mutex;
+  ipv4_resolver_data.cond              = &cond;
 
   memset(&ipv6_resolver_data.hints, 0, sizeof(ipv6_resolver_data.hints));
   ipv6_resolver_data.hints.ai_socktype = SOCK_STREAM;
@@ -89,6 +96,7 @@ int main()
   ipv6_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
   ipv6_resolver_data.is_ipv4_resolved  = &is_ipv4_resolved;
   ipv6_resolver_data.mutex             = &mutex;
+  ipv6_resolver_data.cond              = &cond;
 
   if (pthread_create(&ipv6_resolv_thread, NULL, address_resolver, &ipv6_resolver_data) != 0) {
     printf("Error: Failed to create new rsolver thread.\n");
@@ -100,22 +108,26 @@ int main()
     exit(1);
   }
 
-  // FIXME joinしてしまうと実行が終わるまで待ってしまうので、最終的にはkillする必要あり
-  pthread_join(ipv6_resolv_thread, NULL);
-  pthread_join(ipv4_resolv_thread, NULL);
-  pthread_mutex_destroy(&mutex);
-
-  ipv4_result = ipv4_resolver_data.initial_result;
-  ipv6_result = ipv6_resolver_data.initial_result;
-
   while (1) {
-    // TODO pthread_cond_waitする
+    if (!is_ipv6_resolved && !is_ipv4_resolved) {
+      pthread_mutex_lock(&mutex);
+      if (pthread_cond_wait(&cond, &mutex) != 0) {
+        printf("pthread_cond_wait is failed\n");
+        exit(1);
+      }
+      pthread_mutex_unlock(&mutex);
+    }
 
     if (is_ipv6_resolved && !is_ipv6_initial_result_picked) {
+      pthread_join(ipv6_resolv_thread, NULL);
+
+      ipv6_result = ipv6_resolver_data.initial_result;
       connecting_addrinfo = ipv6_result;
       is_ipv6_initial_result_picked = 1;
-    }
-    if (is_ipv4_resolved && !is_ipv4_initial_result_picked) {
+    } else if (is_ipv4_resolved && !is_ipv4_initial_result_picked) {
+      pthread_join(ipv4_resolv_thread, NULL);
+
+      ipv4_result = ipv4_resolver_data.initial_result;
       connecting_addrinfo = ipv4_result;
       is_ipv4_initial_result_picked = 1;
     }
@@ -152,6 +164,17 @@ int main()
 
   freeaddrinfo(ipv4_resolver_data.initial_result);
   freeaddrinfo(ipv6_resolver_data.initial_result);
+
+  if (!is_ipv6_resolved) {
+    pthread_cancel(ipv6_resolv_thread);
+    pthread_join(ipv6_resolv_thread, NULL);
+  }
+  if (!is_ipv4_resolved) {
+    pthread_cancel(ipv4_resolv_thread);
+    pthread_join(ipv4_resolv_thread, NULL);
+  }
+  pthread_mutex_destroy(&mutex);
+  pthread_cond_destroy(&cond);
 
   char buf[1024];
 
