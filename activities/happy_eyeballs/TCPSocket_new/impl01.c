@@ -1,3 +1,7 @@
+// ここまでの実装:
+//   アドレス解決 -> 基本的な機能は実装済み。処理を関数に直す際にresolv_timeoutを指定できるようにする必要あり
+//   接続試行     -> とりあえずシリアルに接続できるようにしただけ
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <stdio.h>
