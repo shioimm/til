@@ -122,8 +122,8 @@ class Socket
 
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
-        to_timeout = second_to_timeout(started_at, connect_timeout)
-        _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, to_timeout)
+        connection_timeout = second_to_connection_timeout(started_at, connect_timeout)
+        _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_timeout)
 
         if selected_sockets && !selected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
@@ -238,7 +238,7 @@ class Socket
 
   private_class_method :current_clocktime
 
-  def self.second_to_timeout(started_at, waiting_time)
+  def self.second_to_connection_timeout(started_at, waiting_time)
     return if waiting_time.nil?
 
     elapsed_time = current_clocktime - started_at
@@ -246,7 +246,7 @@ class Socket
     timeout.negative? ? 0 : timeout
   end
 
-  private_class_method :second_to_timeout
+  private_class_method :second_to_connection_timeout
 end
 
 # HOSTNAME = "www.google.com"
