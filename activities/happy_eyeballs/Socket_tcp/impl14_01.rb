@@ -124,14 +124,14 @@ class Socket
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
         to_timeout = second_to_timeout(started_at, connect_timeout)
-        _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, to_timeout)
+        _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, to_timeout)
 
-        if connected_sockets && !connected_sockets.empty?
+        if selected_sockets && !selected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
-          connection_attempt.connected_sockets.push *connected_sockets
+          connection_attempt.connected_sockets.push *selected_sockets
           connection_established = true
           next
-        elsif connected_sockets.nil?
+        elsif selected_sockets.nil?
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
@@ -164,10 +164,10 @@ class Socket
 
       timer = connection_attempt_delay_timers.shift
       connection_attempt_delay = (delay_time = timer - current_clocktime).negative? ? 0 : delay_time
-      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
+      _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
 
-      if connected_sockets && !connected_sockets.empty?
-        connection_attempt.connected_sockets.push *connected_sockets
+      if selected_sockets && !selected_sockets.empty?
+        connection_attempt.connected_sockets.push *selected_sockets
         connection_established = true
         next
       end
