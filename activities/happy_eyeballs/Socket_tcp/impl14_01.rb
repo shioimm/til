@@ -14,7 +14,6 @@ class Socket
       @local_addrinfos = local_addrinfos
       @connected_sockets = []
       @connecting_sockets = []
-      @completed = false
     end
 
     def attempt(addrinfo, delay_timers)
@@ -63,18 +62,6 @@ class Socket
       @connecting_sockets.each(&:close)
       @connected_sockets.each(&:close)
     end
-
-    def complete!
-      @completed = true
-    end
-
-    def incomplete!
-      @completed = false
-    end
-
-    def completed?
-      @completed
-    end
   end
 
   private_constant :ConnectionAttempt
@@ -110,15 +97,16 @@ class Socket
     connection_attempt = ConnectionAttempt.new(local_addrinfos)
     last_attemped_addrinfo = nil
     connection_attempt_delay_timers = []
+    connection_established = false
 
     ret = loop do
-      if connection_attempt.completed?
+      if connection_established
         connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
 
         if connected_socket.nil? && connection_attempt.last_error
           raise connection_attempt.last_error if pickable_addrinfos.empty?
 
-          connection_attempt.incomplete!
+          connection_established = false
           next
         end
 
@@ -141,7 +129,7 @@ class Socket
         if connected_sockets && !connected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
           connection_attempt.connected_sockets.push *connected_sockets
-          connection_attempt.complete!
+          connection_established = true
           next
         elsif connected_sockets.nil?
           # connect_timeoutまでに名前解決できなかった場合
@@ -165,7 +153,7 @@ class Socket
       connection_attempt.attempt(addrinfo, connection_attempt_delay_timers)
 
       if !connection_attempt.connected_sockets.empty?
-        connection_attempt.complete!
+        connection_established = true
         next
       end
 
@@ -180,7 +168,7 @@ class Socket
 
       if connected_sockets && !connected_sockets.empty?
         connection_attempt.connected_sockets.push *connected_sockets
-        connection_attempt.complete!
+        connection_established = true
         next
       end
     end
