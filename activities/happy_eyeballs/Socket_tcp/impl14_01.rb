@@ -10,19 +10,18 @@ class Socket
   class ConnectionAttempt
     attr_reader :connected_sockets, :connecting_sockets, :last_error
 
-    def initialize(local_addrinfos = [])
-      @local_addrinfos = local_addrinfos
+    def initialize
       @connected_sockets = []
       @connecting_sockets = []
     end
 
-    def attempt(addrinfo, delay_timers)
+    def attempt(addrinfo, delay_timers, local_addrinfos = [])
       return if !@connected_sockets.empty?
 
       socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
-      if !@local_addrinfos.empty?
-        local_addrinfo = @local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      if !local_addrinfos.empty?
+        local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
         socket.bind(local_addrinfo) if local_addrinfo
       end
 
@@ -94,7 +93,7 @@ class Socket
 
     # 接続試行 (Consumer)
     started_at = current_clocktime
-    connection_attempt = ConnectionAttempt.new(local_addrinfos)
+    connection_attempt = ConnectionAttempt.new
     last_attemped_addrinfo = nil
     connection_attempt_delay_timers = []
     connection_established = false
@@ -150,7 +149,7 @@ class Socket
       end
 
       last_attemped_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers)
+      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
       if !connection_attempt.connected_sockets.empty?
         connection_established = true
