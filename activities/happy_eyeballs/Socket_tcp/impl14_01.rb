@@ -117,7 +117,8 @@ class Socket
           next
         end
 
-        connection_attempt.close_all_sockets!
+        connecting_sockets.each(&:close)
+        connected_sockets.each(&:close)
         break connected_socket
       end
 
