@@ -7,68 +7,6 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
-  class ConnectionAttempt
-    attr_reader :connected_sockets, :connecting_sockets, :last_error
-
-    def initialize
-      @connected_sockets = []
-      @connecting_sockets = []
-    end
-
-    def attempt(addrinfo, delay_timers, local_addrinfos = [])
-      return if !@connected_sockets.empty?
-
-      socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-      if !local_addrinfos.empty?
-        local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
-        socket.bind(local_addrinfo) if local_addrinfo
-      end
-
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      delay_timers.push now + CONNECTION_ATTEMPT_DELAY
-
-      begin
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0              then @connected_sockets.push socket
-        when :wait_writable then @connecting_sockets.push socket
-        end
-      rescue SystemCallError => e
-        @last_error = e
-        socket.close unless socket.closed?
-      end
-
-      [@connected_sockets, @connecting_sockets, @last_error]
-    end
-
-    def take_connected_socket(addrinfo)
-      connected_socket = @connected_sockets.find do |socket|
-        begin
-          socket.connect_nonblock(addrinfo)
-          true
-        rescue Errno::EISCONN # already connected
-          true
-        rescue => e
-          @last_error = e
-          socket.close unless socket.closed?
-          false
-        ensure
-          @connected_sockets.delete socket
-          @connecting_sockets.delete socket
-        end
-      end
-
-      [connected_socket, @last_error]
-    end
-
-    def close_all_sockets!
-      @connecting_sockets.each(&:close)
-      @connected_sockets.each(&:close)
-    end
-  end
-
-  private_constant :ConnectionAttempt
-
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     mutex = Mutex.new
     cond = ConditionVariable.new
@@ -97,7 +35,6 @@ class Socket
 
     # 接続試行 (Consumer)
     started_at = current_clocktime
-    connection_attempt = ConnectionAttempt.new
     last_attempted_addrinfo = nil
     connection_attempt_delay_timers = []
     connection_established = false
