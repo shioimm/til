@@ -37,10 +37,12 @@ class Socket
         @last_error = e
         socket.close unless socket.closed?
       end
+
+      [@connected_sockets, @connecting_sockets, @last_error]
     end
 
     def take_connected_socket(addrinfo)
-      @connected_sockets.find do |socket|
+      connected_socket = @connected_sockets.find do |socket|
         begin
           socket.connect_nonblock(addrinfo)
           true
@@ -55,6 +57,8 @@ class Socket
           @connecting_sockets.delete socket
         end
       end
+
+      [connected_socket, @last_error]
     end
 
     def close_all_sockets!
@@ -98,12 +102,16 @@ class Socket
     connection_attempt_delay_timers = []
     connection_established = false
 
+    connected_sockets = []
+    connecting_sockets = []
+    last_attempted_error = nil
+
     ret = loop do
       if connection_established
-        connected_socket = connection_attempt.take_connected_socket(last_attempted_addrinfo)
+        connected_socket, last_attempted_error = connection_attempt.take_connected_socket(last_attempted_addrinfo)
 
-        if connected_socket.nil? && connection_attempt.last_error
-          raise connection_attempt.last_error if pickable_addrinfos.empty?
+        if connected_socket.nil? && last_attempted_error
+          raise last_attempted_error if pickable_addrinfos.empty?
 
           connection_established = false
           next
@@ -120,23 +128,23 @@ class Socket
           pick_addrinfo(pickable_addrinfos, last_attempted_addrinfo&.afamily, resolv_timeout, mutex, cond)
         end
 
-      if !addrinfo && !connection_attempt.connecting_sockets.empty?
+      if !addrinfo && !connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
         connection_timeout = second_to_connection_timeout(started_at, connect_timeout)
-        _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_timeout)
+        _, selected_sockets, = IO.select(nil, connecting_sockets, nil, connection_timeout)
 
         if selected_sockets && !selected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
-          connection_attempt.connected_sockets.push *selected_sockets
+          connected_sockets.push *selected_sockets
           connection_established = true
           next
         elsif selected_sockets.nil?
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
-      elsif !addrinfo && connection_attempt.last_error
+      elsif !addrinfo && last_attempted_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
-        raise connection_attempt.last_error
+        raise last_attempted_error
       elsif !addrinfo
         # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
@@ -149,24 +157,25 @@ class Socket
       end
 
       last_attempted_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
+      connected_sockets, connecting_sockets, last_attempted_error =
+        connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
-      if !connection_attempt.connected_sockets.empty?
+      if !connected_sockets.empty?
         connection_established = true
         next
       end
 
-      if (connection_attempt.last_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
-         (pickable_addrinfos.empty? && connection_attempt.connecting_sockets.empty?) # 別アドレスの取得を待機
+      if (last_attempted_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
+         (pickable_addrinfos.empty? && connecting_sockets.empty?) # 別アドレスの取得を待機
         next
       end
 
       timer = connection_attempt_delay_timers.shift
       connection_attempt_delay = (delay_time = timer - current_clocktime).negative? ? 0 : delay_time
-      _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
+      _, selected_sockets, = IO.select(nil, connecting_sockets, nil, connection_attempt_delay)
 
       if selected_sockets && !selected_sockets.empty?
-        connection_attempt.connected_sockets.push *selected_sockets
+        connected_sockets.push *selected_sockets
         connection_established = true
         next
       end
