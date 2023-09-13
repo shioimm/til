@@ -108,7 +108,8 @@ class Socket
 
     ret = loop do
       if connection_established
-        connected_socket, last_attempted_error = connection_attempt.take_connected_socket(last_attempted_addrinfo)
+        connected_socket, last_attempted_error =
+          take_connected_socket(last_attempted_addrinfo, connected_sockets, connecting_sockets)
 
         if connected_socket.nil? && last_attempted_error
           raise last_attempted_error if pickable_addrinfos.empty?
@@ -158,8 +159,9 @@ class Socket
       end
 
       last_attempted_addrinfo = addrinfo
+
       connected_sockets, connecting_sockets, last_attempted_error =
-        connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
+        connection_attempt!(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
       if !connected_sockets.empty?
         connection_established = true
@@ -242,6 +244,39 @@ class Socket
 
   private_class_method :pick_addrinfo
 
+  def self.connection_attempt!(addrinfo, delay_timers, local_addrinfos = [])
+    # どういう状況でconnected_sockets.empty?が偽になりうるのかがわからない
+    # return if !connected_sockets.empty?
+
+    connected_sockets = []
+    connecting_sockets = []
+    last_error = nil
+
+    socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+    if !local_addrinfos.empty?
+      local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      socket.bind(local_addrinfo) if local_addrinfo
+    end
+
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    delay_timers.push now + CONNECTION_ATTEMPT_DELAY
+
+    begin
+      case socket.connect_nonblock(addrinfo, exception: false)
+      when 0              then connected_sockets.push socket
+      when :wait_writable then connecting_sockets.push socket
+      end
+    rescue SystemCallError => e
+      last_error = e
+      socket.close unless socket.closed?
+    end
+
+    [connected_sockets, connecting_sockets, last_error]
+  end
+
+  private_class_method :connection_attempt!
+
   def self.current_clocktime
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
@@ -257,6 +292,30 @@ class Socket
   end
 
   private_class_method :second_to_connection_timeout
+
+  def self.take_connected_socket(addrinfo, connected_sockets, connecting_sockets)
+    last_error = nil
+
+    connected_socket = connected_sockets.find do |socket|
+      begin
+        socket.connect_nonblock(addrinfo)
+        true
+      rescue Errno::EISCONN # already connected
+        true
+      rescue => e
+        last_error = e
+        socket.close unless socket.closed?
+        false
+      ensure
+        connected_sockets.delete socket
+        connecting_sockets.delete socket
+      end
+    end
+
+    [connected_socket, last_error]
+  end
+
+  private_class_method :take_connected_socket
 end
 
 # HOSTNAME = "www.google.com"
