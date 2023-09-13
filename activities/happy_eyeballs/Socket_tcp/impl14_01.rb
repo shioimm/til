@@ -94,13 +94,13 @@ class Socket
     # 接続試行 (Consumer)
     started_at = current_clocktime
     connection_attempt = ConnectionAttempt.new
-    last_attemped_addrinfo = nil
+    last_attempted_addrinfo = nil
     connection_attempt_delay_timers = []
     connection_established = false
 
     ret = loop do
       if connection_established
-        connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
+        connected_socket = connection_attempt.take_connected_socket(last_attempted_addrinfo)
 
         if connected_socket.nil? && connection_attempt.last_error
           raise connection_attempt.last_error if pickable_addrinfos.empty?
@@ -117,7 +117,7 @@ class Socket
         if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
           nil
         else
-          pick_addrinfo(pickable_addrinfos, last_attemped_addrinfo&.afamily, resolv_timeout, mutex, cond)
+          pick_addrinfo(pickable_addrinfos, last_attempted_addrinfo&.afamily, resolv_timeout, mutex, cond)
         end
 
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
@@ -148,7 +148,7 @@ class Socket
         raise error[:klass], error[:message]
       end
 
-      last_attemped_addrinfo = addrinfo
+      last_attempted_addrinfo = addrinfo
       connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
       if !connection_attempt.connected_sockets.empty?
