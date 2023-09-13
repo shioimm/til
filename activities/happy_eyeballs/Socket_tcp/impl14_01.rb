@@ -1,9 +1,5 @@
 require 'socket'
 
-# TODO
-#   SocketErrorのうち、該当のアドレスファミリ非対応 / 一時的なエラーは無視する必要あり
-#   エラーメッセージ以外の方法でエラーを確認するように修正するべき
-
 class Socket
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
@@ -14,20 +10,18 @@ class Socket
   class ConnectionAttempt
     attr_reader :connected_sockets, :connecting_sockets, :last_error
 
-    def initialize(local_addrinfos = [])
-      @local_addrinfos = local_addrinfos
+    def initialize
       @connected_sockets = []
       @connecting_sockets = []
-      @completed = false
     end
 
-    def attempt(addrinfo, delay_timers)
+    def attempt(addrinfo, delay_timers, local_addrinfos = [])
       return if !@connected_sockets.empty?
 
       socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
-      if !@local_addrinfos.empty?
-        local_addrinfo = @local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      if !local_addrinfos.empty?
+        local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
         socket.bind(local_addrinfo) if local_addrinfo
       end
 
@@ -67,18 +61,6 @@ class Socket
       @connecting_sockets.each(&:close)
       @connected_sockets.each(&:close)
     end
-
-    def complete!
-      @completed = true
-    end
-
-    def incomplete!
-      @completed = false
-    end
-
-    def completed?
-      @completed
-    end
   end
 
   private_constant :ConnectionAttempt
@@ -111,18 +93,19 @@ class Socket
 
     # 接続試行 (Consumer)
     started_at = current_clocktime
-    connection_attempt = ConnectionAttempt.new(local_addrinfos)
+    connection_attempt = ConnectionAttempt.new
     last_attemped_addrinfo = nil
     connection_attempt_delay_timers = []
+    connection_established = false
 
     ret = loop do
-      if connection_attempt.completed?
+      if connection_established
         connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
 
         if connected_socket.nil? && connection_attempt.last_error
           raise connection_attempt.last_error if pickable_addrinfos.empty?
 
-          connection_attempt.incomplete!
+          connection_established = false
           next
         end
 
@@ -140,14 +123,14 @@ class Socket
       if !addrinfo && !connection_attempt.connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
         connection_timeout = second_to_connection_timeout(started_at, connect_timeout)
-        _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_timeout)
+        _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_timeout)
 
-        if connected_sockets && !connected_sockets.empty?
+        if selected_sockets && !selected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
-          connection_attempt.connected_sockets.push *connected_sockets
-          connection_attempt.complete!
+          connection_attempt.connected_sockets.push *selected_sockets
+          connection_established = true
           next
-        elsif connected_sockets.nil?
+        elsif selected_sockets.nil?
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
@@ -166,10 +149,10 @@ class Socket
       end
 
       last_attemped_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers)
+      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
       if !connection_attempt.connected_sockets.empty?
-        connection_attempt.complete!
+        connection_established = true
         next
       end
 
@@ -180,11 +163,11 @@ class Socket
 
       timer = connection_attempt_delay_timers.shift
       connection_attempt_delay = (delay_time = timer - current_clocktime).negative? ? 0 : delay_time
-      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
+      _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
 
-      if connected_sockets && !connected_sockets.empty?
-        connection_attempt.connected_sockets.push *connected_sockets
-        connection_attempt.complete!
+      if selected_sockets && !selected_sockets.empty?
+        connection_attempt.connected_sockets.push *selected_sockets
+        connection_established = true
         next
       end
     end
