@@ -7,64 +7,6 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
-  class ConnectionAttempt
-    attr_reader :connected_sockets, :connecting_sockets, :last_error
-
-    def initialize
-      @connected_sockets = []
-      @connecting_sockets = []
-    end
-
-    def attempt(addrinfo, delay_timers, local_addrinfos = [])
-      return if !@connected_sockets.empty?
-
-      socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-      if !local_addrinfos.empty?
-        local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
-        socket.bind(local_addrinfo) if local_addrinfo
-      end
-
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      delay_timers.push now + CONNECTION_ATTEMPT_DELAY
-
-      begin
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0              then @connected_sockets.push socket
-        when :wait_writable then @connecting_sockets.push socket
-        end
-      rescue SystemCallError => e
-        @last_error = e
-        socket.close unless socket.closed?
-      end
-    end
-
-    def take_connected_socket(addrinfo)
-      @connected_sockets.find do |socket|
-        begin
-          socket.connect_nonblock(addrinfo)
-          true
-        rescue Errno::EISCONN # already connected
-          true
-        rescue => e
-          @last_error = e
-          socket.close unless socket.closed?
-          false
-        ensure
-          @connected_sockets.delete socket
-          @connecting_sockets.delete socket
-        end
-      end
-    end
-
-    def close_all_sockets!
-      @connecting_sockets.each(&:close)
-      @connected_sockets.each(&:close)
-    end
-  end
-
-  private_constant :ConnectionAttempt
-
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     mutex = Mutex.new
     cond = ConditionVariable.new
@@ -93,23 +35,28 @@ class Socket
 
     # 接続試行 (Consumer)
     started_at = current_clocktime
-    connection_attempt = ConnectionAttempt.new
-    last_attemped_addrinfo = nil
+    last_attempted_addrinfo = nil
     connection_attempt_delay_timers = []
     connection_established = false
 
+    connected_sockets = []
+    connecting_sockets = []
+    last_attempted_error = nil
+
     ret = loop do
       if connection_established
-        connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
+        connected_socket, last_attempted_error =
+          take_connected_socket(last_attempted_addrinfo, connected_sockets, connecting_sockets)
 
-        if connected_socket.nil? && connection_attempt.last_error
-          raise connection_attempt.last_error if pickable_addrinfos.empty?
+        if connected_socket.nil? && last_attempted_error
+          raise last_attempted_error if pickable_addrinfos.empty?
 
           connection_established = false
           next
         end
 
-        connection_attempt.close_all_sockets!
+        connecting_sockets.each(&:close)
+        connected_sockets.each(&:close)
         break connected_socket
       end
 
@@ -117,26 +64,26 @@ class Socket
         if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
           nil
         else
-          pick_addrinfo(pickable_addrinfos, last_attemped_addrinfo&.afamily, resolv_timeout, mutex, cond)
+          pick_addrinfo(pickable_addrinfos, last_attempted_addrinfo&.afamily, resolv_timeout, mutex, cond)
         end
 
-      if !addrinfo && !connection_attempt.connecting_sockets.empty?
+      if !addrinfo && !connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
         connection_timeout = second_to_connection_timeout(started_at, connect_timeout)
-        _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_timeout)
+        _, selected_sockets, = IO.select(nil, connecting_sockets, nil, connection_timeout)
 
         if selected_sockets && !selected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
-          connection_attempt.connected_sockets.push *selected_sockets
+          connected_sockets.push *selected_sockets
           connection_established = true
           next
         elsif selected_sockets.nil?
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
-      elsif !addrinfo && connection_attempt.last_error
+      elsif !addrinfo && last_attempted_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
-        raise connection_attempt.last_error
+        raise last_attempted_error
       elsif !addrinfo
         # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
@@ -148,25 +95,27 @@ class Socket
         raise error[:klass], error[:message]
       end
 
-      last_attemped_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers, local_addrinfos)
+      last_attempted_addrinfo = addrinfo
 
-      if !connection_attempt.connected_sockets.empty?
+      connected_sockets, connecting_sockets, last_attempted_error =
+        connection_attempt!(addrinfo, connection_attempt_delay_timers, local_addrinfos)
+
+      if !connected_sockets.empty?
         connection_established = true
         next
       end
 
-      if (connection_attempt.last_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
-         (pickable_addrinfos.empty? && connection_attempt.connecting_sockets.empty?) # 別アドレスの取得を待機
+      if (last_attempted_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
+         (pickable_addrinfos.empty? && connecting_sockets.empty?) # 別アドレスの取得を待機
         next
       end
 
       timer = connection_attempt_delay_timers.shift
       connection_attempt_delay = (delay_time = timer - current_clocktime).negative? ? 0 : delay_time
-      _, selected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
+      _, selected_sockets, = IO.select(nil, connecting_sockets, nil, connection_attempt_delay)
 
       if selected_sockets && !selected_sockets.empty?
-        connection_attempt.connected_sockets.push *selected_sockets
+        connected_sockets.push *selected_sockets
         connection_established = true
         next
       end
@@ -232,6 +181,39 @@ class Socket
 
   private_class_method :pick_addrinfo
 
+  def self.connection_attempt!(addrinfo, delay_timers, local_addrinfos = [])
+    # どういう状況でconnected_sockets.empty?が偽になりうるのかがわからない
+    # return if !connected_sockets.empty?
+
+    connected_sockets = []
+    connecting_sockets = []
+    last_error = nil
+
+    socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+    if !local_addrinfos.empty?
+      local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      socket.bind(local_addrinfo) if local_addrinfo
+    end
+
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    delay_timers.push now + CONNECTION_ATTEMPT_DELAY
+
+    begin
+      case socket.connect_nonblock(addrinfo, exception: false)
+      when 0              then connected_sockets.push socket
+      when :wait_writable then connecting_sockets.push socket
+      end
+    rescue SystemCallError => e
+      last_error = e
+      socket.close unless socket.closed?
+    end
+
+    [connected_sockets, connecting_sockets, last_error]
+  end
+
+  private_class_method :connection_attempt!
+
   def self.current_clocktime
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
@@ -247,6 +229,30 @@ class Socket
   end
 
   private_class_method :second_to_connection_timeout
+
+  def self.take_connected_socket(addrinfo, connected_sockets, connecting_sockets)
+    last_error = nil
+
+    connected_socket = connected_sockets.find do |socket|
+      begin
+        socket.connect_nonblock(addrinfo)
+        true
+      rescue Errno::EISCONN # already connected
+        true
+      rescue => e
+        last_error = e
+        socket.close unless socket.closed?
+        false
+      ensure
+        connected_sockets.delete socket
+        connecting_sockets.delete socket
+      end
+    end
+
+    [connected_socket, last_error]
+  end
+
+  private_class_method :take_connected_socket
 end
 
 # HOSTNAME = "www.google.com"
