@@ -41,15 +41,15 @@ class Socket
 
     connected_sockets = []
     connecting_sockets = []
-    last_attempted_error = nil
+    last_connection_error = nil
 
     ret = loop do
       if connection_established
-        connected_socket, last_attempted_error =
+        connected_socket, last_connection_error =
           take_connected_socket(last_attempted_addrinfo, connected_sockets, connecting_sockets)
 
-        if connected_socket.nil? && last_attempted_error
-          raise last_attempted_error if pickable_addrinfos.empty?
+        if connected_socket.nil? && last_connection_error
+          raise last_connection_error if pickable_addrinfos.empty?
 
           connection_established = false
           next
@@ -82,9 +82,9 @@ class Socket
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
-      elsif !addrinfo && last_attempted_error
+      elsif !addrinfo && last_connection_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
-        raise last_attempted_error
+        raise last_connection_error
       elsif !addrinfo &&
             resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
             !(errors = resolution_state[:error]).empty?
@@ -98,7 +98,7 @@ class Socket
 
       last_attempted_addrinfo = addrinfo
 
-      connected_sockets, connecting_sockets, last_attempted_error =
+      connected_sockets, connecting_sockets, last_connection_error =
         connection_attempt!(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
       if !connected_sockets.empty?
@@ -106,7 +106,7 @@ class Socket
         next
       end
 
-      if (last_attempted_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
+      if (last_connection_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
          (pickable_addrinfos.empty? && connecting_sockets.empty?) # 別アドレスの取得を待機
         next
       end
