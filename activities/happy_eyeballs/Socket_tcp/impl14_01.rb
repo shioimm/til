@@ -85,12 +85,13 @@ class Socket
       elsif !addrinfo && last_connection_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise last_connection_error
-      elsif !addrinfo &&
-            resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
-            !(errors = resolution_state[:error]).empty?
+      elsif !addrinfo && !(errors = resolution_state[:error]).empty?
         # 名前解決中にエラーが発生した場合
-        error = errors.shift until errors.empty?
-        raise error[:klass], error[:message]
+        # まだアドレス解決中のファミリがある場合は次のループへスキップ
+        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done]
+          error = errors.shift until errors.empty?
+          raise error[:klass], error[:message]
+        end
       elsif !addrinfo
         # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
