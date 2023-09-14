@@ -62,6 +62,7 @@ class Socket
 
       addrinfo =
         if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
+          # アドレス解決のための処理が一通り終わっており、後続の処理を行う場合
           nil
         else
           pick_addrinfo(pickable_addrinfos, last_attempted_addrinfo&.afamily, resolv_timeout, mutex, cond)

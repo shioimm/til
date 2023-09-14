@@ -161,7 +161,8 @@ class Socket
         error = errors.shift until errors.empty?
         raise error[:klass], error[:message]
       elsif !addrinfo
-        # pick_addrinfoがnilを返した場合 (Resolve Timeout)
+        # アドレス解決が完了しており、かつpickable_addrinfosが空の場合 (アドレス在庫が増える可能性がない)
+        # あるいはpick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
