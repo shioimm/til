@@ -154,15 +154,15 @@ class Socket
       elsif !addrinfo && connection_attempt.last_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise connection_attempt.last_error
-      elsif !addrinfo
-        # pick_addrinfoがnilを返した場合 (Resolve Timeout)
-        raise Errno::ETIMEDOUT, 'user specified timeout'
-      elsif resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
-            !pickable_addrinfos.empty? &&
+      elsif !addrinfo &&
+            resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
             !(errors = resolution_state[:error]).empty?
         # 名前解決中にエラーが発生した場合
         error = errors.shift until errors.empty?
         raise error[:klass], error[:message]
+      elsif !addrinfo
+        # pick_addrinfoがnilを返した場合 (Resolve Timeout)
+        raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
       last_attemped_addrinfo = addrinfo
@@ -219,7 +219,7 @@ class Socket
       "getaddrinfo: Address family for hostname not supported",
       "getaddrinfo: Temporary failure in name resolution",
     ]
-    if e.class.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
+    if e.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
       # ignore
     else
       mutex.synchronize do
@@ -289,7 +289,8 @@ Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
   if family == :PF_INET6
     [Addrinfo.tcp("::1", PORT)]
   else
-    raise SocketError
+    # NOTE ignoreされる
+    raise SocketError, 'getaddrinfo: Address family for hostname not supported'
   end
 end
 #
