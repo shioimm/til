@@ -7,7 +7,10 @@
 #include <unistd.h>    // read, write, close
 #include <netdb.h>     // addrinfo, getaddrinfo, freeaddrinfo
 #include <pthread.h>
+#include <fcntl.h>
 #include <sys/time.h>
+#include <sys/select.h>
+#include <errno.h>
 
 #define CONNECTION_ATTEMPT_DELAY_USEC 250000
 
@@ -65,7 +68,7 @@ void *address_resolver(void *arg)
 int main()
 {
   struct addrinfo *ipv4_result, *ipv6_result, *connecting_addrinfo, *last_attempted_addrinfo;
-  int sock;
+  int connected_socket;
   int is_ipv4_initial_result_picked = 0;
   int is_ipv6_initial_result_picked = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
@@ -134,11 +137,17 @@ int main()
       is_ipv4_initial_result_picked = 1;
     }
 
+    int sock;
     sock = socket(connecting_addrinfo->ai_family,
                   connecting_addrinfo->ai_socktype,
                   connecting_addrinfo->ai_protocol);
 
     if (sock < 0) continue;
+
+    // ソケットをノンブロッキングモードにセット
+    int flags;
+    flags = fcntl(sock, F_GETFL,0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
     last_attempted_addrinfo = connecting_addrinfo;
 
@@ -147,8 +156,35 @@ int main()
     }
 
     // 接続に失敗
-    close(sock);
+    if (EINPROGRESS == errno) {
+      fprintf(stderr, " in progress ... \n");
 
+      int ret;
+      fd_set writefds;
+      FD_ZERO(&writefds);
+      // TODO
+      //   毎回リセットされるので接続するソケットをどこかに保存しておいてまとめてセットする必要あり
+      //   (それができれば終了処理も簡単になる)
+      FD_SET(sock, &writefds);
+
+      ret = select(sock + 1, NULL, &writefds, NULL, &connection_attempt_delay);
+
+      if (ret < 0) {
+        close(sock);
+        perror("select(2)");
+        return -1; // select(2) に失敗
+      } else if (ret == 1) {
+        connected_socket = sock;
+        break; // 接続に成功
+      } else if (ret == 0) {
+        // タイムアウト。次のループへ
+      }
+    } else {
+      // それ以外の接続エラー。次のループへ
+      close(sock);
+    }
+
+    // 次のループへ
     if (last_attempted_addrinfo->ai_family == PF_INET6) {
       connecting_addrinfo = next_addrinfo(ipv4_result);
       ipv4_result = connecting_addrinfo;
@@ -182,13 +218,14 @@ int main()
   char buf[1024];
 
   snprintf(buf, sizeof(buf), "GET / HTTP/1.0\r\n\r\n");
-  write(sock, buf, strnlen(buf, sizeof(buf)));
+  write(connected_socket, buf, strnlen(buf, sizeof(buf)));
 
+  // FIXME 接続できている。writeはできるがreadができない。
   memset(buf, 0, sizeof(buf));
-  read(sock, buf, sizeof(buf));
-  printf("%s", buf);
+  read(connected_socket, buf, sizeof(buf));
+  printf("%s\n", buf);
 
-  close(sock);
+  close(connected_socket);
 
   return 0;
 }
