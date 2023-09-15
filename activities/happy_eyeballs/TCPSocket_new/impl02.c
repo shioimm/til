@@ -7,6 +7,9 @@
 #include <unistd.h>    // read, write, close
 #include <netdb.h>     // addrinfo, getaddrinfo, freeaddrinfo
 #include <pthread.h>
+#include <sys/time.h>
+
+#define CONNECTION_ATTEMPT_DELAY_USEC 250000
 
 #define HOSTNAME "localhost"
 #define SERVICE "9292"
@@ -103,6 +106,10 @@ int main()
   }
 
   // 接続試行
+  struct timeval connection_attempt_delay;
+  connection_attempt_delay.tv_sec = 0;
+  connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
+
   while (1) {
     if (!is_ipv6_resolved && !is_ipv4_resolved) {
       pthread_mutex_lock(&mutex);
