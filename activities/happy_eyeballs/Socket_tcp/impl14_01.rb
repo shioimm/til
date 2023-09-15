@@ -41,15 +41,15 @@ class Socket
 
     connected_sockets = []
     connecting_sockets = []
-    last_attempted_error = nil
+    last_connection_error = nil
 
     ret = loop do
       if connection_established
-        connected_socket, last_attempted_error =
+        connected_socket, last_connection_error =
           take_connected_socket(last_attempted_addrinfo, connected_sockets, connecting_sockets)
 
-        if connected_socket.nil? && last_attempted_error
-          raise last_attempted_error if pickable_addrinfos.empty?
+        if connected_socket.nil? && last_connection_error
+          raise last_connection_error if pickable_addrinfos.empty?
 
           connection_established = false
           next
@@ -62,6 +62,7 @@ class Socket
 
       addrinfo =
         if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
+          # アドレス解決のための処理が一通り終わっており、後続の処理を行う場合
           nil
         else
           pick_addrinfo(pickable_addrinfos, last_attempted_addrinfo&.afamily, resolv_timeout, mutex, cond)
@@ -81,23 +82,24 @@ class Socket
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
-      elsif !addrinfo && last_attempted_error
+      elsif !addrinfo && last_connection_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
-        raise last_attempted_error
+        raise last_connection_error
+      elsif !addrinfo && !(errors = resolution_state[:error]).empty?
+        # 名前解決中にエラーが発生した場合
+        # まだアドレス解決中のファミリがある場合は次のループへスキップ
+        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done]
+          error = errors.shift until errors.empty?
+          raise error[:klass], error[:message]
+        end
       elsif !addrinfo
         # pick_addrinfoがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
-      elsif resolution_state[:ipv6_done] && resolution_state[:ipv4_done] &&
-            !pickable_addrinfos.empty? &&
-            !(errors = resolution_state[:error]).empty?
-        # 名前解決中にエラーが発生した場合
-        error = errors.shift until errors.empty?
-        raise error[:klass], error[:message]
       end
 
       last_attempted_addrinfo = addrinfo
 
-      connected_sockets, connecting_sockets, last_attempted_error =
+      connected_sockets, connecting_sockets, last_connection_error =
         connection_attempt!(addrinfo, connection_attempt_delay_timers, local_addrinfos)
 
       if !connected_sockets.empty?
@@ -105,7 +107,7 @@ class Socket
         next
       end
 
-      if (last_attempted_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
+      if (last_connection_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
          (pickable_addrinfos.empty? && connecting_sockets.empty?) # 別アドレスの取得を待機
         next
       end
@@ -151,7 +153,7 @@ class Socket
       "getaddrinfo: Address family for hostname not supported",
       "getaddrinfo: Temporary failure in name resolution",
     ]
-    if e.class.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
+    if e.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
       # ignore
     else
       mutex.synchronize do
@@ -278,7 +280,8 @@ Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
   if family == :PF_INET6
     [Addrinfo.tcp("::1", PORT)]
   else
-    raise SocketError
+    # NOTE ignoreされる
+    raise SocketError, 'getaddrinfo: Address family for hostname not supported'
   end
 end
 #

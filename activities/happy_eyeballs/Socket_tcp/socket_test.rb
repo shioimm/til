@@ -123,7 +123,7 @@ class SocketTest < Minitest::Test
     ipv6_server_thread.kill
   end
 
-  def test_that_returns_IPv6_connected_socket_when_IPv6_hostname_resolution_raises_SockerError
+  def test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
     begin
       server = TCPServer.new("::1", 0)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
