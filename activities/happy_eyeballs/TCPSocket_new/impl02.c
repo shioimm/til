@@ -61,11 +61,8 @@ void *address_resolver(void *arg)
 
 int main()
 {
-  struct addrinfo *ipv4_result;
-  struct addrinfo *ipv6_result;
-  struct addrinfo *connecting_addrinfo;
+  struct addrinfo *ipv4_result, *ipv6_result, *connecting_addrinfo, *last_attempted_addrinfo;
   int sock;
-  int last_connecting_family;
   int is_ipv4_initial_result_picked = 0;
   int is_ipv6_initial_result_picked = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
@@ -136,17 +133,17 @@ int main()
 
     if (sock < 0) continue;
 
-    last_connecting_family = connecting_addrinfo->ai_family;
+    last_attempted_addrinfo = connecting_addrinfo;
 
     if (connect(sock, connecting_addrinfo->ai_addr, connecting_addrinfo->ai_addrlen) != 0) {
       close(sock);
 
-      if (last_connecting_family == PF_INET6) {
+      if (last_attempted_addrinfo->ai_family == PF_INET6) {
         connecting_addrinfo = next_addrinfo(ipv4_result);
         ipv4_result = connecting_addrinfo;
         // IPv6アドレス在庫が枯渇しており、かつIPv4アドレス解決が終わっていない場合は次のループへスキップ
         if (connecting_addrinfo == NULL && !is_ipv4_resolved) continue;
-      } else if (last_connecting_family == PF_INET) {
+      } else if (last_attempted_addrinfo->ai_family == PF_INET) {
         connecting_addrinfo = next_addrinfo(ipv6_result);
         ipv6_result = connecting_addrinfo;
         // IPv4アドレス在庫が枯渇しており、かつIPv6アドレス解決が終わっていない場合は次のループへスキップ
