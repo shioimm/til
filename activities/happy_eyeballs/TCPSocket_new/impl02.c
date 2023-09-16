@@ -155,13 +155,12 @@ int main()
       break; // 接続に成功
     }
 
-    // 接続に失敗
-    if (EINPROGRESS == errno) {
+    if (EINPROGRESS == errno) { // 接続中
       int ret;
       fd_set writefds;
       FD_ZERO(&writefds);
       // TODO
-      //   毎回リセットされるので接続するソケットをどこかに保存しておいてまとめてセットする必要あり
+      //   毎回リセットされるので接続するソケットのfdをどこかに配列として保存しておく必要あり
       //   (それができれば終了処理も簡単になる)
       FD_SET(sock, &writefds);
 
@@ -182,7 +181,7 @@ int main()
       close(sock);
     }
 
-    // 次のループへ
+    // 次のループで使用するアドレスを選択
     if (last_attempted_addrinfo->ai_family == PF_INET6) {
       connecting_addrinfo = next_addrinfo(ipv4_result);
       ipv4_result = connecting_addrinfo;
