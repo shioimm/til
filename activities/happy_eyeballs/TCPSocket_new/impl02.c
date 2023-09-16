@@ -213,28 +213,20 @@ int main()
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&cond);
 
+  int flags;
+  flags = fcntl(connected_socket, F_GETFL,0);
+  flags = flags & ~(flags & O_NONBLOCK);
+  fcntl(connected_socket, F_SETFL, flags);
+
   char buf[1024];
 
   snprintf(buf, sizeof(buf), "GET / HTTP/1.0\r\n\r\n");
   write(connected_socket, buf, strnlen(buf, sizeof(buf)));
 
-  fd_set readfds;
-  FD_ZERO(&readfds);
-  FD_SET(connected_socket, &readfds);
-  int ret;
-
-  ret = select(connected_socket + 1, &readfds, NULL, NULL, NULL);
-
-  if (ret < 0) {
-    close(connected_socket);
-    perror("select(2)");
-    return -1; // select(2) に失敗
-  } else if (ret > 0) {
-    memset(buf, 0, sizeof(buf));
-    read(connected_socket, buf, sizeof(buf));
-    printf("%s", buf);
-    close(connected_socket);
-  }
+  memset(buf, 0, sizeof(buf));
+  read(connected_socket, buf, sizeof(buf));
+  printf("%s", buf);
+  close(connected_socket);
 
   return 0;
 }
