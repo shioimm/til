@@ -157,8 +157,6 @@ int main()
 
     // 接続に失敗
     if (EINPROGRESS == errno) {
-      fprintf(stderr, " in progress ... \n");
-
       int ret;
       fd_set writefds;
       FD_ZERO(&writefds);
@@ -173,7 +171,7 @@ int main()
         close(sock);
         perror("select(2)");
         return -1; // select(2) に失敗
-      } else if (ret == 1) {
+      } else if (ret > 0) {
         connected_socket = sock;
         break; // 接続に成功
       } else if (ret == 0) {
@@ -220,12 +218,23 @@ int main()
   snprintf(buf, sizeof(buf), "GET / HTTP/1.0\r\n\r\n");
   write(connected_socket, buf, strnlen(buf, sizeof(buf)));
 
-  // FIXME 接続できている。writeはできるがreadができない。
-  memset(buf, 0, sizeof(buf));
-  read(connected_socket, buf, sizeof(buf));
-  printf("%s\n", buf);
+  fd_set readfds;
+  FD_ZERO(&readfds);
+  FD_SET(connected_socket, &readfds);
+  int ret;
 
-  close(connected_socket);
+  ret = select(connected_socket + 1, &readfds, NULL, NULL, NULL);
+
+  if (ret < 0) {
+    close(connected_socket);
+    perror("select(2)");
+    return -1; // select(2) に失敗
+  } else if (ret > 0) {
+    memset(buf, 0, sizeof(buf));
+    read(connected_socket, buf, sizeof(buf));
+    printf("%s", buf);
+    close(connected_socket);
+  }
 
   return 0;
 }
