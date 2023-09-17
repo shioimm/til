@@ -155,15 +155,12 @@ int main()
       break; // 接続に成功
     }
 
-    // 接続に失敗
-    if (EINPROGRESS == errno) {
-      fprintf(stderr, " in progress ... \n");
-
+    if (EINPROGRESS == errno) { // 接続中
       int ret;
       fd_set writefds;
       FD_ZERO(&writefds);
       // TODO
-      //   毎回リセットされるので接続するソケットをどこかに保存しておいてまとめてセットする必要あり
+      //   毎回リセットされるので接続するソケットのfdをどこかに配列として保存しておく必要あり
       //   (それができれば終了処理も簡単になる)
       FD_SET(sock, &writefds);
 
@@ -173,7 +170,7 @@ int main()
         close(sock);
         perror("select(2)");
         return -1; // select(2) に失敗
-      } else if (ret == 1) {
+      } else if (ret > 0) {
         connected_socket = sock;
         break; // 接続に成功
       } else if (ret == 0) {
@@ -184,7 +181,7 @@ int main()
       close(sock);
     }
 
-    // 次のループへ
+    // 次のループで使用するアドレスを選択
     if (last_attempted_addrinfo->ai_family == PF_INET6) {
       connecting_addrinfo = next_addrinfo(ipv4_result);
       ipv4_result = connecting_addrinfo;
@@ -215,16 +212,19 @@ int main()
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&cond);
 
+  int flags;
+  flags = fcntl(connected_socket, F_GETFL,0);
+  flags = flags & ~(flags & O_NONBLOCK);
+  fcntl(connected_socket, F_SETFL, flags);
+
   char buf[1024];
 
   snprintf(buf, sizeof(buf), "GET / HTTP/1.0\r\n\r\n");
   write(connected_socket, buf, strnlen(buf, sizeof(buf)));
 
-  // FIXME 接続できている。writeはできるがreadができない。
   memset(buf, 0, sizeof(buf));
   read(connected_socket, buf, sizeof(buf));
-  printf("%s\n", buf);
-
+  printf("%s", buf);
   close(connected_socket);
 
   return 0;
