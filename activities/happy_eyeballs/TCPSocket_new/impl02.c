@@ -116,7 +116,10 @@ int main()
   int connecting_sockets_cursor = 0;
 
   while (1) {
-    if (!is_ipv6_resolved && !is_ipv4_resolved) {
+    if ((!is_ipv6_resolved && !is_ipv4_resolved) ||
+        (last_attempted_addrinfo != NULL &&
+         (is_ipv4_resolved && !is_ipv6_resolved) ||
+         (is_ipv6_resolved && !is_ipv4_resolved))) {
       pthread_mutex_lock(&mutex);
       if (pthread_cond_wait(&cond, &mutex) != 0) {
         printf("pthread_cond_wait is failed\n");
@@ -125,6 +128,7 @@ int main()
       pthread_mutex_unlock(&mutex);
     }
 
+    // 最初のループで使用するアドレスを選択
     if (is_ipv6_resolved && !is_ipv6_initial_result_picked) {
       pthread_join(ipv6_resolv_thread, NULL);
 
