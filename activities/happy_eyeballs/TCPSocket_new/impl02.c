@@ -112,6 +112,8 @@ int main()
   struct timeval connection_attempt_delay;
   connection_attempt_delay.tv_sec = 0;
   connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
+  int connecting_sockets[2]; // てきとう
+  int connecting_sockets_cursor = 0;
 
   while (1) {
     if (!is_ipv6_resolved && !is_ipv4_resolved) {
@@ -137,6 +139,8 @@ int main()
       is_ipv4_initial_result_picked = 1;
     }
 
+    // TODO 接続中のソケットを待つ
+
     int sock;
     sock = socket(connecting_addrinfo->ai_family,
                   connecting_addrinfo->ai_socktype,
@@ -156,13 +160,16 @@ int main()
     }
 
     if (EINPROGRESS == errno) { // 接続中
+      connecting_sockets[connecting_sockets_cursor] = sock;
+      connecting_sockets_cursor++;
+
       int ret;
       fd_set writefds;
       FD_ZERO(&writefds);
-      // TODO
-      //   毎回リセットされるので接続するソケットのfdをどこかに配列として保存しておく必要あり
-      //   (それができれば終了処理も簡単になる)
-      FD_SET(sock, &writefds);
+
+      for (int i = 0; i < 1; i++) {
+        FD_SET(connecting_sockets[i], &writefds);
+      }
 
       ret = select(sock + 1, NULL, &writefds, NULL, &connection_attempt_delay);
 
@@ -211,6 +218,8 @@ int main()
   }
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&cond);
+
+  // TODO 終了処理: 接続中のソケットをcloseする
 
   int flags;
   flags = fcntl(connected_socket, F_GETFL,0);
