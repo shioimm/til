@@ -112,7 +112,7 @@ int main()
   struct timeval connection_attempt_delay;
   connection_attempt_delay.tv_sec = 0;
   connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
-  int connecting_sockets[2]; // てきとう
+  int connecting_sockets[2] = {0, 0}; // てきとう
   int connecting_sockets_cursor = 0;
 
   while (1) {
@@ -175,10 +175,20 @@ int main()
         FD_SET(connecting_sockets[i], &writefds);
       }
 
-      ret = select(sock + 1, NULL, &writefds, NULL, &connection_attempt_delay);
+      int connecting_sockets_max = connecting_sockets[0];
+      int connecting_sockets_size = sizeof(connecting_sockets) / sizeof(connecting_sockets[0]);
+
+      for (int i = 0; i < connecting_sockets_size; i++) {
+        if (connecting_sockets[i] > connecting_sockets_max) {
+          connecting_sockets_max = connecting_sockets[i];
+        }
+      }
+      ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
 
       if (ret < 0) {
-        close(sock);
+        for (int i = 0; i < connecting_sockets_size; i++) {
+          close(connecting_sockets[i]);
+        }
         perror("select(2)");
         return -1; // select(2) に失敗
       } else if (ret > 0) {
