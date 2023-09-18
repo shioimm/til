@@ -65,6 +65,19 @@ void *address_resolver(void *arg)
   return NULL;
 }
 
+int max_connecting_socket_fds(int *connecting_sockets, int connecting_sockets_size)
+{
+  int value = connecting_sockets[0];
+
+  for (int i = 0; i < connecting_sockets_size; i++) {
+    if (connecting_sockets[i] > value) {
+      value = connecting_sockets[i];
+    }
+  }
+
+  return value;
+}
+
 int main()
 {
   struct addrinfo *ipv4_result, *ipv6_result, *connecting_addrinfo, *last_attempted_addrinfo;
@@ -114,6 +127,7 @@ int main()
   connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
   int connecting_sockets[2] = {0, 0}; // てきとう
   int connecting_sockets_cursor = 0;
+  int connecting_sockets_size = sizeof(connecting_sockets) / sizeof(connecting_sockets[0]);
 
   while (1) {
     if ((!is_ipv6_resolved && !is_ipv4_resolved) ||
@@ -153,15 +167,7 @@ int main()
         FD_SET(connecting_sockets[i], &writefds);
       }
 
-      int connecting_sockets_max = connecting_sockets[0];
-      int connecting_sockets_size = sizeof(connecting_sockets) / sizeof(connecting_sockets[0]);
-
-      for (int i = 0; i < connecting_sockets_size; i++) {
-        if (connecting_sockets[i] > connecting_sockets_max) {
-          connecting_sockets_max = connecting_sockets[i];
-        }
-      }
-
+      int connecting_sockets_max = max_connecting_socket_fds(connecting_sockets, connecting_sockets_size);
       // TODO 第四引数にconnect_timeoutをアサインする
       ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, NULL);
 
@@ -226,14 +232,7 @@ int main()
         FD_SET(connecting_sockets[i], &writefds);
       }
 
-      int connecting_sockets_max = connecting_sockets[0];
-      int connecting_sockets_size = sizeof(connecting_sockets) / sizeof(connecting_sockets[0]);
-
-      for (int i = 0; i < connecting_sockets_size; i++) {
-        if (connecting_sockets[i] > connecting_sockets_max) {
-          connecting_sockets_max = connecting_sockets[i];
-        }
-      }
+      int connecting_sockets_max = max_connecting_socket_fds(connecting_sockets, connecting_sockets_size);
       ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
 
       if (ret < 0) {
