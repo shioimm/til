@@ -285,7 +285,11 @@ int main()
   pthread_mutex_destroy(&mutex);
   pthread_cond_destroy(&cond);
 
-  // TODO 終了処理: 接続中のソケットをcloseする
+  for (int i = 0; i < connecting_sockets_size; i++) {
+    if (connecting_sockets[i] != connected_socket) {
+      close(connecting_sockets[i]);
+    }
+  }
 
   int flags;
   flags = fcntl(connected_socket, F_GETFL,0);
