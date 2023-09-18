@@ -143,7 +143,58 @@ int main()
       is_ipv4_initial_result_picked = 1;
     }
 
-    // TODO 接続中のソケットを待つ
+    if (connecting_addrinfo == NULL && connecting_sockets[0] > 0) {
+      // アドレス在庫が枯渇しており、接続中のソケットがある場合
+      int ret;
+      fd_set writefds;
+      FD_ZERO(&writefds);
+
+      for (int i = 0; i < 1; i++) {
+        FD_SET(connecting_sockets[i], &writefds);
+      }
+
+      int connecting_sockets_max = connecting_sockets[0];
+      int connecting_sockets_size = sizeof(connecting_sockets) / sizeof(connecting_sockets[0]);
+
+      for (int i = 0; i < connecting_sockets_size; i++) {
+        if (connecting_sockets[i] > connecting_sockets_max) {
+          connecting_sockets_max = connecting_sockets[i];
+        }
+      }
+
+      // TODO 第四引数にconnect_timeoutをアサインする
+      ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, NULL);
+
+      if (ret < 0) {
+        for (int i = 0; i < connecting_sockets_size; i++) {
+          close(connecting_sockets[i]);
+        }
+        perror("select(2)");
+        return -1; // select(2) に失敗
+      } else if (ret > 0) {
+        for (int i = 0; i < connecting_sockets_size; i++) {
+          int error;
+          socklen_t len = (socklen_t)sizeof(error);
+          getsockopt(connecting_sockets[i], SOL_SOCKET, SO_ERROR, (void *)&error, &len);
+          switch (error) {
+            case 0: // success
+              connected_socket = connecting_sockets[i];
+              break; // 接続に成功
+            case EINPROGRESS:
+              break;
+            default: // fail
+              close(connecting_sockets[i]);
+              perror("select(2)");
+              return -1; // select(2) に失敗
+          }
+        }
+      } else if (ret == 0) {
+        // connect_timeoutまでに名前解決できなかった場合
+        perror("connect_timeout");
+        return -1;
+      }
+    }
+    // TODO selectに入ったパターンを動作検証する、それ以外のケースをサポートする
 
     int sock;
     sock = socket(connecting_addrinfo->ai_family,
