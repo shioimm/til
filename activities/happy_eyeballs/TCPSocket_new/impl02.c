@@ -189,7 +189,9 @@ int main()
             case EINPROGRESS:
               break;
             default: // fail
-              close(connecting_sockets[i]);
+              for (int i = 0; i < connecting_sockets_size; i++) {
+                close(connecting_sockets[i]);
+              }
               perror("select(2)");
               return -1; // select(2) に失敗
           }
