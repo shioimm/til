@@ -65,6 +65,16 @@ void *address_resolver(void *arg)
   return NULL;
 }
 
+void prepare_writefds(fd_set *writefds, int *connecting_sockets, int connecting_sockets_size)
+{
+  FD_ZERO(writefds);
+  for (int i = 0; i < connecting_sockets_size; i++) {
+    if (connecting_sockets[i] > 0) {
+      FD_SET(connecting_sockets[i], writefds);
+    }
+  }
+}
+
 int max_connecting_socket_fds(int *connecting_sockets, int connecting_sockets_size)
 {
   int value = connecting_sockets[0];
@@ -161,11 +171,7 @@ int main()
       // アドレス在庫が枯渇しており、接続中のソケットがある場合
       int ret;
       fd_set writefds;
-      FD_ZERO(&writefds);
-
-      for (int i = 0; i < 1; i++) {
-        FD_SET(connecting_sockets[i], &writefds);
-      }
+      prepare_writefds(&writefds, connecting_sockets, connecting_sockets_size);
 
       int connecting_sockets_max = max_connecting_socket_fds(connecting_sockets, connecting_sockets_size);
       // TODO 第四引数にconnect_timeoutをアサインする
@@ -228,11 +234,7 @@ int main()
 
       int ret;
       fd_set writefds;
-      FD_ZERO(&writefds);
-
-      for (int i = 0; i < 1; i++) {
-        FD_SET(connecting_sockets[i], &writefds);
-      }
+      prepare_writefds(&writefds, connecting_sockets, connecting_sockets_size);
 
       int connecting_sockets_max = max_connecting_socket_fds(connecting_sockets, connecting_sockets_size);
       ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
