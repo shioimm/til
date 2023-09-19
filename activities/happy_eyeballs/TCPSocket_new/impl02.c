@@ -91,7 +91,7 @@ int max_connecting_socket_fds(int *connecting_sockets, int connecting_sockets_si
 int main()
 {
   struct addrinfo *ipv4_result, *ipv6_result, *connecting_addrinfo, *last_attempted_addrinfo;
-  int connected_socket;
+  int connected_socket = 0;
   int is_ipv4_initial_result_picked = 0;
   int is_ipv6_initial_result_picked = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
@@ -188,27 +188,37 @@ int main()
           int error;
           socklen_t len = (socklen_t)sizeof(error);
           getsockopt(connecting_sockets[i], SOL_SOCKET, SO_ERROR, (void *)&error, &len);
-          switch (error) {
-            case 0: // success
-              connected_socket = connecting_sockets[i];
-              break; // 接続に成功
-            case EINPROGRESS:
-              break;
-            default: // fail
-              for (int i = 0; i < connecting_sockets_size; i++) {
-                close(connecting_sockets[i]);
-              }
-              perror("select(2)");
-              return -1; // select(2) に失敗
+
+          if (error == 0) {
+            // 接続に成功
+            connected_socket = connecting_sockets[i];
+            break;
+          } else if (error == EINPROGRESS) {
+            // 接続中
+          } else {
+            // 接続に失敗
+            for (int i = 0; i < connecting_sockets_size; i++) {
+              close(connecting_sockets[i]);
+            }
+            perror("select(2)");
+            return -1; // select(2) に失敗
           }
         }
+        if (connected_socket) break; // 接続に成功
       } else if (ret == 0) {
         // connect_timeoutまでに名前解決できなかった場合
         perror("connect_timeout");
         return -1;
       }
-    }
-    // TODO selectに入ったパターンを動作検証する、それ以外のケースをサポートする
+    } // else if (アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合) {
+      //   WIP
+      // } else if (名前解決中にエラーが発生した場合) {
+      //   WIP
+      //   まだアドレス解決中のファミリがある場合は次のループへスキップ
+      // } else if (Resolve Timeoutの場合) {
+      //   WIP
+      // }
+      //
 
     int sock;
     sock = socket(connecting_addrinfo->ai_family,
@@ -236,8 +246,15 @@ int main()
       fd_set writefds;
       prepare_writefds(&writefds, connecting_sockets, connecting_sockets_size);
 
+      // EINPROGRESS時の動作検証用
+      fd_set readfds;
+      prepare_writefds(&readfds, connecting_sockets, connecting_sockets_size);
+
       int connecting_sockets_max = max_connecting_socket_fds(connecting_sockets, connecting_sockets_size);
-      ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
+      //ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
+
+      // INPROGRESS時の動作検証用
+      ret = select(connecting_sockets_max + 1, &readfds, NULL, NULL, &connection_attempt_delay);
 
       if (ret < 0) {
         for (int i = 0; i < connecting_sockets_size; i++) {
@@ -256,17 +273,63 @@ int main()
       close(sock);
     }
 
+    if (is_ipv6_resolved && !is_ipv6_initial_result_picked) {
+      pthread_join(ipv6_resolv_thread, NULL);
+
+      ipv6_result = ipv6_resolver_data.initial_result;
+      connecting_addrinfo = ipv6_result;
+      is_ipv6_initial_result_picked = 1;
+    } else if (is_ipv4_resolved && !is_ipv4_initial_result_picked) {
+      pthread_join(ipv4_resolv_thread, NULL);
+
+      ipv4_result = ipv4_resolver_data.initial_result;
+      connecting_addrinfo = ipv4_result;
+      is_ipv4_initial_result_picked = 1;
+    }
+
     // 次のループで使用するアドレスを選択
     if (last_attempted_addrinfo->ai_family == PF_INET6) {
-      connecting_addrinfo = next_addrinfo(ipv4_result);
-      ipv4_result = connecting_addrinfo;
-      // IPv6アドレス在庫が枯渇しており、かつIPv4アドレス解決が終わっていない場合は次のループへスキップ
-      if (connecting_addrinfo == NULL && !is_ipv4_resolved) continue;
+      // IPv4アドレス解決が終わっておらず、かつIPv6アドレス在庫が枯渇している場合は次のループへスキップ
+      if (!is_ipv4_resolved && last_attempted_addrinfo->ai_next == NULL) continue;
+
+      if (!is_ipv4_resolved && last_attempted_addrinfo->ai_next != NULL) {
+        connecting_addrinfo = last_attempted_addrinfo->ai_next;
+        ipv6_result = connecting_addrinfo;
+      } else if (is_ipv4_resolved && is_ipv4_initial_result_picked) {
+        connecting_addrinfo = next_addrinfo(ipv4_result);
+        ipv4_result = connecting_addrinfo;
+      } else if (is_ipv4_resolved) {
+        ipv4_result = ipv4_resolver_data.initial_result;
+        connecting_addrinfo = ipv4_result;
+        is_ipv4_initial_result_picked = 1;
+      } else if (!is_ipv4_resolved && !is_ipv4_initial_result_picked) {
+        pthread_join(ipv4_resolv_thread, NULL);
+
+        ipv4_result = ipv4_resolver_data.initial_result;
+        connecting_addrinfo = ipv4_result;
+        is_ipv4_initial_result_picked = 1;
+      }
     } else if (last_attempted_addrinfo->ai_family == PF_INET) {
-      connecting_addrinfo = next_addrinfo(ipv6_result);
-      ipv6_result = connecting_addrinfo;
-      // IPv4アドレス在庫が枯渇しており、かつIPv6アドレス解決が終わっていない場合は次のループへスキップ
-      if (connecting_addrinfo == NULL && !is_ipv6_resolved) continue;
+      // IPv6アドレス解決が終わっておらず、かつIPv4アドレス在庫が枯渇している場合は次のループへスキップ
+      if (!is_ipv6_resolved && last_attempted_addrinfo->ai_next == NULL) continue;
+
+      if (!is_ipv6_resolved && last_attempted_addrinfo->ai_next != NULL) {
+        connecting_addrinfo = last_attempted_addrinfo->ai_next;
+        ipv4_result = connecting_addrinfo;
+      } else if (is_ipv6_resolved && is_ipv6_initial_result_picked) {
+        connecting_addrinfo = next_addrinfo(ipv6_result);
+        ipv6_result = connecting_addrinfo;
+      } else if (is_ipv6_resolved) {
+        ipv6_result = ipv4_resolver_data.initial_result;
+        connecting_addrinfo = ipv6_result;
+        is_ipv6_initial_result_picked = 1;
+      } else if (!is_ipv6_resolved && !is_ipv6_initial_result_picked) {
+        pthread_join(ipv6_resolv_thread, NULL);
+
+        ipv6_result = ipv6_resolver_data.initial_result;
+        connecting_addrinfo = ipv6_result;
+        is_ipv6_initial_result_picked = 1;
+      }
     } else {
       printf("failed to connect\n");
       return 1;
