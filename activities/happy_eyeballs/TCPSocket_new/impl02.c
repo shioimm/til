@@ -207,8 +207,16 @@ int main()
         perror("connect_timeout");
         return -1;
       }
-    }
-    // TODO selectに入ったパターンを動作検証する、それ以外のケースをサポートする
+    } // else if (アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合) {
+      //   WIP
+      // } else if (名前解決中にエラーが発生した場合) {
+      //   WIP
+      //   まだアドレス解決中のファミリがある場合は次のループへスキップ
+      // } else if (Resolve Timeoutの場合) {
+      //   WIP
+      // }
+      //
+      // TODO selectに入ったパターンを動作検証する
 
     int sock;
     sock = socket(connecting_addrinfo->ai_family,
