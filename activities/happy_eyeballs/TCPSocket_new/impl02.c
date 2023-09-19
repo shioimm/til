@@ -246,8 +246,15 @@ int main()
       fd_set writefds;
       prepare_writefds(&writefds, connecting_sockets, connecting_sockets_size);
 
+      // EINPROGRESS時の動作検証用
+      fd_set readfds;
+      prepare_writefds(&readfds, connecting_sockets, connecting_sockets_size);
+
       int connecting_sockets_max = max_connecting_socket_fds(connecting_sockets, connecting_sockets_size);
-      ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
+      //ret = select(connecting_sockets_max + 1, NULL, &writefds, NULL, &connection_attempt_delay);
+
+      // INPROGRESS時の動作検証用
+      ret = select(connecting_sockets_max + 1, &readfds, NULL, NULL, &connection_attempt_delay);
 
       if (ret < 0) {
         for (int i = 0; i < connecting_sockets_size; i++) {
