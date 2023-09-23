@@ -146,7 +146,7 @@ int main()
          (is_ipv6_resolved && !is_ipv4_resolved))) {
       pthread_mutex_lock(&mutex);
       if (pthread_cond_wait(&cond, &mutex) != 0) {
-        printf("pthread_cond_wait is failed\n");
+        perror("pthread_cond_wait(3)");
         exit(1);
       }
       pthread_mutex_unlock(&mutex);
@@ -207,18 +207,18 @@ int main()
         if (connected_socket) break; // 接続に成功
       } else if (ret == 0) {
         // connect_timeoutまでに名前解決できなかった場合
-        perror("connect_timeout");
+        printf("connect_timeout\n");
         return -1;
       }
-    } // else if (アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合) {
-      //   WIP
-      // } else if (名前解決中にエラーが発生した場合) {
-      //   WIP
-      //   まだアドレス解決中のファミリがある場合は次のループへスキップ
-      // } else if (Resolve Timeoutの場合) {
-      //   WIP
-      // }
-      //
+    // } else if (アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合) {
+    //   WIP
+    // } else if (名前解決中にエラーが発生した場合) {
+    //   WIP
+    //   まだアドレス解決中のファミリがある場合は次のループへスキップ
+    } else if (connecting_addrinfo == NULL) {
+      printf("resolv_timeout\n");
+      return -1;
+    }
 
     int sock;
     sock = socket(connecting_addrinfo->ai_family,
@@ -332,7 +332,7 @@ int main()
       }
     } else {
       printf("failed to connect\n");
-      return 1;
+      return -1;
     }
   }
 
