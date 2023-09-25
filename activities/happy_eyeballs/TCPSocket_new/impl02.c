@@ -138,6 +138,7 @@ int main()
   int connecting_sockets[2] = {0, 0}; // てきとう
   int connecting_sockets_cursor = 0;
   int connecting_sockets_size = sizeof(connecting_sockets) / sizeof(connecting_sockets[0]);
+  int connention_last_error = 0;
 
   while (1) {
     if ((!is_ipv6_resolved && !is_ipv4_resolved) ||
@@ -210,10 +211,12 @@ int main()
         printf("connect_timeout\n");
         return -1;
       }
-    // } else if (アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合) {
-    //   WIP
+    } else if (connecting_addrinfo == NULL && connention_last_error) {
+      // アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
+      fprintf(stderr, "connection failed: %s\n", strerror(connention_last_error));
+      return -1;
     // } else if (名前解決中にエラーが発生した場合) {
-    //   WIP
+    //   TODO
     //   まだアドレス解決中のファミリがある場合は次のループへスキップ
     } else if (connecting_addrinfo == NULL) {
       printf("resolv_timeout\n");
@@ -270,6 +273,7 @@ int main()
       }
     } else {
       // それ以外の接続エラー。次のループへ
+      connention_last_error = errno;
       close(sock);
     }
 
