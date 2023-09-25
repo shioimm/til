@@ -23,6 +23,7 @@ struct address_resolver_data {
 
   int *is_ipv6_resolved;
   int *is_ipv4_resolved;
+  int *resolv_last_error;
   pthread_mutex_t *mutex;
   pthread_cond_t  *cond;
 };
@@ -44,7 +45,7 @@ void *address_resolver(void *arg)
   int err;
 
   if ((err = getaddrinfo(hostname, service, &data->hints, &data->initial_result)) != 0) {
-    printf("hostname resolution error %d\n", err);
+    *data->resolv_last_error = errno;
     pthread_exit(NULL);
   }
 
@@ -94,6 +95,7 @@ int main()
   int connected_socket = 0;
   int is_ipv4_initial_result_picked = 0;
   int is_ipv6_initial_result_picked = 0;
+  int resolv_last_error = 0;
   pthread_t ipv6_resolv_thread, ipv4_resolv_thread;
 
   // アドレス解決
@@ -110,6 +112,7 @@ int main()
   ipv4_resolver_data.hints.ai_family   = PF_INET;
   ipv4_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
   ipv4_resolver_data.is_ipv4_resolved  = &is_ipv4_resolved;
+  ipv4_resolver_data.resolv_last_error = &resolv_last_error;
   ipv4_resolver_data.mutex             = &mutex;
   ipv4_resolver_data.cond              = &cond;
 
@@ -118,6 +121,7 @@ int main()
   ipv6_resolver_data.hints.ai_family   = PF_INET6;
   ipv6_resolver_data.is_ipv6_resolved  = &is_ipv6_resolved;
   ipv6_resolver_data.is_ipv4_resolved  = &is_ipv4_resolved;
+  ipv6_resolver_data.resolv_last_error = &resolv_last_error;
   ipv6_resolver_data.mutex             = &mutex;
   ipv6_resolver_data.cond              = &cond;
 
@@ -215,9 +219,15 @@ int main()
       // アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
       fprintf(stderr, "connection failed: %s\n", strerror(connention_last_error));
       return -1;
-    // } else if (名前解決中にエラーが発生した場合) {
-    //   TODO
-    //   まだアドレス解決中のファミリがある場合は次のループへスキップ
+    } else if (connecting_addrinfo == NULL && resolv_last_error) {
+      // 名前解決中にエラーが発生した場合
+      if (is_ipv6_resolved && is_ipv4_resolved &&
+          (resolv_last_error != EAI_ADDRFAMILY && resolv_last_error != EAI_AGAIN)) {
+        fprintf(stderr, "hostname resolution failed: %s\n", strerror(resolv_last_error));
+        return -1;
+      } else {
+        continue;
+      }
     } else if (connecting_addrinfo == NULL) {
       printf("resolv_timeout\n");
       return -1;
