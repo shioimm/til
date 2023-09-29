@@ -30,6 +30,25 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     res->ai = ai;
   } else {
     VALUE scheduler = rb_fiber_scheduler_current();
+    //  (scheduler.c)
+    //  VALUE
+    //  rb_fiber_scheduler_current(void)
+    //  {
+    //    return rb_fiber_scheduler_current_for_threadptr(GET_THREAD());
+    //  }
+    //
+    // static VALUE
+    // rb_fiber_scheduler_current_for_threadptr(rb_thread_t *thread)
+    // {
+    //   VM_ASSERT(thread);
+    //
+    //   if (thread->blocking == 0) {
+    //     return thread->scheduler;
+    //   } else {
+    //     return Qnil;
+    //   }
+    // }
+
     int resolved = 0;
 
     if (scheduler != Qnil && hostp && !(hints->ai_flags & AI_NUMERICHOST)) {
@@ -40,11 +59,14 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       }
     }
 
+    // scheduler が設定されていない場合
     if (!resolved) {
 #ifdef GETADDRINFO_EMU
+      // 成功するとerrorに0が格納される
       error = getaddrinfo(hostp, portp, hints, &ai);
 #else
       struct getaddrinfo_arg arg;
+      // WIP
       MEMZERO(&arg, struct getaddrinfo_arg, 1);
       arg.node = hostp;
       arg.service = portp;
@@ -218,5 +240,63 @@ numeric_getaddrinfo(
   // ホスト名が空、ポート番号をintに変換できない、
   // あるいはここまでで名前解決できなかった場合
   return EAI_FAIL;
+}
+```
+
+```c
+// schedulerが空の場合は呼ばれない
+static int
+rb_scheduler_getaddrinfo(
+  VALUE scheduler,
+  VALUE host,
+  const char *service, // ポート番号
+  const struct addrinfo *hints,
+  struct rb_addrinfo **res
+) {
+  int error, res_allocated = 0, _additional_flags = 0;
+  long i, len;
+  struct addrinfo *ai, *ai_tail = NULL;
+  char *hostp;
+  char _hbuf[NI_MAXHOST];
+  VALUE ip_addresses_array, ip_address;
+
+  ip_addresses_array = rb_fiber_scheduler_address_resolve(scheduler, host);
+
+  if (ip_addresses_array == Qundef) {
+    // Returns EAI_FAIL if the scheduler hook is not implemented:
+    return EAI_FAIL;
+  } else if (ip_addresses_array == Qnil) {
+    len = 0;
+  } else {
+    len = RARRAY_LEN(ip_addresses_array);
+  }
+
+  for(i=0; i<len; i++) {
+    ip_address = rb_ary_entry(ip_addresses_array, i);
+    hostp = host_str(ip_address, _hbuf, sizeof(_hbuf), &_additional_flags);
+    error = numeric_getaddrinfo(hostp, service, hints, &ai);
+
+    if (error == 0) {
+      if (!res_allocated) {
+        res_allocated = 1;
+        *res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+        (*res)->allocated_by_malloc = 1;
+        (*res)->ai = ai;
+        ai_tail = ai;
+      } else {
+        while (ai_tail->ai_next) {
+          ai_tail = ai_tail->ai_next;
+        }
+        ai_tail->ai_next = ai;
+        ai_tail = ai;
+      }
+    }
+  }
+
+  if (res_allocated) { // At least one valid result.
+    return 0;
+  } else {
+    return EAI_NONAME;
+  }
 }
 ```
