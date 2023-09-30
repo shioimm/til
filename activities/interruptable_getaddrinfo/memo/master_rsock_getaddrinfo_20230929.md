@@ -22,7 +22,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 
   // hostpにはIPアドレスとホスト名いずれかが格納されている
   error = numeric_getaddrinfo(hostp, portp, hints, &ai);
-  // うまくいくとerrorは0、aiにはhostp, portpから変換したaddrinfoが格納されている
+  // うまくいくとerrorは0、aiにはhostpとportpから変換したaddrinfoが格納されている
 
   if (error == 0) { // 最良ケース。このままreturnする
     res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
@@ -61,20 +61,31 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 
     // scheduler が設定されていない場合
     if (!resolved) {
-#ifdef GETADDRINFO_EMU
-      // 成功するとerrorに0が格納される
+#ifdef GETADDRINFO_EMU // (ext/socket/extconf.rb) enable_config("wide-getaddrinfo") ならここ
       error = getaddrinfo(hostp, portp, hints, &ai);
-#else
+#else // 通常はこっち
       struct getaddrinfo_arg arg;
-      // WIP
+      // struct getaddrinfo_arg
+      // {
+      //   const char *node;
+      //   const char *service;
+      //   const struct addrinfo *hints;
+      //   struct addrinfo **res;
+      // };
+
       MEMZERO(&arg, struct getaddrinfo_arg, 1);
-      arg.node = hostp;
-      arg.service = portp;
+      // (internal/memory.h)
+      //   #define MEMZERO(p,type,n) memset((p), 0, rbimpl_size_mul_or_raise(sizeof(type), (n)))
+
+      arg.node = hostp;    // ホスト名
+      arg.service = portp; // ポート番号
       arg.hints = hints;
-      arg.res = &ai;
+      arg.res = &ai;       // 解決したaddrinfoを格納するアドレス
+
+      // GVLを解放してgetaddrinfoを実行する
       error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
 #endif
-      if (error == 0) {
+      if (error == 0) { // getaddrinfoが成功した場合
         res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
         res->allocated_by_malloc = 0;
         res->ai = ai;
@@ -82,7 +93,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     }
   }
 
- if (error) {
+ if (error) { // ここまですべての処理に失敗している場合
    if (hostp && hostp[strlen(hostp)-1] == '\n') {
      rb_raise(rb_eSocket, "newline at the end of hostname");
    }
@@ -299,4 +310,223 @@ rb_scheduler_getaddrinfo(
     return EAI_NONAME;
   }
 }
+```
+
+```c
+// thread.c
+// * rb_thread_call_without_gvl - 同時実行/並列実行を許可する関数
+//   (1) 割り込みをチェック
+//   (2) GVLを解放する (他のRubyスレッドが並列に実行される可能性あり)
+//   (3) data1でfunc()を呼び出す
+//   (4) GVLを獲得する (他のRubyスレッドが並列実行できなくなる)
+//   (5) 割り込みをチェック
+//
+//   割り込みチェックでは、非同期割り込みイベントをチェックし、対応する手続きを呼び出す。
+//     (非同期割り込みイベント: Thread#kill、シグナルの送出, VMのシャットダウン要求など)
+//     (対応する手続き: シグナルの場合は `trap'、Thread#raiseの場合は例外を発生させる)
+//
+//   GVLを解放した後、他のスレッドがこのスレッドに割り込んだ場合、ubf()を呼び出す。
+//     ubf() - func()の実行を中断するための関数 (un-blocking function)
+//     キャンセルフラグを切り替えたり、func()内での呼び出しを取り消しするなどの操作を行う
+//     e.g. ブロックしているスレッドにpthread_kill(3)を呼び出す、waitpid(3)しているスレッドをkillする
+//   組み込みのubf()がfunc()を正しく割り込むことは保証されていない。
+//   適切なubf()を指定しないと、プログラムは Control+C その他のシャットダウンイベントで停止しない。
+//
+//   IO処理を行う直前または最中に割り込みが発生した場合、ubf()はその関数呼び出しをキャンセルし、割り込みをチェックする
+//   IO処理後に割り込みが発生した場合、処理が完了した後に割り込みをチェックすると、取得したデータが消えてしまう副作用が発生する場合がある
+
+void *
+rb_thread_call_without_gvl(
+  void *(*func)(void *data),
+  void *data1,
+  rb_unblock_function_t *ubf,
+  void *data2
+) {
+  return rb_nogvl(
+    func,  // -> nogvl_getaddrinfo
+    data1, // -> &arg (struct getaddrinfo_arg)
+    ubf,   // -> RUBY_UBF_IO (IO操作用の組み込みubf)
+    data2, // -> 0
+    0
+  );
+}
+
+void *
+rb_nogvl(
+  void *(*func)(void *),
+  void *data1,
+  rb_unblock_function_t *ubf,
+  void *data2,
+  int flags
+) {
+  void *val = 0;
+
+  rb_execution_context_t *ec = GET_EC();  // 実行環境の取得
+  rb_thread_t *th = rb_ec_thread_ptr(ec); // ec->thread_ptr;
+  rb_vm_t *vm = rb_ec_vm_ptr(ec);
+
+  bool is_main_thread = vm->ractor.main_thread == th;
+  int saved_errno = 0;
+  VALUE ubf_th = Qfalse;
+
+  if ((ubf == RUBY_UBF_IO) || (ubf == RUBY_UBF_PROCESS)) { // 組み込みubf()
+    ubf = ubf_select; // #define ubf_select 0
+    data2 = th; // ec->thread_ptr;
+  } else if (ubf && rb_ractor_living_thread_num(th->ractor) == 1 && is_main_thread) { // 自前ubf()
+    if (flags & RB_NOGVL_UBF_ASYNC_SAFE) {
+      vm->ubf_async_safe = 1;
+    } else {
+      ubf_th = rb_thread_start_unblock_thread();  // <- cancel_getaddrinfo()はここ
+    }
+  }
+
+  BLOCKING_REGION(
+    th,
+    {
+      val = func(data1); // nogvl_getaddrinfo(&arg)
+      saved_errno = errno;
+    },
+    ubf,
+    data2,
+    flags & RB_NOGVL_INTR_FAIL
+  );
+  // #define BLOCKING_REGION(th, exec, ubf, ubfarg, fail_if_interrupted) do { \
+  //   struct rb_blocking_region_buffer __region; \
+  //
+  //   if (blocking_region_begin(th, &__region, (ubf), (ubfarg), fail_if_interrupted) || \
+  //     /* always return true unless fail_if_interrupted */ \
+  //     !only_if_constant(fail_if_interrupted, TRUE)) { \
+  //     exec; \
+  //     blocking_region_end(th, &__region); \
+  //   }; \
+  //
+  // } while(0)
+
+  if (is_main_thread) vm->ubf_async_safe = 0;
+
+  if ((flags & RB_NOGVL_INTR_FAIL) == 0) {
+    RUBY_VM_CHECK_INTS_BLOCKING(ec);
+  }
+
+  if (ubf_th != Qfalse) {
+    thread_value(rb_thread_kill(ubf_th)); //  <- cancel_getaddrinfo()で実行される
+    // スレッドが完了するのを#joinを使って待ち、その値を返すか、スレッドを終了させた例外を発生させる
+    // static VALUE
+    // thread_value(VALUE self)
+    // {
+    //   rb_thread_t *th = rb_thread_ptr(self);
+    //   thread_join(th, Qnil, 0);
+    //
+    //   if (UNDEF_P(th->value)) {
+    //     // If the thread is dead because we forked th->value is still Qundef.
+    //     return Qnil;
+    //   }
+    //
+    //   return th->value;
+    // }
+
+  }
+
+  errno = saved_errno;
+
+  return val;
+}
+```
+
+```c
+// internal/intern/thread.h
+// ブロックしている領域をアンブロックする関数の型
+typedef void rb_unblock_function_t(void *);
+
+// ブロック中のIO操作をアンブロックするためのubf()
+// 拡張ライブラリからは使わないようにする
+#define RUBY_UBF_IO RBIMPL_CAST((rb_unblock_function_t *)-1)
+```
+
+```c
+// 基本的にはgetaddrinfoを、実行するだけ。成功するとarg->resにaddrinfoが格納される
+static void *
+nogvl_getaddrinfo(void *arg)
+{
+  int ret;
+  struct getaddrinfo_arg *ptr = arg;
+  // struct getaddrinfo_arg
+  // {
+  //   const char *node;
+  //   const char *service;
+  //   const struct addrinfo *hints;
+  //   struct addrinfo **res;
+  // };
+
+  // OSごとにgetaddrinfo(3)を上書きした関数が利用される
+  //   if defined(_AIX)      -> ruby_getaddrinfo__aix()
+  //   if defined(__APPLE__) -> ruby_getaddrinfo__darwin()
+  //   それ以外               -> ruby_getaddrinfo
+  ret = getaddrinfo(ptr->node, ptr->service, ptr->hints, ptr->res);
+
+#ifdef __linux__
+  /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
+   * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
+   */
+  if (ret == EAI_SYSTEM && errno == ENOENT) {
+    ret = EAI_NONAME;
+  }
+#endif
+
+  return (void *)(VALUE)ret; // getaddrinfoの返り値
+}
+```
+
+```c
+// M2 Macで使用
+#if defined(__APPLE__)
+static int
+ruby_getaddrinfo__darwin(
+  const char *nodename,
+  const char *servname,
+  const struct addrinfo *hints,
+  struct addrinfo **res
+) {
+  /* fix [ruby-core:29427] */
+  const char *tmp_servname;
+  struct addrinfo tmp_hints;
+  int error;
+
+  tmp_servname = servname;
+  MEMCPY(&tmp_hints, hints, struct addrinfo, 1);
+  if (nodename && servname) {
+    if (str_is_number(tmp_servname) && atoi(servname) == 0) {
+      tmp_servname = NULL;
+#ifdef AI_NUMERICSERV
+      if (tmp_hints.ai_flags) tmp_hints.ai_flags &= ~AI_NUMERICSERV;
+#endif
+    }
+  }
+
+  error = getaddrinfo(nodename, tmp_servname, &tmp_hints, res);
+
+  if (error == 0) {
+    /* [ruby-dev:23164] */
+    struct addrinfo *r;
+    r = *res;
+
+    while (r) {
+      if (! r->ai_socktype) r->ai_socktype = hints->ai_socktype;
+      if (! r->ai_protocol) {
+        if (r->ai_socktype == SOCK_DGRAM) {
+          r->ai_protocol = IPPROTO_UDP;
+        } else if (r->ai_socktype == SOCK_STREAM) {
+          r->ai_protocol = IPPROTO_TCP;
+        }
+      }
+      r = r->ai_next;
+    }
+  }
+
+  return error;
+}
+
+#undef getaddrinfo
+#define getaddrinfo(node,serv,hints,res) ruby_getaddrinfo__darwin((node),(serv),(hints),(res))
+#endif
 ```
