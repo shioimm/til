@@ -325,9 +325,10 @@ rb_scheduler_getaddrinfo(
 //     (非同期割り込みイベント: Thread#kill、シグナルの送出, VMのシャットダウン要求など)
 //     (対応する手続き: シグナルの場合は `trap'、Thread#raiseの場合は例外を発生させる)
 //
-//   GVLを解放した後、他のスレッドがこのスレッドに割り込んだ場合、
-//   キャンセルフラグを切り替えたり、func()内での呼び出しを取り消しするなどして
-//   func()の実行を中断するための関数であるubf() (un-blocking function) を呼び出す。
+//   GVLを解放した後、他のスレッドがこのスレッドに割り込んだ場合、ubf()を呼び出す。
+//     ubf() - func()の実行を中断するための関数 (un-blocking function)
+//     キャンセルフラグを切り替えたり、func()内での呼び出しを取り消しするなどの操作を行う
+//     e.g. ブロックしているスレッドにpthread_kill(3)を呼び出す、waitpid(3)しているスレッドをkillする
 //   組み込みのubf()がfunc()を正しく割り込むことは保証されていない。
 //   適切なubf()を指定しないと、プログラムは Control+C その他のシャットダウンイベントで停止しない。
 //
@@ -359,34 +360,47 @@ rb_nogvl(
   int flags
 ) {
   void *val = 0;
-  rb_execution_context_t *ec = GET_EC();
-  rb_thread_t *th = rb_ec_thread_ptr(ec);
+
+  rb_execution_context_t *ec = GET_EC();  // 実行環境の取得
+  rb_thread_t *th = rb_ec_thread_ptr(ec); // ec->thread_ptr;
   rb_vm_t *vm = rb_ec_vm_ptr(ec);
+
   bool is_main_thread = vm->ractor.main_thread == th;
   int saved_errno = 0;
   VALUE ubf_th = Qfalse;
 
-  if ((ubf == RUBY_UBF_IO) || (ubf == RUBY_UBF_PROCESS)) {
-    ubf = ubf_select;
-    data2 = th;
-  } else if (ubf && rb_ractor_living_thread_num(th->ractor) == 1 && is_main_thread) {
+  if ((ubf == RUBY_UBF_IO) || (ubf == RUBY_UBF_PROCESS)) { // 組み込みubf()
+    ubf = ubf_select; // #define ubf_select 0
+    data2 = th; // ec->thread_ptr;
+  } else if (ubf && rb_ractor_living_thread_num(th->ractor) == 1 && is_main_thread) { // 自前ubf()
     if (flags & RB_NOGVL_UBF_ASYNC_SAFE) {
       vm->ubf_async_safe = 1;
     } else {
-      ubf_th = rb_thread_start_unblock_thread();
+      ubf_th = rb_thread_start_unblock_thread();  // <- cancel_getaddrinfo()はここ
     }
   }
 
   BLOCKING_REGION(
     th,
     {
-      val = func(data1);
+      val = func(data1); // nogvl_getaddrinfo(&arg)
       saved_errno = errno;
     },
     ubf,
     data2,
     flags & RB_NOGVL_INTR_FAIL
   );
+  // #define BLOCKING_REGION(th, exec, ubf, ubfarg, fail_if_interrupted) do { \
+  //   struct rb_blocking_region_buffer __region; \
+  //
+  //   if (blocking_region_begin(th, &__region, (ubf), (ubfarg), fail_if_interrupted) || \
+  //     /* always return true unless fail_if_interrupted */ \
+  //     !only_if_constant(fail_if_interrupted, TRUE)) { \
+  //     exec; \
+  //     blocking_region_end(th, &__region); \
+  //   }; \
+  //
+  // } while(0)
 
   if (is_main_thread) vm->ubf_async_safe = 0;
 
@@ -395,13 +409,38 @@ rb_nogvl(
   }
 
   if (ubf_th != Qfalse) {
-    thread_value(rb_thread_kill(ubf_th));
+    thread_value(rb_thread_kill(ubf_th)); //  <- cancel_getaddrinfo()で実行される
+    // スレッドが完了するのを#joinを使って待ち、その値を返すか、スレッドを終了させた例外を発生させる
+    // static VALUE
+    // thread_value(VALUE self)
+    // {
+    //   rb_thread_t *th = rb_thread_ptr(self);
+    //   thread_join(th, Qnil, 0);
+    //
+    //   if (UNDEF_P(th->value)) {
+    //     // If the thread is dead because we forked th->value is still Qundef.
+    //     return Qnil;
+    //   }
+    //
+    //   return th->value;
+    // }
+
   }
 
   errno = saved_errno;
 
   return val;
 }
+```
+
+```c
+// internal/intern/thread.h
+// ブロックしている領域をアンブロックする関数の型
+typedef void rb_unblock_function_t(void *);
+
+// ブロック中のIO操作をアンブロックするためのubf()
+// 拡張ライブラリからは使わないようにする
+#define RUBY_UBF_IO RBIMPL_CAST((rb_unblock_function_t *)-1)
 ```
 
 ```c

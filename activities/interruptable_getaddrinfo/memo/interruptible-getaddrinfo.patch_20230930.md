@@ -81,7 +81,6 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       pthread_t t;
       // TODO: support win32
       // 生成したスレッドでdo_getaddrinfoを実行
-      // WIP: cancel_getaddrinfo、finish_getaddrinfoを読む
       if (pthread_create(&t, 0, do_getaddrinfo, &arg) != 0) {
         error = EAGAIN;
       } else {
@@ -143,7 +142,7 @@ do_getaddrinfo(void *arg)
     rb_native_mutex_unlock(&ptr->mutex);
     rb_native_cond_destroy(&ptr->cond);   // 条件変数を削除
     rb_native_mutex_destroy(&ptr->mutex); // mutexを削除
-  } else {  // 未解決のアドレスファミリが残っている場合
+  } else { // 未解決のアドレスファミリが残っている場合
     rb_native_mutex_unlock(&ptr->mutex);
   }
   return 0;
@@ -182,14 +181,13 @@ wait_getaddrinfo0(void *arg)
 
 ```c
 // rb_thread_call_without_gvl()が割り込まれた際に呼ばれるubf()
-// WIP
 static void
 cancel_getaddrinfo(void *arg)
 {
   struct getaddrinfo_arg *ptr = arg;
   rb_native_mutex_lock(&ptr->mutex);
   ptr->done = 2;
-  rb_native_cond_signal(&ptr->cond);
+  rb_native_cond_signal(&ptr->cond); // 待機しているcondにcond_signalを送出
   rb_native_mutex_unlock(&ptr->mutex);
 }
 ```
@@ -199,15 +197,17 @@ static VALUE
 finish_getaddrinfo(VALUE arg)
 {
   struct getaddrinfo_arg *ptr = (struct getaddrinfo_arg *)arg;
+
   rb_native_mutex_lock(&ptr->mutex);
-  if (0 == --ptr->refcount) {
+
+  if (0 == --ptr->refcount) { // refcountをデクリメントした値が0: これ以上解決するアドレスファミリがない場合
     rb_native_mutex_unlock(&ptr->mutex);
-    rb_native_cond_destroy(&ptr->cond);
-    rb_native_mutex_destroy(&ptr->mutex);
-  }
-  else {
+    rb_native_cond_destroy(&ptr->cond);   // 条件変数を削除
+    rb_native_mutex_destroy(&ptr->mutex); // mutexを削除
+  } else { // 未解決のアドレスファミリが残っている場合
     rb_native_mutex_unlock(&ptr->mutex);
   }
+
   return Qnil;
 }
 ```
@@ -278,6 +278,9 @@ rb_ensure(
 ```
 
 ```c
+// (builtin.h)
+//   typedef struct rb_execution_context_struct rb_execution_context_t;
+
 // vm_core.h
 struct rb_execution_context_struct {
   /* execution information */
