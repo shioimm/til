@@ -22,7 +22,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 
   // hostpにはIPアドレスとホスト名いずれかが格納されている
   error = numeric_getaddrinfo(hostp, portp, hints, &ai);
-  // うまくいくとerrorは0、aiにはhostp, portpから変換したaddrinfoが格納されている
+  // うまくいくとerrorは0、aiにはhostpとportpから変換したaddrinfoが格納されている
 
   if (error == 0) { // 最良ケース。このままreturnする
     res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
@@ -62,16 +62,28 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     // scheduler が設定されていない場合
     if (!resolved) {
 #ifdef GETADDRINFO_EMU
-      // 成功するとerrorに0が格納される
+      // 実際のgetaddrinfo(3)を実行
+      // 成功するとerrorに0、aiには名前解決したaddrinfoが格納される
       error = getaddrinfo(hostp, portp, hints, &ai);
 #else
       struct getaddrinfo_arg arg;
-      // WIP
+      // struct getaddrinfo_arg
+      // {
+      //   const char *node;
+      //   const char *service;
+      //   const struct addrinfo *hints;
+      //   struct addrinfo **res;
+      // };
+
       MEMZERO(&arg, struct getaddrinfo_arg, 1);
-      arg.node = hostp;
-      arg.service = portp;
+      // (internal/memory.h)
+      //   #define MEMZERO(p,type,n) memset((p), 0, rbimpl_size_mul_or_raise(sizeof(type), (n)))
+
+      arg.node = hostp;    // ホスト名
+      arg.service = portp; // ポート番号
       arg.hints = hints;
-      arg.res = &ai;
+      arg.res = &ai;       // 解決したaddrinfo
+
       error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
 #endif
       if (error == 0) {
@@ -298,5 +310,117 @@ rb_scheduler_getaddrinfo(
   } else {
     return EAI_NONAME;
   }
+}
+```
+
+```c
+// thread.c
+// * rb_thread_call_without_gvl - 同時実行/並列実行を許可する関数
+//   (1) 割り込みをチェック
+//   (2) GVLを解放する (他のRubyスレッドが並列に実行される可能性あり)
+//   (3) data1でfunc()を呼び出す
+//   (4) GVLを獲得する (他のRubyスレッドが並列実行できなくなる)
+//   (5) 割り込みをチェック
+//
+//   割り込みチェックでは、非同期割り込みイベントをチェックし、対応する手続きを呼び出す。
+//     (非同期割り込みイベント: Thread#kill、シグナルの送出, VMのシャットダウン要求など)
+//     (対応する手続き: シグナルの場合は `trap'、Thread#raiseの場合は例外を発生させる)
+//
+//   GVLを解放した後、他のスレッドがこのスレッドに割り込んだ場合、
+//   キャンセルフラグを切り替えたり、func()内での呼び出しを取り消しするなどして
+//   func()の実行を中断するための関数であるubf() (un-blocking function) を呼び出す。
+//   組み込みのubf()がfunc()を正しく割り込むことは保証されていない。
+//   適切なubf()を指定しないと、プログラムは Control+C その他のシャットダウンイベントで停止しない。
+//
+//   IO処理を行う直前または最中に割り込みが発生した場合、ubf()はその関数呼び出しをキャンセルし、割り込みをチェックする
+//   IO処理後に割り込みが発生した場合、処理が完了した後に割り込みをチェックすると、取得したデータが消えてしまう副作用が発生する場合がある
+
+void *
+rb_thread_call_without_gvl(
+  void *(*func)(void *data),
+  void *data1,
+  rb_unblock_function_t *ubf,
+  void *data2
+) {
+  return rb_nogvl(
+    func,  // -> nogvl_getaddrinfo
+    data1, // -> &arg (struct getaddrinfo_arg)
+    ubf,   // -> RUBY_UBF_IO (IO操作用の組み込みubf)
+    data2, // -> 0
+    0
+  );
+}
+
+void *
+rb_nogvl(
+  void *(*func)(void *),
+  void *data1,
+  rb_unblock_function_t *ubf,
+  void *data2,
+  int flags
+) {
+  void *val = 0;
+  rb_execution_context_t *ec = GET_EC();
+  rb_thread_t *th = rb_ec_thread_ptr(ec);
+  rb_vm_t *vm = rb_ec_vm_ptr(ec);
+  bool is_main_thread = vm->ractor.main_thread == th;
+  int saved_errno = 0;
+  VALUE ubf_th = Qfalse;
+
+  if ((ubf == RUBY_UBF_IO) || (ubf == RUBY_UBF_PROCESS)) {
+    ubf = ubf_select;
+    data2 = th;
+  } else if (ubf && rb_ractor_living_thread_num(th->ractor) == 1 && is_main_thread) {
+    if (flags & RB_NOGVL_UBF_ASYNC_SAFE) {
+      vm->ubf_async_safe = 1;
+    } else {
+      ubf_th = rb_thread_start_unblock_thread();
+    }
+  }
+
+  BLOCKING_REGION(
+    th,
+    {
+      val = func(data1);
+      saved_errno = errno;
+    },
+    ubf,
+    data2,
+    flags & RB_NOGVL_INTR_FAIL
+  );
+
+  if (is_main_thread) vm->ubf_async_safe = 0;
+
+  if ((flags & RB_NOGVL_INTR_FAIL) == 0) {
+    RUBY_VM_CHECK_INTS_BLOCKING(ec);
+  }
+
+  if (ubf_th != Qfalse) {
+    thread_value(rb_thread_kill(ubf_th));
+  }
+
+  errno = saved_errno;
+
+  return val;
+}
+```
+
+```c
+static void *
+nogvl_getaddrinfo(void *arg)
+{
+  // WIP
+  int ret;
+  struct getaddrinfo_arg *ptr = arg;
+  ret = getaddrinfo(ptr->node, ptr->service, ptr->hints, ptr->res);
+#ifdef __linux__
+  /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
+   * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
+   */
+  if (ret == EAI_SYSTEM && errno == ENOENT) {
+    ret = EAI_NONAME;
+  }
+#endif
+  return (void *)(VALUE)ret;
 }
 ```
