@@ -424,6 +424,7 @@ nogvl_getaddrinfo(void *arg)
   //   if defined(__APPLE__) -> ruby_getaddrinfo__darwin()
   //   それ以外               -> ruby_getaddrinfo
   ret = getaddrinfo(ptr->node, ptr->service, ptr->hints, ptr->res);
+
 #ifdef __linux__
   /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
    * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
@@ -432,6 +433,7 @@ nogvl_getaddrinfo(void *arg)
     ret = EAI_NONAME;
   }
 #endif
+
   return (void *)(VALUE)ret; // getaddrinfoの返り値
 }
 ```
