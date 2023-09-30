@@ -27,6 +27,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
   char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
   int additional_flags = 0;
 
+  // ホスト名、ポート番号をVALUE -> 文字列へ変換した値をchar*に格納
   hostp = host_str(host, hbuf, sizeof(hbuf), &additional_flags);
   portp = port_str(port, pbuf, sizeof(pbuf), &additional_flags);
 
@@ -35,9 +36,11 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
   }
   hints->ai_flags |= additional_flags;
 
+  // hostpにはIPアドレスとホスト名いずれかが格納されている
   error = numeric_getaddrinfo(hostp, portp, hints, &ai);
+  // うまくいくとerrorは0、aiにはhostpとportpから変換したaddrinfoが格納されている
 
-  if (error == 0) {
+  if (error == 0) { // 最良ケース。このままreturnする
     res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
     res->allocated_by_malloc = 1;
     res->ai = ai;
@@ -54,34 +57,35 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       }
     }
 
+    // scheduler が設定されていない場合
     if (!resolved) {
 #ifdef GETADDRINFO_EMU // (ext/socket/extconf.rb) enable_config("wide-getaddrinfo") ならここ
       error = getaddrinfo(hostp, portp, hints, &ai);
-#else
+#else // 通常はこっち
       struct getaddrinfo_arg arg;
-
       MEMZERO(&arg, struct getaddrinfo_arg, 1);
 
-      arg.node = hostp;
-      arg.service = portp;
+      arg.node = hostp;    // ホスト名
+      arg.service = portp; // ポート番号
       arg.hints = hints;
-      arg.res = &ai;
+      arg.res = &ai;       // 解決したaddrinfoを格納するアドレス
 
       // 以下変更
       //   変更前: error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
       arg.done = 0;
       arg.ret = 0;
       arg.refcount = 2;
-      rb_native_mutex_initialize(&arg.mutex);
-      rb_native_cond_initialize(&arg.cond);
+      rb_native_mutex_initialize(&arg.mutex); // mutexを初期化
+      rb_native_cond_initialize(&arg.cond);   // 条件変数を初期化
 
       pthread_t t;
       // TODO: support win32
+      // 生成したスレッドでdo_getaddrinfoを実行
+      // WIP: do_getaddrinfo、wait_getaddrinfo、finish_getaddrinfoを読む
       if (pthread_create(&t, 0, do_getaddrinfo, &arg) != 0) {
         error = EAGAIN;
-      }
-      else {
-        pthread_detach(t);
+      } else {
+        pthread_detach(t); // 実行中のスレッドをデタッチ状態にする
         error = (int)rb_ensure(wait_getaddrinfo, (VALUE)&arg, finish_getaddrinfo, (VALUE)&arg);
       }
 
@@ -186,4 +190,139 @@ finish_getaddrinfo(VALUE arg)
   }
   return Qnil;
 }
+```
+
+```c
+// eval.c
+VALUE
+rb_ensure(
+  VALUE (*b_proc)(VALUE), // wait_getaddrinfo()
+  VALUE data1,            // (VALUE)&arg
+  VALUE (*e_proc)(VALUE), // finish_getaddrinfo
+  VALUE data2             // (VALUE)&arg
+) {
+  int state;
+  volatile VALUE result = Qnil;
+  VALUE errinfo;
+
+  rb_execution_context_t * volatile ec = GET_EC();
+  // (vm_core.h)
+  //   #define GET_EC()     rb_current_execution_context(true)
+  //
+  //   static inline rb_execution_context_t *
+  //   rb_current_execution_context(bool expect_ec)
+  //   {
+  //   #ifdef RB_THREAD_LOCAL_SPECIFIER
+  //     #ifdef __APPLE__
+  //     rb_execution_context_t *ec = rb_current_ec();
+  //     #else
+  //     rb_execution_context_t *ec = ruby_current_ec;
+  //     #endif
+  //   #else
+  //     rb_execution_context_t *ec = native_tls_get(ruby_current_ec_key);
+  //   #endif
+  //     VM_ASSERT(!expect_ec || ec != NULL);
+  //     return ec;
+  //   }
+
+  rb_ensure_list_t ensure_list;
+  ensure_list.entry.marker = 0;
+  ensure_list.entry.e_proc = e_proc; // finish_getaddrinfo()
+  ensure_list.entry.data2 = data2;   // (VALUE)&arg
+  ensure_list.next = ec->ensure_list;
+
+  ec->ensure_list = &ensure_list;
+  EC_PUSH_TAG(ec);
+
+  if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+    result = (*b_proc) (data1); // wait_getaddrinfo((VALUE)&arg)を実行
+  }
+
+  EC_POP_TAG();
+  errinfo = ec->errinfo;
+
+  if (!NIL_P(errinfo) && !RB_TYPE_P(errinfo, T_OBJECT)) {
+    ec->errinfo = Qnil;
+  }
+
+  ec->ensure_list=ensure_list.next;
+  (*ensure_list.entry.e_proc)(ensure_list.entry.data2);
+  ec->errinfo = errinfo;
+
+  if (state) {
+    EC_JUMP_TAG(ec, state);
+  }
+
+  return result;
+}
+```
+
+```c
+// vm_core.h
+struct rb_execution_context_struct {
+  /* execution information */
+  VALUE *vm_stack;		/* must free, must mark */
+  size_t vm_stack_size;       /* size in word (byte size / sizeof(VALUE)) */
+  rb_control_frame_t *cfp;
+
+  struct rb_vm_tag *tag;
+
+  /* interrupt flags */
+  rb_atomic_t interrupt_flag;
+  rb_atomic_t interrupt_mask; /* size should match flag */
+#if defined(USE_VM_CLOCK) && USE_VM_CLOCK
+  uint32_t checked_clock;
+#endif
+
+  rb_fiber_t *fiber_ptr;
+  struct rb_thread_struct *thread_ptr;
+
+  /* storage (ec (fiber) local) */
+  struct rb_id_table *local_storage;
+  VALUE local_storage_recursive_hash;
+  VALUE local_storage_recursive_hash_for_trace;
+
+  /* Inheritable fiber storage. */
+  VALUE storage;
+
+  /* eval env */
+  const VALUE *root_lep;
+  VALUE root_svar;
+
+  /* ensure & callcc */
+  rb_ensure_list_t *ensure_list;
+
+  /* trace information */
+  struct rb_trace_arg_struct *trace_arg;
+
+  /* temporary places */
+  VALUE errinfo;
+  VALUE passed_block_handler; /* for rb_iterate */
+
+  uint8_t raised_flag; /* only 3 bits needed */
+
+  /* n.b. only 7 bits needed, really: */
+  BITFIELD(enum method_missing_reason, method_missing_reason, 8);
+
+  VALUE private_const_reference;
+
+  /* for GC */
+  struct {
+    VALUE *stack_start;
+    VALUE *stack_end;
+    size_t stack_maxsize;
+    RUBY_ALIGNAS(SIZEOF_VALUE) jmp_buf regs;
+  } machine;
+};
+
+typedef struct rb_ensure_list {
+  struct rb_ensure_list *next;
+  struct rb_ensure_entry entry;
+} rb_ensure_list_t;
+
+typedef struct rb_ensure_entry {
+  VALUE marker;
+  VALUE (*e_proc)(VALUE);
+  VALUE data2;
+} rb_ensure_entry_t;
 ```

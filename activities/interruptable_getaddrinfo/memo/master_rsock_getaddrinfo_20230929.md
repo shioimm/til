@@ -80,7 +80,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       arg.node = hostp;    // ホスト名
       arg.service = portp; // ポート番号
       arg.hints = hints;
-      arg.res = &ai;       // 解決したaddrinfo
+      arg.res = &ai;       // 解決したaddrinfoを格納するアドレス
 
       // GVLを解放してgetaddrinfoを実行する
       error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
