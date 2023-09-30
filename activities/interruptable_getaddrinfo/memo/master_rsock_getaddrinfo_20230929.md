@@ -61,11 +61,9 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 
     // scheduler が設定されていない場合
     if (!resolved) {
-#ifdef GETADDRINFO_EMU
-      // 実際のgetaddrinfo(3)を実行
-      // 成功するとerrorに0、aiには名前解決したaddrinfoが格納される
+#ifdef GETADDRINFO_EMU // (ext/socket/extconf.rb) enable_config("wide-getaddrinfo") ならここ
       error = getaddrinfo(hostp, portp, hints, &ai);
-#else
+#else // 通常はこっち
       struct getaddrinfo_arg arg;
       // struct getaddrinfo_arg
       // {
@@ -84,9 +82,10 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       arg.hints = hints;
       arg.res = &ai;       // 解決したaddrinfo
 
+      // GVLを解放してgetaddrinfoを実行する
       error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
 #endif
-      if (error == 0) {
+      if (error == 0) { // getaddrinfoが成功した場合
         res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
         res->allocated_by_malloc = 0;
         res->ai = ai;
@@ -94,7 +93,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
     }
   }
 
- if (error) {
+ if (error) { // ここまですべての処理に失敗している場合
    if (hostp && hostp[strlen(hostp)-1] == '\n') {
      rb_raise(rb_eSocket, "newline at the end of hostname");
    }
@@ -406,12 +405,24 @@ rb_nogvl(
 ```
 
 ```c
+// 基本的にはgetaddrinfoを、実行するだけ。成功するとarg->resにaddrinfoが格納される
 static void *
 nogvl_getaddrinfo(void *arg)
 {
-  // WIP
   int ret;
   struct getaddrinfo_arg *ptr = arg;
+  // struct getaddrinfo_arg
+  // {
+  //   const char *node;
+  //   const char *service;
+  //   const struct addrinfo *hints;
+  //   struct addrinfo **res;
+  // };
+
+  // OSごとにgetaddrinfo(3)を上書きした関数が利用される
+  //   if defined(_AIX)      -> ruby_getaddrinfo__aix()
+  //   if defined(__APPLE__) -> ruby_getaddrinfo__darwin()
+  //   それ以外               -> ruby_getaddrinfo
   ret = getaddrinfo(ptr->node, ptr->service, ptr->hints, ptr->res);
 #ifdef __linux__
   /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
@@ -421,6 +432,60 @@ nogvl_getaddrinfo(void *arg)
     ret = EAI_NONAME;
   }
 #endif
-  return (void *)(VALUE)ret;
+  return (void *)(VALUE)ret; // getaddrinfoの返り値
 }
+```
+
+```c
+// M2 Macで使用
+#if defined(__APPLE__)
+static int
+ruby_getaddrinfo__darwin(
+  const char *nodename,
+  const char *servname,
+  const struct addrinfo *hints,
+  struct addrinfo **res
+) {
+  /* fix [ruby-core:29427] */
+  const char *tmp_servname;
+  struct addrinfo tmp_hints;
+  int error;
+
+  tmp_servname = servname;
+  MEMCPY(&tmp_hints, hints, struct addrinfo, 1);
+  if (nodename && servname) {
+    if (str_is_number(tmp_servname) && atoi(servname) == 0) {
+      tmp_servname = NULL;
+#ifdef AI_NUMERICSERV
+      if (tmp_hints.ai_flags) tmp_hints.ai_flags &= ~AI_NUMERICSERV;
+#endif
+    }
+  }
+
+  error = getaddrinfo(nodename, tmp_servname, &tmp_hints, res);
+
+  if (error == 0) {
+    /* [ruby-dev:23164] */
+    struct addrinfo *r;
+    r = *res;
+
+    while (r) {
+      if (! r->ai_socktype) r->ai_socktype = hints->ai_socktype;
+      if (! r->ai_protocol) {
+        if (r->ai_socktype == SOCK_DGRAM) {
+          r->ai_protocol = IPPROTO_UDP;
+        } else if (r->ai_socktype == SOCK_STREAM) {
+          r->ai_protocol = IPPROTO_TCP;
+        }
+      }
+      r = r->ai_next;
+    }
+  }
+
+  return error;
+}
+
+#undef getaddrinfo
+#define getaddrinfo(node,serv,hints,res) ruby_getaddrinfo__darwin((node),(serv),(hints),(res))
+#endif
 ```
