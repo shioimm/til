@@ -74,17 +74,18 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
       //   変更前: error = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, &arg, RUBY_UBF_IO, 0);
       arg.done = 0;
       arg.ret = 0;
-      arg.refcount = 2;
+      arg.refcount = 2; // アドレスファミリの数
       rb_native_mutex_initialize(&arg.mutex); // mutexを初期化
       rb_native_cond_initialize(&arg.cond);   // 条件変数を初期化
 
       pthread_t t;
       // TODO: support win32
       // 生成したスレッドでdo_getaddrinfoを実行
-      // WIP: do_getaddrinfo、wait_getaddrinfo、finish_getaddrinfoを読む
+      // WIP: cancel_getaddrinfo、finish_getaddrinfoを読む
       if (pthread_create(&t, 0, do_getaddrinfo, &arg) != 0) {
         error = EAGAIN;
       } else {
+        // pthread_createに成功
         pthread_detach(t); // 実行中のスレッドをデタッチ状態にする
         error = (int)rb_ensure(wait_getaddrinfo, (VALUE)&arg, finish_getaddrinfo, (VALUE)&arg);
       }
@@ -115,8 +116,12 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 static void *
 do_getaddrinfo(void *arg)
 {
+  // ここは生成したスレッドの中
   int ret;
   struct getaddrinfo_arg *ptr = arg;
+
+  // ptr->resにaddrinfoを格納
+  // このret返してない気がする...
   ret = getaddrinfo(ptr->node, ptr->service, ptr->hints, ptr->res);
 
 #ifdef __linux__
@@ -133,31 +138,51 @@ do_getaddrinfo(void *arg)
   rb_native_mutex_lock(&ptr->mutex);
   ptr->done = 1;
   pthread_cond_signal(&ptr->cond);
-  if (0 == --ptr->refcount) {
-      rb_native_mutex_unlock(&ptr->mutex);
-      rb_native_cond_destroy(&ptr->cond);
-      rb_native_mutex_destroy(&ptr->mutex);
-  }
-  else {
-      rb_native_mutex_unlock(&ptr->mutex);
+
+  if (0 == --ptr->refcount) { // refcountをデクリメントした値が0: これ以上解決するアドレスファミリがない場合
+    rb_native_mutex_unlock(&ptr->mutex);
+    rb_native_cond_destroy(&ptr->cond);   // 条件変数を削除
+    rb_native_mutex_destroy(&ptr->mutex); // mutexを削除
+  } else {  // 未解決のアドレスファミリが残っている場合
+    rb_native_mutex_unlock(&ptr->mutex);
   }
   return 0;
 }
 ```
 
 ```c
+static VALUE
+wait_getaddrinfo(VALUE arg)
+{
+  // ここはcond_signal待ちのメインスレッド
+  void *ptr = (void *)arg;
+
+  // GVLを解放してwait_getaddrinfo0()を実行する
+  // wait_getaddrinfo0()の実行結果を返す
+  // 割り込み時はcancel_getaddrinfo()を呼ぶ
+  return (VALUE)rb_thread_call_without_gvl(wait_getaddrinfo0, ptr, cancel_getaddrinfo, ptr);
+}
+
 static void *
 wait_getaddrinfo0(void *arg)
 {
+  // ここはcond_signal待ちのメインスレッド
   struct getaddrinfo_arg *ptr = arg;
   rb_native_mutex_lock(&ptr->mutex);
-  while (!ptr->done) {
-      rb_native_cond_wait(&ptr->cond, &ptr->mutex);
-  }
-  rb_native_mutex_unlock(&ptr->mutex);
-  return (void*)(VALUE)ptr->ret;
-}
 
+  // 名前解決スレッドがptr->doneを更新するまで待機
+  while (!ptr->done) {
+    rb_native_cond_wait(&ptr->cond, &ptr->mutex);
+  }
+
+  rb_native_mutex_unlock(&ptr->mutex);
+  return (void*)(VALUE)ptr->ret; // 解決したaddrinfoを返す
+}
+```
+
+```c
+// rb_thread_call_without_gvl()が割り込まれた際に呼ばれるubf()
+// WIP
 static void
 cancel_getaddrinfo(void *arg)
 {
@@ -167,14 +192,9 @@ cancel_getaddrinfo(void *arg)
   rb_native_cond_signal(&ptr->cond);
   rb_native_mutex_unlock(&ptr->mutex);
 }
+```
 
-static VALUE
-wait_getaddrinfo(VALUE arg)
-{
-  void *ptr = (void *)arg;
-  return (VALUE)rb_thread_call_without_gvl(wait_getaddrinfo0, ptr, cancel_getaddrinfo, ptr);
-}
-
+```c
 static VALUE
 finish_getaddrinfo(VALUE arg)
 {
