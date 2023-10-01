@@ -160,11 +160,14 @@ init_inetsock_internal(VALUE v)
     tv = &tv_storage;
   }
 
+  // -----------------
+  // 接続先のアドレス解決
+  // -----------------
   // rsock_addrinfo() (ext/socket/raddrinfo.c) は
   // struct addrinfoに値をセットして rsock_getaddrinfo() を呼び出す関数
   arg->remote.res = rsock_addrinfo(
-    arg->remote.host, // host
-    arg->remote.serv, // port
+    arg->remote.host, // host (VALUE)
+    arg->remote.serv, // port (VALUE)
     family,           // family
     SOCK_STREAM,      // socktype
     (type == INET_SERVER) ? AI_PASSIVE : 0 // flags
@@ -218,6 +221,9 @@ init_inetsock_internal(VALUE v)
       }
     }
 
+    // -----------------
+    // 接続ソケットの作成
+    // -----------------
     // rsock_socket() (ext/socket/init.c) は socket() を呼び出してそのfdを返す関数
     // 失敗時は結果のステータスを返す
     status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
@@ -234,7 +240,7 @@ init_inetsock_internal(VALUE v)
 
     if (type == INET_SERVER) {
       // ...
-    } else { // TCPServer.new の場合typeは INET_CLIENT なのでここ
+    } else { // TCPSocket.new の場合typeは INET_CLIENT なのでここ
       // local_host の指定がある場合は取得したアドレスのaddrinfoとbind
       if (lres) {
 #if !defined(_WIN32) && !defined(__CYGWIN__)
@@ -246,6 +252,9 @@ init_inetsock_internal(VALUE v)
         syscall = "bind(2)";
       }
 
+      // -----------------
+      // 接続試行
+      // -----------------
       // ソケットの作成に成功している場合は rsock_connect() を呼び出す
       if (status >= 0) {
         status = rsock_connect(fd, res->ai_addr, res->ai_addrlen, (type == INET_SOCKS), tv);
@@ -291,6 +300,23 @@ init_inetsock_internal(VALUE v)
   /* create new instance */
   // 接続済みのソケットを rsock_init_sock() に渡してSocketインスタンスをつくる
   return rsock_init_sock(arg->sock, fd);
+}
+```
+
+```c
+// ext/socket/raddrinfo.c
+
+struct rb_addrinfo*
+rsock_addrinfo(VALUE host, VALUE port, int family, int socktype, int flags)
+{
+  struct addrinfo hints;
+
+  MEMZERO(&hints, struct addrinfo, 1);
+  hints.ai_family = family;
+  hints.ai_socktype = socktype;
+  hints.ai_flags = flags;
+
+  return rsock_getaddrinfo(host, port, &hints, 1);
 }
 ```
 
