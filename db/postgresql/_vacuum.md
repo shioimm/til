@@ -17,32 +17,23 @@
 #### VACUUM ANALYZE
 - VACUUM後にANALYZEを実行する
 
-## バキュームの状況を確認
+## 過去のバキューム状況を確認
 
 ```sql
--- 現在進行系で長時間実行されているクエリが存在していないかを確認
-
-SELECT
-  pid
-  , query
-FROM
-  pg_stat_activity -- 状態や現在の問い合わせ等のプロセスの現在の活動状況に関連した情報
-WHERE
-  state = 'active';
-```
-
-```sql
--- 過去のバキューム状況をテーブル単位で確認
-
-SELECT
-  schemaname
-  , relname
-  , last_vacuum
-  , last_autovacuum
-  , vacuum_count
-  , autovacuum_count
-FROM
+select
+  relname            -- テーブル名
+  n_live_tup         -- 有効な行の推定値
+  , n_dead_tup       -- 削除された行の推定値
+  , last_vacuum      -- 最後にバキュームされた日時
+  , last_autovacuum  -- 最後に自動バキュームされた
+  , vacuum_count     -- 手作業でバキュームされた回数
+  , autovacuum_count -- 自動バキュームされた回数
+  , last_analyze     -- 最後に解析された日時
+  , last_autoanalyze -- 最後に自動解析された日時
+from
   pg_stat_all_tables; -- 特定のテーブルへのアクセスに関する統計情報
+order by
+  relname;
 ```
 
 ## 参照
