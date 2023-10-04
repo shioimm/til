@@ -15,6 +15,9 @@ struct getaddrinfo_arg
 ```
 
 ```c
+// ext/socket/raddrinfo.c
+// 当時の実装。ここはこのPRでは変更なし。
+
 struct rb_addrinfo*
 rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_hack)
 {
@@ -99,7 +102,16 @@ getaddrinfo_arg_memsize(const void *ptr)
 ```c
 // ext/socket/raddrinfo.c
 
-VALUE getaddrinfo_queue;
+VALUE getaddrinfo_queue; // SizedQueueオブジェクト
+
+void
+rsock_init_addrinfo(void)
+{
+  // ...
+  getaddrinfo_queue = rb_szqueue_new(20); // same as maximal number of threads in getaddrinfo_a(3)
+  rb_gc_register_mark_object(getaddrinfo_queue);
+  // ...
+}
 
 int
 rb_getaddrinfo(
@@ -148,21 +160,25 @@ rb_getaddrinfo(
     ptr->service = service; // ポート番号 (char*)
     ptr->hints = hints;
     ptr->res = &ai;
-    ptr->queue = rb_queue_new(); // を作って格納
-    rb_szqueue_push(1, &arg_wrapper, getaddrinfo_queue); // getaddrinfo_queueをarg_wrapperにpush
+    ptr->queue = rb_queue_new(); // Queueオブジェクトを作って格納
 
-    // キューを待っているスレッドの数が0の場合
+    // getaddrinfo_queue (SizedQueue) にarg_wrapperオブジェクトをpush
+    // この時点では VALUE rb_szqueue_push(int argc, VALUE *argv, VALUE self) というインターフェースだった
+    rb_szqueue_push(1, &arg_wrapper, getaddrinfo_queue);
+
+    // getaddrinfo_queue待ちのスレッド数が0の場合
     if (NUM2INT(rb_szqueue_num_waiting(getaddrinfo_queue)) == 0) {
       // 新しいスレッドを生成し、start_getaddrinfo()を実行
       rb_thread_create(start_getaddrinfo, NULL);
     }
 
-    // キューから取り出す
+    // QueueオブジェクトからFixnumとしてretを取り出す (取り出せるようになるまで待機)
+    // この時点では VALUE rb_queue_pop(int argc, VALUE *argv, VALUE self) というインターフェースだった
     ret = FIX2INT(rb_queue_pop(0, NULL, ptr->queue));
 #endif
+  // 以下変更なし
   }
 
-  // WIP
   if (ret == 0) {
     *res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
     (*res)->allocated_by_malloc = allocated_by_malloc;
@@ -174,12 +190,7 @@ rb_getaddrinfo(
 ```
 
 ```c
-static VALUE
-push_getaddrinfo_result(VALUE arg)
-{
-  struct getaddrinfo_arg *ptr = (struct getaddrinfo_arg *)arg;
-  return rb_queue_push(ptr->queue, INT2FIX(ptr->ret));
-}
+// ext/socket/raddrinfo.c
 
 static VALUE
 start_getaddrinfo(void *unused)
@@ -187,11 +198,21 @@ start_getaddrinfo(void *unused)
   struct getaddrinfo_arg *ptr;
   VALUE arg_wrapper;
 
+  // getaddrinfo_queue待ちのスレッド数が0の場合
   while (NUM2INT(rb_szqueue_num_waiting(getaddrinfo_queue)) == 0) {
+    // getaddrinfo_queue から arg_wrapper を取り出す
     arg_wrapper = rb_szqueue_pop(0, NULL, getaddrinfo_queue);
+
     if (NIL_P(arg_wrapper)) { break; }
+
+    // arg_wrapperオブジェクトから構造体へのポインタを復元し、ptrへ格納
     TypedData_Get_Struct(arg_wrapper, struct getaddrinfo_arg, &getaddrinfo_arg_data_type, ptr);
+
+    // ptr->retにnogvl_getaddrinfo()の返り値として実行結果を格納
+    // 成功した時点でptr->res (ai) にaddrinfoを格納している
     ptr->ret = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getaddrinfo, ptr, RUBY_UBF_IO, 0);
+
+    // rb_protect - push_getaddrinfo_result((VALUE)ptr) を実行し、その戻り値を返す
     rb_protect(push_getaddrinfo_result, (VALUE)ptr, NULL);
   }
 
@@ -199,14 +220,16 @@ start_getaddrinfo(void *unused)
 }
 ```
 
+
 ```c
-void
-rsock_init_addrinfo(void)
+// ext/socket/raddrinfo.c
+
+static VALUE
+push_getaddrinfo_result(VALUE arg)
 {
-  // ...
-  getaddrinfo_queue = rb_szqueue_new(20); // same as maximal number of threads in getaddrinfo_a(3)
-  rb_gc_register_mark_object(getaddrinfo_queue);
-  // ...
+  struct getaddrinfo_arg *ptr = (struct getaddrinfo_arg *)arg;
+  // ptr->queue に ptr->ret をpush
+  return rb_queue_push(ptr->queue, INT2FIX(ptr->ret));
 }
 ```
 
@@ -264,3 +287,21 @@ rb_szqueue_new(long max)
 // rb_szqueue_num_waiting
 // からstaticを外している
 ```
+
+## TL;DR
+- `getaddrinfo(3)`の結果のaddrinfoを格納するためのQueueを用意
+- `getaddrinfo(3)`を呼び出す際の引数を格納するためのSizedQueueを用意
+  - SizedQueueにはVALUEしかpushできないので、この引数は`TypedData_Make_Struct`を用いてVALUEにする
+  - そのためにGC系の処理が必要
+- SizedQueue待ちのスレッド数が0の場合は新しいスレッドを生成して`start_getaddrinfo()`を実行
+  - メインスレッドはQueueに値がpushされるまで待機
+  - スレッドの中でSizedQueueから引数オブジェクトを取り出し、`nogvl_getaddrinfo()`を実行して結果をQueueにpush
+
+## 所感
+- getaddrinfo(3)をスレッドに包むだけで中断可能になるのかなあ
+- Queueを使っているので明示的にMutexが不要になるのは良さそう
+- addrinfoを得た後でQueueとSizedQueueを閉じてない気がする
+- 作ったスレッドはjoinしなくていいんだろうか
+- この変更を行った上でHappy Eyeballsの仕様を満たすように`init_inetsock_internal_happy()` (PR4262) に
+  名前解決の処理を入れる必要がある。完成系はどんな感じになる予定だったんだろう。
+  (Queueに値が入ってきた時点で接続試行する?それだとResolution Delayを入れる余地がない…)
