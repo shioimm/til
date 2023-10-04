@@ -64,12 +64,12 @@ init_inetsock_internal_happy(VALUE v)
   //     struct {
   //       VALUE host, serv;
   //       struct rb_addrinfo *res;
+  //       // (ext/socket/rubysocket.h)
+  //       //   struct rb_addrinfo {
+  //       //     struct addrinfo *ai;
+  //       //     int allocated_by_malloc;
+  //       //   };
   //     } remote, local;
-  //     // (ext/socket/rubysocket.h)
-  //     //   struct rb_addrinfo {
-  //     //     struct addrinfo *ai;
-  //     //     int allocated_by_malloc;
-  //     //   };
   //
   //     int type;
   //     int fd;
@@ -87,8 +87,8 @@ init_inetsock_internal_happy(VALUE v)
       family = AF_UNSPEC;
 
   const char *syscall = 0;
-  rb_fdset_t writefds; // 書き込みが可能可動化を監視するFD群
-  VALUE fds_ary = rb_ary_tmp_new(1);
+  rb_fdset_t writefds; // 書き込みが可能かどうかを監視するFD群
+  VALUE fds_ary = rb_ary_tmp_new(1); // VALUE rb_ary_hidden_new(long capa)
   struct timeval connection_attempt_delay;
 
   rb_hrtime_t rel = 0,
@@ -103,6 +103,9 @@ init_inetsock_internal_happy(VALUE v)
     end = rb_hrtime_add(rb_hrtime_now(), rel);
   }
 
+  // ----------
+  // アドレス解決
+  // ----------
   // rsock_addrinfo() (ext/socket/raddrinfo.c) は
   // struct addrinfoに値をセットして rsock_getaddrinfo() を呼び出す関数
   arg->remote.res = rsock_addrinfo(
@@ -129,11 +132,14 @@ init_inetsock_internal_happy(VALUE v)
 
   arg->fd = fd = -1;
 
+  // --------
+  // 接続試行
+  // --------
   // addrinfo を順に試行する
   for (res = arg->remote.res->ai; res; res = res->ai_next) {
 
 #if !defined(INET6) && defined(AF_INET6)
-    // ホストがIPv6に対応していない場合、かつ ai_family がIPv6を指している場合はスキップ
+    // ホストがIPv6に対応していない場合、かつ ai_family がIPv6の場合はスキップ
     if (res->ai_family == AF_INET6) {
       continue;
     }
@@ -143,8 +149,7 @@ init_inetsock_internal_happy(VALUE v)
 
     // TCPServer.new実行時、引数にlocal_hostやlocal_servが指定されている場合
     if (arg->local.res) {
-      // 現在試行しているリモートアドレスaddrinfoの ai_family と
-      // 同じ ai_family を持つローカルアドレスaddrinfoをlresに格納
+      // 現在試行しているリモートアドレスaddrinfoの ai_family と同じ ai_family のローカルアドレスaddrinfoをlresに格納
       for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
         if (lres->ai_family == res->ai_family) {
           break;
@@ -161,8 +166,8 @@ init_inetsock_internal_happy(VALUE v)
       }
     }
 
-    // rsock_socket() (ext/socket/init.c) は socket() を呼び出してそのfdを返す関数
-    // 失敗時は結果のステータスを返す
+    // rsock_socket() (ext/socket/init.c) は socket() を呼び出してそのソケットのfdを返す関数
+    // 失敗時は-1を返し、errnoに値を設定する
     status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     syscall = "socket(2)";
     fd = status;
@@ -173,12 +178,14 @@ init_inetsock_internal_happy(VALUE v)
       continue;
     }
 
+    // 作成したソケットのfd
     arg->fd = fd;
 
     // 作成したソケットをノンブロッキングモードにする
     socket_nonblock_set(fd, true);
 
-    // local_host の指定がある場合は取得したアドレスのaddrinfoとbind
+    // local_hostやlocal_servが指定されており、ローカルアドレスが取得できた場合は
+    // 取得したアドレスのaddrinfoと作成したソケットをbind
     if (lres) {
 #if !defined(_WIN32) && !defined(__CYGWIN__)
       status = 1;
@@ -191,12 +198,15 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     // ソケットの作成に成功している場合 (status = fd) は connect(2) を呼び出す
+    // 注) rsock_connect()じゃない
     if (status >= 0) {
       // fdがノンブロッキングモードなのでブロックしない
       status = connect(fd, res->ai_addr, res->ai_addrlen);
+      // statusは0 (成功) か -1 (失敗)
       syscall = "connect(2)";
     }
 
+    // WIP
     // connect(2) の実行結果が失敗であり、かつ EINPROGRESS (接続試行中) ではない場合
     if (status < 0 && errno != EINPROGRESS) {
       // ソケットを閉じて次のループへスキップ
@@ -313,13 +323,16 @@ socket_nonblock_set(int fd, int nonblock)
   // フラグの読み出しに失敗した場合
   if (flags == -1) { rb_sys_fail(0); }
 
-  if (nonblock) {
+  if (nonblock) { // socket_nonblock_set(<fd>, true); の場合
     // flags に O_NONBLOCK がセットされていることを確認
     //   セットされていればreturn
     //   そうでなければ flags に O_NONBLOCK をセット
     if ((flags & O_NONBLOCK) != 0) { return; }
     flags |= O_NONBLOCK;
-  } else {
+  } else { // socket_nonblock_set(<fd>, false); の場合
+    // flags に O_NONBLOCK がセットされていないことを確認
+    //   セットされていなければreturn
+    //   そうでなければ flags から O_NONBLOCK を削除
     if ((flags & O_NONBLOCK) == 0) { return; }
     flags &= ~O_NONBLOCK;
   }
