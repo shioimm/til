@@ -130,11 +130,11 @@ init_inetsock_internal_happy(VALUE v)
     );
   }
 
-  arg->fd = fd = -1;
+  arg->fd = fd = -1; // ???
 
-  // --------
-  // 接続試行
-  // --------
+  // -------------
+  // 接続試行 (初回)
+  // -------------
   // addrinfo を順に試行する
   for (res = arg->remote.res->ai; res; res = res->ai_next) {
 
@@ -206,26 +206,34 @@ init_inetsock_internal_happy(VALUE v)
       syscall = "connect(2)";
     }
 
-    // WIP
-    // connect(2) の実行結果が失敗であり、かつ EINPROGRESS (接続試行中) ではない場合
+    // connect(2) の実行結果が失敗であり、かつ発生したエラーが EINPROGRESS (接続試行中) 以外の場合
     if (status < 0 && errno != EINPROGRESS) {
       // ソケットを閉じて次のループへスキップ
       error = errno;
       close(fd);
+      // arg->fdも失敗ステータスを格納 (-1)
       arg->fd = fd = -1;
       continue;
     } else { // connect() で接続できた場合もしくは EINPROGRESS の場合
+      // fds_ary = rb_ary_tmp_new(1) ループの中で作成したソケットのfdが格納される
       // fds_ary << 接続済みもしくは接続中のソケットのfd
       rb_ary_push(fds_ary, INT2FIX(fd));
 
       // fds_ary の fd を writefds にセットしている
       nfds = set_fds(fds_ary, &writefds); // nfds は監視対象のfdの最大値
+      // ここまで
+      //   nfds     = select(2)の第一引数になる値
+      //   writefds = 監視対象のfd群
+      //   fd       = 接続済みもしくは接続中のソケットのfd
+      //   arg->fd  = 接続済みもしくは接続中のソケットのfd
 
+      // onnection Attempt Delayタイマー時間をセット
       /* connection_attempt_delay may be modified by select(2) in linux */
       connection_attempt_delay.tv_sec = 0;
       connection_attempt_delay.tv_usec = CONNECTION_ATTEMPT_DELAY_USEC;
 
-      // 監視対象のfd群に対して select(2) を呼び出す、Connection Attempt Delayでタイムアウトを設定
+      // 監視対象のfd群に対して select(2) を呼び出す、Connection Attempt Delayをタイムアウト値として設定
+      // statusはselect(2)の返り値と同じ (更新されたFDの数か、0 (タイムアウト) か、-1 (エラー))
       status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, &connection_attempt_delay);
       syscall = "select(2)";
 
@@ -234,56 +242,64 @@ init_inetsock_internal_happy(VALUE v)
       if (status >= 0) {
         arg->fd = fd = find_connected_socket(fds_ary, &writefds);
         // 接続済みのソケットが見つかればこの時点でループから脱出
-        // arg->fd に対象のソケットの fd が格納されている
-        if (fd >= 0) { break; }
+        // arg->fdとfdに対象のソケットの fd もしくは-1 (エラー) が格納される
+        if (fd >= 0) { break; } // 接続済みのソケットが見つかった場合はbreak
         status = -1; // no connected socket found
       }
 
-      error = errno;
+      error = errno; // ここまでの処理で発生していたエラーを保存
     }
   }
 
-  // addrinfoループが終わるかaddrinfoループの中で接続完了したソケットがない限りここには到達しない
+  // ------------------
+  // 接続試行 (二周目以降)
+  // ------------------
+  // addrinfoが枯渇するかaddrinfoループの中で接続完了したソケットがある場合は以降には到達しない
   // 在庫がある限り接続試行を開始して在庫が枯渇したらあとは接続を待つ方のループに入る、という戦略
-  // (ただし接続試行中に前のループで試行開始したfdが書き込み可能になる可能性はあり)
+  // (ただし初回の接続試行中に前のループで試行開始したfdが書き込み可能になっている可能性はあり)
 
   /* wait connection */
   // addrinfoループの find_connected_socket() が最終的に-1を返している (接続済みのソケットが見つからなかった) 場合
   // 既に接続済みソケットが見つかっている場合はここは飛ばして後処理に入る
-  while (fd < 0 && RARRAY_LEN(fds_ary) > 0) {
+  while (fd < 0 && RARRAY_LEN(fds_ary) > 0) { // fds_ary はfind_connected_socket()内で減る可能性あり
     struct timeval tv_storage, *tv = NULL;
 
     if (limit) { // if timeout is specified
+      // connect_timeoutでタイムアウトした場合
       if (hrtime_update_expire(limit, end)) { // check if timeout has expired and update timeout
-        // connect_timeout した場合
         status = -1;
         error = ETIMEDOUT;
         break;
       }
+      // connect_timeoutのタイムアウト値を設定
       rb_hrtime2timeval(&tv_storage, limit); // set new timeout
       tv = &tv_storage;
     }
 
+    // fds_ary の fd を writefds にセット
     // fds_ary は接続済みもしくは接続中のソケットのfdの配列
     // writefds は書き込み可能か監視対象のfd群
-    // fds_ary の fd を writefds にセットしている
     nfds = set_fds(fds_ary, &writefds);
 
-    // 監視対象のfd群に対して select(2) を呼び出す
+    // 監視対象のfd群に対して select(2) を呼び出す、connect_timeoutがある場合はtvをタイムアウト値として設定
+    // statusはselect(2)の返り値と同じ (更新されたFDの数か、0 (タイムアウト) か、-1 (エラー))
     status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, tv);
     syscall = "select(2)";
 
+    // 書き込み可能になったfdがある場合
     if (status > 0) {
       arg->fd = fd = find_connected_socket(fds_ary, &writefds);
       // 接続済みのソケットが見つかればこの時点でループから脱出
-      // arg->fd に対象のソケットの fd が格納されている
+      // arg->fdとfdに対象のソケットの fd もしくは-1 (エラー) が格納される
       if (fd >= 0) { break; }
       status = -1; // no connected socket found
     }
+    // ここまでで発生したエラーをerrorに保存
     error = errno;
   }
 
   /* close unused fds */
+  // 接続に成功している場合、arg->fd = fd には接続済みのソケットのfdが格納されている
   for (int i = 0; i < RARRAY_LEN(fds_ary); i++) {
     int _fd = FIX2INT(RARRAY_AREF(fds_ary, i));
     if (_fd != fd) { close(_fd); }
@@ -306,7 +322,7 @@ init_inetsock_internal_happy(VALUE v)
   }
 
   // ここまで到達した時点で arg->fd、fd には接続済みのソケットのfdが格納されている
-  arg->fd = -1;
+  arg->fd = -1; // ???
   // 接続済みのソケットのfdをブロッキングモードへ戻す
   socket_nonblock_set(fd, false);
 
@@ -356,33 +372,43 @@ hrtime_update_expire(rb_hrtime_t *timeout, const rb_hrtime_t end)
   return 0;
 }
 
+// fdの保留中のエラーを取得して返す
 static int
 check_socket_error(const int fd) {
-  int value;
+  int value; // 取得したエラーの内容を格納する
   socklen_t len = (socklen_t)sizeof(value);
   getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&value, &len);
   return value;
 }
 
 // 接続ソケットの fd を格納した配列から接続済みのソケットの fd を見つけて返す
+// 初回の接続試行) 書き込み可能になったfdがある場合、もしくはタイムアウトした場合に呼ばれる
+// 二回目以降の接続試行) 書き込み可能になったfdがある場合に呼ばれる
 static int
 find_connected_socket(VALUE fds, rb_fdset_t *writefds) {
   for (int i = 0; i < RARRAY_LEN(fds); i++) {
+    // fds からソケットのfdを取り出している?
     int fd = FIX2INT(RARRAY_AREF(fds, i));
 
+    // writefdsの中にfdが含まれている場合
     if (rb_fd_isset(fd, writefds)) {
+      // 当該fdに保留中のエラーを取得
       int error = check_socket_error(fd);
 
       switch (error) {
         case 0: // success
           return fd;
         case EINPROGRESS:
+          // このソケットはまだ接続中。
+          // ほかに接続済みのソケットがいるかもしれないけど一旦breakしている
+          // あるいはタイムアウトでこの関数が呼ばれた場合もここ
           break;
         default: // fail
-          close(fd);
-          errno = error;
-          rb_ary_delete_at(fds, i);
-          i--;
+          // いろいろクリアする必要あり
+          close(fd); // fdを閉じる
+          errno = error; // エラーを保存する
+          rb_ary_delete_at(fds, i); // fdsから該当のfdを削除
+          i--; // インデックスを巻き戻す
           break;
       }
     }
@@ -390,24 +416,25 @@ find_connected_socket(VALUE fds, rb_fdset_t *writefds) {
   return -1;
 }
 
+// setに監視対象のfdを追加し、select(2)の第一引数になる値を返す
 static int
 set_fds(const VALUE fds, rb_fdset_t *set) {
   // fds は接続済みもしくは接続中のソケットのfdの配列
   // set は書き込み可能か監視対象のfd群
 
-  int nfds = 0;
+  int nfds = 0; // select(2) の第一引数になる値。<監視対象のfdの最大値 + 1>の値
   rb_fd_init(set);
 
   for (int i = 0; i < RARRAY_LEN(fds); i++) {
     // (include/ruby/internal/core/rarray.h)
     //   #define RARRAY_AREF(a, i) RARRAY_CONST_PTR(a)[i]
-    // fds からソケットのfdを取り出す?
+    // fds からソケットのfdを取り出している?
     int fd = FIX2INT(RARRAY_AREF(fds, i));
-    if (fd > nfds) { nfds = fd; } // 監視対象のfdの最大値
-    rb_fd_set(fd, set); // 監視対象のfd群に接続済みもしくは接続中のソケットのfdを追加
+    if (fd > nfds) { nfds = fd; } // 監視対象のfdの最大値をnfdsにセット
+    rb_fd_set(fd, set); // 現在の監視対象のfd群に接続済みもしくは接続中のソケットのfdを追加
   }
 
-  nfds++; // select(2) の第一引数。監視対象のfdの最大値に1を足した数値
+  nfds++; // 監視対象のfdの最大値に1を足してselect(2) の第一引数にできるようにする。
   return nfds;
 }
 
@@ -438,7 +465,7 @@ rb_hrtime_now(void)
 }
 ```
 
-## TL;DR (`init_inetsock_internal()`)
+## TL;DR (`init_inetsock_internal_happy()`)
 1. `AF_UNSPEC`をアドレス解決対象のファミリとしてaddrinfoを取得する
 2. 一連のaddrinfoで順に接続試行を行う 
     - ソケットを作成
@@ -459,9 +486,14 @@ rb_hrtime_now(void)
    接続中のfdの配列の長さ分のループを開始
    - 接続中のfdの配列に対して select(2) を呼び出す
     - 書き込み可能になったfdがある場合:
-      - 接続済みのソケットのfdを取得
+      - 接続試行の対象fd群をループして各ソケットの接続状態を順に確認
         - 接続済みのソケットが見つかった場合:
-          - ループから脱出
-        - 接続済みのソケットが見つからなかった場合:
-          - 次のループへスキップ (接続中のfdの在庫が枯渇するまで)
+          - 接続済みのソケットのfdを取得
+        - 接続進行中のソケットが見つかった場合:
+          - 接続確認ループを脱出 (次の接続試行ループに入る…他に接続済みのソケットがある場合はどうなるんだろう)
+        - 接続失敗したソケットが見つかった場合
+          - 接続試行の対象fd群から対象のソケットのfdを削除
+    - 書き込み可能になったfdがない場合:
+      - `connect_timeout`まで待って接続できなかった場合`error = ETIMEDOUT`でループを抜ける
+      - `connect_timeout`がない場合は接続できるまで待機し続ける
 4. 後処理
