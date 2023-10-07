@@ -11,34 +11,32 @@ class Socket
     # アドレス解決 (Producer)
     controller = Ractor.new do
       pickable_addrinfos = []
-      is_ip6_resolved = false
-      is_ip4_resolved = false
+      self[:is_ip6_resolved] = false
+      self[:is_ip4_resolved] = false
 
       loop do
         client, request, arg = Ractor.receive
 
         response =
           case request
-          when :add_addrinfos # IPアドレス
+          when :add_addrinfos
+            if arg.first.match?(/:/)
+              self[:is_ip6_resolved] = true
+            elsif arg.first.match?(/\./)
+              self[:is_ip4_resolved] = true
+            end
+
             pickable_addrinfos.push *arg
             true
           when :pick_addrinfo
-            if is_ip6_resolved && is_ip4_resolved
+            if self[:is_ip6_resolved] && self[:is_ip4_resolved]
               nil
-            elsif (last_pattern = arg[:last_addrinfo]&.match?(/:/) ? /:/ : /./) &&
+            elsif (last_pattern = arg[:last_addrinfo]&.match?(/:/) ? /:/ : /\./) &&
               (addrinfo = pickable_addrinfos.find { |ai| !ai.match?(last_pattern) })
               pickable_addrinfos.delete addrinfo
             else
               pickable_addrinfos.shift
             end
-          when :ip6_resolved
-            is_ip6_resolved = true
-            true
-          when :ip4_resolved
-            is_ip4_resolved = true
-            true
-          when :is_ip6_resolved
-            is_ip6_resolved
           else
             nil
           end
@@ -73,9 +71,7 @@ class Socket
 
         # Resolution Delay
         if family == :PF_INET
-          controller.send [Ractor.current, :is_ip6_resolved]
-          is_ip6_resolved = Ractor.receive
-          sleep RESOLUTION_DELAY unless is_ip6_resolved
+          sleep RESOLUTION_DELAY unless controller[:is_ip6_resolved]
         end
 
         controller.send [Ractor.current, :add_addrinfos, ip_addresses]
@@ -92,9 +88,6 @@ class Socket
     connected_sockets = []
     connecting_sockets = []
     last_connection_error = nil
-
-    is_ip6_resolved = false
-    is_ip4_resolved = false
 
     ret = loop do
       if connection_established
@@ -140,23 +133,11 @@ class Socket
           error = errors.shift until errors.empty?
           raise error[:klass], error[:message]
         end
-      elsif !ip_address && (!is_ip6_resolved || !is_ip4_resolved)
+      elsif !ip_address && (!controller[:is_ip6_resolved] || !controller[:is_ip4_resolved])
         next
       elsif !ip_address
         # controllerがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
-      end
-
-      if !is_ip6_resolved && ip_address.match?(/:/)
-        controller.send [Ractor.current, :ip6_resolved]
-        is_ip6_resolved = true
-        Ractor.receive # => true
-      end
-
-      if !is_ip4_resolved && ip_address.match?(/\./)
-        controller.send [Ractor.current, :ip4_resolved]
-        is_ip4_resolved = true
-        Ractor.receive # => true
       end
 
       family = ip_address.match?(/:/) ? :PF_INET6 : :PF_INET
