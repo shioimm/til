@@ -13,6 +13,7 @@ class Socket
       pickable_addrinfos = []
       self[:is_ip6_resolved] = false
       self[:is_ip4_resolved] = false
+      self[:error] = nil # TODO エラーハンドリング
 
       loop do
         client, request, arg = Ractor.receive
@@ -47,7 +48,6 @@ class Socket
 
     local_addrinfos = []
     pickable_addrinfos = []
-    resolution_state = { ipv6_done: false, ipv4_done: false, error: [] }
 
     if local_host && local_port
       hostname_resolving_families = []
@@ -126,12 +126,14 @@ class Socket
       elsif !ip_address && last_connection_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise last_connection_error
-      elsif !ip_address && !(errors = resolution_state[:error]).empty?
+      elsif !ip_address && !(errors = controller[:error]).empty?
         # 名前解決中にエラーが発生した場合
         # まだアドレス解決中のファミリがある場合は次のループへスキップ
-        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done]
+        if controller[:is_ip6_resolved] && controller[:is_ip4_resolved]
           error = errors.shift until errors.empty?
           raise error[:klass], error[:message]
+        else
+          next
         end
       elsif !ip_address && (!controller[:is_ip6_resolved] || !controller[:is_ip4_resolved])
         next
