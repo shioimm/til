@@ -6,23 +6,26 @@ hostname = 'localhost'
 port = 9292
 families = [:PF_INET6, :PF_INET]
 
-# TODO RESOLUTION_DELAYを入れたい
-
 controller = Ractor.new do
-  addrinfos = []
+  pickable_addrinfos = []
   is_ip6_resolved = false
 
   loop do
-    request = Ractor.receive
+    client, request, arg = Ractor.receive
 
     response = case request
-               when Array # IPアドレス
-                 addrinfos.push *request
+               when :add_addrinfos # IPアドレス
+                 pickable_addrinfos.push *arg
                  true
-               when :addrinfos
-                 pickable_addrinfos = addrinfos
-                 addrinfos -= pickable_addrinfos
-                 pickable_addrinfos
+               when :pick_addrinfo
+                 last_pattern = arg[:last_addrinfo]&.match?(/:/) ? /:/ : /./
+
+                 if last_pattern &&
+                     (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.match?(last_pattern) })
+                   pickable_addrinfos.delete addrinfo
+                 else
+                   pickable_addrinfos.shift
+                 end
                when :ip6_resolved
                  is_ip6_resolved = true
                  true
@@ -32,32 +35,51 @@ controller = Ractor.new do
                  nil
                end
 
-    # TODO Main Ractorには明示的にsendし、Main Ractorではreceive_ifで受け取るようにする
-    Ractor.yield response
+    client.send response
   end
 end
 
 Ractor.new(controller, hostname, port, :PF_INET6) do |controller, hostname, port, family|
   addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
   ip_addresses = addrinfos.map(&:ip_address)
-  controller.send ip_addresses
-  controller.take
+  controller.send [Ractor.current, :add_addrinfos, ip_addresses]
+  Ractor.receive
 end
 
 Ractor.new(controller, hostname, port, :PF_INET) do |controller, hostname, port, family|
   addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
   ip_addresses = addrinfos.map(&:ip_address)
-  controller.send ip_addresses
-  controller.take
+
+  # Resolution Delay
+  controller.send [Ractor.current, :is_ip6_resolved]
+  is_ip6_resolved = Ractor.receive
+  sleep RESOLUTION_DELAY unless is_ip6_resolved
+
+  controller.send [Ractor.current, :add_addrinfos, ip_addresses]
+  Ractor.receive
 end
 
 addrinfos = []
+is_ip6_resolved = false
+resolv_timeout = 1
+last_addrinfo = nil
 
 loop do
-  controller.send :addrinfos
-  ip_addresses = controller.take
-  addrinfos.push *ip_addresses.map { |ip_address| Addrinfo.ip(ip_address) }
+  controller.send [Ractor.current, :pick_addrinfo, { last_addrinfo: last_addrinfo }]
+  ip_address = Ractor.receive
+
+  next unless ip_address
+
+  if !is_ip6_resolved && ip_address.match?(/:/)
+    controller.send [Ractor.current, :ip6_resolved]
+    is_ip6_resolved = true
+    Ractor.receive # => true
+  end
+
+  addrinfos.push Addrinfo.ip(ip_address)
   break if addrinfos.any?(&:ipv4?) && addrinfos.any?(&:ipv6?)
+
+  last_addrinfo = ip_address
 end
 
 p addrinfos
