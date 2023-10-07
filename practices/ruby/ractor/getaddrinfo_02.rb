@@ -8,6 +8,7 @@ port = 9292
 controller = Ractor.new do
   pickable_addrinfos = []
   is_ip6_resolved = false
+  is_ip4_resolved = false
 
   loop do
     client, request, arg = Ractor.receive
@@ -28,6 +29,9 @@ controller = Ractor.new do
                when :ip6_resolved
                  is_ip6_resolved = true
                  true
+               when :ip4_resolved
+                 is_ip4_resolved = true
+                 true
                when :is_ip6_resolved # RESOLUTION_DELAY用
                  is_ip6_resolved
                else
@@ -35,6 +39,11 @@ controller = Ractor.new do
                end
 
     client.send response
+
+    if is_ip6_resolved && is_ip4_resolved
+      close_incoming
+      close_outgoing
+    end
   end
 end
 
@@ -57,6 +66,7 @@ end
 
 addrinfos = []
 is_ip6_resolved = false
+is_ip4_resolved = false
 resolv_timeout = 1
 last_addrinfo = nil
 
@@ -69,6 +79,12 @@ loop do
   if !is_ip6_resolved && ip_address.match?(/:/)
     controller.send [Ractor.current, :ip6_resolved]
     is_ip6_resolved = true
+    Ractor.receive # => true
+  end
+
+  if !is_ip4_resolved && ip_address.match?(/\./)
+    controller.send [Ractor.current, :ip4_resolved]
+    is_ip4_resolved = true
     Ractor.receive # => true
   end
 
