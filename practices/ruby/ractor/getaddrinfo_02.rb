@@ -4,7 +4,6 @@ RESOLUTION_DELAY = 0.05
 
 hostname = 'localhost'
 port = 9292
-families = [:PF_INET6, :PF_INET]
 
 controller = Ractor.new do
   pickable_addrinfos = []
@@ -39,24 +38,21 @@ controller = Ractor.new do
   end
 end
 
-Ractor.new(controller, hostname, port, :PF_INET6) do |controller, hostname, port, family|
-  addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
-  ip_addresses = addrinfos.map(&:ip_address)
-  controller.send [Ractor.current, :add_addrinfos, ip_addresses]
-  Ractor.receive
-end
+[:PF_INET6, :PF_INET].each do |family|
+  Ractor.new(controller, hostname, port, family) do |controller, hostname, port, family|
+    addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
+    ip_addresses = addrinfos.map(&:ip_address)
 
-Ractor.new(controller, hostname, port, :PF_INET) do |controller, hostname, port, family|
-  addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
-  ip_addresses = addrinfos.map(&:ip_address)
+    # Resolution Delay
+    if family == :PF_INET
+      controller.send [Ractor.current, :is_ip6_resolved]
+      is_ip6_resolved = Ractor.receive
+      sleep RESOLUTION_DELAY unless is_ip6_resolved
+    end
 
-  # Resolution Delay
-  controller.send [Ractor.current, :is_ip6_resolved]
-  is_ip6_resolved = Ractor.receive
-  sleep RESOLUTION_DELAY unless is_ip6_resolved
-
-  controller.send [Ractor.current, :add_addrinfos, ip_addresses]
-  Ractor.receive
+    controller.send [Ractor.current, :add_addrinfos, ip_addresses]
+    Ractor.receive
+  end
 end
 
 addrinfos = []
