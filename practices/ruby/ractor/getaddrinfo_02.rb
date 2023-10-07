@@ -8,32 +8,56 @@ families = [:PF_INET6, :PF_INET]
 
 # TODO RESOLUTION_DELAYを入れたい
 
-pipe = Ractor.new do
+controller = Ractor.new do
+  addrinfos = []
+  is_ip6_resolved = false
+
   loop do
-    addrinfos = Ractor.receive
-    Ractor.yield addrinfos
+    request = Ractor.receive
+
+    response = case request
+               when Array # IPアドレス
+                 addrinfos.push *request
+                 true
+               when :addrinfos
+                 pickable_addrinfos = addrinfos
+                 addrinfos -= pickable_addrinfos
+                 pickable_addrinfos
+               when :ip6_resolved
+                 is_ip6_resolved = true
+                 true
+               when :is_ip6_resolved # RESOLUTION_DELAY用
+                 is_ip6_resolved
+               else
+                 nil
+               end
+
+    # TODO Main Ractorには明示的にsendし、Main Ractorではreceive_ifで受け取るようにする
+    Ractor.yield response
   end
 end
 
-ipv6_ractor = Ractor.new(pipe, hostname, port, :PF_INET6) do |pipe, hostname, port, family|
+Ractor.new(controller, hostname, port, :PF_INET6) do |controller, hostname, port, family|
   addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
   ip_addresses = addrinfos.map(&:ip_address)
-  pipe.send ip_addresses
+  controller.send ip_addresses
+  controller.take
 end
 
-ipv4_ractor = Ractor.new(pipe, hostname, port, :PF_INET) do |pipe, hostname, port, family|
+Ractor.new(controller, hostname, port, :PF_INET) do |controller, hostname, port, family|
   addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
   ip_addresses = addrinfos.map(&:ip_address)
-  pipe.send ip_addresses
+  controller.send ip_addresses
+  controller.take
 end
 
-pickable_addrinfos = []
+addrinfos = []
 
 loop do
-  ip_addresses = pipe.take
-  addrinfos = ip_addresses.map { |ip_address| Addrinfo.ip(ip_address) }
-  pickable_addrinfos.push *addrinfos
-  break if pickable_addrinfos.any?(&:ipv4?) && pickable_addrinfos.any?(&:ipv6?)
+  controller.send :addrinfos
+  ip_addresses = controller.take
+  addrinfos.push *ip_addresses.map { |ip_address| Addrinfo.ip(ip_address) }
+  break if addrinfos.any?(&:ipv4?) && addrinfos.any?(&:ipv6?)
 end
 
-p pickable_addrinfos
+p addrinfos
