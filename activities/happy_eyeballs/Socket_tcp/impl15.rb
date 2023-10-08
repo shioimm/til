@@ -1,9 +1,5 @@
 require 'socket'
 
-# TODO
-#   SocketErrorのうち、該当のアドレスファミリ非対応 / 一時的なエラーは無視する必要あり
-#   エラーメッセージ以外の方法でエラーを確認するように修正するべき
-
 class Socket
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
@@ -11,86 +7,47 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
-  class ConnectionAttempt
-    attr_reader :connected_sockets, :connecting_sockets, :last_error
-
-    def initialize(local_addrinfos = [])
-      @local_addrinfos = local_addrinfos
-      @connected_sockets = []
-      @connecting_sockets = []
-      @completed = false
-    end
-
-    def attempt(addrinfo, delay_timers)
-      return if !@connected_sockets.empty?
-
-      socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-      if !@local_addrinfos.empty?
-        local_addrinfo = @local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
-        socket.bind(local_addrinfo) if local_addrinfo
-      end
-
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      delay_timers.push now + CONNECTION_ATTEMPT_DELAY
-
-      begin
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0              then @connected_sockets.push socket
-        when :wait_writable then @connecting_sockets.push socket
-        end
-      rescue SystemCallError => e
-        @last_error = e
-        socket.close unless socket.closed?
-      end
-    end
-
-    def take_connected_socket(addrinfo)
-      @connected_sockets.find do |socket|
-        begin
-          socket.connect_nonblock(addrinfo)
-          true
-        rescue Errno::EISCONN # already connected
-          true
-        rescue => e
-          @last_error = e
-          socket.close unless socket.closed?
-          false
-        ensure
-          @connected_sockets.delete socket
-          @connecting_sockets.delete socket
-        end
-      end
-    end
-
-    def close_all_sockets!
-      @connecting_sockets.each(&:close)
-      @connected_sockets.each(&:close)
-    end
-
-    def complete!
-      @completed = true
-    end
-
-    def incomplete!
-      @completed = false
-    end
-
-    def completed?
-      @completed
-    end
-  end
-
-  private_constant :ConnectionAttempt
-
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
-    mutex = Mutex.new
-    cond = ConditionVariable.new
-
     # アドレス解決 (Producer)
+    controller = Ractor.new do
+      pickable_addrinfos = []
+      self[:is_ip6_resolved] = false
+      self[:is_ip4_resolved] = false
+      self[:error] = nil # TODO エラーハンドリング
+
+      loop do
+        client, request, arg = Ractor.receive
+
+        response =
+          case request
+          when :add_addrinfos
+            if arg.first.match?(/:/)
+              self[:is_ip6_resolved] = true
+            elsif arg.first.match?(/\./)
+              self[:is_ip4_resolved] = true
+            end
+
+            pickable_addrinfos.push *arg
+            true
+          when :pick_addrinfo
+            if self[:is_ip6_resolved] && self[:is_ip4_resolved]
+              nil
+            elsif (last_pattern = arg[:last_addrinfo]&.match?(/:/) ? /:/ : /\./) &&
+              (addrinfo = pickable_addrinfos.find { |ai| !ai.match?(last_pattern) })
+              pickable_addrinfos.delete addrinfo
+            else
+              pickable_addrinfos.shift
+            end
+          else
+            nil
+          end
+
+        client.send response
+      end
+    end
+
     local_addrinfos = []
     pickable_addrinfos = []
-    resolution_state = { ipv6_done: false, ipv4_done: false, error: [] }
 
     if local_host && local_port
       hostname_resolving_families = []
@@ -105,89 +62,111 @@ class Socket
       hostname_resolving_families = [:PF_INET6, :PF_INET]
     end
 
-    hostname_resolution_threads = hostname_resolving_families.map do |family|
-      Thread.new { hostname_resolution(host, port, family, pickable_addrinfos, mutex, cond, resolution_state) }
+    hostname_resolving_families.each do |family|
+      # TODO resolv_timeout
+      # TODO エラーハンドリング
+      Ractor.new(controller, host, port, family) do |controller, host, port, family|
+        addrinfos = Addrinfo.getaddrinfo(host, port, family, :STREAM)
+        ip_addresses = addrinfos.map(&:ip_address)
+
+        # Resolution Delay
+        if family == :PF_INET
+          sleep RESOLUTION_DELAY unless controller[:is_ip6_resolved]
+        end
+
+        controller.send [Ractor.current, :add_addrinfos, ip_addresses]
+        Ractor.receive
+      end
     end
 
     # 接続試行 (Consumer)
     started_at = current_clocktime
-    connection_attempt = ConnectionAttempt.new(local_addrinfos)
-    last_attemped_addrinfo = nil
+    last_attempted_addrinfo = nil
     connection_attempt_delay_timers = []
+    connection_established = false
+
+    connected_sockets = []
+    connecting_sockets = []
+    last_connection_error = nil
 
     ret = loop do
-      if connection_attempt.completed?
-        connected_socket = connection_attempt.take_connected_socket(last_attemped_addrinfo)
+      if connection_established
+        connected_socket, last_connection_error =
+          take_connected_socket(last_attempted_addrinfo, connected_sockets, connecting_sockets)
 
-        if connected_socket.nil? && connection_attempt.last_error
-          raise connection_attempt.last_error if pickable_addrinfos.empty?
+        if connected_socket.nil? && last_connection_error
+          raise last_connection_error if pickable_addrinfos.empty?
 
-          connection_attempt.incomplete!
+          connection_established = false
           next
         end
 
-        connection_attempt.close_all_sockets!
+        connecting_sockets.each(&:close)
+        connected_sockets.each(&:close)
         break connected_socket
       end
 
-      addrinfo =
-        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?
-          nil
-        else
-          pick_addrinfo(pickable_addrinfos, last_attemped_addrinfo&.afamily, resolv_timeout, mutex, cond)
-        end
+      controller.send [Ractor.current, :pick_addrinfo, { last_addrinfo: last_attempted_addrinfo&.ip_address }]
+      ip_address = Ractor.receive
 
-      if !addrinfo && !connection_attempt.connecting_sockets.empty?
+      if !ip_address && !connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
         connection_timeout = second_to_connection_timeout(started_at, connect_timeout)
-        _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_timeout)
+        _, selected_sockets, = IO.select(nil, connecting_sockets, nil, connection_timeout)
 
-        if connected_sockets && !connected_sockets.empty?
+        if selected_sockets && !selected_sockets.empty?
           # connect_timeout終了前に接続できたソケットがある場合
-          connection_attempt.connected_sockets.push *connected_sockets
-          connection_attempt.complete!
+          connected_sockets.push *selected_sockets
+          connection_established = true
           next
-        elsif connected_sockets.nil?
+        elsif selected_sockets.nil?
           # connect_timeoutまでに名前解決できなかった場合
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
-      elsif !addrinfo && connection_attempt.last_error
+      elsif !ip_address && last_connection_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
-        raise connection_attempt.last_error
-      elsif !addrinfo && !(errors = resolution_state[:error]).empty?
+        raise last_connection_error
+      elsif !ip_address && !(errors = controller[:error]).empty?
         # 名前解決中にエラーが発生した場合
         # まだアドレス解決中のファミリがある場合は次のループへスキップ
-        if resolution_state[:ipv6_done] && resolution_state[:ipv4_done]
+        if controller[:is_ip6_resolved] && controller[:is_ip4_resolved]
           error = errors.shift until errors.empty?
           raise error[:klass], error[:message]
+        else
+          next
         end
-      elsif !addrinfo
-        # pick_addrinfoがnilを返した場合 (Resolve Timeout)
-        # もしくはresolv_timeoutがなく、アドレス解決が完了している場合 (アドレス在庫が増える可能性がない)
-        # 前者と後者でメッセージを分けたほうがいいかも
+      elsif !ip_address && (!controller[:is_ip6_resolved] || !controller[:is_ip4_resolved])
+        next
+      elsif !ip_address
+        # controllerがnilを返した場合 (Resolve Timeout)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
-      last_attemped_addrinfo = addrinfo
-      connection_attempt.attempt(addrinfo, connection_attempt_delay_timers)
+      family = ip_address.match?(/:/) ? :PF_INET6 : :PF_INET
+      sockaddr_in = Socket.sockaddr_in(port, ip_address)
+      addrinfo = Addrinfo.new(sockaddr_in, family, :STREAM, 0)
+      last_attempted_addrinfo = addrinfo
 
-      if !connection_attempt.connected_sockets.empty?
-        connection_attempt.complete!
+      connected_sockets, connecting_sockets, last_connection_error =
+        connection_attempt!(addrinfo, connection_attempt_delay_timers, local_addrinfos)
+
+      if !connected_sockets.empty?
+        connection_established = true
         next
       end
 
-      if (connection_attempt.last_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
-         (pickable_addrinfos.empty? && connection_attempt.connecting_sockets.empty?) # 別アドレスの取得を待機
+      if (last_connection_error && !pickable_addrinfos.empty?) || # 別アドレスで再試行
+         (pickable_addrinfos.empty? && connecting_sockets.empty?) # 別アドレスの取得を待機
         next
       end
 
       timer = connection_attempt_delay_timers.shift
       connection_attempt_delay = (delay_time = timer - current_clocktime).negative? ? 0 : delay_time
-      _, connected_sockets, = IO.select(nil, connection_attempt.connecting_sockets, nil, connection_attempt_delay)
+      _, selected_sockets, = IO.select(nil, connecting_sockets, nil, connection_attempt_delay)
 
-      if connected_sockets && !connected_sockets.empty?
-        connection_attempt.connected_sockets.push *connected_sockets
-        connection_attempt.complete!
+      if selected_sockets && !selected_sockets.empty?
+        connected_sockets.push *selected_sockets
+        connection_established = true
         next
       end
     end
@@ -196,61 +175,91 @@ class Socket
       begin
         yield ret
       ensure
-        hostname_resolution_threads.each {|th| th&.exit }
         ret.close
       end
     else
       ret
     end
-  ensure
-    hostname_resolution_threads.each {|th| th&.exit }
   end
 
-  def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond, resolution_state)
-    resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
+  # def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond, resolution_state)
+  #   resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
 
-    if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
-      sleep RESOLUTION_DELAY
+  #   if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
+  #     sleep RESOLUTION_DELAY
+  #   end
+
+  #   mutex.synchronize do
+  #     pickable_addrinfos.push *resolved_addrinfos
+  #     cond.signal
+  #   end
+  # rescue => e
+  #   ignoring_error_messages = [
+  #     "getaddrinfo: Address family for hostname not supported",
+  #     "getaddrinfo: Temporary failure in name resolution",
+  #   ]
+  #   if e.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
+  #     # ignore
+  #   else
+  #     mutex.synchronize do
+  #       resolution_state[:error].push({ klass: e.class, message: e.message })
+  #     end
+  #   end
+  # ensure
+  #   family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
+  #   mutex.synchronize do
+  #     resolution_state[family_name] = true
+  #   end
+  # end
+
+  # private_class_method :hostname_resolution
+
+  # def self.pick_addrinfo(pickable_addrinfos, last_family, resolv_timeout, mutex, cond)
+  #   mutex.synchronize do
+  #     cond.wait(mutex, resolv_timeout) if pickable_addrinfos.empty?
+
+  #     if last_family && (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.afamily == last_family })
+  #       pickable_addrinfos.delete addrinfo
+  #     else
+  #       pickable_addrinfos.shift
+  #     end
+  #   end
+  # end
+
+  # private_class_method :pick_addrinfo
+
+  def self.connection_attempt!(addrinfo, delay_timers, local_addrinfos = [])
+    # どういう状況でconnected_sockets.empty?が偽になりうるのかがわからない
+    # return if !connected_sockets.empty?
+
+    connected_sockets = []
+    connecting_sockets = []
+    last_error = nil
+
+    socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+    if !local_addrinfos.empty?
+      local_addrinfo = local_addrinfos.find { |local_ai| local_ai.afamily == addrinfo.afamily }
+      socket.bind(local_addrinfo) if local_addrinfo
     end
 
-    mutex.synchronize do
-      pickable_addrinfos.push *resolved_addrinfos
-      cond.signal
-    end
-  rescue => e
-    ignoring_error_messages = [
-      "getaddrinfo: Address family for hostname not supported",
-      "getaddrinfo: Temporary failure in name resolution",
-    ]
-    if e.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
-      # ignore
-    else
-      mutex.synchronize do
-        resolution_state[:error].push({ klass: e.class, message: e.message })
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    delay_timers.push now + CONNECTION_ATTEMPT_DELAY
+
+    begin
+      case socket.connect_nonblock(addrinfo, exception: false)
+      when 0              then connected_sockets.push socket
+      when :wait_writable then connecting_sockets.push socket
       end
+    rescue SystemCallError => e
+      last_error = e
+      socket.close unless socket.closed?
     end
-  ensure
-    family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
-    mutex.synchronize do
-      resolution_state[family_name] = true
-    end
+
+    [connected_sockets, connecting_sockets, last_error]
   end
 
-  private_class_method :hostname_resolution
-
-  def self.pick_addrinfo(pickable_addrinfos, last_family, resolv_timeout, mutex, cond)
-    mutex.synchronize do
-      cond.wait(mutex, resolv_timeout) if pickable_addrinfos.empty?
-
-      if last_family && (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.afamily == last_family })
-        pickable_addrinfos.delete addrinfo
-      else
-        pickable_addrinfos.shift
-      end
-    end
-  end
-
-  private_class_method :pick_addrinfo
+  private_class_method :connection_attempt!
 
   def self.current_clocktime
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -267,6 +276,30 @@ class Socket
   end
 
   private_class_method :second_to_connection_timeout
+
+  def self.take_connected_socket(addrinfo, connected_sockets, connecting_sockets)
+    last_error = nil
+
+    connected_socket = connected_sockets.find do |socket|
+      begin
+        socket.connect_nonblock(addrinfo)
+        true
+      rescue Errno::EISCONN # already connected
+        true
+      rescue => e
+        last_error = e
+        socket.close unless socket.closed?
+        false
+      ensure
+        connected_sockets.delete socket
+        connecting_sockets.delete socket
+      end
+    end
+
+    [connected_socket, last_error]
+  end
+
+  private_class_method :take_connected_socket
 end
 
 # HOSTNAME = "www.google.com"
@@ -287,15 +320,15 @@ PORT = 9292
 # # # 名前解決動作確認用 (タイムアウト)
 # # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 #
-# 名前解決動作確認用 (例外)
-Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  if family == :PF_INET6
-    [Addrinfo.tcp("::1", PORT)]
-  else
-    # NOTE ignoreされる
-    raise SocketError, 'getaddrinfo: Address family for hostname not supported'
-  end
-end
+# # # 名前解決動作確認用 (例外)
+# # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+# #   if family == :PF_INET6
+# #     [Addrinfo.tcp("::1", PORT)]
+# #   else
+# #     # NOTE ignoreされる
+# #     raise SocketError, 'getaddrinfo: Address family for hostname not supported'
+# #   end
+# # end
 #
 # # # local_host / local_port を指定する場合
 # # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
