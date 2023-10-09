@@ -10,37 +10,44 @@ class Socket
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     # アドレス解決 (Producer)
     controller = Ractor.new do
-      pickable_addrinfos = []
-      self[:is_ip6_resolved] = false
-      self[:is_ip4_resolved] = false
-      self[:error] = nil # TODO エラーハンドリング
+      pickable_ip_addresses = []
+      self[:error] = nil
+      response = {
+        ip_address: nil,
+        is_ip6_resolved: false,
+        is_ip4_resolved: false,
+        error: nil,
+      }
 
       loop do
         client, request, arg = Ractor.receive
 
-        response =
-          case request
-          when :add_addrinfos
-            if arg.first.match?(/:/)
-              self[:is_ip6_resolved] = true
-            elsif arg.first.match?(/\./)
-              self[:is_ip4_resolved] = true
-            end
-
-            pickable_addrinfos.push *arg
-            true
-          when :pick_addrinfo
-            if self[:is_ip6_resolved] && self[:is_ip4_resolved]
-              nil
-            elsif (last_pattern = arg[:last_addrinfo]&.match?(/:/) ? /:/ : /\./) &&
-              (addrinfo = pickable_addrinfos.find { |ai| !ai.match?(last_pattern) })
-              pickable_addrinfos.delete addrinfo
-            else
-              pickable_addrinfos.shift
-            end
+        case request
+        when :add_addrinfos
+          storage_name = arg.first.match?(/:/) ? :is_ip6_resolved : :is_ip4_resolved
+          response[storage_name] = true
+          pickable_ip_addresses.push *arg
+          true
+        when :pick_addrinfo
+          if response[:is_ip6_resolved] && response[:is_ip4_resolved]
+            response[:ip_address] = nil
+          elsif (last_pattern = arg[:last_addrinfo]&.match?(/:/) ? /:/ : /\./) &&
+            (ip_address = pickable_ip_addresses.find { |address| !address.match?(last_pattern) })
+            pickable_ip_addresses.delete ip_address
+            response[:ip_address] = ip_address
           else
-            nil
+            ip_address = pickable_ip_addresses.shift
+            response[:ip_address] = ip_address
           end
+        when :current_status
+          # Return current status
+        when :save_error
+          storage_name = arg[:family] == :PF_INET6 ? :is_ip6_resolved : :is_ip4_resolved
+          response[storage_name] = true
+          response[:error] = arg.slice(:klass, :message)
+        else
+          nil
+        end
 
         client.send response
       end
@@ -63,19 +70,31 @@ class Socket
     end
 
     hostname_resolving_families.each do |family|
-      # TODO resolv_timeout
-      # TODO エラーハンドリング
-      Ractor.new(controller, host, port, family) do |controller, host, port, family|
-        addrinfos = Addrinfo.getaddrinfo(host, port, family, :STREAM)
+      getaddrinfo_args = [controller, host, port, family, resolv_timeout]
+
+      Ractor.new(*getaddrinfo_args) do |controller, host, port, family, resolv_timeout|
+        addrinfos = Addrinfo.getaddrinfo(host, port, family, :STREAM, timeout: resolv_timeout)
         ip_addresses = addrinfos.map(&:ip_address)
 
         # Resolution Delay
         if family == :PF_INET
-          sleep RESOLUTION_DELAY unless controller[:is_ip6_resolved]
+          controller.send [Ractor.current, :current_status]
+          response = Ractor.receive
+          sleep RESOLUTION_DELAY unless response[:is_ip6_resolved]
         end
 
         controller.send [Ractor.current, :add_addrinfos, ip_addresses]
-        Ractor.receive
+        Ractor.receive # キューのフラッシュ
+      rescue => e
+        ignoring_error_messages = [
+          "getaddrinfo: Address family for hostname not supported",
+          "getaddrinfo: Temporary failure in name resolution",
+        ]
+        if e.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
+          # ignore
+        else
+          controller.send [Ractor.main, :save_error, { family: family, klass: e.class, message: e.message }]
+        end
       end
     end
 
@@ -107,7 +126,8 @@ class Socket
       end
 
       controller.send [Ractor.current, :pick_addrinfo, { last_addrinfo: last_attempted_addrinfo&.ip_address }]
-      ip_address = Ractor.receive
+      response = Ractor.receive
+      ip_address = response[:ip_address]
 
       if !ip_address && !connecting_sockets.empty?
         # アドレス在庫が枯渇しており、接続中のソケットがある場合
@@ -126,16 +146,15 @@ class Socket
       elsif !ip_address && last_connection_error
         # アドレス在庫が枯渇しており、全てのソケットの接続に失敗している場合
         raise last_connection_error
-      elsif !ip_address && !(errors = controller[:error]).empty?
+      elsif !ip_address && (error = response[:error])
         # 名前解決中にエラーが発生した場合
         # まだアドレス解決中のファミリがある場合は次のループへスキップ
-        if controller[:is_ip6_resolved] && controller[:is_ip4_resolved]
-          error = errors.shift until errors.empty?
+        if response[:is_ip6_resolved] && response[:is_ip4_resolved]
           raise error[:klass], error[:message]
         else
           next
         end
-      elsif !ip_address && (!controller[:is_ip6_resolved] || !controller[:is_ip4_resolved])
+      elsif !ip_address && (!response[:is_ip6_resolved] || !response[:is_ip4_resolved])
         next
       elsif !ip_address
         # controllerがnilを返した場合 (Resolve Timeout)
