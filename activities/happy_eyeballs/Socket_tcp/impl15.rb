@@ -11,7 +11,6 @@ class Socket
     # アドレス解決 (Producer)
     controller = Ractor.new do
       pickable_ip_addresses = []
-      self[:error] = nil
       response = {
         ip_address: nil,
         is_ip6_resolved: false,
