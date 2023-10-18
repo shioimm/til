@@ -83,6 +83,20 @@ postgres:/<DomainName>:<Password>@<URL>:<PortNumber>/<Path>
 - テーブルはスキーマ内に作成される
 - 別のスキーマ内に同名のテーブルを作成可能
 
+## select文の解釈順序
+1. with
+2. from
+3. join
+4. where
+5. group by
+6. having
+7. select
+8. select distinct
+9. union、intersect、except
+10. order by
+11. limit
+
 ## 参照
 - [5.9. スキーマ](https://www.postgresql.jp/document/13/html/ddl-schemas.html)
+- [SELECT](https://www.postgresql.jp/document/14/html/sql-select.html)
 - 内部構造から学ぶpostgresql 設計 運用計画の鉄則 2.1~2.2, 4.3
