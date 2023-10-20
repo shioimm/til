@@ -16,6 +16,12 @@ ActiveRecord::Base.connection.select_all(sql)
 # => #<ActiveRecord::Result: ...
 ```
 
+- `ActiveRecord::Base#select_all` -> `ActiveRecord::Result`を返す (`#to_a`、`#to_hash`を呼べる)
+- `ActiveRecord::Base#select_one` -> 最初のレコードを表すHashオブジェクトを返す
+- `ActiveRecord::Base#select_rows` -> 各行の各カラムの値を二次元配列で返す
+- `ActiveRecord::Base#select_values` -> 最初のカラムの値を配列で返す
+- `ActiveRecord::Base#select_value` -> 最初のレコードの最初のカラムの値を返す
+
 ```ruby
 # e.g. メモリ上の値に対してPostGISの関数を呼ぶ
 
