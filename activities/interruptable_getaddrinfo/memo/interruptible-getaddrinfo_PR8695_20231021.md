@@ -129,15 +129,19 @@ rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hint
 start:
   retry = 0;
 
-  // WIP
+  // 値を埋めたgetaddrinfo_arg構造体argへのポインタを返す
   arg = allocate_getaddrinfo_arg(hostp, portp, hints);
 
   if (!arg) {
-    return EAI_MEMORY;
+    return EAI_MEMORY; // Memory allocation failure
   }
 
   pthread_t th;
+
+  // 新しいスレッドでdo_getaddrinfo()を実行
+  // WIP
   if (pthread_create(&th, 0, do_getaddrinfo, arg) != 0) {
+    // スレッドの生成に失敗した場合、allocate_getaddrinfo_arg()で初期化した条件変数・ロックを削除
     free_getaddrinfo_arg(arg);
     return EAI_AGAIN;
   }
@@ -182,6 +186,7 @@ start:
   return err;
 }
 
+// 値を埋めたgetaddrinfo_arg構造体argへのポインタを返す
 static struct getaddrinfo_arg *
 allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addrinfo *hints)
 {
@@ -223,13 +228,13 @@ allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addr
   arg->refcount = 2;
   arg->done = arg->cancelled = 0;
 
-  // WIP
-  rb_nativethread_lock_initialize(&arg->lock);
-  rb_native_cond_initialize(&arg->cond);
+  rb_nativethread_lock_initialize(&arg->lock); // ロック (arg->lock) を初期化
+  rb_native_cond_initialize(&arg->cond); // 条件変数 (arg->cond) を初期化
 
   return arg;
 }
 
+// allocate_getaddrinfo_arg()で初期化した条件変数・ロックを削除
 static void
 free_getaddrinfo_arg(struct getaddrinfo_arg *arg)
 {
@@ -241,18 +246,21 @@ free_getaddrinfo_arg(struct getaddrinfo_arg *arg)
 static void *
 do_getaddrinfo(void *ptr)
 {
+  // 引数ptrは値を埋めたgetaddrinfo_arg構造体argへのポインタ
   struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
 
   int err;
   err = getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
+
 #ifdef __linux__
   /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
    * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
    */
   if (err == EAI_SYSTEM && errno == ENOENT)
-      err = EAI_NONAME;
+    err = EAI_NONAME;
 #endif
 
+  // WIP
   int need_free = 0;
   rb_nativethread_lock_lock(&arg->lock);
   {
