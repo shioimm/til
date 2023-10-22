@@ -6,12 +6,12 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 {
   struct rb_addrinfo* res = NULL; // 返り値を格納する
   struct addrinfo *ai; // 仮の返り値を格納する
-  char *hostp, *portp; // ホスト名、ポート番号をchar*に格納する
+  char *hostp, *portp; // ホスト名、ポート番号をchar*として格納する
   int error = 0;
   char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
   int additional_flags = 0;
 
-  // ホスト名、ポート番号をVALUE -> 文字列へ変換した値をchar*に格納
+  // ホスト名、ポート番号をVALUE -> 文字列へ変換し、その値をchar*に格納
   hostp = host_str(host, hbuf, sizeof(hbuf), &additional_flags);
   portp = port_str(port, pbuf, sizeof(pbuf), &additional_flags);
 
