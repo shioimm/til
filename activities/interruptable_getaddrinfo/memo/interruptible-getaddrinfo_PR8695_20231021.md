@@ -294,7 +294,7 @@ do_getaddrinfo(void *ptr)
   return 0;
 }
 
-// GVLなしで呼び出す
+// メインスレッドからGVLなしで呼び出す
 static void *
 wait_getaddrinfo(void *ptr)
 {
@@ -302,13 +302,14 @@ wait_getaddrinfo(void *ptr)
 
   rb_nativethread_lock_lock(&arg->lock);
   while (!arg->done && !arg->cancelled) {
+    // do_getaddrinfo または cancel_getaddrinfo からの通知を待つ
     rb_native_cond_wait(&arg->cond, &arg->lock);
   }
   rb_nativethread_lock_unlock(&arg->lock);
   return 0;
 }
 
-// rb_getaddrinfo に割り込みが発生したら呼ばれる
+// メインスレッドで rb_getaddrinfo に割り込みが発生したら呼ばれる
 static void
 cancel_getaddrinfo(void *ptr)
 {
@@ -326,6 +327,7 @@ cancel_getaddrinfo(void *ptr)
 // rb_getaddrinfo() の追加ここまで ----------------------
 
 // rb_getnameinfo() の変更 -----------------------------
+// rb_getnameinfo() はいろんなメソッドの実装から依存されている
 // GETADDRINFO_IMPL == 0 : call getaddrinfo/getnameinfo directly
 #if GETADDRINFO_IMPL == 0
 
