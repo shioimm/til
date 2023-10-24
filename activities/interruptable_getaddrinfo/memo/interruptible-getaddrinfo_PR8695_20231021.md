@@ -163,7 +163,10 @@ start:
   rb_thread_call_without_gvl2(wait_getaddrinfo, arg, cancel_getaddrinfo, arg);
 
   int need_free = 0;
+
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   {
     if (arg->done) {
       err = arg->err;
@@ -179,6 +182,7 @@ start:
     }
     if (--arg->refcount == 0) need_free = 1;
   }
+
   rb_nativethread_lock_unlock(&arg->lock);
 
   if (need_free) free_getaddrinfo_arg(arg);
@@ -277,16 +281,18 @@ do_getaddrinfo(void *ptr)
 
   // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   {
     arg->err = err;
     if (arg->cancelled) { // 実はすでにキャンセル済みの場合は取得したアドレス領域を解放
       freeaddrinfo(arg->ai)
     } else {
       arg->done = 1;
-      rb_native_cond_signal(&arg->cond); // wait_getaddrinfoに完了通知
+      rb_native_cond_signal(&arg->cond); // wait_getaddrinfoに通知
     }
     if (--arg->refcount == 0) need_free = 1;
   }
+
   rb_nativethread_lock_unlock(&arg->lock);
 
   if (need_free) free_getaddrinfo_arg(arg);
@@ -300,12 +306,16 @@ wait_getaddrinfo(void *ptr)
 {
   struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
 
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   while (!arg->done && !arg->cancelled) {
     // do_getaddrinfo または cancel_getaddrinfo からの通知を待つ
     rb_native_cond_wait(&arg->cond, &arg->lock);
   }
+
   rb_nativethread_lock_unlock(&arg->lock);
+
   return 0;
 }
 
@@ -315,6 +325,7 @@ cancel_getaddrinfo(void *ptr)
 {
   struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
 
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
   {
     arg->cancelled = 1; // 生成したスレッドで実行している do_getaddrinfo に通知
@@ -445,47 +456,58 @@ start:
   }
 
   pthread_t th;
+
   // 新しいスレッドでdo_getnameinfo()を実行
-  // WIP
   if (pthread_create(&th, 0, do_getnameinfo, arg) != 0) {
-    // allocate_getnameinfo_arg()で初期化した条件変数・ロックを削除
+    // スレッドの生成に失敗した場合、allocate_getnameinfo_arg()で初期化した条件変数・ロックを削除
     free_getnameinfo_arg(arg);
     return EAI_AGAIN;
   }
 
+  // 生成したスレッドはjoinしないのでデタッチしておく (スレッドの終了時にスレッドによって消費されていたメモリ資源を即座に解放する)
   pthread_detach(th);
+
 #if defined(HAVE_PTHREAD_SETAFFINITY_NP) && defined(HAVE_SCHED_GETCPU)
+  // TODO あとで調べる
   cpu_set_t tmp_cpu_set;
   CPU_ZERO(&tmp_cpu_set);
   CPU_SET(sched_getcpu(), &tmp_cpu_set);
   pthread_setaffinity_np(th, sizeof(cpu_set_t), &tmp_cpu_set);
 #endif
 
+  // 1. 割り込みをチェックし、割り込みを検出したら cancel_getnameinfo を呼び出し即座にリターン。シグナルには反応しない
+  // 2. GVLを解放
+  // 3. GVLなしで wait_getnameinfo を呼び出し
+  // 4. GVL を再取得するまでブロック
   rb_thread_call_without_gvl2(wait_getnameinfo, arg, cancel_getnameinfo, arg);
 
   int need_free = 0;
+
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   if (arg->done) {
     err = arg->err;
     if (err == 0) {
       if (host) memcpy(host, arg->host, hostlen);
       if (serv) memcpy(serv, arg->serv, servlen);
     }
-  }
-  else if (arg->cancelled) {
+  } else if (arg->cancelled) {
     err = EAI_AGAIN;
-  }
-  else {
+  } else {
     // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getnameinfo.
     // In this case, it could be !arg->done && !arg->cancelled.
     arg->cancelled = 1;
     retry = 1;
   }
+
   if (--arg->refcount == 0) need_free = 1;
+
   rb_nativethread_lock_unlock(&arg->lock);
 
   if (need_free) free_getnameinfo_arg(arg);
 
+  // TODO あとで調べる
   // If the current thread is interrupted by asynchronous exception, the following raises the exception.
   // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
   rb_thread_check_ints();
@@ -539,23 +561,38 @@ free_getnameinfo_arg(struct getnameinfo_arg *arg)
   free(arg);
 }
 
-// WIP
+// 生成したスレッドで実行
 static void *
 do_getnameinfo(void *ptr)
 {
   struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
 
   int err;
-  err = getnameinfo(arg->sa, arg->salen, arg->host, (socklen_t)arg->hostlen, arg->serv, (socklen_t)arg->servlen, arg->flags);
+  // ext/socket/getnameinfo.c で実装されている
+  err = getnameinfo(
+    arg->sa,
+    arg->salen,
+    arg->host,
+    (socklen_t)arg->hostlen,
+    arg->serv,
+    (socklen_t)arg->servlen,
+    arg->flags
+  );
 
   int need_free = 0;
+
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   arg->err = err;
+
   if (!arg->cancelled) {
     arg->done = 1;
-    rb_native_cond_signal(&arg->cond);
+    rb_native_cond_signal(&arg->cond); // wait_getnameinfo に通知
   }
+
   if (--arg->refcount == 0) need_free = 1;
+
   rb_nativethread_lock_unlock(&arg->lock);
 
   if (need_free) free_getnameinfo_arg(arg);
@@ -563,25 +600,37 @@ do_getnameinfo(void *ptr)
   return 0;
 }
 
+// メインスレッドからGVLなしで呼び出す
 static void *
 wait_getnameinfo(void *ptr)
 {
   struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
+
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   while (!arg->done && !arg->cancelled) {
-      rb_native_cond_wait(&arg->cond, &arg->lock);
+    // do_getnameinfo または cancel_getnameinfo からの通知を待つ
+    rb_native_cond_wait(&arg->cond, &arg->lock);
   }
+
   rb_nativethread_lock_unlock(&arg->lock);
+
   return 0;
 }
 
+// メインスレッドで rb_getnameinfo に割り込みが発生したら呼ばれる
 static void
 cancel_getnameinfo(void *ptr)
 {
   struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
+
+  // 現在のスレッドがロックを取得するまでブロック
   rb_nativethread_lock_lock(&arg->lock);
+
   arg->cancelled = 1;
-  rb_native_cond_signal(&arg->cond);
+  rb_native_cond_signal(&arg->cond); // wait_getnameinfo に通知
+
   rb_nativethread_lock_unlock(&arg->lock);
 }
 
