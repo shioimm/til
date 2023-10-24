@@ -294,7 +294,7 @@ do_getaddrinfo(void *ptr)
   return 0;
 }
 
-// GVLなしで呼び出す
+// メインスレッドからGVLなしで呼び出す
 static void *
 wait_getaddrinfo(void *ptr)
 {
@@ -302,13 +302,14 @@ wait_getaddrinfo(void *ptr)
 
   rb_nativethread_lock_lock(&arg->lock);
   while (!arg->done && !arg->cancelled) {
+    // do_getaddrinfo または cancel_getaddrinfo からの通知を待つ
     rb_native_cond_wait(&arg->cond, &arg->lock);
   }
   rb_nativethread_lock_unlock(&arg->lock);
   return 0;
 }
 
-// rb_getaddrinfo に割り込みが発生したら呼ばれる
+// メインスレッドで rb_getaddrinfo に割り込みが発生したら呼ばれる
 static void
 cancel_getaddrinfo(void *ptr)
 {
@@ -326,9 +327,11 @@ cancel_getaddrinfo(void *ptr)
 // rb_getaddrinfo() の追加ここまで ----------------------
 
 // rb_getnameinfo() の変更 -----------------------------
+// rb_getnameinfo() はいろんなメソッドの実装から依存されている
 // GETADDRINFO_IMPL == 0 : call getaddrinfo/getnameinfo directly
 #if GETADDRINFO_IMPL == 0
 
+// インターフェースを他のパターンに合わせてGETADDRINFO_EMUの場合でもrb_getnameinfoを呼び出せるようにしただけ?
 int
 rb_getnameinfo(
   const struct sockaddr *sa,
@@ -356,21 +359,7 @@ struct getnameinfo_arg // 変更なし
   size_t servlen;
 };
 
-static void *
-nogvl_getnameinfo(void *arg)
-{
-  struct getnameinfo_arg *ptr = arg;
-  return (void *)(VALUE)getnameinfo(
-    ptr->sa,
-    ptr->salen,
-    ptr->host,
-    (socklen_t)ptr->hostlen,
-    ptr->serv,
-    (socklen_t)ptr->servlen,
-    ptr->flags
-  );
-}
-
+// インターフェースを他のパターンに合わせただけ?
 int
 rb_getnameinfo(
   const struct sockaddr *sa,
@@ -385,14 +374,30 @@ rb_getnameinfo(
   int ret;
   arg.sa = sa;
   arg.salen = salen;
-  arg.host = host;
-  arg.hostlen = hostlen;
-  arg.serv = serv;
-  arg.servlen = servlen;
-  arg.flags = flags;
+  arg.host = host;       // <- 追加した引数を使用する
+  arg.hostlen = hostlen; // <- 追加した引数を使用する
+  arg.serv = serv;       // <- 追加した引数を使用する
+  arg.servlen = servlen; // <- 追加した引数を使用する
+  arg.flags = flags;     // <- 追加した引数を使用する
 
   ret = (int)(VALUE)rb_thread_call_without_gvl(nogvl_getnameinfo, &arg, RUBY_UBF_IO, 0);
   return ret;
+}
+
+static void *
+nogvl_getnameinfo(void *arg) // 変更なし
+{
+  struct getnameinfo_arg *ptr = arg;
+
+  return (void *)(VALUE)getnameinfo(
+    ptr->sa,
+    ptr->salen,
+    ptr->host,
+    (socklen_t)ptr->hostlen,
+    ptr->serv,
+    (socklen_t)ptr->servlen,
+    ptr->flags
+  );
 }
 
 // GETADDRINFO_IMPL == 2 : call getaddrinfo/getnameinfo in a dedicated pthread
@@ -408,98 +413,10 @@ struct getnameinfo_arg
   size_t hostlen;
   char *serv;
   size_t servlen;
-  int err, refcount, done, cancelled;
-  rb_nativethread_lock_t lock;
-  rb_nativethread_cond_t cond;
+  int err, refcount, done, cancelled; // <- このパターンでのみ定義
+  rb_nativethread_lock_t lock         // <- このパターンでのみ定義;
+  rb_nativethread_cond_t cond         // <- このパターンでのみ定義;
 };
-
-static struct getnameinfo_arg *
-allocate_getnameinfo_arg(const struct sockaddr *sa, socklen_t salen, size_t hostlen, size_t servlen, int flags)
-{
-  size_t sa_offset = sizeof(struct getnameinfo_arg);
-  size_t host_offset = sa_offset + salen;
-  size_t serv_offset = host_offset + hostlen;
-  size_t bufsize = serv_offset + servlen;
-
-  char *buf = malloc(bufsize);
-  if (!buf) {
-    rb_gc();
-    buf = malloc(bufsize);
-    if (!buf) return NULL;
-  }
-  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)buf;
-
-  arg->sa = (struct sockaddr *)(buf + sa_offset);
-  memcpy(arg->sa, sa, salen);
-  arg->salen = salen;
-  arg->host = buf + host_offset;
-  arg->hostlen = hostlen;
-  arg->serv = buf + serv_offset;
-  arg->servlen = servlen;
-  arg->flags = flags;
-
-  arg->refcount = 2;
-  arg->done = arg->cancelled = 0;
-
-  rb_nativethread_lock_initialize(&arg->lock);
-  rb_native_cond_initialize(&arg->cond);
-
-  return arg;
-}
-
-static void
-free_getnameinfo_arg(struct getnameinfo_arg *arg)
-{
-  rb_native_cond_destroy(&arg->cond);
-  rb_nativethread_lock_destroy(&arg->lock);
-
-  free(arg);
-}
-
-static void *
-do_getnameinfo(void *ptr)
-{
-  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
-
-  int err;
-  err = getnameinfo(arg->sa, arg->salen, arg->host, (socklen_t)arg->hostlen, arg->serv, (socklen_t)arg->servlen, arg->flags);
-
-  int need_free = 0;
-  rb_nativethread_lock_lock(&arg->lock);
-  arg->err = err;
-  if (!arg->cancelled) {
-    arg->done = 1;
-    rb_native_cond_signal(&arg->cond);
-  }
-  if (--arg->refcount == 0) need_free = 1;
-  rb_nativethread_lock_unlock(&arg->lock);
-
-  if (need_free) free_getnameinfo_arg(arg);
-
-  return 0;
-}
-
-static void *
-wait_getnameinfo(void *ptr)
-{
-  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
-  rb_nativethread_lock_lock(&arg->lock);
-  while (!arg->done && !arg->cancelled) {
-      rb_native_cond_wait(&arg->cond, &arg->lock);
-  }
-  rb_nativethread_lock_unlock(&arg->lock);
-  return 0;
-}
-
-static void
-cancel_getnameinfo(void *ptr)
-{
-  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
-  rb_nativethread_lock_lock(&arg->lock);
-  arg->cancelled = 1;
-  rb_native_cond_signal(&arg->cond);
-  rb_nativethread_lock_unlock(&arg->lock);
-}
 
 int
 rb_getnameinfo(
@@ -512,19 +429,26 @@ rb_getnameinfo(
   int flags
 ) {
   int retry;
+
+  // 値を埋めたgetnameinfo_arg構造体argへのポインタを返す 
   struct getnameinfo_arg *arg = allocate_getnameinfo_arg(sa, salen, hostlen, servlen, flags);
   int err;
 
 start:
   retry = 0;
 
+  // 値を埋めたgetnameinfo_arg構造体argへのポインタを返す。retryになった時に初期化し直す用?
   arg = allocate_getnameinfo_arg(sa, salen, hostlen, servlen, flags);
+
   if (!arg) {
     return EAI_MEMORY;
   }
 
   pthread_t th;
+  // 新しいスレッドでdo_getnameinfo()を実行
+  // WIP
   if (pthread_create(&th, 0, do_getnameinfo, arg) != 0) {
+    // allocate_getnameinfo_arg()で初期化した条件変数・ロックを削除
     free_getnameinfo_arg(arg);
     return EAI_AGAIN;
   }
@@ -568,6 +492,97 @@ start:
   if (retry) goto start;
 
   return err;
+}
+
+// 値を埋めたgetnameinfo_arg構造体argへのポインタを返す
+static struct getnameinfo_arg *
+allocate_getnameinfo_arg(const struct sockaddr *sa, socklen_t salen, size_t hostlen, size_t servlen, int flags)
+{
+  size_t sa_offset = sizeof(struct getnameinfo_arg);
+  size_t host_offset = sa_offset + salen;
+  size_t serv_offset = host_offset + hostlen;
+  size_t bufsize = serv_offset + servlen;
+
+  char *buf = malloc(bufsize);
+  if (!buf) {
+    rb_gc();
+    buf = malloc(bufsize);
+    if (!buf) return NULL;
+  }
+  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)buf;
+
+  arg->sa = (struct sockaddr *)(buf + sa_offset);
+  memcpy(arg->sa, sa, salen);
+  arg->salen = salen;
+  arg->host = buf + host_offset;
+  arg->hostlen = hostlen;
+  arg->serv = buf + serv_offset;
+  arg->servlen = servlen;
+  arg->flags = flags;
+
+  arg->refcount = 2;
+  arg->done = arg->cancelled = 0;
+
+  rb_nativethread_lock_initialize(&arg->lock);
+  rb_native_cond_initialize(&arg->cond);
+
+  return arg;
+}
+
+// allocate_getnameinfo_arg()で初期化した条件変数・ロックを削除
+static void
+free_getnameinfo_arg(struct getnameinfo_arg *arg)
+{
+  rb_native_cond_destroy(&arg->cond);
+  rb_nativethread_lock_destroy(&arg->lock);
+
+  free(arg);
+}
+
+// WIP
+static void *
+do_getnameinfo(void *ptr)
+{
+  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
+
+  int err;
+  err = getnameinfo(arg->sa, arg->salen, arg->host, (socklen_t)arg->hostlen, arg->serv, (socklen_t)arg->servlen, arg->flags);
+
+  int need_free = 0;
+  rb_nativethread_lock_lock(&arg->lock);
+  arg->err = err;
+  if (!arg->cancelled) {
+    arg->done = 1;
+    rb_native_cond_signal(&arg->cond);
+  }
+  if (--arg->refcount == 0) need_free = 1;
+  rb_nativethread_lock_unlock(&arg->lock);
+
+  if (need_free) free_getnameinfo_arg(arg);
+
+  return 0;
+}
+
+static void *
+wait_getnameinfo(void *ptr)
+{
+  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
+  rb_nativethread_lock_lock(&arg->lock);
+  while (!arg->done && !arg->cancelled) {
+      rb_native_cond_wait(&arg->cond, &arg->lock);
+  }
+  rb_nativethread_lock_unlock(&arg->lock);
+  return 0;
+}
+
+static void
+cancel_getnameinfo(void *ptr)
+{
+  struct getnameinfo_arg *arg = (struct getnameinfo_arg *)ptr;
+  rb_nativethread_lock_lock(&arg->lock);
+  arg->cancelled = 1;
+  rb_native_cond_signal(&arg->cond);
+  rb_nativethread_lock_unlock(&arg->lock);
 }
 
 #endif
