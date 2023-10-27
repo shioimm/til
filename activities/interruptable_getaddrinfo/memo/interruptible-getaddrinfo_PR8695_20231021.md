@@ -19,6 +19,7 @@
   have_func("pthread_detach")         # <- 追加
   have_func("pthread_setaffinity_np") # <- 追加: スレッドにCPU affinityの設定・取得を行う
   have_func("sched_getcpu")           # <- 追加: 呼び出したスレッドが実行されているCPUの番号を返す
+  # CPUアフィニティ ... プロセス・スレッドを実行するCPUコア
 ```
 
 ```c
@@ -148,11 +149,16 @@ start:
   // 生成したスレッドはjoinしないのでデタッチしておく (スレッドの終了時にスレッドによって消費されていたメモリ資源を即座に解放する)
   pthread_detach(th);
 
+// pthread_setaffinity_np(3) および sched_getcpu(3) が利用できる環境の場合
 #if defined(HAVE_PTHREAD_SETAFFINITY_NP) && defined(HAVE_SCHED_GETCPU)
-  // TODO あとで調べる
+  // CPU集合
   cpu_set_t tmp_cpu_set;
+  // tmp_cpu_setを初期化
   CPU_ZERO(&tmp_cpu_set);
+  // 呼び出したスレッドが現在実行されているCPUの番号をtmp_cpu_setにセット
   CPU_SET(sched_getcpu(), &tmp_cpu_set);
+  // スレッド th のCPUアフィニティマスクにCPU集合 tmp_cpu_set を設定
+  // thが現在 tmp_cpu_set 上で実行されていない場合は、tmp_cpu_set の指すCPUのいずれかに移動される
   pthread_setaffinity_np(th, sizeof(cpu_set_t), &tmp_cpu_set);
 #endif
 
@@ -187,9 +193,16 @@ start:
 
   if (need_free) free_getaddrinfo_arg(arg);
 
-  // TODO あとで調べる
+  // (前提) すべての処理はRubyスレッドとして動作している 
+  // Rubyではプリエンプションを実現するため、明示的に作成されたRubyスレッドとは別に
+  // 実行中のスレッドの割り込みフラグにタイマイベントを設定するネイティブスレッド (タイマスレッド) が実装されている
+  // (タイマスレッドはRubyスレッドが二つ以上ある場合に動作する)
+  //
   // If the current thread is interrupted by asynchronous exception, the following raises the exception.
   // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
+  // 非同期の例外によって割り込まれた場合、ここで後続の処理は例外を発生させる
+  // タイマスレッドによって割り込まれた場合、ここで後続の処理はそのままreturnする。なので手動でretryが必要
+  // TODO あとで調べる
   rb_thread_check_ints();
   if (retry) goto start;
 
@@ -467,11 +480,16 @@ start:
   // 生成したスレッドはjoinしないのでデタッチしておく (スレッドの終了時にスレッドによって消費されていたメモリ資源を即座に解放する)
   pthread_detach(th);
 
+// pthread_setaffinity_np(3) および sched_getcpu(3) が利用できる環境の場合
 #if defined(HAVE_PTHREAD_SETAFFINITY_NP) && defined(HAVE_SCHED_GETCPU)
-  // TODO あとで調べる
+  // CPU集合
   cpu_set_t tmp_cpu_set;
+  // tmp_cpu_setを初期化
   CPU_ZERO(&tmp_cpu_set);
+  // 呼び出したスレッドが現在実行されているCPUの番号をtmp_cpu_setにセット
   CPU_SET(sched_getcpu(), &tmp_cpu_set);
+  // スレッド th のCPUアフィニティマスクにCPU集合 tmp_cpu_set を設定
+  // thが現在 tmp_cpu_set 上で実行されていない場合は、tmp_cpu_set の指すCPUのいずれかに移動される
   pthread_setaffinity_np(th, sizeof(cpu_set_t), &tmp_cpu_set);
 #endif
 
@@ -507,7 +525,6 @@ start:
 
   if (need_free) free_getnameinfo_arg(arg);
 
-  // TODO あとで調べる
   // If the current thread is interrupted by asynchronous exception, the following raises the exception.
   // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
   rb_thread_check_ints();
