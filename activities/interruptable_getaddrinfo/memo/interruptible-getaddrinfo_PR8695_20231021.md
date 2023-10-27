@@ -193,17 +193,19 @@ start:
 
   if (need_free) free_getaddrinfo_arg(arg);
 
+  // If the current thread is interrupted by asynchronous exception, the following raises the exception.
+  // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
+  // 非同期の例外によって割り込まれた場合は後続で例外を発生させる
+  // タイマスレッドによって割り込まれた場合、ここで後続の処理はそのままreturnする。なので手動でretryが必要
   // (前提) すべての処理はRubyスレッドとして動作している 
   // Rubyではプリエンプションを実現するため、明示的に作成されたRubyスレッドとは別に
   // 実行中のスレッドの割り込みフラグにタイマイベントを設定するネイティブスレッド (タイマスレッド) が実装されている
-  // (タイマスレッドはRubyスレッドが二つ以上ある場合に動作する)
-  //
-  // If the current thread is interrupted by asynchronous exception, the following raises the exception.
-  // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
-  // 非同期の例外によって割り込まれた場合、ここで後続の処理は例外を発生させる
-  // タイマスレッドによって割り込まれた場合、ここで後続の処理はそのままreturnする。なので手動でretryが必要
-  // TODO あとで調べる
+  // (タイマスレッドはRubyスレッドが二つ以上ある場合に動作する) 
   rb_thread_check_ints();
+  // rb_thread_check_ints ... 割り込みをチェックする
+  // Rubyではデフォルトでシグナルがマスクされており、rb_thread_check_intsを呼び出すことで保留中のシグナルがあるかどうかをチェックできる
+  // 保留中のシグナルがある場合は、この関数で処理される
+
   if (retry) goto start;
 
   // 正常終了時はrb_getaddrinfoの第四引数のstruct addrinfo **aiにアドレスが格納されている
