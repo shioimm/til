@@ -1,7 +1,4 @@
 # class Fiber
-- [class Fiber](https://docs.ruby-lang.org/ja/3.0.0/class/Fiber.html)
-
-## TL;DR
 - 軽量スレッド(coroutine / semicoroutine)
 - ユーザレベルスレッドとして実装されている
   - ノンプリエンプティブな処理

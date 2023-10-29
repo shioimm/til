@@ -1,8 +1,4 @@
 # GVLに関するメモ
-- 参照: [スレッド](https://docs.ruby-lang.org/ja/latest/doc/spec=2fthread.html)
-- 参照: [Rubyのスケール時にGVLの特性を効果的に活用する（翻訳）](https://techracho.bpsinc.jp/hachi8833/2020_05_27/92042)
-
-## TL;DR
 - Global VM Lock
 - プロセス内で動作するスレッドのための排他ロック
   - VM単位でロックを行うため、一度に実行できるスレッドは常に一つになる
@@ -30,9 +26,6 @@
   - Sidekiqなどマルチスレッドのバックグランドジョブプロセッサに切り替える
   - PumaなどマルチスレッドWebサーバーに切り替える
 
-## GVLによる影響
-- 参照: [Rubyのスレッドで並列化するのに向いている処理を調べてみる](https://tech.unifa-e.com/entry/2017/06/08/200151)
-
 ### GVLの影響を受けない処理
 - `rb_thread_call_without_gvl` / `rb_thread_call_without_gvl2`の呼び出し処理
 - コマンド実行
@@ -46,3 +39,8 @@
 ### GVLの影響を受ける処理
 - `rb_thread_call_without_gvl` / `rb_thread_call_without_gvl2`の呼び出されていない処理
 - Rubyアプリケーションコード実行
+
+#### 参照
+- [スレッド](https://docs.ruby-lang.org/ja/latest/doc/spec=2fthread.html)
+- [Rubyのスケール時にGVLの特性を効果的に活用する（翻訳）](https://techracho.bpsinc.jp/hachi8833/2020_05_27/92042)
+- [Rubyのスレッドで並列化するのに向いている処理を調べてみる](https://tech.unifa-e.com/entry/2017/06/08/200151)
