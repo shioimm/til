@@ -1,8 +1,5 @@
 # class Thread
-- 参照: パーフェクトRuby[改訂2版] 5-9 Thread
-- [class Thread](https://docs.ruby-lang.org/ja/2.7.0/class/Thread.html) - スレッド
-
-## TL;DR
+- [class Thread](https://docs.ruby-lang.org/ja/2.7.0/class/Thread.html)
 - 同じプロセス上でメモリ空間を共有して同時に実行される制御の流れ
   - 複数のスレッドが同じ変数にアクセスする
 - ネイティブスレッドによって実装されている

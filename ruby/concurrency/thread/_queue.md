@@ -1,13 +1,13 @@
 # class Thread::Queue
-- [class Thread::Queue](https://docs.ruby-lang.org/ja/2.7.0/class/Thread=3a=3aQueue.html) - スレッドセーフなFIFOキュー
-- [class Thread::SizedQueue](https://docs.ruby-lang.org/ja/3.0.0/class/Thread=3a=3aSizedQueue.html) - 最大サイズが指定できるスレッドセーフなFIFOキュー
-
-## TL;DR
 - スレッド間のFIFOの通信路
 - エンキュー操作でキューの末尾に値を追加する
 - デキュー操作でキューの先頭の値を取り出す
 - キューが空の時、スレッドがデキューしようとした場合、呼び出し元のスレッドがブロックされる
   - キューに何らかのリクエストがエンキューされると呼び出し元のスレッドの実行が再開される
+- [class Thread::Queue](https://docs.ruby-lang.org/ja/2.7.0/class/Thread=3a=3aQueue.html)
+  - スレッドセーフなFIFOキュー
+- [class Thread::SizedQueue](https://docs.ruby-lang.org/ja/3.0.0/class/Thread=3a=3aSizedQueue.html)
+  - 最大サイズが指定できるスレッドセーフなFIFOキュー
 
 ### ワーカースレッド
 1. キューを用意する

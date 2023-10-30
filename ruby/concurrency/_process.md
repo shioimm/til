@@ -1,7 +1,4 @@
 # module Process
-- [module Process](https://docs.ruby-lang.org/ja/3.0.0/class/Process.html) - プロセス
-
-## TL;DR
 - UNIXのプロセスを管理するモジュール
 
 ## 子プロセスの生成

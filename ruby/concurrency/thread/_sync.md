@@ -1,5 +1,5 @@
 # class Sync
-- [class Sync](https://docs.ruby-lang.org/ja/2.7.0/class/Sync.html) - reader/writerロック
+- reader/writerロック
 - 共有モード(SH)と排他モード(EX)を持つロック機構
   - どのスレッドもロックを獲得していない場合
     -> どのスレッドでも共有モードでロックを獲得できる
@@ -34,8 +34,7 @@ end
 ### ロックの解放
 - `#unlock` - 指定のモードでロックを解放
 
-## module Sync_m
-- [module Sync_m](https://docs.ruby-lang.org/ja/2.7.0/class/Sync_m.html) - Syncクラスのモジュール版
+## `module Sync_m`
 
 ```ruby
 xxx = XXX.new

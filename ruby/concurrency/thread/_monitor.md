@@ -1,5 +1,5 @@
 # class Monitor
-- [class Monitor](https://docs.ruby-lang.org/ja/2.7.0/class/Monitor.html) - スレッドの同期機構としてのモニター機能
+- スレッドの同期機構としてのモニター機能
 - Mutexに似ているがネストしたロックをサポートしており、条件変数の機能を兼ね備える
 
 ## Monitorオブジェクトの生成

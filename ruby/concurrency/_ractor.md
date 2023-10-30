@@ -1,9 +1,4 @@
 # Ractor
-- 参照: [Ractor - Ruby's Actor-like concurrent abstraction](https://github.com/ruby/ruby/blob/master/doc/ractor.md)
-- 参照: [ruby/ractor.ja.md](https://github.com/ko1/ruby/blob/ractor/ractor.ja.md)
-- 参照: [Ruby 3.0 の Ractor を自慢したい](https://techlife.cookpad.com/entry/2020/12/26/131858)
-
-## TL;DR
 - アクターモデルを使用したスレッドセーフ並列処理機構
 - `Ractor.new { expr }`で複数のRactorを生成することができ、
   ブロック内の処理`expr`は並列に実行される
@@ -133,3 +128,8 @@ x.take #=> 'hello'
 ### 複数のRactor からメッセージを受信する
 - `Ractor.select(*ractors)`を用いて複数のRactorからの`take`を待つことができる
   - メッセージを受信したRactorと、Ractorが受信したメッセージを返す
+
+## 参照
+- [Ractor - Ruby's Actor-like concurrent abstraction](https://github.com/ruby/ruby/blob/master/doc/ractor.md)
+- [ruby/ractor.ja.md](https://github.com/ko1/ruby/blob/ractor/ractor.ja.md)
+- [Ruby 3.0 の Ractor を自慢したい](https://techlife.cookpad.com/entry/2020/12/26/131858)

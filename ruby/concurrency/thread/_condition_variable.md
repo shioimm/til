@@ -1,7 +1,5 @@
 # class Thread::ConditionVariable
-- [class Thread::ConditionVariable](https://docs.ruby-lang.org/ja/2.7.0/class/Thread=3a=3aConditionVariable.html) - 条件変数
-
-## TL;DR
+- 条件変数
 - 排他領域で処理を行っているスレッド同士がお互い非同期に通信し合う手段を提供する
 
 ```ruby
