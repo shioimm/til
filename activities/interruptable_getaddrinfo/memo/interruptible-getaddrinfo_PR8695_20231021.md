@@ -252,7 +252,7 @@ allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addr
   arg->hints = *hints;
   arg->ai = NULL;
 
-  arg->refcount = 2;
+  arg->refcount = 2; // アドレスファミリの数
   arg->done = arg->cancelled = 0;
 
   rb_nativethread_lock_initialize(&arg->lock); // ロック (arg->lock) を初期化
@@ -561,7 +561,7 @@ allocate_getnameinfo_arg(const struct sockaddr *sa, socklen_t salen, size_t host
   arg->servlen = servlen;
   arg->flags = flags;
 
-  arg->refcount = 2;
+  arg->refcount = 2; // アドレスファミリの数
   arg->done = arg->cancelled = 0;
 
   rb_nativethread_lock_initialize(&arg->lock);
@@ -714,3 +714,19 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
   return res;
 }
 ```
+
+#### interruptible-getaddrinfo.patchとの違い
+- スレッドの生成に失敗した場合、`rsock_raise_socket_error`せずに`EAI_AGAIN`を返すようにした
+- ロック系APIの変更
+  - `rb_native_mutex_initialize` -> `rb_nativethread_lock_initialize`
+  - `rb_native_mutex_lock` -> `rb_nativethread_lock_lock`
+  - `rb_native_mutex_unlock` -> `rb_nativethread_lock_unlock`
+  - `rb_native_mutex_destroy` -> `rb_nativethread_lock_destroy`
+  - `rb_native_cond_initialize` -> `rb_native_cond_initialize`
+  - `rb_native_cond_wait` -> `rb_native_cond_wait`
+  - `pthread_cond_signal` -> `rb_native_cond_signal`
+  - `rb_native_cond_destroy` -> `rb_native_cond_destroy`
+- GVLを解放するための関数の変更
+  - `rb_thread_call_without_gvl` -> `rb_thread_call_without_gvl2`
+- addrinfoの管理データの中でデータの状態を管理する変数を`done`と`canceled`に分割
+- `wait_getaddrinfo`を呼ぶ際、`rb_ensure`を呼ぶのをやめた
