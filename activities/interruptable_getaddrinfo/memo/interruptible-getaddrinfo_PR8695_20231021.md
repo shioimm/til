@@ -162,10 +162,11 @@ start:
   pthread_setaffinity_np(th, sizeof(cpu_set_t), &tmp_cpu_set);
 #endif
 
-  // 1. 割り込みをチェックし、割り込みを検出したら cancel_getaddrinfo を呼び出し即座にリターン。シグナルには反応しない
+  // 1. 割り込みをチェックし、割り込みを検出したら割り込みを処理せず即座に返る。シグナルには反応しない
   // 2. GVLを解放
   // 3. GVLなしで wait_getaddrinfo を呼び出し
-  // 4. GVL を再取得するまでブロック
+  // 4. GVLを再取得するまでブロック
+  //    ブロック中に中断が必要な場合は cancel_getaddrinfo を呼び出し
   rb_thread_call_without_gvl2(wait_getaddrinfo, arg, cancel_getaddrinfo, arg);
 
   int need_free = 0;
@@ -180,9 +181,10 @@ start:
     } else if (arg->cancelled) {
       err = EAI_AGAIN;
     } else {
-      // なるほどー
       // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
       // In this case, it could be !arg->done && !arg->cancelled.
+      // -> rb_thread_call_without_gvl2はwait_getaddrinfoの実行前に割り込みを検出すると何もせずに後続処理に進むので、
+      //    !arg->done && !arg->cancelledという状況が発生しうる
       arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
       retry = 1;
     }
@@ -728,5 +730,6 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
   - `rb_native_cond_destroy` -> `rb_native_cond_destroy`
 - GVLを解放するための関数の変更
   - `rb_thread_call_without_gvl` -> `rb_thread_call_without_gvl2`
+  - 関数の中断時に割り込みを処理せず、即座に後続の処理に移るようになった
 - addrinfoの管理データの中でデータの状態を管理する変数を`done`と`canceled`に分割
 - `wait_getaddrinfo`を呼ぶ際、`rb_ensure`を呼ぶのをやめた
