@@ -721,13 +721,15 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 - スレッドの生成に失敗した場合、`rsock_raise_socket_error`せずに`EAI_AGAIN`を返すようにした
 - ロック系APIの変更
   - `rb_native_mutex_initialize` -> `rb_nativethread_lock_initialize`
+    - エイリアスへの変更
   - `rb_native_mutex_lock` -> `rb_nativethread_lock_lock`
+    - エイリアスへの変更
   - `rb_native_mutex_unlock` -> `rb_nativethread_lock_unlock`
+    - エイリアスへの変更
   - `rb_native_mutex_destroy` -> `rb_nativethread_lock_destroy`
-  - `rb_native_cond_initialize` -> `rb_native_cond_initialize`
-  - `rb_native_cond_wait` -> `rb_native_cond_wait`
+    - エイリアスへの変更
   - `pthread_cond_signal` -> `rb_native_cond_signal`
-  - `rb_native_cond_destroy` -> `rb_native_cond_destroy`
+    - Pthreadから各OSの差分を吸収するAPIへ変更 (Pthread対応OSのみの対応のはずでは…)
 - GVLを解放するための関数の変更
   - `rb_thread_call_without_gvl` -> `rb_thread_call_without_gvl2`
   - 関数の中断時に割り込みを処理せず、即座に後続の処理に移るようになった

@@ -200,52 +200,6 @@ class Socket
     end
   end
 
-  # def self.hostname_resolution(hostname, port, family, pickable_addrinfos, mutex, cond, resolution_state)
-  #   resolved_addrinfos = Addrinfo.getaddrinfo(hostname, port, family, :STREAM)
-
-  #   if family == :PF_INET && !pickable_addrinfos.any?(&:ipv6?)
-  #     sleep RESOLUTION_DELAY
-  #   end
-
-  #   mutex.synchronize do
-  #     pickable_addrinfos.push *resolved_addrinfos
-  #     cond.signal
-  #   end
-  # rescue => e
-  #   ignoring_error_messages = [
-  #     "getaddrinfo: Address family for hostname not supported",
-  #     "getaddrinfo: Temporary failure in name resolution",
-  #   ]
-  #   if e.is_a?(SocketError) && ignoring_error_messages.include?(e.message)
-  #     # ignore
-  #   else
-  #     mutex.synchronize do
-  #       resolution_state[:error].push({ klass: e.class, message: e.message })
-  #     end
-  #   end
-  # ensure
-  #   family_name = family == :PF_INET6 ? :ipv6_done : :ipv4_done
-  #   mutex.synchronize do
-  #     resolution_state[family_name] = true
-  #   end
-  # end
-
-  # private_class_method :hostname_resolution
-
-  # def self.pick_addrinfo(pickable_addrinfos, last_family, resolv_timeout, mutex, cond)
-  #   mutex.synchronize do
-  #     cond.wait(mutex, resolv_timeout) if pickable_addrinfos.empty?
-
-  #     if last_family && (addrinfo = pickable_addrinfos.find { |addrinfo| !addrinfo.afamily == last_family })
-  #       pickable_addrinfos.delete addrinfo
-  #     else
-  #       pickable_addrinfos.shift
-  #     end
-  #   end
-  # end
-
-  # private_class_method :pick_addrinfo
-
   def self.connection_attempt!(addrinfo, delay_timers, local_addrinfos = [])
     # どういう状況でconnected_sockets.empty?が偽になりうるのかがわからない
     # return if !connected_sockets.empty?
