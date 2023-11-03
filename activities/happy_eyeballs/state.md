@@ -1,136 +1,170 @@
 # 状態遷移
-- 「未接続のaddrinfoの在庫が枯渇、すべてのfdが接続中」の状態が必要な気がする
 
 ```
 case start
   resources
-    # なし
+    なし
   do
     IPv6 getaddrinfo開始
+      - IPv6アドレス解決 -> v6c
+      - resolv_timeout   -> timeout
     IPv4 getaddrinfo開始
-    # TODO アドレス解決中にエラーが起こった場合はどうする? -> どちらかのファミリで発生した場合 / 両方で発生した場合
-  transition
-    IPv6アドレス解決 -> v6c # 未接続のIPv6 addrinfoあり
-    IPv4アドレス解決 -> v4w # 未接続のIPv4 addrinfoあり
-    resolv_timeout   -> timeout
+      - IPv4アドレス解決 -> v4w
+      - resolv_timeout   -> timeout
 
+    # TODO
+    # アドレス解決中にエラーが起こった場合はどうする? (どちらかのファミリで発生した場合 / 両方で発生した場合)
+
+# (IPv4アドレス解決中)
 case v6c
   resources
-    # TODO
+    未接続のIPv6 addrinfos
+    二周目以降、接続中のIPv6 fds
   do
-    if 未接続のIPv6 addrinfoの在庫がある
+    if 未接続のIPv6 addrinfoがある
       connect
       select([IPv6 fds, IPv4アドレス解決], CONNECTION_ATTEMPT_DELAY)
-    if 未接続のIPv6 addrinfoの在庫がない
-      select([IPv6 fds, IPv4アドレス解決])
-      # TODO 未接続のaddrinfoの在庫が枯渇しており、すべてのfdが接続中の状態
-      # このままだと永久に待ち続ける可能性あり、どこかでクエリを打ち切ってv46cに遷移する必要がある
-      # その場合v46cに遷移した時点では単に接続中のIPv6 fdありの状態になる
-  transition
-    if 未接続のIPv6 addrinfoの在庫がある
-      CONNECTION_ATTEMPT_DELAY中にconnectに成功 -> success # 接続済みのIPv6 fdあり、接続中のIPv6 fdありの可能性あり
-      CONNECTION_ATTEMPT_DELAYタイムアウト -> v6cに戻る # 接続中のIPv6 fdあり
-      IPv4アドレス解決 -> v46c # 接続中のIPv6 fdあり、未接続のIPv4 addrinfoあり
-    if 未接続のIPv6 addrinfoの在庫がない
-      connectに成功 -> success # 接続済みのIPv6 fdあり、接続中のIPv6 fdがある可能性あり
-      IPv4アドレス解決 -> v46c # 接続中のIPv6 fdあり、未接続のIPv4 addrinfoあり
+        - connectに成功                        -> success
+        - IPv4アドレス解決                     -> v46c
+        - CONNECTION_ATTEMPT_DELAYタイムアウト -> v6cに戻る
 
+    else if 未接続のIPv6 addrinfoがない
+      # 未解決のファミリがあり、未接続のaddrinfoの在庫が枯渇、すべてのfdが接続中
+      select([IPv6 fds, IPv4アドレス解決])
+        - connectに成功    -> success
+        - IPv4アドレス解決 -> v46c
+
+      # (注)
+      # IPv6 fdsがすべて接続中またはすべて接続失敗し、A応答がないと永久に待ち続ける可能性あり
+      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectに遷移する必要がある
+      # -> v46wait_to_resolv_or_connect
+
+# IPv6アドレス解決中
 case v4w
   resources
-    # TODO
+    未接続のIPv4 addrinfos
   do
     RESOLUTION_DELAY
-  transition
-    RESOLUTION_DELAY中にIPv6アドレス解決 -> v46c # 接続中のfdなし、未接続のIPv6 / IPv4 addrinfoあり
-    RESOLUTION_DELAYタイムアウト -> v4c # 接続中のfdなし、未接続のIPv4 addrinfoあり
+      - IPv6アドレス解決             -> v46c # 接続中のfdsなし、未接続のIPv6 / IPv4 addrinfosあり
+      - RESOLUTION_DELAYタイムアウト -> v4c
 
+# IPv6アドレス解決中
 case v4c
   resources
-    # TODO
+    未接続のIPv4 addrinfos
+    二周目以降、接続中のIPv4 fds
   do
     if 未接続のIPv4 addrinfoの在庫がある
       connect
       select([IPv4 fds, IPv6アドレス解決], CONNECTION_ATTEMPT_DELAY)
-    if 未接続のIPv4 addrinfoの在庫がない
-      select([IPv4 fds, IPv6アドレス解決])
-      # TODO 未接続のaddrinfoの在庫が枯渇しており、すべてのfdが接続中の状態
-      # このままだと永久に待ち続ける可能性あり、どこかでクエリを打ち切ってv46cに遷移する必要がある
-      # その場合v46cに遷移した時点では単に接続中のIPv6 fdありの状態になる
-  transition
-    if 未接続のIPv4 addrinfoの在庫がある
-      CONNECTION_ATTEMPT_DELAY中にconnectに成功 -> success # 接続済みのIPv4 fdあり、接続中のIPv4 fdありの可能性あり
-      CONNECTION_ATTEMPT_DELAYタイムアウト -> v6cに戻る # 接続中のIPv4 fdあり
-      IPv6アドレス解決 -> v46c # 接続中のIPv4 fdあり、未接続のIPv6 addrinfoあり
-    if 未接続のIPv4 addrinfoの在庫がない
-      connectに成功 -> success # 接続済みのIPv4 fdあり、接続中のIPv4 fdがある可能性あり
-      IPv6アドレス解決 -> v46c  # 接続中のIPv4 fdあり、未接続のIPv6 addrinfoあり
+        - connectに成功                        -> success
+        - IPv6アドレス解決した場合             -> v46c
+        - CONNECTION_ATTEMPT_DELAYタイムアウト -> v4cに戻る
 
+    else if 未接続のIPv4 addrinfoの在庫がない
+      # 未解決のファミリがあり、未接続のaddrinfoの在庫が枯渇、すべてのfdが接続中
+      select([IPv4 fds, IPv6アドレス解決])
+        - connectに成功した場合    -> success
+        - IPv6アドレス解決した場合 -> v46c
+
+      # (注)
+      # IPv4 fdsがすべて接続中またはすべて接続失敗し、AAAA応答がないと永久に待ち続ける可能性あり
+      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectに遷移する必要がある
+      # -> v46wait_to_resolv_or_connect
+
+# すべてのファミリがアドレス解決済み、未接続のaddrinfosあり、接続中のfdsあり
 case v46c
   resources
-    # TODO
+    未接続のaddrinfos
+    接続中のfds (一周目はまだ存在しない可能性あり)
   do
     if 未接続のaddrinfoの在庫がある
-      if 接続中のfdがある
+      if 接続中のfdsがある
+        if connect_timeout
+          - タイムアウト済み -> timeout
+
+        # TODO
+        #   ループとselectどちらでCONNECTION_ATTEMPT_DELAYするべきか考える
+        #   でもこのstateに遷移したタイミングでタイマーが残っている可能性があるので
+        #   selectではCONNECTION_ATTEMPT_DELAYできない気がする...もうちょっとじっくり考える
         if 前回の接続のCONNECTION_ATTEMPT_DELAY中
           CONNECTION_ATTEMPT_DELAY
-        if 前回の接続のCONNECTION_ATTEMPT_DELAYタイムアウト済み
-          アドレス選択
-          connect
-          select([fds], CONNECTION_ATTEMPT_DELAY)
-      if 接続中のfdがない
-        IPv6優先してconnect
-        select([fds], CONNECTION_ATTEMPT_DELAY)
-    if 未接続のaddrinfoの在庫がない
-      # 処理なし
-  transition
-    if 未接続のaddrinfoの在庫がある
-      CONNECTION_ATTEMPT_DELAYタイムアウト前にconnectに成功 -> success
-      CONNECTION_ATTEMPT_DELAYタイムアウト -> v46cに戻る
-    if 未接続のaddrinfoの在庫がない
-      すべてのfdが接続中 -> ???
-      すべてのfdの接続に失敗 -> failure
+            - CONNECTION_ATTEMPT_DELAYタイムアウト -> v46cに戻る
 
-case ???
+        else if 前回の接続のCONNECTION_ATTEMPT_DELAYタイムアウト済み
+          アドレス選択してconnect
+          select([fds], CONNECTION_ATTEMPT_DELAY)
+            # TODO
+            #   ここ新しい接続とCONNECTION_ATTEMPT_DELAYを並行にできてない気がする
+            #   selectせずに次のループに入るべきでは?そして接続中のfdがあるなら実行順はselect -> connectかも?
+            - connectに成功                        -> success
+            - CONNECTION_ATTEMPT_DELAYタイムアウト -> v46cに戻る
+
+      else if 接続中のfdsがない
+        IPv6を優先してconnect
+        select([fds], CONNECTION_ATTEMPT_DELAY)
+          - connectに成功                        -> success
+          - CONNECTION_ATTEMPT_DELAYタイムアウト -> v46cに戻る
+
+    else if 未接続のaddrinfoの在庫がない
+      - すべてのfdが接続中     -> v46wait_to_resolv_or_connect
+      - すべてのfdの接続に失敗 -> failure
+
+# 追加
+# 未解決のアドレスがある可能性あり、未接続のaddrinfosなし、接続中のfdsあり
+case v46wait_to_resolv_or_connect
   resources
-    # TODO
+    接続中のfds
   do
-    if 接続中のソケットがある
+    if 接続中のfdsがある
+      if connect_timeout
+        - タイムアウト済み -> timeout
+
       if 前回の接続のCONNECTION_ATTEMPT_DELAY中
-        CONNECTION_ATTEMPT_DELAY
-      if 前回の接続のCONNECTION_ATTEMPT_DELAYタイムアウト済み
-        アドレス選択してconnect
-    if 接続中のソケットがない
-      # 処理なし
-  transition
-    if 接続中のソケットがある
-      CONNECTION_ATTEMPT_DELAYタイムアウト前にconnectに成功 -> success
-      CONNECTION_ATTEMPT_DELAYタイムアウト -> ???に戻る
-    if 接続中のソケットがない
-      すべてのfdの接続に失敗 -> failure
+        CONNECTION_ATTEMPT_DELAY # TODO ループとselectどちらでCONNECTION_ATTEMPT_DELAYするべきか考える
+          - CONNECTION_ATTEMPT_DELAYタイムアウト -> v46wait_to_resolv_or_connectに戻る
+
+      else if 前回の接続のCONNECTION_ATTEMPT_DELAYタイムアウト済み
+        if IPv6 / IPv4アドレス解決中
+          # TODO selectでCONNECTION_ATTEMPT_DELAYしても大丈夫?
+          select([IPv4 fds, IPv?アドレス解決], CONNECTION_ATTEMPT_DELAY)
+            - connectに成功                        -> success
+            - IPv6 / IPv4アドレス解決              -> v46c
+            - CONNECTION_ATTEMPT_DELAYタイムアウト -> v46wait_to_resolv_or_connectに戻る
+
+        else if IPv6 / IPv4アドレス解決済み
+          select([fds], CONNECTION_ATTEMPT_DELAY)
+            - connectに成功                        -> success
+            - CONNECTION_ATTEMPT_DELAYタイムアウト -> v46wait_to_resolv_or_connectに戻る
+
+    else if 接続中のfdsがない
+      - すべてのfdの接続に失敗 -> failure
 
 case success
   resources
-    # TODO
+    接続済みのfd
+    接続中のfdsがある可能性あり
   do
     cleanup
     return 接続済みfd
 
 case failure
   resources
-    # TODO
-  do
-    # 全てのfdの接続に失敗しているケース
-    # 現在のSocket.tcpの仕様ではconnect_timeoutが指定されていない場合は接続を待ち続けるので、
-    # ここに到達してしまうと既存の挙動が変更されることになる
-    # このstateを許容するべきか考えるべき
-
-case timeout
+    なし
   do
     cleanup
-    raise
+    raise LastError
+
+# 追加
+case timeout
+  resources
+    connect_timeoutの場合、接続中のfds
+  do
+    cleanup
+    raise TimeoutError
 ```
 
-- 「未接続のaddrinfoの在庫が枯渇しており、すべてのfdが接続中の状態」は
+- v4c / v6cにおける「未解決のファミリがあり、未接続のaddrinfoの在庫が枯渇、すべてのfdが接続中」は
   impl14では`resolution_state[:ipv6_done] && resolution_state[:ipv4_done] && pickable_addrinfos.empty?`の場合
-  それ以上アドレス解決を待たないようにしている
+  それ以上アドレス解決を待たないようにすることによって永久に待機し続けるような事態を回避している
   - 最初にアドレス解決がなされて以降、`pickable_addrinfos`に解決済みのaddrinfoが勝手に入ってくるイメージ
