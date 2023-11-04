@@ -23,7 +23,7 @@ case start
     # TODO
     # アドレス解決中にエラーが起こった場合はどうする? (どちらかのファミリで発生した場合 / 両方で発生した場合)
 
-# (IPv4アドレス解決中)
+# IPv4アドレス解決中
 # TODO connect / selectでエラーになった場合の処理を考える
 case v6c
   resources
@@ -31,16 +31,22 @@ case v6c
     二周目以降、接続中のIPv6 fds
   do
     if 未接続のIPv6 addrinfoがある
-      select([IPv6 fds, IPv4アドレス解決], CONNECTION_ATTEMPT_DELAY) # 接続中のfdsがある場合
-        - connectに成功    -> success
-        - IPv4アドレス解決 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+      if 接続中のfdsがある
+        if connect_timeout && タイムアウト済み
+          -> timeout
 
-      if CONNECTION_ATTEMPT_DELAYタイムアウト
+        select([IPv6 fds, IPv4アドレス解決], CONNECTION_ATTEMPT_DELAY)
+          - connectに成功    -> success
+          - IPv4アドレス解決 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+
+      if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
         connect
           -> v6cに戻る
 
-    else if 未接続のIPv6 addrinfoがない
-      # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
+    else if 未接続のIPv6 addrinfoがない # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
+      if connect_timeout && タイムアウト済み
+        -> timeout
+
       select([IPv6 fds, IPv4アドレス解決])
         - connectに成功    -> success
         - IPv4アドレス解決 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
@@ -67,16 +73,22 @@ case v4c
     二周目以降、接続中のIPv4 fds
   do
     if 未接続のIPv4 addrinfoがある
-      select([IPv4 fds, IPv6アドレス解決], CONNECTION_ATTEMPT_DELAY) # 接続中のfdsがある場合
-        - connectに成功            -> success
-        - IPv6アドレス解決した場合 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+      if 接続中のfdsがある
+        if connect_timeout && タイムアウト済み
+          -> timeout
 
-      if CONNECTION_ATTEMPT_DELAYタイムアウト
+        select([IPv4 fds, IPv6アドレス解決], CONNECTION_ATTEMPT_DELAY)
+          - connectに成功            -> success
+          - IPv6アドレス解決した場合 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+
+      if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
         connect
           -> v4cに戻る
 
-    else if 未接続のIPv4 addrinfoがない
-      # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
+    else if 未接続のIPv4 addrinfoがない # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
+      if connect_timeout && タイムアウト済み
+        -> timeout
+
       select([IPv4 fds, IPv6アドレス解決])
         - connectに成功した場合    -> success
         - IPv6アドレス解決した場合 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
