@@ -1,6 +1,14 @@
-# 状態遷移
+# 状態遷移案02
+- addrinfosが枯渇した後で未解決のアドレスファミリか接続を待つstateとして`v46wait_to_resolv_or_connect`を用意する
+- `v46c`をconnect用、`v46wait_to_resolv_or_connect`をselect用としてstateを完全に分離する
+  - `v46c` - すべてのファミリがアドレス解決済み、未接続のaddrinfoあり、接続中のfdsあり
+    - すべてのファミリをアドレス解決後、まだ接続していない残りのaddrinfoをconnectするstate
+  - `v46wait_to_resolv_or_connect` - 未解決のアドレスがある可能性あり、未接続のaddrinfoなし、接続中のfdsあり
+    - まだ解決できていないアドレスと、接続中のfdsをselectするstate
 
 ```
+# WIP
+
 case start
   resources
     なし
@@ -39,7 +47,7 @@ case v6c
 
       # (注)
       # IPv6 fdsがすべて接続中またはすべて接続失敗し、A応答がないと永久に待ち続ける可能性あり
-      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectに遷移する必要がある
+      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectかtimeoutかfailureに遷移する必要がある
       # -> v46wait_to_resolv_or_connect
 
 # IPv6アドレス解決中
@@ -75,7 +83,7 @@ case v4c
 
       # (注)
       # IPv4 fdsがすべて接続中またはすべて接続失敗し、AAAA応答がないと永久に待ち続ける可能性あり
-      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectに遷移する必要がある
+      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectかtimeoutかfailureに遷移する必要がある
       # -> v46wait_to_resolv_or_connect
 
 # すべてのファミリがアドレス解決済み、未接続のaddrinfosあり、接続中のfdsあり
