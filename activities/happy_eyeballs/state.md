@@ -16,6 +16,7 @@ case start
     # アドレス解決中にエラーが起こった場合はどうする? (どちらかのファミリで発生した場合 / 両方で発生した場合)
 
 # (IPv4アドレス解決中)
+# TODO connect / selectでエラーになった場合の処理を考える
 case v6c
   resources
     未接続のIPv6 addrinfos
@@ -51,6 +52,7 @@ case v4w
       - RESOLUTION_DELAYタイムアウト -> v4c
 
 # IPv6アドレス解決中
+# TODO connect / selectでエラーになった場合の処理を考える
 case v4c
   resources
     未接続のIPv4 addrinfos
@@ -78,6 +80,7 @@ case v4c
 
 # すべてのファミリがアドレス解決済み、未接続のaddrinfosあり、接続中のfdsあり
 # 接続中のfdsがある場合、CONNECTION_ATTEMPT_DELAY中の可能性あり
+# TODO connect / selectでエラーになった場合の処理を考える
 case v46c
   resources
     未接続のaddrinfos
@@ -105,6 +108,7 @@ case v46c
 # 追加
 # 未解決のアドレスがある可能性あり、未接続のaddrinfosなし、接続中のfdsあり
 # CONNECTION_ATTEMPT_DELAY中の可能性あり
+# TODO connect / selectでエラーになった場合の処理を考える
 case v46wait_to_resolv_or_connect
   resources
     接続中のfds
@@ -161,4 +165,3 @@ case timeout
   - 最初にアドレス解決がなされて以降、`pickable_addrinfos`に解決済みのaddrinfoが勝手に入ってくるイメージ
 - `v6c`はconnectのみ (未接続のaddrinfosがある場合) 、
   `v46wait_to_resolv_or_connect`はselectのみ (接続済みのfdsがある場合) に切り分けた方が良い?
-- connect / selectでエラーになった場合の処理を考える
