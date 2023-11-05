@@ -1,14 +1,10 @@
-# 状態遷移案02
-- `v46c`をconnect用、`v46wait_to_resolv_or_connect`をselect用としてstateを完全に分離する
-  - `v46c` - 接続するためのstate
-    - まだ接続していない残りのaddrinfoをconnectするstate
-    - すべてのファミリがアドレス解決済み、未接続のaddrinfoあり、接続中のfdsなし
-  - `v46wait_to_resolv_or_connect` - 待機するためのstate
-    - まだ解決できていないアドレスと接続中のfdsを`CONNECTION_ATTEMPT_DELAY`時間ごとにselectするstate
-    - 未解決のアドレスがある可能性あり、未接続のaddrinfoがある可能性あり、接続中のfdsあり
-  - 接続中のfdがある場合は待機を優先する
+# 状態遷移案03
+- v4c / v6cでひとつ接続を開始したら速やかに`v46wait_to_resolv_or_connect`に遷移して、
+  以降は`v46c`と`v46wait_to_resolv_or_connect`を交互に繰り返す
+  - その場合`v46c`は「すべてのアドレス解決済み」にはならないが...
 
 ```
+# WIP
 case start
   # 最初のstate
   # スレッドを二つ生成し、それぞれIPv6 getaddrinfo開始 / IPv4 getaddrinfo開始
@@ -24,31 +20,17 @@ case start
       - resolv_timeout   -> timeout
 
 case v6c
-  # IPv4アドレス解決が完了するまで、もしくは解決済みのすべてのaddrinfosの接続を開始するまでaddrinfosの接続を行うstate
+  # IPv6 addrinfoをひとつ使って接続を一回だけ開始するstate
   # 先にIPv6アドレス解決が終わった場合のみここに来る (v6c後にv4w/v4cに遷移することはない)
   # 別スレッドでIPv4アドレス解決中
+  # 未接続のIPv6 addrinfosが残っている可能性あり
   # TODO connect / selectでエラーになった場合の処理を考える
   from
     - start
-    - v6c
   resources
     未接続のIPv6 addrinfos
-    二周目以降、接続中のIPv6 fds
   do
-    if 未接続のIPv6 addrinfoがある
-      if 接続中のfdsがある
-        if connect_timeout && タイムアウト済み
-          -> timeout
-
-        select([IPv6 fds, IPv4アドレス解決], CONNECTION_ATTEMPT_DELAY)
-          - connectに成功    -> success
-          - IPv4アドレス解決 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
-
-      else if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
-        connect
-          -> v6cに戻る
-
-    else if 未接続のIPv6 addrinfoがない # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
+    connect
       -> v46wait_to_resolv_or_connect
 
 case v4w
@@ -66,31 +48,17 @@ case v4w
       - RESOLUTION_DELAYタイムアウト -> v4c
 
 case v4c
-  # IPv6アドレス解決が完了するまで、もしくは解決済みのすべてのaddrinfosの接続を開始するまでaddrinfosの接続を行うstate
+  # IPv4 addrinfoをひとつ使って接続を一回だけ開始するstate
   # 先にIPv4アドレス解決が終わった場合のみここに来る (v4c後にv6wに遷移することはない)
   # 別スレッドでIPv6アドレス解決中
+  # 未接続のIPv4 addrinfosが残っている可能性あり
   # TODO connect / selectでエラーになった場合の処理を考える
   from
     - v4w
-    - v4c
   resources
     未接続のIPv4 addrinfos
-    二周目以降、接続中のIPv4 fds
   do
-    if 未接続のIPv4 addrinfoがある
-      if 接続中のfdsがある
-        if connect_timeout && タイムアウト済み
-          -> timeout
-
-        select([IPv4 fds, IPv6アドレス解決], CONNECTION_ATTEMPT_DELAY)
-          - connectに成功            -> success
-          - IPv6アドレス解決した場合 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
-
-      else if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
-        connect
-          -> v4cに戻る
-
-    else if 未接続のIPv4 addrinfoがない # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
+    connect
       -> v46wait_to_resolv_or_connect
 
 case v46c
@@ -188,7 +156,3 @@ case timeout
     cleanup
     raise TimeoutError
 ```
-
-- v4c / v6cでひとつ接続を開始したら速やかに`v46wait_to_resolv_or_connect`に遷移して、
-  以降は`v46c`と`v46wait_to_resolv_or_connect`を交互に繰り返す方が良い?
-  - その場合`v46c`は「すべてのアドレス解決済み」にはならないが...
