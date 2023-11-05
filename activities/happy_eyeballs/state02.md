@@ -50,19 +50,8 @@ case v6c
         connect
           -> v6cに戻る
 
-    # v46wait_to_resolv_or_connectに移動した方が良いかも
     else if 未接続のIPv6 addrinfoがない # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
-      if connect_timeout && タイムアウト済み
-        -> timeout
-
-      select([IPv6 fds, IPv4アドレス解決])
-        - connectに成功    -> success
-        - IPv4アドレス解決 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
-
-      # (注)
-      # IPv6 fdsがすべて接続中またはすべて接続失敗し、A応答がないと永久に待ち続ける可能性あり
-      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectに遷移する必要がある
-      # -> v46wait_to_resolv_or_connect
+      -> v46wait_to_resolv_or_connect
 
 case v4w
   # IPv6アドレスを解決するまで、もしくはResolution Delayが終わるまで待機するstate
@@ -103,19 +92,8 @@ case v4c
         connect
           -> v4cに戻る
 
-    # v46wait_to_resolv_or_connectに移動した方が良いかも
     else if 未接続のIPv4 addrinfoがない # 未解決のファミリがあり、未接続のaddrinfoが枯渇、すべてのfdが接続中
-      if connect_timeout && タイムアウト済み
-        -> timeout
-
-      select([IPv4 fds, IPv6アドレス解決])
-        - connectに成功した場合    -> success
-        - IPv6アドレス解決した場合 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
-
-      # (注)
-      # IPv4 fdsがすべて接続中またはすべて接続失敗し、AAAA応答がないと永久に待ち続ける可能性あり
-      # どこかでクエリを打ち切ってv46wait_to_resolv_or_connectに遷移する必要がある
-      # -> v46wait_to_resolv_or_connect
+      -> v46wait_to_resolv_or_connect
 
 case v46c
   # 未接続のaddrinfosの接続を行うstate
@@ -153,6 +131,7 @@ case v46wait_to_resolv_or_connect
     - v46c
   resources
     接続中のfds
+    未接続のaddrinfos (あれば)
   do
     if 接続中のfdsがある
       if connect_timeout && タイムアウト済み
