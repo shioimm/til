@@ -1,10 +1,12 @@
 # 状態遷移案02
 - addrinfosが枯渇した後で未解決のアドレスファミリか接続を待つstateとして`v46wait_to_resolv_or_connect`を用意する
 - `v46c`をconnect用、`v46wait_to_resolv_or_connect`をselect用としてstateを完全に分離する
-  - `v46c` - すべてのファミリがアドレス解決済み、未接続のaddrinfoあり、接続中のfdsあり
-    - すべてのファミリをアドレス解決後、まだ接続していない残りのaddrinfoをconnectするstate
-  - `v46wait_to_resolv_or_connect` - 未解決のアドレスがある可能性あり、未接続のaddrinfoなし、接続中のfdsあり
-    - まだ解決できていないアドレスと、接続中のfdsをselectするstate
+  - `v46c` - 接続するためのstate
+    - まだ接続していない残りのaddrinfoをconnectするstate
+    - すべてのファミリがアドレス解決済み、未接続のaddrinfoあり、接続中のfdsなし
+  - `v46wait_to_resolv_or_connect` - 待機するためのstate
+    - まだ解決できていないアドレスと接続中のfdsを`CONNECTION_ATTEMPT_DELAY`時間ごとにselectするstate
+    - 未解決のアドレスがある可能性あり、未接続のaddrinfoがある可能性あり、接続中のfdsあり
 
 ```
 # WIP
@@ -37,9 +39,9 @@ case v6c
 
         select([IPv6 fds, IPv4アドレス解決], CONNECTION_ATTEMPT_DELAY)
           - connectに成功    -> success
-          - IPv4アドレス解決 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+          - IPv4アドレス解決 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
 
-      if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
+      else if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
         connect
           -> v6cに戻る
 
@@ -49,7 +51,7 @@ case v6c
 
       select([IPv6 fds, IPv4アドレス解決])
         - connectに成功    -> success
-        - IPv4アドレス解決 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+        - IPv4アドレス解決 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
 
       # (注)
       # IPv6 fdsがすべて接続中またはすべて接続失敗し、A応答がないと永久に待ち続ける可能性あり
@@ -79,9 +81,9 @@ case v4c
 
         select([IPv4 fds, IPv6アドレス解決], CONNECTION_ATTEMPT_DELAY)
           - connectに成功            -> success
-          - IPv6アドレス解決した場合 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+          - IPv6アドレス解決した場合 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
 
-      if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
+      else if 接続中のfdsがない || CONNECTION_ATTEMPT_DELAYタイムアウト
         connect
           -> v4cに戻る
 
@@ -91,7 +93,7 @@ case v4c
 
       select([IPv4 fds, IPv6アドレス解決])
         - connectに成功した場合    -> success
-        - IPv6アドレス解決した場合 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+        - IPv6アドレス解決した場合 -> v46wait_to_resolv_or_connect # CONNECTION_ATTEMPT_DELAY中の可能性があるので
 
       # (注)
       # IPv4 fdsがすべて接続中またはすべて接続失敗し、AAAA応答がないと永久に待ち続ける可能性あり
@@ -107,26 +109,21 @@ case v46c
     接続中のfds (一周目はまだ存在しない可能性あり)
   do
     if 未接続のaddrinfoがある
-      if 接続中のfdsがある
+      if IPv6 addrinfo 接続済み
         if connect_timeout && タイムアウト済み
           -> timeout
 
-        select([fds], CONNECTION_ATTEMPT_DELAY) # CONNECTION_ATTEMPT_DELAY = 残り時間
-          - connectに成功 -> success
+        アドレス選択してconnect -> v46wait_to_resolv_or_connect
 
-        if CONNECTION_ATTEMPT_DELAYタイムアウト
-          アドレス選択してconnect -> v46cに戻る
-
-      else if 接続中のfdsがない
+      else if IPv6 addrinfo 未接続
         IPv6を優先してconnect
-          -> v46cに戻る
+          -> v46wait_to_resolv_or_connect
 
     else if 未接続のaddrinfoがない
-      - すべてのfdが接続中     -> v46wait_to_resolv_or_connect
-      - すべてのfdの接続に失敗 -> failure
+      -> v46wait_to_resolv_or_connect
 
 # 追加
-# 未解決のアドレスがある可能性あり、未接続のaddrinfosなし、接続中のfdsあり
+# 未解決のアドレスがある可能性あり、未接続のaddrinfoがある可能性あり、接続中のfdsあり
 # CONNECTION_ATTEMPT_DELAY中の可能性あり
 # TODO connect / selectでエラーになった場合の処理を考える
 case v46wait_to_resolv_or_connect
@@ -138,18 +135,18 @@ case v46wait_to_resolv_or_connect
         -> timeout
 
       if IPv6 / IPv4アドレス解決中
-        select([IPv4 fds, IPv?アドレス解決], CONNECTION_ATTEMPT_DELAY) # CONNECTION_ATTEMPT_DELAY = 残り時間
-          - connectに成功           -> success
-          - IPv6 / IPv4アドレス解決 -> v46c # CONNECTION_ATTEMPT_DELAY中の可能性あり
+        select([fds, IPv?アドレス解決], CONNECTION_ATTEMPT_DELAY) # CONNECTION_ATTEMPT_DELAY = 残り時間
+          - connectに成功    -> success
+          - IPv?アドレス解決 -> v46wait_to_resolv_or_connectに戻る # CONNECTION_ATTEMPT_DELAY中の可能性があるので
 
-        if CONNECTION_ATTEMPT_DELAYタイムアウト
-          -> v46wait_to_resolv_or_connectに戻る
-
-      else if IPv6 / IPv4アドレス解決済み
+      else if IPv6 / IPv4アドレス解決済み # CONNECTION_ATTEMPT_DELAY中にアドレス解決した場合はここにくる
         select([fds], CONNECTION_ATTEMPT_DELAY) # CONNECTION_ATTEMPT_DELAY = 残り時間
           - connectに成功 -> success
 
-        if CONNECTION_ATTEMPT_DELAYタイムアウト
+      if CONNECTION_ATTEMPT_DELAYタイムアウト
+        if 未接続のaddrinfosがある
+          -> v46c
+        else
           -> v46wait_to_resolv_or_connectに戻る
 
     else if 接続中のfdsがない
