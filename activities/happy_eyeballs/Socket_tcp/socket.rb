@@ -10,7 +10,61 @@ class Socket
   private_constant :CONNECTION_ATTEMPT_DELAY
 
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
+    # Happy Eyeballs' states
+    # - :start
+    # - :v6c
+    # - :v4w
+    # - :v4c
+    # - :v46c
+    # - :v46w
+    # - :success
+    # - :failure
+    # - :timeout
+
     # WIP
+    state = :start
+
+    connected_socket = loop do
+      connected_socket = 'connected_socket'
+
+      case state
+      when :start
+        # TODO
+      when :v6c
+        # TODO
+      when :v6c
+        # TODO
+      when :v4w
+        # TODO
+      when :v4c
+        # TODO
+      when :v46c
+        # TODO
+      when :v46w
+        # TODO
+      when :success
+        break connected_socket
+      when :failure
+        raise
+      when :timeout
+        raise
+      end
+    end
+
+    if block_given?
+      begin
+        yield connected_socket
+      ensure
+        # TODO
+        #   アドレス解決スレッドを全てexit
+        #   connected_socketをclose
+      end
+    else
+      connected_socket
+    end
+  ensure
+    # TODO
+    #   アドレス解決スレッドを全てexit
   end
 end
 
