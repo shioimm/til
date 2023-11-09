@@ -24,16 +24,24 @@ class Socket
     # WIP
     state = :start
 
-    connected_socket = loop do
-      connected_socket = 'connected_socket'
+    addrinfos = []
+    connected_sockets = []
+    connecting_sockets = []
 
+    connected_socket = loop do
       case state
       when :start
         # TODO
+        addrinfos.concat Addrinfo.getaddrinfo(host, port, Socket::AF_INET6, :STREAM)
+        state = :v6c
+        next
       when :v6c
         # TODO
-      when :v6c
-        # TODO
+        addrinfo = addrinfos.pop
+        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+        socket.connect_nonblock(addrinfo, exception: false)
+        connecting_sockets.push socket
+        state = :v46w
       when :v4w
         # TODO
       when :v4c
@@ -42,6 +50,10 @@ class Socket
         # TODO
       when :v46w
         # TODO
+        _, connected_sockets, = IO.select(nil, connecting_sockets, nil, nil)
+        connected_socket = connected_sockets.pop
+        state = :success
+        next
       when :success
         break connected_socket
       when :failure
