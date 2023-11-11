@@ -9,6 +9,12 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
+  ADDRESS_FAMILIES = {
+    ipv6: Socket::AF_INET6,
+    ipv4: Socket::AF_INET
+  }.freeze
+  private_constant :ADDRESS_FAMILIES
+
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     # Happy Eyeballs' states
     # - :start
@@ -24,20 +30,51 @@ class Socket
     # WIP
     state = :start
 
-    addrinfos = []
+    addrinfos = {}
     connected_sockets = []
     connecting_sockets = []
+
+    mutex = Mutex.new
+    read_resolved_family, write_resolved_family = IO.pipe
+    hostname_resolution_threads = []
 
     connected_socket = loop do
       case state
       when :start
-        # TODO
-        addrinfos.concat Addrinfo.getaddrinfo(host, port, Socket::AF_INET6, :STREAM)
-        state = :v6c
+        # TMP
+        hostname_resolution_threads.concat(ADDRESS_FAMILIES.keys.map do |family|
+          Thread.new(host, port, family) do |host, port, family|
+            resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+
+            mutex.synchronize do
+              addrinfos[family] = resolved_addrinfos
+              write_resolved_family.puts family
+            end
+          end
+        end)#.map(&:join)
+
+        # ipv6_addrinfos = Addrinfo.getaddrinfo(host, port, Socket::AF_INET6, :STREAM)
+        # addrinfos[:ipv6] = ipv6_addrinfos
+        # state = :v6c
+
+        # ipv4_addrinfos = Addrinfo.getaddrinfo(host, port, Socket::AF_INET, :STREAM)
+        # addrinfos[:ipv4] = ipv4_addrinfos
+        # state = :v4c # TMP
+
+        resolved_families, _, = IO.select([read_resolved_family], nil, nil, nil)
+
+        resolved_family = read_resolved_families.pop.getbyte
+
+        if resolved_family == :ipv6
+          state = :v4c
+        elsif  resolved_family == :ipv4
+          state = :v6c
+        end
+
         next
       when :v6c
-        # TODO
-        addrinfo = addrinfos.pop
+        # TMP
+        addrinfo = addrinfos[:ipv6].pop
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
         socket.connect_nonblock(addrinfo, exception: false)
         connecting_sockets.push socket
@@ -45,7 +82,12 @@ class Socket
       when :v4w
         # TODO
       when :v4c
-        # TODO
+        # TMP
+        addrinfo = addrinfos[:ipv4].pop
+        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+        socket.connect_nonblock(addrinfo, exception: false)
+        connecting_sockets.push socket
+        state = :v46w
       when :v46c
         # TODO
       when :v46w
@@ -75,8 +117,7 @@ class Socket
       connected_socket
     end
   ensure
-    # TODO
-    #   アドレス解決スレッドを全てexit
+    hostname_resolution_threads.each { |th| th&.exit }
   end
 end
 
