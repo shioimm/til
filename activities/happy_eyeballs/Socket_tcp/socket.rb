@@ -63,7 +63,7 @@ class Socket
 
         case resolved_family
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
-        when ADDRESS_FAMILIES[:ipv4] then state = :v4c # TODO
+        when ADDRESS_FAMILIES[:ipv4] then state = :v4w
         end
 
         next
@@ -84,7 +84,9 @@ class Socket
 
         next
       when :v4w
-        # TODO
+        resolved_ipv6, _, = IO.select([read_resolved_family], nil, nil, RESOLUTION_DELAY)
+        state = resolved_ipv6 ? :v46c : :v4c
+        next
       when :v4c
         # TMP
         addrinfo = addrinfos[:ipv4].pop
