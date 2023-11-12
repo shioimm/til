@@ -74,8 +74,8 @@ class Socket
         next
       when :v4c, :v6c
         # TODO SystemCallErrorを捕捉する必要あり
-        family = "ipv#{state.to_s[1]}".to_sym
-        addrinfo = addrinfos.find { |addrinfo| addrinfo.afamily == ADDRESS_FAMILIES[family] }
+        family_name = "ipv#{state.to_s[1]}"
+        addrinfo = addrinfos.find { |addrinfo| addrinfo.afamily == ADDRESS_FAMILIES[family_name.to_sym] }
 
         mutex.synchronize do
           addrinfos.delete addrinfo
