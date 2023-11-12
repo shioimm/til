@@ -72,36 +72,18 @@ class Socket
         resolved_ipv6, _, = IO.select([read_resolved_family], nil, nil, RESOLUTION_DELAY)
         state = resolved_ipv6 ? :v46c : :v4c
         next
-      when :v4c, :v6c
+      when :v4c, :v6c, :v46c
         # TODO SystemCallErrorを捕捉する必要あり
-        family_name = "ipv#{state.to_s[1]}"
-        addrinfo = addrinfos.find { |addrinfo| addrinfo.afamily == ADDRESS_FAMILIES[family_name.to_sym] }
-
-        mutex.synchronize do
-          addrinfos.delete addrinfo
-        end
-
-        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0
-          connected_socket = socket
-          state = :success
-        when :wait_writable
-          connecting_sockets.push socket
-          state = :v46w
-        end
-
-        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != addrinfo.afamily })
-
-        next
-      when :v46c
-        addrinfo =
-          if next_family
-            addrinfos.find { |addrinfo| addrinfo.afamily == next_family }
+        family =
+          case state
+          when :v46c
+            next_family ? next_family : ADDRESS_FAMILIES[:ipv6]
           else
-            addrinfos.find { |addrinfo| addrinfo.afamily == ADDRESS_FAMILIES[:ipv6] }
+            family_name = "ipv#{state.to_s[1]}"
+            ADDRESS_FAMILIES[family_name.to_sym]
           end
+
+        addrinfo = addrinfos.find { |addrinfo| addrinfo.afamily == family }
 
         mutex.synchronize do
           addrinfos.delete addrinfo
