@@ -30,7 +30,7 @@ class Socket
     # WIP
     state = :start
 
-    addrinfos = {}
+    addrinfos = []
     connected_sockets = []
     connecting_sockets = []
 
@@ -46,7 +46,7 @@ class Socket
             resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
             mutex.synchronize do
-              addrinfos[family] = resolved_addrinfos
+              addrinfos.concat resolved_addrinfos
               write_resolved_family.putc ADDRESS_FAMILIES[family]
             end
           end
@@ -74,7 +74,12 @@ class Socket
       when :v4c, :v6c
         # TODO SystemCallErrorを捕捉する必要あり
         family = "ipv#{state.to_s[1]}".to_sym
-        addrinfo = addrinfos[family].pop
+        addrinfo = addrinfos.find { |addrinfo| addrinfo.afamily == ADDRESS_FAMILIES[family] }
+
+        mutex.synchronize do
+          addrinfos.delete addrinfo
+        end
+
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
         case socket.connect_nonblock(addrinfo, exception: false)
