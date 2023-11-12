@@ -41,34 +41,29 @@ class Socket
     connected_socket = loop do
       case state
       when :start
-        # TMP
         hostname_resolution_threads.concat(ADDRESS_FAMILIES.keys.map do |family|
           Thread.new(host, port, family) do |host, port, family|
             resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
             mutex.synchronize do
               addrinfos[family] = resolved_addrinfos
-              write_resolved_family.puts family
+              write_resolved_family.putc ADDRESS_FAMILIES[family]
             end
           end
-        end)#.map(&:join)
+        end)
 
-        # ipv6_addrinfos = Addrinfo.getaddrinfo(host, port, Socket::AF_INET6, :STREAM)
-        # addrinfos[:ipv6] = ipv6_addrinfos
-        # state = :v6c
+        resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
 
-        # ipv4_addrinfos = Addrinfo.getaddrinfo(host, port, Socket::AF_INET, :STREAM)
-        # addrinfos[:ipv4] = ipv4_addrinfos
-        # state = :v4c # TMP
+        unless resolved_families
+          state = :timeout # "user specified timeout"
+          next
+        end
 
-        resolved_families, _, = IO.select([read_resolved_family], nil, nil, nil)
+        resolved_family = resolved_families.pop.getbyte
 
-        resolved_family = read_resolved_families.pop.getbyte
-
-        if resolved_family == :ipv6
-          state = :v4c
-        elsif  resolved_family == :ipv4
-          state = :v6c
+        case resolved_family
+        when ADDRESS_FAMILIES[:ipv6] then state = :v6c
+        when ADDRESS_FAMILIES[:ipv4] then state = :v4c # TODO
         end
 
         next
@@ -79,6 +74,7 @@ class Socket
         socket.connect_nonblock(addrinfo, exception: false)
         connecting_sockets.push socket
         state = :v46w
+        next
       when :v4w
         # TODO
       when :v4c
@@ -88,6 +84,7 @@ class Socket
         socket.connect_nonblock(addrinfo, exception: false)
         connecting_sockets.push socket
         state = :v46w
+        next
       when :v46c
         # TODO
       when :v46w
