@@ -100,7 +100,8 @@ class Socket
           state = :v46w
         end
 
-        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != addrinfo.afamily })
+        current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
+        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != current_family_name })
 
         next
       when :v46w
