@@ -33,6 +33,7 @@ class Socket
     addrinfos = []
     connected_sockets = []
     connecting_sockets = []
+    next_family = nil
 
     mutex = Mutex.new
     read_resolved_family, write_resolved_family = IO.pipe
@@ -91,9 +92,35 @@ class Socket
           state = :v46w
         end
 
+        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != addrinfo.afamily })
+
         next
       when :v46c
-        # TODO
+        addrinfo =
+          if next_family
+            addrinfos.find { |addrinfo| addrinfo.afamily == next_family }
+          else
+            addrinfos.find { |addrinfo| addrinfo.afamily == ADDRESS_FAMILIES[:ipv6] }
+          end
+
+        mutex.synchronize do
+          addrinfos.delete addrinfo
+        end
+
+        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+        case socket.connect_nonblock(addrinfo, exception: false)
+        when 0
+          connected_socket = socket
+          state = :success
+        when :wait_writable
+          connecting_sockets.push socket
+          state = :v46w
+        end
+
+        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != addrinfo.afamily })
+
+        next
       when :v46w
         # TODO
         _, connected_sockets, = IO.select(nil, connecting_sockets, nil, nil)
