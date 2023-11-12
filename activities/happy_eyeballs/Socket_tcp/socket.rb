@@ -60,9 +60,7 @@ class Socket
           next
         end
 
-        resolved_family = resolved_families.pop.getbyte
-
-        case resolved_family
+        case read_resolved_family.getbyte
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
         end
@@ -105,10 +103,20 @@ class Socket
 
         next
       when :v46w
-        # TODO
-        _, connected_sockets, = IO.select(nil, connecting_sockets, nil, nil)
-        connected_socket = connected_sockets.pop
-        state = :success
+        # TODO connect_timeoutの場合の処理を追加する
+        # TODO Connection Attempt Delayを計算してIO.selectの第四引数に渡す
+        resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, nil)
+
+        if !resolved_families.empty?
+          read_resolved_family.getbyte # えー
+          state = :v46c
+        elsif !connected_sockets.empty?
+          connected_socket = connected_sockets.pop
+          state = :success
+        end
+        # TODO Connection Attempt Delay タイムアウトした場合の分岐を追加する
+        # (addrinfosがあればv46c、そうでなければv46w)
+
         next
       when :success
         break connected_socket
