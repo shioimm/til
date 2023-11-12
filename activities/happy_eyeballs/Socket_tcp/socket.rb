@@ -67,34 +67,18 @@ class Socket
         end
 
         next
-      when :v6c
-        # TODO SystemCallErrorを捕捉する必要あり
-        addrinfo = addrinfos[:ipv6].pop
-        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0
-          state = :v46w
-          connected_socket = socket
-          state = :success
-        when :wait_writable
-          connecting_sockets.push socket
-          state = :v46w
-        end
-
-        next
       when :v4w
         resolved_ipv6, _, = IO.select([read_resolved_family], nil, nil, RESOLUTION_DELAY)
         state = resolved_ipv6 ? :v46c : :v4c
         next
-      when :v4c
+      when :v4c, :v6c
         # TODO SystemCallErrorを捕捉する必要あり
-        addrinfo = addrinfos[:ipv4].pop
+        family = "ipv#{state.to_s[1]}".to_sym
+        addrinfo = addrinfos[family].pop
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
         case socket.connect_nonblock(addrinfo, exception: false)
         when 0
-          state = :v46w
           connected_socket = socket
           state = :success
         when :wait_writable
