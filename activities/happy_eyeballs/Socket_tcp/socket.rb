@@ -88,12 +88,20 @@ class Socket
         state = resolved_ipv6 ? :v46c : :v4c
         next
       when :v4c
-        # TMP
+        # TODO SystemCallErrorを捕捉する必要あり
         addrinfo = addrinfos[:ipv4].pop
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-        socket.connect_nonblock(addrinfo, exception: false)
-        connecting_sockets.push socket
-        state = :v46w
+
+        case socket.connect_nonblock(addrinfo, exception: false)
+        when 0
+          state = :v46w
+          connected_socket = socket
+          state = :success
+        when :wait_writable
+          connecting_sockets.push socket
+          state = :v46w
+        end
+
         next
       when :v46c
         # TODO
