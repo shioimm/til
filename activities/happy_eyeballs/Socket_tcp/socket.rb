@@ -30,9 +30,10 @@ class Socket
     # WIP
     state = :start
 
-    addrinfos = {}
+    addrinfos = []
     connected_sockets = []
     connecting_sockets = []
+    next_family = nil
 
     mutex = Mutex.new
     read_resolved_family, write_resolved_family = IO.pipe
@@ -41,60 +42,81 @@ class Socket
     connected_socket = loop do
       case state
       when :start
-        # TMP
         hostname_resolution_threads.concat(ADDRESS_FAMILIES.keys.map do |family|
           Thread.new(host, port, family) do |host, port, family|
             resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
             mutex.synchronize do
-              addrinfos[family] = resolved_addrinfos
-              write_resolved_family.puts family
+              addrinfos.concat resolved_addrinfos
+              write_resolved_family.putc ADDRESS_FAMILIES[family]
             end
           end
-        end)#.map(&:join)
+        end)
 
-        # ipv6_addrinfos = Addrinfo.getaddrinfo(host, port, Socket::AF_INET6, :STREAM)
-        # addrinfos[:ipv6] = ipv6_addrinfos
-        # state = :v6c
+        resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
 
-        # ipv4_addrinfos = Addrinfo.getaddrinfo(host, port, Socket::AF_INET, :STREAM)
-        # addrinfos[:ipv4] = ipv4_addrinfos
-        # state = :v4c # TMP
+        unless resolved_families
+          state = :timeout # "user specified timeout"
+          next
+        end
 
-        resolved_families, _, = IO.select([read_resolved_family], nil, nil, nil)
-
-        resolved_family = read_resolved_families.pop.getbyte
-
-        if resolved_family == :ipv6
-          state = :v4c
-        elsif  resolved_family == :ipv4
-          state = :v6c
+        case read_resolved_family.getbyte
+        when ADDRESS_FAMILIES[:ipv6] then state = :v6c
+        when ADDRESS_FAMILIES[:ipv4] then state = :v4w
         end
 
         next
-      when :v6c
-        # TMP
-        addrinfo = addrinfos[:ipv6].pop
-        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-        socket.connect_nonblock(addrinfo, exception: false)
-        connecting_sockets.push socket
-        state = :v46w
       when :v4w
-        # TODO
-      when :v4c
-        # TMP
-        addrinfo = addrinfos[:ipv4].pop
+        resolved_ipv6, _, = IO.select([read_resolved_family], nil, nil, RESOLUTION_DELAY)
+        state = resolved_ipv6 ? :v46c : :v4c
+        next
+      when :v4c, :v6c, :v46c
+        # TODO SystemCallErrorを捕捉する必要あり
+        family =
+          case state
+          when :v46c
+            next_family ? next_family : ADDRESS_FAMILIES[:ipv6]
+          else
+            family_name = "ipv#{state.to_s[1]}"
+            ADDRESS_FAMILIES[family_name.to_sym]
+          end
+
+        addrinfo = addrinfos.find { |addrinfo| addrinfo.afamily == family }
+
+        mutex.synchronize do
+          addrinfos.delete addrinfo
+        end
+
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-        socket.connect_nonblock(addrinfo, exception: false)
-        connecting_sockets.push socket
-        state = :v46w
-      when :v46c
-        # TODO
+
+        case socket.connect_nonblock(addrinfo, exception: false)
+        when 0
+          connected_socket = socket
+          state = :success
+        when :wait_writable
+          connecting_sockets.push socket
+          state = :v46w
+        end
+
+        current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
+        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != current_family_name })
+
+        next
       when :v46w
-        # TODO
-        _, connected_sockets, = IO.select(nil, connecting_sockets, nil, nil)
-        connected_socket = connected_sockets.pop
-        state = :success
+        # TODO connect_timeoutの場合の処理を追加する
+        # TODO Connection Attempt Delayを計算してIO.selectの第四引数に渡す
+        resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, nil)
+
+        if !resolved_families.empty?
+          read_resolved_family.getbyte # えー
+          state = :v46c
+        elsif !connected_sockets.empty?
+          connected_socket = connected_sockets.pop
+          state = :success
+        end
+        # TODO Connection Attempt Delay タイムアウトした場合の分岐を追加する
+        # (addrinfosがあればv46c、そうでなければv46w)
+
         next
       when :success
         break connected_socket
