@@ -39,6 +39,8 @@ class Socket
     read_resolved_family, write_resolved_family = IO.pipe
     hostname_resolution_threads = []
 
+    started_at = current_clocktime
+
     connected_socket = loop do
       case state
       when :start
@@ -103,12 +105,16 @@ class Socket
 
         next
       when :v46w
-        # TODO connect_timeoutの場合の処理を追加する
+        if connect_timeout && second_to_connection_timeout(started_at, connect_timeout).zero?
+          state = :timeout # "user specified timeout"
+          next
+        end
+
         # TODO Connection Attempt Delayを計算してIO.selectの第四引数に渡す
         resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, nil)
 
         if !resolved_families.empty?
-          read_resolved_family.getbyte # えー
+          read_resolved_family.getbyte
           state = :v46c
         elsif !connected_sockets.empty?
           connected_socket = connected_sockets.pop
@@ -141,6 +147,18 @@ class Socket
   ensure
     hostname_resolution_threads.each { |th| th&.exit }
   end
+
+  def self.second_to_connection_timeout(started_at, waiting_time)
+    elapsed_time = current_clocktime - started_at
+    timeout = waiting_time - elapsed_time
+    timeout.negative? ? 0 : timeout
+  end
+  private_class_method :second_to_connection_timeout
+
+  def self.current_clocktime
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+  private_class_method :current_clocktime
 end
 
 # HOSTNAME = "www.google.com"
