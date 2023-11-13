@@ -110,8 +110,9 @@ class Socket
           next
         end
 
-        # TODO Connection Attempt Delayを計算してIO.selectの第四引数に渡す
-        resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, nil)
+        # FIXME Connection Attempt Delayをちゃんと計算してIO.selectの第四引数に渡す
+        timeout = CONNECTION_ATTEMPT_DELAY
+        resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
         if !resolved_families.empty?
           read_resolved_family.getbyte
@@ -119,9 +120,9 @@ class Socket
         elsif !connected_sockets.empty?
           connected_socket = connected_sockets.pop
           state = :success
+        elsif resolved_families.nil? && connected_sockets.nil?
+          addrinfos.empty? ? (state = :v46w) : (state = :v46c)
         end
-        # TODO Connection Attempt Delay タイムアウトした場合の分岐を追加する
-        # (addrinfosがあればv46c、そうでなければv46w)
 
         next
       when :success
