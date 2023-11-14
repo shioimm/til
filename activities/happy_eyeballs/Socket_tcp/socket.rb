@@ -38,6 +38,9 @@ class Socket
     mutex = Mutex.new
     read_resolved_family, write_resolved_family = IO.pipe
     hostname_resolution_threads = []
+    hostname_resolution_errors = []
+    is_ipv6_resolved = false
+    is_ipv4_resolved = false
 
     started_at = current_clocktime
     connection_attempt_delay_timers = []
@@ -48,18 +51,40 @@ class Socket
       when :start
         hostname_resolution_threads.concat(ADDRESS_FAMILIES.keys.map do |family|
           Thread.new(host, port, family) do |host, port, family|
-            resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+            begin
+              resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
-            mutex.synchronize do
-              addrinfos.concat resolved_addrinfos
-              write_resolved_family.putc ADDRESS_FAMILIES[family]
+              mutex.synchronize do
+                addrinfos.concat resolved_addrinfos
+                write_resolved_family.putc ADDRESS_FAMILIES[family]
+                is_ipv6_resolved = true if family == :ipv6
+                is_ipv4_resolved = true if family == :ipv4
+              end
+            rescue => e
+              if (family == :ipv6 && is_ipv4_resolved) || (family == :ipv4 && is_ipv6_resolved)
+                # FIXME この方法だともう片方のファミリがアドレス解決中の場合、意図していないエラーが発生する
+                # この変数をメインスレッドで持ち、エラーの場合はメインスレッドでもう一回selectするしかないかも
+                # ignore
+              elsif e.is_a? SocketError
+                case e.message
+                when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
+                  # ignore
+                when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
+                  # ignore
+                end
+              else
+                mutex.synchronize do
+                  hostname_resolution_errors.push e
+                  write_resolved_family.putc 0
+                end
+              end
             end
           end
         end)
 
         resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
 
-        unless resolved_families
+        unless resolved_families # resolv_timeoutでタイムアウトした場合
           state = :timeout # "user specified timeout"
           next
         end
@@ -67,6 +92,9 @@ class Socket
         case read_resolved_family.getbyte
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
+        else # FIXME
+          last_error = hostname_resolution_errors.pop
+          state = :failure
         end
 
         next
