@@ -79,7 +79,7 @@ class Socket
           case state
           when :v46c
             next_family ? next_family : ADDRESS_FAMILIES[:ipv6]
-          else
+          when :v6c, :v4c
             family_name = "ipv#{state.to_s[1]}"
             ADDRESS_FAMILIES[family_name.to_sym]
           end
