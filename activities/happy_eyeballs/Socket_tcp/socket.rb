@@ -40,6 +40,7 @@ class Socket
     hostname_resolution_threads = []
 
     started_at = current_clocktime
+    connection_attempt_delay_timers = []
 
     connected_socket = loop do
       case state
@@ -73,7 +74,7 @@ class Socket
         state = resolved_ipv6 ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
-        # TODO SystemCallErrorを捕捉する必要あり
+        # TODO connect_nonblock実行時のSystemCallErrorを捕捉する必要あり
         family =
           case state
           when :v46c
@@ -91,6 +92,8 @@ class Socket
 
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
+        connection_attempt_delay_timers.push current_clocktime + CONNECTION_ATTEMPT_DELAY
+
         case socket.connect_nonblock(addrinfo, exception: false)
         when 0
           connected_socket = socket
@@ -105,16 +108,18 @@ class Socket
 
         next
       when :v46w
-        if connect_timeout && second_to_connection_timeout(started_at, connect_timeout).zero?
+        if connect_timeout && second_to_connection_timeout(started_at + connect_timeout).zero?
           state = :timeout # "user specified timeout"
           next
         end
 
-        # FIXME Connection Attempt Delayをちゃんと計算してIO.selectの第四引数に渡す
-        timeout = CONNECTION_ATTEMPT_DELAY
+        connection_attempt_ends_at = connection_attempt_delay_timers.shift
+        timeout = second_to_connection_timeout(connection_attempt_ends_at)
+
         resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
         if !resolved_families.empty?
+          connection_attempt_delay_timers.unshift connection_attempt_ends_at
           read_resolved_family.getbyte
           state = :v46c
         elsif !connected_sockets.empty?
@@ -130,7 +135,7 @@ class Socket
       when :failure
         raise
       when :timeout
-        raise
+        raise Errno::ETIMEDOUT, 'user specified timeout'
       end
     end
 
@@ -148,10 +153,11 @@ class Socket
     hostname_resolution_threads.each { |th| th&.exit }
   end
 
-  def self.second_to_connection_timeout(started_at, waiting_time)
-    elapsed_time = current_clocktime - started_at
-    timeout = waiting_time - elapsed_time
-    timeout.negative? ? 0 : timeout
+  def self.second_to_connection_timeout(ends_at)
+    return 0 unless ends_at
+
+    remaining = (ends_at - current_clocktime)
+    remaining.negative? ? 0 : remaining
   end
   private_class_method :second_to_connection_timeout
 
