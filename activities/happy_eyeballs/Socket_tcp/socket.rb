@@ -41,6 +41,7 @@ class Socket
 
     started_at = current_clocktime
     connection_attempt_delay_timers = []
+    last_error = nil
 
     connected_socket = loop do
       case state
@@ -74,7 +75,6 @@ class Socket
         state = resolved_ipv6 ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
-        # TODO connect_nonblock実行時のSystemCallErrorを捕捉する必要あり
         family =
           case state
           when :v46c
@@ -91,16 +91,21 @@ class Socket
         end
 
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
         connection_attempt_delay_timers.push current_clocktime + CONNECTION_ATTEMPT_DELAY
 
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0
-          connected_socket = socket
-          state = :success
-        when :wait_writable
-          connecting_sockets.push socket
-          state = :v46w
+        begin
+          case socket.connect_nonblock(addrinfo, exception: false)
+          when 0
+            connected_socket = socket
+            state = :success
+          when :wait_writable
+            connecting_sockets.push socket
+            state = :v46w
+          end
+        rescue SystemCallError => e
+          last_error = e
+          socket.close unless socket.closed?
+          state = :failure
         end
 
         current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
@@ -133,7 +138,7 @@ class Socket
       when :success
         break connected_socket
       when :failure
-        raise
+        raise last_error
       when :timeout
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
