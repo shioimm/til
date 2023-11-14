@@ -138,9 +138,8 @@ class Socket
       begin
         yield connected_socket
       ensure
-        # TODO
-        #   アドレス解決スレッドを全てexit
-        #   connected_socketをclose
+        hostname_resolution_threads.each { |th| th&.exit }
+        connected_socket.close
       end
     else
       connected_socket
