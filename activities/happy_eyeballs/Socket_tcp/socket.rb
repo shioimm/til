@@ -38,26 +38,53 @@ class Socket
     mutex = Mutex.new
     read_resolved_family, write_resolved_family = IO.pipe
     hostname_resolution_threads = []
+    hostname_resolution_errors = []
+    is_ipv6_resolved = false
+    is_ipv4_resolved = false
 
     started_at = current_clocktime
+    connection_attempt_delay_timers = []
+    last_error = nil
 
     connected_socket = loop do
       case state
       when :start
         hostname_resolution_threads.concat(ADDRESS_FAMILIES.keys.map do |family|
           Thread.new(host, port, family) do |host, port, family|
-            resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+            begin
+              resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
-            mutex.synchronize do
-              addrinfos.concat resolved_addrinfos
-              write_resolved_family.putc ADDRESS_FAMILIES[family]
+              mutex.synchronize do
+                addrinfos.concat resolved_addrinfos
+                write_resolved_family.putc ADDRESS_FAMILIES[family]
+                is_ipv6_resolved = true if family == :ipv6
+                is_ipv4_resolved = true if family == :ipv4
+              end
+            rescue => e
+              if (family == :ipv6 && is_ipv4_resolved) || (family == :ipv4 && is_ipv6_resolved)
+                # FIXME この方法だともう片方のファミリがアドレス解決中の場合、意図していないエラーが発生する
+                # この変数をメインスレッドで持ち、エラーの場合はメインスレッドでもう一回selectするしかないかも
+                # ignore
+              elsif e.is_a? SocketError
+                case e.message
+                when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
+                  # ignore
+                when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
+                  # ignore
+                end
+              else
+                mutex.synchronize do
+                  hostname_resolution_errors.push e
+                  write_resolved_family.putc 0
+                end
+              end
             end
           end
         end)
 
         resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
 
-        unless resolved_families
+        unless resolved_families # resolv_timeoutでタイムアウトした場合
           state = :timeout # "user specified timeout"
           next
         end
@@ -65,6 +92,9 @@ class Socket
         case read_resolved_family.getbyte
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
+        else # FIXME
+          last_error = hostname_resolution_errors.pop
+          state = :failure
         end
 
         next
@@ -73,12 +103,11 @@ class Socket
         state = resolved_ipv6 ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
-        # TODO SystemCallErrorを捕捉する必要あり
         family =
           case state
           when :v46c
             next_family ? next_family : ADDRESS_FAMILIES[:ipv6]
-          else
+          when :v6c, :v4c
             family_name = "ipv#{state.to_s[1]}"
             ADDRESS_FAMILIES[family_name.to_sym]
           end
@@ -90,14 +119,21 @@ class Socket
         end
 
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+        connection_attempt_delay_timers.push current_clocktime + CONNECTION_ATTEMPT_DELAY
 
-        case socket.connect_nonblock(addrinfo, exception: false)
-        when 0
-          connected_socket = socket
-          state = :success
-        when :wait_writable
-          connecting_sockets.push socket
-          state = :v46w
+        begin
+          case socket.connect_nonblock(addrinfo, exception: false)
+          when 0
+            connected_socket = socket
+            state = :success
+          when :wait_writable
+            connecting_sockets.push socket
+            state = :v46w
+          end
+        rescue SystemCallError => e
+          last_error = e
+          socket.close unless socket.closed?
+          state = :failure
         end
 
         current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
@@ -105,16 +141,18 @@ class Socket
 
         next
       when :v46w
-        if connect_timeout && second_to_connection_timeout(started_at, connect_timeout).zero?
+        if connect_timeout && second_to_connection_timeout(started_at + connect_timeout).zero?
           state = :timeout # "user specified timeout"
           next
         end
 
-        # FIXME Connection Attempt Delayをちゃんと計算してIO.selectの第四引数に渡す
-        timeout = CONNECTION_ATTEMPT_DELAY
+        connection_attempt_ends_at = connection_attempt_delay_timers.shift
+        timeout = second_to_connection_timeout(connection_attempt_ends_at)
+
         resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
         if !resolved_families.empty?
+          connection_attempt_delay_timers.unshift connection_attempt_ends_at
           read_resolved_family.getbyte
           state = :v46c
         elsif !connected_sockets.empty?
@@ -128,9 +166,9 @@ class Socket
       when :success
         break connected_socket
       when :failure
-        raise
+        raise last_error
       when :timeout
-        raise
+        raise Errno::ETIMEDOUT, 'user specified timeout'
       end
     end
 
@@ -138,9 +176,8 @@ class Socket
       begin
         yield connected_socket
       ensure
-        # TODO
-        #   アドレス解決スレッドを全てexit
-        #   connected_socketをclose
+        hostname_resolution_threads.each { |th| th&.exit }
+        connected_socket.close
       end
     else
       connected_socket
@@ -149,10 +186,11 @@ class Socket
     hostname_resolution_threads.each { |th| th&.exit }
   end
 
-  def self.second_to_connection_timeout(started_at, waiting_time)
-    elapsed_time = current_clocktime - started_at
-    timeout = waiting_time - elapsed_time
-    timeout.negative? ? 0 : timeout
+  def self.second_to_connection_timeout(ends_at)
+    return 0 unless ends_at
+
+    remaining = (ends_at - current_clocktime)
+    remaining.negative? ? 0 : remaining
   end
   private_class_method :second_to_connection_timeout
 
