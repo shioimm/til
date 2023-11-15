@@ -155,17 +155,17 @@ class Socket
         connection_attempt_ends_at = connection_attempt_delay_timers.shift
         timeout = second_to_connection_timeout(connection_attempt_ends_at)
 
-        resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
+        _resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
-        if !resolved_families.empty?
+        if connected_sockets # 接続に成功
+          connected_socket = connected_sockets.pop
+          state = :success
+        elsif !addrinfos.empty? # アドレス解決に成功
           connection_attempt_delay_timers.unshift connection_attempt_ends_at
           read_resolved_family.getbyte
           state = :v46c
-        elsif !connected_sockets.empty?
-          connected_socket = connected_sockets.pop
-          state = :success
-        elsif resolved_families.nil? && connected_sockets.nil?
-          addrinfos.empty? ? (state = :v46w) : (state = :v46c)
+        else
+          state = :v46w
         end
 
         next
