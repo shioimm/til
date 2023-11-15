@@ -27,7 +27,7 @@ class Socket
     # - :failure
     # - :timeout
 
-    # WIP
+    # TODO local_host / local_port をサポート
     state = :start
 
     addrinfos = []
@@ -242,8 +242,8 @@ PORT = 9292
 # #   socket.close
 # # end
 #
-Socket.tcp(HOSTNAME, PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-  socket.close
-end
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+#   socket.close
+# end
