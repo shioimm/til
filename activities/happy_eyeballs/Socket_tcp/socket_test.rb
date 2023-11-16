@@ -3,9 +3,6 @@
 require "minitest/autorun"
 require_relative "./socket"
 
-# TODO
-#   v46wでアドレス解決に失敗した場合のテストを追加する
-
 class SocketTest < Minitest::Test
   def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
     begin
@@ -147,6 +144,39 @@ class SocketTest < Minitest::Test
     end
 
     server_thread = Thread.new { server.accept; server.close }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
+
+    assert_equal(
+      connected_socket.remote_address.ipv6?,
+      true
+    )
+  end
+
+  def test_that_ignore_error_with_IPv4_hostname_resolution_after_successful_IPv6_hostname_resolution
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        sleep 0.01
+        raise SocketError
+      end
+    end
+
+    server_thread = Thread.new {
+      sleep 0.05
+      server.accept;
+      server.close
+    }
+
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
