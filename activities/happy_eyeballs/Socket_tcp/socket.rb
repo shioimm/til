@@ -27,7 +27,7 @@ class Socket
     # - :failure
     # - :timeout
 
-    # WIP
+    # TODO local_host / local_port をサポート
     state = :start
 
     addrinfos = []
@@ -57,15 +57,9 @@ class Socket
               mutex.synchronize do
                 addrinfos.concat resolved_addrinfos
                 write_resolved_family.putc ADDRESS_FAMILIES[family]
-                is_ipv6_resolved = true if family == :ipv6
-                is_ipv4_resolved = true if family == :ipv4
               end
             rescue => e
-              if (family == :ipv6 && is_ipv4_resolved) || (family == :ipv4 && is_ipv6_resolved)
-                # FIXME この方法だともう片方のファミリがアドレス解決中の場合、意図していないエラーが発生する
-                # この変数をメインスレッドで持ち、エラーの場合はメインスレッドでもう一回selectするしかないかも
-                # ignore
-              elsif e.is_a? SocketError
+              if e.is_a? SocketError
                 case e.message
                 when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
                   # ignore
@@ -92,9 +86,21 @@ class Socket
         case read_resolved_family.getbyte
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
-        else # FIXME
-          last_error = hostname_resolution_errors.pop
-          state = :failure
+        else
+          resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
+
+          unless resolved_families # resolv_timeoutでタイムアウトした場合
+            state = :timeout # "user specified timeout"
+            next
+          end
+
+          case read_resolved_family.getbyte
+          when ADDRESS_FAMILIES[:ipv6] then state = :v6c
+          when ADDRESS_FAMILIES[:ipv4] then state = :v4w
+          else
+            last_error = hostname_resolution_errors.pop
+            state = :failure
+          end
         end
 
         next
@@ -149,17 +155,17 @@ class Socket
         connection_attempt_ends_at = connection_attempt_delay_timers.shift
         timeout = second_to_connection_timeout(connection_attempt_ends_at)
 
-        resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
+        _resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
-        if !resolved_families.empty?
+        if connected_sockets # 接続に成功
+          connected_socket = connected_sockets.pop
+          state = :success
+        elsif !addrinfos.empty? # アドレス解決に成功
           connection_attempt_delay_timers.unshift connection_attempt_ends_at
           read_resolved_family.getbyte
           state = :v46c
-        elsif !connected_sockets.empty?
-          connected_socket = connected_sockets.pop
-          state = :success
-        elsif resolved_families.nil? && connected_sockets.nil?
-          addrinfos.empty? ? (state = :v46w) : (state = :v46c)
+        else
+          state = :v46w
         end
 
         next
@@ -236,8 +242,8 @@ PORT = 9292
 # #   socket.close
 # # end
 #
-Socket.tcp(HOSTNAME, PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-  socket.close
-end
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+#   socket.close
+# end
