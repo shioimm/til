@@ -31,19 +31,17 @@ class Socket
     state = :start
 
     addrinfos = []
-    connected_sockets = []
     connecting_sockets = []
+    sock_ai_map = {}
     next_family = nil
 
     mutex = Mutex.new
-    read_resolved_family, write_resolved_family = IO.pipe
+    hostname_resolution_readpipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
-    is_ipv6_resolved = false
-    is_ipv4_resolved = false
 
     started_at = current_clocktime
-    connection_attempt_delay_timers = []
+    connection_attempt_delay_ends_ats = []
     last_error = nil
 
     connected_socket = loop do
@@ -56,7 +54,7 @@ class Socket
 
               mutex.synchronize do
                 addrinfos.concat resolved_addrinfos
-                write_resolved_family.putc ADDRESS_FAMILIES[family]
+                hostname_resolution_write_pipe.putc ADDRESS_FAMILIES[family]
               end
             rescue => e
               if e.is_a? SocketError
@@ -69,32 +67,33 @@ class Socket
               else
                 mutex.synchronize do
                   hostname_resolution_errors.push e
-                  write_resolved_family.putc 0
+                  hostname_resolution_write_pipe.putc 0
                 end
               end
             end
           end
         end)
 
-        resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
+        hostname_resolved, _, = IO.select([hostname_resolution_readpipe], nil, nil, resolv_timeout)
 
-        unless resolved_families # resolv_timeoutでタイムアウトした場合
+        unless hostname_resolved # resolv_timeoutでタイムアウトした場合
           state = :timeout # "user specified timeout"
           next
         end
 
-        case read_resolved_family.getbyte
+        case hostname_resolution_readpipe.getbyte
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
         else
-          resolved_families, _, = IO.select([read_resolved_family], nil, nil, resolv_timeout)
+          remaining_second = resolv_timeout ? second_to_connection_timeout(started_at + resolv_timeout) : nil
+          hostname_resolved, _, = IO.select([hostname_resolution_readpipe], nil, nil, remaining_second)
 
-          unless resolved_families # resolv_timeoutでタイムアウトした場合
+          unless hostname_resolved # resolv_timeoutでタイムアウトした場合
             state = :timeout # "user specified timeout"
             next
           end
 
-          case read_resolved_family.getbyte
+          case hostname_resolution_readpipe.getbyte
           when ADDRESS_FAMILIES[:ipv6] then state = :v6c
           when ADDRESS_FAMILIES[:ipv4] then state = :v4w
           else
@@ -105,8 +104,8 @@ class Socket
 
         next
       when :v4w
-        resolved_ipv6, _, = IO.select([read_resolved_family], nil, nil, RESOLUTION_DELAY)
-        state = resolved_ipv6 ? :v46c : :v4c
+        ipv6_resolved, _, = IO.select([hostname_resolution_readpipe], nil, nil, RESOLUTION_DELAY)
+        state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
         family =
@@ -125,7 +124,7 @@ class Socket
         end
 
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-        connection_attempt_delay_timers.push current_clocktime + CONNECTION_ATTEMPT_DELAY
+        connection_attempt_delay_ends_ats.push current_clocktime + CONNECTION_ATTEMPT_DELAY
 
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
@@ -134,6 +133,7 @@ class Socket
             state = :success
           when :wait_writable
             connecting_sockets.push socket
+            sock_ai_map[socket] = addrinfo
             state = :v46w
           end
         rescue SystemCallError => e
@@ -152,17 +152,36 @@ class Socket
           next
         end
 
-        connection_attempt_ends_at = connection_attempt_delay_timers.shift
-        timeout = second_to_connection_timeout(connection_attempt_ends_at)
+        connection_attempt_ends_at = connection_attempt_delay_ends_ats.shift
+        remaining_second = second_to_connection_timeout(connection_attempt_ends_at)
 
-        _resolved_families, connected_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
+        _hostname_resolved, connectable_sockets, = IO.select([hostname_resolution_readpipe], connecting_sockets, nil, remaining_second)
 
-        if connected_sockets # 接続に成功
-          connected_socket = connected_sockets.pop
-          state = :success
+        if connectable_sockets && !connectable_sockets.empty?
+          while (connectable_socket = connectable_sockets.pop)
+            begin
+              target_socket = connecting_sockets.delete(connectable_socket)
+              target_socket.connect_nonblock(sock_ai_map[target_socket])
+            rescue Errno::EISCONN # already connected
+              connected_socket = target_socket
+              state = :success
+            rescue => e
+              last_error = e
+              target_socket.close unless target_socket.closed?
+
+              if addrinfos.empty? && connecting_sockets.empty?
+                state = :failure
+              else
+                connection_attempt_delay_ends_ats.unshift connection_attempt_ends_at
+                state = addrinfos.empty? ? :v46w : :v46c
+              end
+            ensure
+              sock_ai_map.reject! { |s, _| s == target_socket }
+            end
+          end
         elsif !addrinfos.empty? # アドレス解決に成功
-          connection_attempt_delay_timers.unshift connection_attempt_ends_at
-          read_resolved_family.getbyte
+          connection_attempt_delay_ends_ats.unshift connection_attempt_ends_at
+          hostname_resolution_readpipe.getbyte
           state = :v46c
         else
           state = :v46w
