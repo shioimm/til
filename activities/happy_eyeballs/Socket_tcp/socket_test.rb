@@ -4,7 +4,6 @@ require "minitest/autorun"
 require_relative "./socket"
 
 # TODO
-#   startでアドレス解決に全て失敗した場合のテストを追加する
 #   v46wでアドレス解決に失敗した場合のテストを追加する
 
 class SocketTest < Minitest::Test
@@ -157,8 +156,25 @@ class SocketTest < Minitest::Test
     )
   end
 
+  def test_that_raises_last_error_with_failing_all_hostname_resolutions
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        sleep 0.1
+        raise RuntimeError, "Last hostname resolution error"
+      else
+        raise RuntimeError
+      end
+    end
+
+    e = assert_raises(RuntimeError) do
+      Socket.tcp("localhost", 9)
+    end
+
+    assert_equal(e.message, "Last hostname resolution error")
+  end
+
   def test_that_raises_ETIMEDOUT_with_resolv_timeout
-    Addrinfo.define_singleton_method(:getaddrinfo) {|*arg| sleep }
+    Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 
     assert_raises(Errno::ETIMEDOUT) do
       Socket.tcp("localhost", 9, resolv_timeout: 0.1)
