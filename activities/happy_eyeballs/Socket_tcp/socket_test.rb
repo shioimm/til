@@ -9,196 +9,195 @@ require_relative "./socket"
 #   v46wでアドレス解決に失敗した場合のテストを追加する
 
 class SocketTest < Minitest::Test
-  # def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
-  #   begin
-  #     server = TCPServer.new("::1", 0)
-  #   rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-  #     exit
-  #   end
+  def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
 
-  #   _, port, = server.addr
+    _, port, = server.addr
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET
-  #       sleep 10
-  #       [Addrinfo.tcp("127.0.0.1", port)]
-  #     else
-  #       [Addrinfo.tcp("::1", port)]
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET
+        sleep 10
+        [Addrinfo.tcp("127.0.0.1", port)]
+      else
+        [Addrinfo.tcp("::1", port)]
+      end
+    end
 
-  #   server_thread = Thread.new { server.accept }
-  #   connected_socket = Socket.tcp("localhost", port)
-  #   server_thread.join
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
 
-  #   assert_equal(
-  #     connected_socket.remote_address.ipv6?,
-  #     true
-  #   )
-  # end
+    assert_equal(
+      connected_socket.remote_address.ipv6?,
+      true
+    )
+  end
 
-  # def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time
-  #   server = TCPServer.new("127.0.0.1", 0)
+  def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time
+    server = TCPServer.new("127.0.0.1", 0)
 
-  #   _, port, = server.addr
+    _, port, = server.addr
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET6
-  #       sleep 10
-  #       [Addrinfo.tcp("::1", port)]
-  #     else
-  #       [Addrinfo.tcp("127.0.0.1", port)]
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        sleep 10
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
 
-  #   server_thread = Thread.new { server.accept }
-  #   connected_socket = Socket.tcp("localhost", port)
-  #   server_thread.join
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
 
-  #   assert_equal(
-  #     connected_socket.remote_address.ipv4?,
-  #     true
-  #   )
-  # end
+    assert_equal(
+      connected_socket.remote_address.ipv4?,
+      true
+    )
+  end
 
-  # def test_that_returns_IPv6_connected_socket_when_IPv6_address_name_resolved_in_resolution_delay
-  #   begin
-  #     server = TCPServer.new("::1", 0)
-  #   rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-  #     exit
-  #   end
+  def test_that_returns_IPv6_connected_socket_when_IPv6_address_name_resolved_in_resolution_delay
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
 
-  #   _, port, = server.addr
+    _, port, = server.addr
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET6
-  #       sleep 0.025
-  #       [Addrinfo.tcp("::1", port)]
-  #     else
-  #       [Addrinfo.tcp("127.0.0.1", port)]
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        sleep 0.025
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
 
-  #   server_thread = Thread.new { server.accept }
-  #   connected_socket = Socket.tcp("localhost", port)
-  #   server_thread.join
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
 
-  #   assert_equal(
-  #     connected_socket.remote_address.ipv6?,
-  #     true
-  #   )
-  # end
+    assert_equal(
+      connected_socket.remote_address.ipv6?,
+      true
+    )
+  end
 
-  # def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
-  #   begin
-  #     ipv6_server = Socket.new(Socket::AF_INET6, :STREAM)
-  #     ipv6_sockaddr = Socket.pack_sockaddr_in(0, "::1")
-  #     ipv6_server.bind(ipv6_sockaddr)
-  #   rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-  #     exit
-  #   end
+  def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
+    begin
+      ipv6_server = Socket.new(Socket::AF_INET6, :STREAM)
+      ipv6_sockaddr = Socket.pack_sockaddr_in(0, "::1")
+      ipv6_server.bind(ipv6_sockaddr)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
 
-  #   port = ipv6_server.connect_address.ip_port
-  #   ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
-  #   ipv4_sockaddr = Socket.pack_sockaddr_in(port, "127.0.0.1")
-  #   ipv4_server.bind(ipv4_sockaddr)
+    port = ipv6_server.connect_address.ip_port
+    ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
+    ipv4_sockaddr = Socket.pack_sockaddr_in(port, "127.0.0.1")
+    ipv4_server.bind(ipv4_sockaddr)
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET6
-  #       sleep 0.025
-  #       [Addrinfo.tcp("::1", port)]
-  #     else
-  #       [Addrinfo.tcp("127.0.0.1", port)]
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        sleep 0.025
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
 
-  #   ipv6_server_thread = Thread.new { sleep 1; ipv6_server.listen(1) }
-  #   ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
-  #   connected_socket = Socket.tcp("localhost", port)
-  #   ipv4_server_thread.join
+    ipv6_server_thread = Thread.new { sleep 1; ipv6_server.listen(1) }
+    ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    ipv4_server_thread.join
 
-  #   assert_equal(
-  #     connected_socket.remote_address.ipv4?,
-  #     true
-  #   )
+    assert_equal(
+      connected_socket.remote_address.ipv4?,
+      true
+    )
 
-  #   ipv6_server.close
-  #   ipv6_server_thread.kill
-  # end
+    ipv6_server.close
+    ipv6_server_thread.kill
+  end
 
-  # def test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
-  #   begin
-  #     server = TCPServer.new("::1", 0)
-  #   rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-  #     exit
-  #   end
+  def test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
 
-  #   _, port, = server.addr
+    _, port, = server.addr
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET6
-  #       [Addrinfo.tcp("::1", port)]
-  #     else
-  #       raise SocketError
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        raise SocketError
+      end
+    end
 
-  #   server_thread = Thread.new { server.accept }
-  #   connected_socket = Socket.tcp("localhost", port)
-  #   server_thread.join
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
 
-  #   assert_equal(
-  #     connected_socket.remote_address.ipv6?,
-  #     true
-  #   )
-  # end
+    assert_equal(
+      connected_socket.remote_address.ipv6?,
+      true
+    )
+  end
 
-  # def test_that_raises_ETIMEDOUT_with_resolv_timeout
-  #   Addrinfo.define_singleton_method(:getaddrinfo) {|*arg| sleep }
+  def test_that_raises_ETIMEDOUT_with_resolv_timeout
+    Addrinfo.define_singleton_method(:getaddrinfo) {|*arg| sleep }
 
-  #   assert_raises(Errno::ETIMEDOUT) do
-  #     Socket.tcp("localhost", 9, resolv_timeout: 0.1)
-  #   end
-  # end
+    assert_raises(Errno::ETIMEDOUT) do
+      Socket.tcp("localhost", 9, resolv_timeout: 0.1)
+    end
+  end
 
-  # def test_that_raises_ETIMEDOUT_with_connection_timeout
-  #   server = Socket.new(Socket::AF_INET, :STREAM)
-  #   sockaddr = Socket.pack_sockaddr_in(0, "127.0.0.1")
-  #   server.bind(sockaddr)
-  #   port = server.connect_address.ip_port
+  def test_that_raises_ETIMEDOUT_with_connection_timeout
+    server = Socket.new(Socket::AF_INET, :STREAM)
+    sockaddr = Socket.pack_sockaddr_in(0, "127.0.0.1")
+    server.bind(sockaddr)
+    port = server.connect_address.ip_port
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET6
-  #       [Addrinfo.tcp("::1", port)]
-  #     else
-  #       [Addrinfo.tcp("127.0.0.1", port)]
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
 
-  #   assert_raises(Errno::ETIMEDOUT) do
-  #     Socket.tcp("localhost", port, connect_timeout: 0.0001)
-  #   end
+    assert_raises(Errno::ETIMEDOUT) do
+      Socket.tcp("localhost", port, connect_timeout: 0.0001)
+    end
 
-  #   server.close
-  # end
+    server.close
+  end
 
-  # # FIXME
-  # def test_that_raises_ECONNREFUSED_with_connection_failure
-  #   server = TCPServer.new("127.0.0.1", 0)
-  #   _, port, = server.addr
+  def test_that_raises_ECONNREFUSED_with_connection_failure
+    server = TCPServer.new("127.0.0.1", 12345)
+    _, port, = server.addr
 
-  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  #     if family == Socket::AF_INET6
-  #       [Addrinfo.tcp("::1", port)]
-  #     else
-  #       [Addrinfo.tcp("127.0.0.1", port)]
-  #     end
-  #   end
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
 
-  #   server.close
+    server.close
 
-  #   assert_raises(Errno::ECONNREFUSED) do
-  #     Socket.tcp("localhost", port)
-  #   end
-  # end
+    assert_raises(Errno::ECONNREFUSED) do
+      Socket.tcp("localhost", port)
+    end
+  end
 end
