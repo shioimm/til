@@ -85,7 +85,8 @@ class Socket
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
         else
-          hostname_resolved, _, = IO.select([hostname_resolution_readpipe], nil, nil, resolv_timeout)
+          remaining_second = resolv_timeout ? second_to_connection_timeout(started_at + resolv_timeout) : nil
+          hostname_resolved, _, = IO.select([hostname_resolution_readpipe], nil, nil, remaining_second)
 
           unless hostname_resolved # resolv_timeoutでタイムアウトした場合
             state = :timeout # "user specified timeout"
@@ -152,9 +153,9 @@ class Socket
         end
 
         connection_attempt_ends_at = connection_attempt_delay_ends_ats.shift
-        timeout = second_to_connection_timeout(connection_attempt_ends_at)
+        remaining_second = second_to_connection_timeout(connection_attempt_ends_at)
 
-        _hostname_resolved, connectable_sockets, = IO.select([hostname_resolution_readpipe], connecting_sockets, nil, timeout)
+        _hostname_resolved, connectable_sockets, = IO.select([hostname_resolution_readpipe], connecting_sockets, nil, remaining_second)
 
         if connectable_sockets && !connectable_sockets.empty?
           while (connectable_socket = connectable_sockets.pop)
