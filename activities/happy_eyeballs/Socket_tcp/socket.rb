@@ -160,6 +160,7 @@ class Socket
         _resolved_families, writable_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
         if writable_sockets && (writable_socket = writable_sockets.pop) # 接続に成功
+          # TODO writable_sockets が複数ある場合の処理
           begin
             target_socket = connecting_sockets.delete(writable_socket)
             target_socket.connect_nonblock(sock_ai_map[target_socket])

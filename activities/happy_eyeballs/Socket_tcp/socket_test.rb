@@ -4,7 +4,6 @@ require "minitest/autorun"
 require_relative "./socket"
 
 # TODO
-#   各テストの条件設定が適切か確認する
 #   startでアドレス解決に全て失敗した場合のテストを追加する
 #   v46wでアドレス解決に失敗した場合のテストを追加する
 
@@ -19,15 +18,15 @@ class SocketTest < Minitest::Test
     _, port, = server.addr
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-      if family == Socket::AF_INET
-        sleep 10
-        [Addrinfo.tcp("127.0.0.1", port)]
-      else
+      if family == Socket::AF_INET6
         [Addrinfo.tcp("::1", port)]
+      else
+        sleep 1
+        [Addrinfo.tcp("127.0.0.1", port)]
       end
     end
 
-    server_thread = Thread.new { server.accept }
+    server_thread = Thread.new { server.accept; server.close }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
@@ -39,19 +38,18 @@ class SocketTest < Minitest::Test
 
   def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time
     server = TCPServer.new("127.0.0.1", 0)
-
     _, port, = server.addr
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
-        sleep 10
+        sleep 1
         [Addrinfo.tcp("::1", port)]
       else
         [Addrinfo.tcp("127.0.0.1", port)]
       end
     end
 
-    server_thread = Thread.new { server.accept }
+    server_thread = Thread.new { server.accept; server.close }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
@@ -72,14 +70,14 @@ class SocketTest < Minitest::Test
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
-        sleep 0.025
+        sleep 0.045
         [Addrinfo.tcp("::1", port)]
       else
         [Addrinfo.tcp("127.0.0.1", port)]
       end
     end
 
-    server_thread = Thread.new { server.accept }
+    server_thread = Thread.new { server.accept; server.close }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
@@ -105,25 +103,30 @@ class SocketTest < Minitest::Test
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
-        sleep 0.025
+        sleep 0.045
         [Addrinfo.tcp("::1", port)]
       else
         [Addrinfo.tcp("127.0.0.1", port)]
       end
     end
 
-    ipv6_server_thread = Thread.new { sleep 1; ipv6_server.listen(1) }
-    ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+    ipv6_server_thread = Thread.new {
+      sleep 1
+      ipv6_server.listen(1)
+      ipv6_server.close
+    }
+    ipv4_server_thread = Thread.new {
+      ipv4_server.listen(1)
+      ipv4_server.accept
+      ipv4_server.close
+    }
     connected_socket = Socket.tcp("localhost", port)
-    ipv4_server_thread.join
+    [ipv4_server_thread, ipv6_server_thread].map(&:join)
 
     assert_equal(
       connected_socket.remote_address.ipv4?,
       true
     )
-
-    ipv6_server.close
-    ipv6_server_thread.kill
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
@@ -137,13 +140,14 @@ class SocketTest < Minitest::Test
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
+        sleep 0.1
         [Addrinfo.tcp("::1", port)]
       else
         raise SocketError
       end
     end
 
-    server_thread = Thread.new { server.accept }
+    server_thread = Thread.new { server.accept; server.close }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
