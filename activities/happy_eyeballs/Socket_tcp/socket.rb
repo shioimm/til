@@ -159,26 +159,27 @@ class Socket
 
         _resolved_families, writable_sockets, = IO.select([read_resolved_family], connecting_sockets, nil, timeout)
 
-        if writable_sockets && (writable_socket = writable_sockets.pop) # 接続に成功
-          # TODO writable_sockets が複数ある場合の処理
-          begin
-            target_socket = connecting_sockets.delete(writable_socket)
-            target_socket.connect_nonblock(sock_ai_map[target_socket])
-          rescue Errno::EISCONN # already connected
-            connected_socket = target_socket
-            state = :success
-          rescue => e
-            last_error = e
-            target_socket.close unless target_socket.closed?
+        if writable_sockets && !writable_sockets.empty?
+          while (writable_socket = writable_sockets.pop)
+            begin
+              target_socket = connecting_sockets.delete(writable_socket)
+              target_socket.connect_nonblock(sock_ai_map[target_socket])
+            rescue Errno::EISCONN # already connected
+              connected_socket = target_socket
+              state = :success
+            rescue => e
+              last_error = e
+              target_socket.close unless target_socket.closed?
 
-            if addrinfos.empty? && connecting_sockets.empty?
-              state = :failure
-            else
-              connection_attempt_delay_timers.unshift connection_attempt_ends_at
-              state = addrinfos.empty? ? :v46w : :v46c
+              if addrinfos.empty? && connecting_sockets.empty?
+                state = :failure
+              else
+                connection_attempt_delay_timers.unshift connection_attempt_ends_at
+                state = addrinfos.empty? ? :v46w : :v46c
+              end
+            ensure
+              sock_ai_map.reject! { |s, _| s == target_socket }
             end
-          ensure
-            sock_ai_map.reject! { |s, _| s == target_socket }
           end
         elsif !addrinfos.empty? # アドレス解決に成功
           connection_attempt_delay_timers.unshift connection_attempt_ends_at
