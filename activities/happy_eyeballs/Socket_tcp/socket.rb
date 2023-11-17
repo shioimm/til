@@ -38,9 +38,10 @@ class Socket
     hostname_resolution_read_pipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
+    hostname_resolution_started_at = nil
 
-    started_at = current_clocktime
-    connection_attempt_delay_ends_ats = []
+    connection_attempt_delay_timers = []
+    connection_attempt_started_at = nil
     last_error = nil
 
     hostname_resolution_family_names, local_addrinfos =
@@ -56,6 +57,8 @@ class Socket
     connected_socket = loop do
       case state
       when :start
+        hostname_resolution_started_at = current_clocktime
+
         hostname_resolution_threads.concat(hostname_resolution_family_names.map do |family|
           Thread.new(host, port, family) do |host, port, family|
             begin
@@ -94,7 +97,7 @@ class Socket
         when ADDRESS_FAMILIES[:ipv6] then state = :v6c
         when ADDRESS_FAMILIES[:ipv4] then state = :v4w
         else
-          remaining_second = resolv_timeout ? second_to_connection_timeout(started_at + resolv_timeout) : nil
+          remaining_second = resolv_timeout ? second_to_connection_timeout(hostname_resolution_started_at + resolv_timeout) : nil
           hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, remaining_second)
 
           unless hostname_resolved # resolv_timeoutでタイムアウトした場合
@@ -117,6 +120,8 @@ class Socket
         state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
+        connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
+
         family =
           case state
           when :v46c
@@ -139,7 +144,7 @@ class Socket
           socket.bind(local_addrinfo) if local_addrinfo
         end
 
-        connection_attempt_delay_ends_ats.push current_clocktime + CONNECTION_ATTEMPT_DELAY
+        connection_attempt_delay_timers.push current_clocktime + CONNECTION_ATTEMPT_DELAY
 
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
@@ -162,13 +167,13 @@ class Socket
 
         next
       when :v46w
-        if connect_timeout && second_to_connection_timeout(started_at + connect_timeout).zero?
+        if connect_timeout && second_to_connection_timeout(connection_attempt_started_at + connect_timeout).zero?
           state = :timeout # "user specified timeout"
           next
         end
 
-        connection_attempt_ends_at = connection_attempt_delay_ends_ats.shift
-        remaining_second = second_to_connection_timeout(connection_attempt_ends_at)
+        connection_attempt_timer_expires_at = connection_attempt_delay_timers.shift
+        remaining_second = second_to_connection_timeout(connection_attempt_timer_expires_at)
 
         _hostname_resolved, connectable_sockets, = IO.select([hostname_resolution_read_pipe], connecting_sockets, nil, remaining_second)
 
@@ -187,7 +192,7 @@ class Socket
               if selectable_addrinfos.empty? && connecting_sockets.empty?
                 state = :failure
               else
-                connection_attempt_delay_ends_ats.unshift connection_attempt_ends_at
+                connection_attempt_delay_timers.unshift connection_attempt_timer_expires_at
                 state = selectable_addrinfos.empty? ? :v46w : :v46c
               end
             ensure
@@ -195,7 +200,7 @@ class Socket
             end
           end
         elsif !selectable_addrinfos.empty? # アドレス解決に成功
-          connection_attempt_delay_ends_ats.unshift connection_attempt_ends_at
+          connection_attempt_delay_timers.unshift connection_attempt_timer_expires_at
           hostname_resolution_read_pipe.getbyte
           state = :v46c
         else
