@@ -27,7 +27,6 @@ class Socket
     # - :failure
     # - :timeout
 
-    # TODO local_host / local_port をサポート
     state = :start
 
     addrinfos = []
@@ -44,10 +43,19 @@ class Socket
     connection_attempt_delay_ends_ats = []
     last_error = nil
 
+    hostname_resolving_families, local_addrinfos =
+      if local_host && local_port
+        local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
+        hostname_resolving_families = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
+        [hostname_resolving_families, local_addrinfos]
+      else
+        [ADDRESS_FAMILIES.keys, []]
+      end
+
     connected_socket = loop do
       case state
       when :start
-        hostname_resolution_threads.concat(ADDRESS_FAMILIES.keys.map do |family|
+        hostname_resolution_threads.concat(hostname_resolving_families.map do |family|
           Thread.new(host, port, family) do |host, port, family|
             begin
               resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
@@ -124,6 +132,12 @@ class Socket
         end
 
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+        if !local_addrinfos.empty?
+          local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
+          socket.bind(local_addrinfo) if local_addrinfo
+        end
+
         connection_attempt_delay_ends_ats.push current_clocktime + CONNECTION_ATTEMPT_DELAY
 
         begin
@@ -253,15 +267,16 @@ PORT = 9292
 #   end
 # end
 #
-# # # local_host / local_port を指定する場合
-# # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
-# #   p socket.addr
-# #   socket.write "GET / HTTP/1.0\r\n\r\n"
-# #   print socket.read
-# #   socket.close
-# # end
+# local_host / local_port を指定する場合
+Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
+  p socket.addr # FIXME closeしてそう
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+  socket.close
+end
 #
 # Socket.tcp(HOSTNAME, PORT) do |socket|
+#   p socket.addr # FIXME closeしてそう
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
 #   print socket.read
 #   socket.close
