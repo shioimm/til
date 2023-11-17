@@ -215,14 +215,25 @@ class Socket
       begin
         yield connected_socket
       ensure
-        hostname_resolution_threads.each { |th| th&.exit }
         connected_socket.close
       end
     else
       connected_socket
     end
   ensure
-    hostname_resolution_threads.each { |th| th&.exit }
+    hostname_resolution_threads.each do |th|
+      th&.exit
+    end
+
+    [hostname_resolution_read_pipe,
+     hostname_resolution_write_pipe,
+     connecting_sockets].each do |io|
+      begin
+        io.close if io && !io.closed?
+      rescue
+        # ignore error
+      end
+    end
   end
 
   def self.second_to_connection_timeout(ends_at)
@@ -267,17 +278,13 @@ PORT = 9292
 #   end
 # end
 #
-# local_host / local_port を指定する場合
-Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
-  p socket.addr # FIXME closeしてそう
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-  socket.close
-end
-#
-# Socket.tcp(HOSTNAME, PORT) do |socket|
-#   p socket.addr # FIXME closeしてそう
+# # local_host / local_port を指定する場合
+# Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
 #   print socket.read
-#   socket.close
 # end
+#
+Socket.tcp(HOSTNAME, PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
