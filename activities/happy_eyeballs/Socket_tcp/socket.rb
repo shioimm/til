@@ -68,33 +68,13 @@ class Socket
           }
         )
 
-        hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, resolv_timeout)
-
-        unless hostname_resolved # resolv_timeoutでタイムアウトした場合
-          state = :timeout # "user specified timeout"
-          next
-        end
-
-        case hostname_resolution_read_pipe.getbyte
-        when ADDRESS_FAMILIES[:ipv6] then state = :v6c
-        when ADDRESS_FAMILIES[:ipv4] then state = :v4w
-        else
-          remaining_second = resolv_timeout ? second_to_connection_timeout(hostname_resolution_started_at + resolv_timeout) : nil
-          hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, remaining_second)
-
-          unless hostname_resolved # resolv_timeoutでタイムアウトした場合
-            state = :timeout # "user specified timeout"
-            next
-          end
-
-          case hostname_resolution_read_pipe.getbyte
-          when ADDRESS_FAMILIES[:ipv6] then state = :v6c
-          when ADDRESS_FAMILIES[:ipv4] then state = :v4w
-          else
-            last_error = hostname_resolution_errors.pop
-            state = :failure
-          end
-        end
+        state, last_error = after_hostname_resolution_state(
+          hostname_resolution_read_pipe,
+          hostname_resolution_started_at,
+          resolv_timeout,
+          mutex,
+          hostname_resolution_errors,
+        )
 
         next
       when :v4w
@@ -249,6 +229,28 @@ class Socket
     end
   end
   private_class_method :hostname_resolution
+
+  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors, is_retrying: false)
+    remaining_second = timeout ? second_to_connection_timeout(started_at + timeout) : nil
+    hostname_resolved, _, = IO.select([rpipe], nil, nil, remaining_second)
+
+    unless hostname_resolved # resolv_timeoutでタイムアウトした場合
+      return [:timeout, nil] # "user specified timeout"
+    end
+
+    case rpipe.getbyte
+    when ADDRESS_FAMILIES[:ipv6] then [:v6c, nil]
+    when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
+    else
+      if is_retrying
+        error = mutex.synchronize { errors.pop }
+        [:failure, error]
+      else
+        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors, is_retrying: true)
+      end
+    end
+  end
+  private_class_method :after_hostname_resolution_state
 
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at
