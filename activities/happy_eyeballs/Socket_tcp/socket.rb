@@ -40,6 +40,7 @@ class Socket
     connection_attempt_started_at = nil
     sock_ai_pairs = {}
     next_connecting_family = nil
+    v46w_read_pipe = [hostname_resolution_read_pipe]
 
     hostname_resolution_family_names, local_addrinfos =
       if local_host && local_port
@@ -134,7 +135,7 @@ class Socket
         connection_attempt_timer_expires_at = connection_attempt_delay_timers.shift
         remaining_second = second_to_connection_timeout(connection_attempt_timer_expires_at)
 
-        _hostname_resolved, connectable_sockets, = IO.select([hostname_resolution_read_pipe], connecting_sockets, nil, remaining_second)
+        hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
         if connectable_sockets && !connectable_sockets.empty?
           while (connectable_socket = connectable_sockets.pop)
@@ -158,9 +159,16 @@ class Socket
               sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif !selectable_addrinfos.empty? # アドレス解決に成功
+        elsif !selectable_addrinfos.empty?
           connection_attempt_delay_timers.unshift connection_attempt_timer_expires_at
-          hostname_resolution_read_pipe.getbyte
+
+          if hostname_resolved
+            hostname_resolution_read_pipe.getbyte
+            hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
+            hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
+            v46w_read_pipe = nil
+          end
+
           state = :v46c
         else
           state = :v46w
