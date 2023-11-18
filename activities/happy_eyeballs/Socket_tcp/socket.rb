@@ -1,5 +1,3 @@
-# イベントループをベースにする
-
 require 'socket'
 
 class Socket
@@ -28,21 +26,20 @@ class Socket
     # - :timeout
 
     state = :start
-
-    selectable_addrinfos = []
-    connecting_sockets = []
-    sock_ai_pairs = {}
-    next_family = nil
+    last_error = nil
 
     mutex = Mutex.new
     hostname_resolution_read_pipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
+    selectable_addrinfos = []
 
+    connecting_sockets = []
     connection_attempt_delay_timers = []
     connection_attempt_started_at = nil
-    last_error = nil
+    sock_ai_pairs = {}
+    next_connecting_family = nil
 
     hostname_resolution_family_names, local_addrinfos =
       if local_host && local_port
@@ -87,7 +84,7 @@ class Socket
         family =
           case state
           when :v46c
-            next_family ? next_family : ADDRESS_FAMILIES[:ipv6]
+            next_connecting_family ? next_connecting_family : ADDRESS_FAMILIES[:ipv6]
           when :v6c, :v4c
             family_name = "ipv#{state.to_s[1]}"
             ADDRESS_FAMILIES[family_name.to_sym]
@@ -125,7 +122,7 @@ class Socket
         end
 
         current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
-        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != current_family_name })
+        next_connecting_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != current_family_name })
 
         next
       when :v46w
