@@ -58,33 +58,15 @@ class Socket
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
+        hostname_resolution_args =
+          [host, port, selectable_addrinfos, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
 
-        hostname_resolution_threads.concat(hostname_resolution_family_names.map do |family|
-          Thread.new(host, port, family) do |host, port, family|
-            begin
-              addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
-
-              mutex.synchronize do
-                selectable_addrinfos.concat addrinfos
-                hostname_resolution_write_pipe.putc ADDRESS_FAMILIES[family]
-              end
-            rescue => e
-              if e.is_a? SocketError
-                case e.message
-                when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
-                  # ignore
-                when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
-                  # ignore
-                end
-              else
-                mutex.synchronize do
-                  hostname_resolution_errors.push e
-                  hostname_resolution_write_pipe.putc 0
-                end
-              end
-            end
-          end
-        end)
+        hostname_resolution_threads.concat(
+          hostname_resolution_family_names.map { |family|
+            thread_args = [family].concat hostname_resolution_args
+            Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+          }
+        )
 
         hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, resolv_timeout)
 
@@ -241,6 +223,32 @@ class Socket
       end
     end
   end
+
+  def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors)
+    begin
+      resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+
+      mutex.synchronize do
+        addrinfos.concat resolved_addrinfos
+        wpipe.putc ADDRESS_FAMILIES[family]
+      end
+    rescue => e
+      if e.is_a? SocketError
+        case e.message
+        when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
+          # ignore
+        when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
+          # ignore
+        end
+      else
+        mutex.synchronize do
+          errors.push e
+          wpipe.putc 0
+        end
+      end
+    end
+  end
+  private_class_method :hostname_resolution
 
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at
