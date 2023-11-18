@@ -39,7 +39,7 @@ class Socket
     connection_attempt_delay_timers = []
     connection_attempt_started_at = nil
     sock_ai_pairs = {}
-    next_connecting_family = nil
+    last_connecting_family = nil
     v46w_read_pipe = [hostname_resolution_read_pipe]
 
     hostname_resolution_family_names, local_addrinfos =
@@ -81,16 +81,7 @@ class Socket
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
-
-        family =
-          case state
-          when :v46c
-            next_connecting_family ? next_connecting_family : ADDRESS_FAMILIES[:ipv6]
-          when :v6c, :v4c
-            family_name = "ipv#{state.to_s[1]}"
-            ADDRESS_FAMILIES[family_name.to_sym]
-          end
-
+        family = select_connecting_family(state, last_connecting_family)
         addrinfo = selectable_addrinfos.find { |ai| ai.afamily == family }
 
         mutex.synchronize do
@@ -122,9 +113,7 @@ class Socket
           state = :failure
         end
 
-        current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
-        next_connecting_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != current_family_name })
-
+        last_connecting_family = addrinfo.afamily
         next
       when :v46w
         if connect_timeout && second_to_connection_timeout(connection_attempt_started_at + connect_timeout).zero?
@@ -256,6 +245,22 @@ class Socket
     end
   end
   private_class_method :after_hostname_resolution_state
+
+  def self.select_connecting_family(state, last_family)
+    case state
+    when :v46c
+      if last_family
+        family_name = ADDRESS_FAMILIES.key(last_family)
+        ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != family_name })
+      else
+        ADDRESS_FAMILIES[:ipv6]
+      end
+    when :v6c, :v4c
+      family_name = "ipv#{state.to_s[1]}"
+      ADDRESS_FAMILIES[family_name.to_sym]
+    end
+  end
+  private_class_method :select_connecting_family
 
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at
