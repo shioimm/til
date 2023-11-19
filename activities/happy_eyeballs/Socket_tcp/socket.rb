@@ -198,7 +198,7 @@ class Socket
     end
   end
 
-  def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors)
+  def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors_queue)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
@@ -216,7 +216,7 @@ class Socket
         end
       else
         mutex.synchronize do
-          errors.push e
+          errors_queue.push e
           wpipe.putc 0
         end
       end
@@ -224,7 +224,7 @@ class Socket
   end
   private_class_method :hostname_resolution
 
-  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors, is_retrying: false)
+  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, is_retrying: false)
     remaining_second = timeout ? second_to_connection_timeout(started_at + timeout) : nil
     hostname_resolved, _, = IO.select([rpipe], nil, nil, remaining_second)
 
@@ -237,10 +237,10 @@ class Socket
     when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
     else
       if is_retrying
-        error = mutex.synchronize { errors.pop }
+        error = mutex.synchronize { errors_queue.pop }
         [:failure, error]
       else
-        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors, is_retrying: true)
+        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, is_retrying: true)
       end
     end
   end
