@@ -163,22 +163,28 @@ class Socket
               sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif !resolved_addrinfos.empty? # TODO selectable_addrinfosに置き換える
-          if hostname_resolved
+        elsif hostname_resolved
+          if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
+            state = resolved_addrinfos.empty? ? :v46w: :v46c # TODO selectable_addrinfosに置き換える
+          else
             sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
-
-            hostname_resolution_read_pipe.getbyte
-
-            # FIXME 以下は全てのアドレスファミリの名前解決が完了した場合のみ行う
-            hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
-            hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
-            v46w_read_pipe = nil
+            remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
+            sleep remaining_second
+            state = :v46c
           end
 
+          # FIXME 以下は全てのアドレスファミリの名前解決が完了した場合のみ行う
+          # 本当はsleepの前に呼びたいのでメソッドに切り出してもいいかも
+          hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
+          hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
+          v46w_read_pipe = nil
+        elsif !resolved_addrinfos.empty? # TODO selectable_addrinfosに置き換える
+          # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
           remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
           sleep remaining_second
           state = :v46c
         else
+          # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
           state = :v46w
         end
 
