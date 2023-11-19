@@ -237,7 +237,7 @@ class Socket
     when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
     else
       if is_retrying
-        error = mutex.synchronize { errors_queue.pop }
+        error = errors_queue.pop
         [:failure, error]
       else
         self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, is_retrying: true)
