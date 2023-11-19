@@ -39,7 +39,7 @@ class Socket
     selectable_addrinfos = []
 
     connecting_sockets = []
-    connection_attempt_delay_timers = []
+    connection_attempt_delay_timer = nil
     connection_attempt_started_at = nil
     sock_ai_pairs = {}
     last_connecting_family = nil
@@ -99,7 +99,7 @@ class Socket
           socket.bind(local_addrinfo) if local_addrinfo
         end
 
-        connection_attempt_delay_timers.push current_clocktime + CONNECTION_ATTEMPT_DELAY
+        connection_attempt_delay_timer = current_clocktime + CONNECTION_ATTEMPT_DELAY
 
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
@@ -125,9 +125,8 @@ class Socket
           next
         end
 
-        connection_attempt_timer_expires_at = connection_attempt_delay_timers.shift
-        remaining_second = second_to_connection_timeout(connection_attempt_timer_expires_at)
-
+        connection_attempt_delay_expires_at = connection_attempt_delay_timer.dup
+        remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
         hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
         if connectable_sockets && !connectable_sockets.empty?
@@ -147,16 +146,19 @@ class Socket
               if selectable_addrinfos.empty? && connecting_sockets.empty?
                 state = :failure
               else
-                connection_attempt_delay_timers.unshift connection_attempt_timer_expires_at
-                state = selectable_addrinfos.empty? ? :v46w : :v46c
+                if selectable_addrinfos.empty?
+                  state = :v46w
+                else
+                  remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
+                  sleep remaining_second
+                  state = :v46c
+                end
               end
             ensure
               sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
         elsif !selectable_addrinfos.empty?
-          connection_attempt_delay_timers.unshift connection_attempt_timer_expires_at
-
           if hostname_resolved
             hostname_resolution_read_pipe.getbyte
             hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
@@ -164,11 +166,14 @@ class Socket
             v46w_read_pipe = nil
           end
 
+          remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
+          sleep remaining_second
           state = :v46c
         else
           state = :v46w
         end
 
+        connection_attempt_delay_timer = nil
         next
       when :success
         break connected_socket
