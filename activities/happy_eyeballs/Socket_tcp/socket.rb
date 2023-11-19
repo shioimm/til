@@ -139,6 +139,8 @@ class Socket
               last_error = e
               target_socket.close unless target_socket.closed?
 
+              next if !connectable_sockets.empty?
+
               if selectable_addrinfos.empty? && connecting_sockets.empty?
                 state = :failure
               else
