@@ -1,5 +1,3 @@
-# イベントループをベースにする
-
 require 'socket'
 
 class Socket
@@ -28,21 +26,21 @@ class Socket
     # - :timeout
 
     state = :start
-
-    selectable_addrinfos = []
-    connecting_sockets = []
-    sock_ai_pairs = {}
-    next_family = nil
+    last_error = nil
 
     mutex = Mutex.new
     hostname_resolution_read_pipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
+    selectable_addrinfos = []
 
+    connecting_sockets = []
     connection_attempt_delay_timers = []
     connection_attempt_started_at = nil
-    last_error = nil
+    sock_ai_pairs = {}
+    last_connecting_family = nil
+    v46w_read_pipe = [hostname_resolution_read_pipe]
 
     hostname_resolution_family_names, local_addrinfos =
       if local_host && local_port
@@ -58,61 +56,23 @@ class Socket
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
+        hostname_resolution_args =
+          [host, port, selectable_addrinfos, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
 
-        hostname_resolution_threads.concat(hostname_resolution_family_names.map do |family|
-          Thread.new(host, port, family) do |host, port, family|
-            begin
-              addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+        hostname_resolution_threads.concat(
+          hostname_resolution_family_names.map { |family|
+            thread_args = [family].concat hostname_resolution_args
+            Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+          }
+        )
 
-              mutex.synchronize do
-                selectable_addrinfos.concat addrinfos
-                hostname_resolution_write_pipe.putc ADDRESS_FAMILIES[family]
-              end
-            rescue => e
-              if e.is_a? SocketError
-                case e.message
-                when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
-                  # ignore
-                when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
-                  # ignore
-                end
-              else
-                mutex.synchronize do
-                  hostname_resolution_errors.push e
-                  hostname_resolution_write_pipe.putc 0
-                end
-              end
-            end
-          end
-        end)
-
-        hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, resolv_timeout)
-
-        unless hostname_resolved # resolv_timeoutでタイムアウトした場合
-          state = :timeout # "user specified timeout"
-          next
-        end
-
-        case hostname_resolution_read_pipe.getbyte
-        when ADDRESS_FAMILIES[:ipv6] then state = :v6c
-        when ADDRESS_FAMILIES[:ipv4] then state = :v4w
-        else
-          remaining_second = resolv_timeout ? second_to_connection_timeout(hostname_resolution_started_at + resolv_timeout) : nil
-          hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, remaining_second)
-
-          unless hostname_resolved # resolv_timeoutでタイムアウトした場合
-            state = :timeout # "user specified timeout"
-            next
-          end
-
-          case hostname_resolution_read_pipe.getbyte
-          when ADDRESS_FAMILIES[:ipv6] then state = :v6c
-          when ADDRESS_FAMILIES[:ipv4] then state = :v4w
-          else
-            last_error = hostname_resolution_errors.pop
-            state = :failure
-          end
-        end
+        state, last_error = after_hostname_resolution_state(
+          hostname_resolution_read_pipe,
+          hostname_resolution_started_at,
+          resolv_timeout,
+          mutex,
+          hostname_resolution_errors,
+        )
 
         next
       when :v4w
@@ -121,16 +81,7 @@ class Socket
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
-
-        family =
-          case state
-          when :v46c
-            next_family ? next_family : ADDRESS_FAMILIES[:ipv6]
-          when :v6c, :v4c
-            family_name = "ipv#{state.to_s[1]}"
-            ADDRESS_FAMILIES[family_name.to_sym]
-          end
-
+        family = select_connecting_family(state, last_connecting_family)
         addrinfo = selectable_addrinfos.find { |ai| ai.afamily == family }
 
         mutex.synchronize do
@@ -162,9 +113,7 @@ class Socket
           state = :failure
         end
 
-        current_family_name = ADDRESS_FAMILIES.key(addrinfo.afamily)
-        next_family = ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != current_family_name })
-
+        last_connecting_family = addrinfo.afamily
         next
       when :v46w
         if connect_timeout && second_to_connection_timeout(connection_attempt_started_at + connect_timeout).zero?
@@ -175,7 +124,7 @@ class Socket
         connection_attempt_timer_expires_at = connection_attempt_delay_timers.shift
         remaining_second = second_to_connection_timeout(connection_attempt_timer_expires_at)
 
-        _hostname_resolved, connectable_sockets, = IO.select([hostname_resolution_read_pipe], connecting_sockets, nil, remaining_second)
+        hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
         if connectable_sockets && !connectable_sockets.empty?
           while (connectable_socket = connectable_sockets.pop)
@@ -199,9 +148,16 @@ class Socket
               sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif !selectable_addrinfos.empty? # アドレス解決に成功
+        elsif !selectable_addrinfos.empty?
           connection_attempt_delay_timers.unshift connection_attempt_timer_expires_at
-          hostname_resolution_read_pipe.getbyte
+
+          if hostname_resolved
+            hostname_resolution_read_pipe.getbyte
+            hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
+            hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
+            v46w_read_pipe = nil
+          end
+
           state = :v46c
         else
           state = :v46w
@@ -241,6 +197,70 @@ class Socket
       end
     end
   end
+
+  def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors)
+    begin
+      resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+
+      mutex.synchronize do
+        addrinfos.concat resolved_addrinfos
+        wpipe.putc ADDRESS_FAMILIES[family]
+      end
+    rescue => e
+      if e.is_a? SocketError
+        case e.message
+        when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
+          # ignore
+        when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
+          # ignore
+        end
+      else
+        mutex.synchronize do
+          errors.push e
+          wpipe.putc 0
+        end
+      end
+    end
+  end
+  private_class_method :hostname_resolution
+
+  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors, is_retrying: false)
+    remaining_second = timeout ? second_to_connection_timeout(started_at + timeout) : nil
+    hostname_resolved, _, = IO.select([rpipe], nil, nil, remaining_second)
+
+    unless hostname_resolved # resolv_timeoutでタイムアウトした場合
+      return [:timeout, nil] # "user specified timeout"
+    end
+
+    case rpipe.getbyte
+    when ADDRESS_FAMILIES[:ipv6] then [:v6c, nil]
+    when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
+    else
+      if is_retrying
+        error = mutex.synchronize { errors.pop }
+        [:failure, error]
+      else
+        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors, is_retrying: true)
+      end
+    end
+  end
+  private_class_method :after_hostname_resolution_state
+
+  def self.select_connecting_family(state, last_family)
+    case state
+    when :v46c
+      if last_family
+        family_name = ADDRESS_FAMILIES.key(last_family)
+        ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != family_name })
+      else
+        ADDRESS_FAMILIES[:ipv6]
+      end
+    when :v6c, :v4c
+      family_name = "ipv#{state.to_s[1]}"
+      ADDRESS_FAMILIES[family_name.to_sym]
+    end
+  end
+  private_class_method :select_connecting_family
 
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at

@@ -142,24 +142,4 @@ rsock_raise_socket_error(const char *reason, int error)
   socket_error = rb_class_new_instance(2, argv, rb_eSocket);
   rb_exc_raise(socket_error);
 }
-
-// (20230828時点) main
-// void
-// rsock_raise_socket_error(const char *reason, int error)
-// {
-// #ifdef EAI_SYSTEM
-//   int e;
-//   if (error == EAI_SYSTEM && (e = errno) != 0)
-//       rb_syserr_fail(e, reason);
-// #endif
-// #ifdef _WIN32
-//   rb_encoding *enc = rb_default_internal_encoding();
-//   VALUE msg = rb_sprintf("%s: ", reason);
-//   if (!enc) enc = rb_default_internal_encoding();
-//   rb_str_concat(msg, rb_w32_conv_from_wchar(gai_strerrorW(error), enc));
-//   rb_exc_raise(rb_exc_new_str(rb_eSocket, msg));
-// #else
-//   rb_raise(rb_eSocket, "%s: %s", reason, gai_strerror(error));
-// #endif
-// }
 ```
