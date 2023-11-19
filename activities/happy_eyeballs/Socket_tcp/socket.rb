@@ -72,6 +72,7 @@ class Socket
           resolv_timeout,
           mutex,
           hostname_resolution_errors,
+          hostname_resolution_threads.size - 1,
         )
 
         next
@@ -224,7 +225,7 @@ class Socket
   end
   private_class_method :hostname_resolution
 
-  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, is_retrying: false)
+  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, retry_count)
     remaining_second = timeout ? second_to_connection_timeout(started_at + timeout) : nil
     hostname_resolved, _, = IO.select([rpipe], nil, nil, remaining_second)
 
@@ -236,11 +237,11 @@ class Socket
     when ADDRESS_FAMILIES[:ipv6] then [:v6c, nil]
     when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
     else
-      if is_retrying
+      if retry_count.zero?
         error = errors_queue.pop
         [:failure, error]
       else
-        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, is_retrying: true)
+        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, retry_count - 1)
       end
     end
   end
