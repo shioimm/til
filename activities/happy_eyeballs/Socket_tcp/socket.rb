@@ -36,6 +36,7 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
+    resolved_addrinfos = []
     selectable_addrinfos = []
 
     connecting_sockets = []
@@ -60,7 +61,7 @@ class Socket
       when :start
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args =
-          [host, port, selectable_addrinfos, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
+          [host, port, resolved_addrinfos, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
 
         hostname_resolution_threads.concat(
           hostname_resolution_family_names.map { |family|
@@ -81,15 +82,19 @@ class Socket
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
+        sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
         state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
-        family = select_connecting_family(state, last_connecting_family)
-        addrinfo = selectable_addrinfos.find { |ai| ai.afamily == family }
 
+        # TODO 不要になるはず
+        family = select_connecting_family(state, last_connecting_family)
+        addrinfo = resolved_addrinfos.find { |ai| ai.afamily == family }
+
+        # TODO 不要になるはず
         mutex.synchronize do
-          selectable_addrinfos.delete addrinfo
+          resolved_addrinfos.delete addrinfo
         end
 
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
@@ -143,10 +148,10 @@ class Socket
 
               next if !connectable_sockets.empty?
 
-              if selectable_addrinfos.empty? && connecting_sockets.empty?
+              if resolved_addrinfos.empty? && connecting_sockets.empty? # TODO selectable_addrinfosに置き換える
                 state = :failure
               else
-                if selectable_addrinfos.empty?
+                if resolved_addrinfos.empty? # TODO selectable_addrinfosに置き換える
                   state = :v46w
                 else
                   remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
@@ -158,9 +163,13 @@ class Socket
               sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif !selectable_addrinfos.empty?
+        elsif !resolved_addrinfos.empty? # TODO selectable_addrinfosに置き換える
           if hostname_resolved
+            sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+
             hostname_resolution_read_pipe.getbyte
+
+            # FIXME 以下は全てのアドレスファミリの名前解決が完了した場合のみ行う
             hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
             hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
             v46w_read_pipe = nil
@@ -257,7 +266,11 @@ class Socket
   end
   private_class_method :after_hostname_resolution_state
 
-  def self.select_connecting_family(state, last_family)
+  def self.sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+    # TODO
+  end
+
+  def self.select_connecting_family(state, last_family) # TODO 不要になる予定
     case state
     when :v46c
       if last_family
