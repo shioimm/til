@@ -13,6 +13,9 @@ class Socket
   }.freeze
   private_constant :ADDRESS_FAMILIES
 
+  ADDRESS_FAMILY_PRECEDENCE = [:ipv6, :ipv4]
+  private_constant :ADDRESS_FAMILY_PRECEDENCE
+
   HOSTNAME_RESOLUTION_FAILED = 0
   private_constant :HOSTNAME_RESOLUTION_FAILED
 
@@ -36,7 +39,7 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
-    resolved_addrinfos = []
+    resolved_addrinfos = {}
     selectable_addrinfos = []
 
     connecting_sockets = []
@@ -79,6 +82,7 @@ class Socket
           hostname_resolution_threads.size - 1,
         )
 
+        sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos) if state == :v6c
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
@@ -87,17 +91,10 @@ class Socket
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
-
-        # TODO 不要になるはず
-        family = select_connecting_family(state, last_connecting_family)
-        addrinfo = resolved_addrinfos.find { |ai| ai.afamily == family }
-
-        # TODO 不要になるはず
-        mutex.synchronize do
-          resolved_addrinfos.delete addrinfo
-        end
-
+        addrinfo = selectable_addrinfos.first
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+
+        selectable_addrinfos.delete addrinfo
 
         if !local_addrinfos.empty?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
@@ -148,10 +145,10 @@ class Socket
 
               next if !connectable_sockets.empty?
 
-              if resolved_addrinfos.empty? && connecting_sockets.empty? # TODO selectable_addrinfosに置き換える
+              if selectable_addrinfos.empty? && connecting_sockets.empty?
                 state = :failure
               else
-                if resolved_addrinfos.empty? # TODO selectable_addrinfosに置き換える
+                if selectable_addrinfos.empty?
                   state = :v46w
                 else
                   remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
@@ -165,7 +162,7 @@ class Socket
           end
         elsif hostname_resolved
           if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
-            state = resolved_addrinfos.empty? ? :v46w: :v46c # TODO selectable_addrinfosに置き換える
+            state = selectable_addrinfos.empty? ? :v46w: :v46c
           else
             sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
             remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
@@ -178,7 +175,7 @@ class Socket
           hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
           hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
           v46w_read_pipe = nil
-        elsif !resolved_addrinfos.empty? # TODO selectable_addrinfosに置き換える
+        elsif !selectable_addrinfos.empty?
           # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
           remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
           sleep remaining_second
@@ -229,7 +226,7 @@ class Socket
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
       mutex.synchronize do
-        addrinfos.concat resolved_addrinfos
+        addrinfos[family] = resolved_addrinfos
         wpipe.putc ADDRESS_FAMILIES[family]
       end
     rescue => e
@@ -273,8 +270,22 @@ class Socket
   private_class_method :after_hostname_resolution_state
 
   def self.sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
-    # TODO
+    precedence_size = ADDRESS_FAMILY_PRECEDENCE.size
+    maximum_addrinfos_size = resolved_addrinfos.values.max_by(&:size).size
+    address_family_precedences = maximum_addrinfos_size.times.map { ADDRESS_FAMILY_PRECEDENCE }
+
+    address_family_precedences.each do |precs|
+      precs.each do |prec|
+        addrinfo = resolved_addrinfos&.[](prec)&.first
+
+        next unless addrinfo
+
+        resolved_addrinfos[prec].delete addrinfo
+        selectable_addrinfos.push addrinfo
+      end
+    end
   end
+  private_class_method :sort_selectable_addrinfos!
 
   def self.select_connecting_family(state, last_family) # TODO 不要になる予定
     case state
@@ -306,15 +317,15 @@ class Socket
   private_class_method :current_clocktime
 end
 
-# HOSTNAME = "www.google.com"
+# HOSTNAME = "www.kame.net"
 # PORT = 80
 HOSTNAME = "localhost"
 PORT = 9292
 #
 # # # 名前解決動作確認用 (遅延)
 # # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-# #   if family == :PF_INET6
-# #     sleep 0.025
+# #   if family == Socket::AF_INET6
+# #     sleep 0.25
 # #     [Addrinfo.tcp("::1", PORT)]
 # #   else
 # #     [Addrinfo.tcp("127.0.0.1", PORT)]
