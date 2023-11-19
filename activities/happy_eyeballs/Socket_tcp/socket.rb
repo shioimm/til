@@ -13,6 +13,9 @@ class Socket
   }.freeze
   private_constant :ADDRESS_FAMILIES
 
+  HOSTNAME_RESOLUTION_FAILED = 0
+  private_constant :HOSTNAME_RESOLUTION_FAILED
+
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     # Happy Eyeballs' states
     # - :start
@@ -220,7 +223,7 @@ class Socket
       else
         mutex.synchronize do
           errors_queue.push e
-          wpipe.putc 0
+          wpipe.putc HOSTNAME_RESOLUTION_FAILED
         end
       end
     end
@@ -238,7 +241,7 @@ class Socket
     case rpipe.getbyte
     when ADDRESS_FAMILIES[:ipv6] then [:v6c, nil]
     when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
-    else
+    when HOSTNAME_RESOLUTION_FAILED
       if retry_count.zero?
         error = errors_queue.pop
         [:failure, error]
