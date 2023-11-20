@@ -163,18 +163,23 @@ class Socket
         elsif hostname_resolved
           if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
             state = selectable_addrinfos.empty? ? :v46w: :v46c
+
+            if hostname_resolution_threads.size == resolved_addrinfos.size
+              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+              v46w_read_pipe = nil
+            end
           else
             selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, connecting_sock_ai_pairs.values)
+
+            if hostname_resolution_threads.size == resolved_addrinfos.size
+              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+              v46w_read_pipe = nil
+            end
+
             remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
             sleep remaining_second
             state = :v46c
           end
-
-          # FIXME 以下は全てのアドレスファミリの名前解決が完了した場合のみ行う
-          # 本当はsleepの前に呼びたいのでメソッドに切り出してもいいかも
-          hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
-          hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
-          v46w_read_pipe = nil
         elsif !selectable_addrinfos.empty?
           # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
           remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
@@ -210,15 +215,7 @@ class Socket
       th&.exit
     end
 
-    [hostname_resolution_read_pipe,
-     hostname_resolution_write_pipe,
-     connecting_sockets].each do |io|
-      begin
-        io.close if io && !io.closed?
-      rescue
-        # ignore error
-      end
-    end
+    close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe, *connecting_sockets)
   end
 
   def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors_queue)
@@ -317,6 +314,17 @@ class Socket
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
   private_class_method :current_clocktime
+
+  def self.close_fds(*fds)
+    fds.each do |fd|
+      begin
+        fd.close if fd && !fd.closed?
+      rescue
+        # ignore error
+      end
+    end
+  end
+  private_class_method :close_fds
 end
 
 # HOSTNAME = "www.kame.net"
