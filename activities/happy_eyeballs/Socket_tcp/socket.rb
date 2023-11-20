@@ -147,14 +147,12 @@ class Socket
 
               if selectable_addrinfos.empty? && connecting_sockets.empty?
                 state = :failure
+              elsif selectable_addrinfos.empty?
+                state = :v46w
               else
-                if selectable_addrinfos.empty?
-                  state = :v46w
-                else
-                  remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-                  sleep remaining_second
-                  state = :v46c
-                end
+                remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
+                sleep remaining_second
+                state = :v46c
               end
             ensure
               connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
