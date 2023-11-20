@@ -82,11 +82,11 @@ class Socket
           hostname_resolution_threads.size - 1,
         )
 
-        sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos) if state == :v6c
+        selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos) if state == :v6c
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
-        sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+        selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos)
         state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
@@ -164,7 +164,7 @@ class Socket
           if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
             state = selectable_addrinfos.empty? ? :v46w: :v46c
           else
-            sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, sock_ai_pairs.values)
             remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
             sleep remaining_second
             state = :v46c
@@ -269,23 +269,25 @@ class Socket
   end
   private_class_method :after_hostname_resolution_state
 
-  def self.sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+  def self.sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos = [])
     precedence_size = ADDRESS_FAMILY_PRECEDENCE.size
     maximum_addrinfos_size = resolved_addrinfos.values.max_by(&:size).size
     address_family_precedences = maximum_addrinfos_size.times.map { ADDRESS_FAMILY_PRECEDENCE }
 
-    address_family_precedences.each do |precs|
-      precs.each do |prec|
-        addrinfo = resolved_addrinfos&.[](prec)&.first
+    [].tap { |selectable_addrinfos|
+      address_family_precedences.each_with_index do |precs, i|
+        precs.each do |prec|
+          addrinfo = resolved_addrinfos&.[](prec)&.[](i)
 
-        next unless addrinfo
+          next unless addrinfo
+          next if used_addrinfos.include? addrinfo
 
-        resolved_addrinfos[prec].delete addrinfo
-        selectable_addrinfos.push addrinfo
+          selectable_addrinfos.push addrinfo
+        end
       end
-    end
+    }
   end
-  private_class_method :sort_selectable_addrinfos!
+  private_class_method :sort_selectable_addrinfos
 
   def self.select_connecting_family(state, last_family) # TODO 不要になる予定
     case state
@@ -344,6 +346,16 @@ PORT = 9292
 #     raise SocketError, 'getaddrinfo: Address family for hostname not supported'
 #   end
 # end
+#
+# 名前解決動作確認用 (複数)
+Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+  if family == Socket::AF_INET6
+    [Addrinfo.tcp("::1", PORT), Addrinfo.tcp("::1", PORT)]
+  else
+    sleep 0.1
+    [Addrinfo.tcp("127.0.0.1", PORT)]
+  end
+end
 #
 # # local_host / local_port を指定する場合
 # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
