@@ -41,6 +41,7 @@ class Socket
     hostname_resolution_started_at = nil
     resolved_addrinfos = {}
     selectable_addrinfos = []
+    used_addrinfos = []
 
     connecting_sockets = []
     connection_attempt_delay_timer = nil
@@ -94,6 +95,7 @@ class Socket
         addrinfo = selectable_addrinfos.first
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
+        used_addrinfos.push addrinfo
         selectable_addrinfos.delete addrinfo
 
         if !local_addrinfos.empty?
@@ -166,7 +168,7 @@ class Socket
               v46w_read_pipe = nil
             end
           else
-            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, connecting_sock_ai_pairs.values)
+            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos)
 
             if hostname_resolution_threads.size == resolved_addrinfos.size
               close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
