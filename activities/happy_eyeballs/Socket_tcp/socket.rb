@@ -45,7 +45,7 @@ class Socket
     connecting_sockets = []
     connection_attempt_delay_timer = nil
     connection_attempt_started_at = nil
-    sock_ai_pairs = {}
+    connecting_sock_ai_pairs = {}
     last_connecting_family = nil
     v46w_read_pipe = [hostname_resolution_read_pipe]
 
@@ -110,7 +110,7 @@ class Socket
             state = :success
           when :wait_writable
             connecting_sockets.push socket
-            sock_ai_pairs[socket] = addrinfo
+            connecting_sock_ai_pairs[socket] = addrinfo
             state = :v46w
           end
         rescue SystemCallError => e
@@ -135,7 +135,7 @@ class Socket
           while (connectable_socket = connectable_sockets.pop)
             begin
               target_socket = connecting_sockets.delete(connectable_socket)
-              target_socket.connect_nonblock(sock_ai_pairs[target_socket])
+              target_socket.connect_nonblock(connecting_sock_ai_pairs[target_socket])
             rescue Errno::EISCONN # already connected
               connected_socket = target_socket
               state = :success
@@ -157,14 +157,14 @@ class Socket
                 end
               end
             ensure
-              sock_ai_pairs.reject! { |s, _| s == target_socket }
+              connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
         elsif hostname_resolved
           if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
             state = selectable_addrinfos.empty? ? :v46w: :v46c
           else
-            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, sock_ai_pairs.values)
+            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, connecting_sock_ai_pairs.values)
             remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
             sleep remaining_second
             state = :v46c
