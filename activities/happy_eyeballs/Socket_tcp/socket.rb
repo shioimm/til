@@ -150,8 +150,7 @@ class Socket
               elsif selectable_addrinfos.empty?
                 state = :v46w
               else
-                remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-                sleep remaining_second
+                sleep_until connection_attempt_delay_expires_at
                 state = :v46c
               end
             ensure
@@ -174,14 +173,12 @@ class Socket
               v46w_read_pipe = nil
             end
 
-            remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-            sleep remaining_second
+            sleep_until connection_attempt_delay_expires_at
             state = :v46c
           end
         elsif !selectable_addrinfos.empty?
           # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
-          remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-          sleep remaining_second
+          sleep_until connection_attempt_delay_expires_at
           state = :v46c
         else
           # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
@@ -312,6 +309,12 @@ class Socket
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
   private_class_method :current_clocktime
+
+  def self.sleep_until(expires_at)
+    remaining_second = second_to_connection_timeout(expires_at)
+    sleep remaining_second
+  end
+  private_class_method :sleep_until
 
   def self.close_fds(*fds)
     fds.each do |fd|
