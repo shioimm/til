@@ -328,6 +328,43 @@ class Socket
     end
   end
   private_class_method :close_fds
+
+  class SelectableAddrinfos
+    def initialize
+      @addrinfo_dict = {}
+      @last_family = nil
+    end
+
+    def add(family_name, addrinfos)
+      @addrinfo_dict[family_name] = addrinfos
+    end
+
+    def get
+      case @last_family
+      when :ipv4, nil
+        precedences = [:ipv6, :ipv4]
+      when :ipv6
+        precedences = [:ipv4, :ipv6]
+      end
+
+      precedences.each do |family_name|
+        addrinfo = @addrinfo_dict[family_name].shift
+
+        if addrinfo
+          @last_family = family_name
+          return addrinfo
+        end
+      end
+    end
+
+    def out_of_stock?
+      @addrinfo_dict.values.flatten.empty?
+    end
+
+    def size
+      @addrinfo_dict.size
+    end
+  end
 end
 
 # HOSTNAME = "www.kame.net"
