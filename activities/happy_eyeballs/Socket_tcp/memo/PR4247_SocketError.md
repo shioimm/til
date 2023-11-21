@@ -129,10 +129,12 @@ rsock_raise_socket_error(const char *reason, int error)
   msg = rb_sprintf("%s: ", reason);
   if (!enc) enc = rb_default_internal_encoding();
   rb_str_concat(msg, rb_w32_conv_from_wchar(gai_strerrorW(error), enc));
+  // masterではここで rb_exc_raise(rb_exc_new_str(rb_eSocket, msg)); している
 
 #else
 
   msg = rb_sprintf("%s: %s", reason, gai_strerror(error)); // 追加
+  // masterではここで rb_raise(rb_eSocket, "%s: %s", reason, gai_strerror(error)); している
 
 #endif
   // 追加
@@ -142,4 +144,36 @@ rsock_raise_socket_error(const char *reason, int error)
   socket_error = rb_class_new_instance(2, argv, rb_eSocket);
   rb_exc_raise(socket_error);
 }
+```
+
+- つまり、`rb_class_new_instance`する必要があるため`rb_raise`ではなく`rb_exc_raise`を呼び出す必要がある
+  - masterではWIN32ではない場合
+    `rb_raise` -> `rb_vraise` -> `rb_exc_raise` -> `rb_exc_new_str` で`rb_class_new_instance`している
+
+```c
+// こうする必要あり
+int error; // 元々のエラーコード
+VELUE exc = rb_eResolutionError; // Socket::ResolutionError
+ID id_error_code; // Socket::ResolutionErrorのインスタンス変数
+
+#ifdef _WIN32
+
+  rb_encoding *enc = rb_default_internal_encoding();
+  VALUE msg = rb_sprintf("%s: ", reason);
+  if (!enc) enc = rb_default_internal_encoding();
+  rb_str_concat(msg, rb_w32_conv_from_wchar(gai_strerrorW(error), enc)); // msgのWIN対応っぽい
+
+#else
+
+  VALUE fmt;   // エラーメッセージの出力フォーマット
+  va_list ap;  // reason, gai_strerror(error)
+  VALUE msg = rb_vsprintf(fmt, ap); // エラーメッセージ
+
+#endif
+
+// 以下共通
+StringValue(msg); // エラーメッセージVALUEをGCから保護
+VALUE error_instance = rb_class_new_instance(1, &msg, exc); // SocketError.new(str)
+rb_ivar_set(error_instance, id_error_code, error) // errorをSocket::Constantsに変換しないといけないかも
+rb_exc_raise(error_instance);
 ```
