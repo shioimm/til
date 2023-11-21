@@ -39,8 +39,8 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
-    resolved_addrinfos = {}
-    selectable_addrinfos = []
+    resolved_addrinfos = Queue.new
+    selectable_addrinfos = SelectableAddrinfos.new
     used_addrinfos = []
 
     connecting_sockets = []
@@ -83,20 +83,19 @@ class Socket
           hostname_resolution_threads.size - 1,
         )
 
-        selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos) if state == :v6c
+        update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos) if state == :v6c
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
-        selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos)
+        update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos)
         state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
-        addrinfo = selectable_addrinfos.first
+        addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
         used_addrinfos.push addrinfo
-        selectable_addrinfos.delete addrinfo
 
         if !local_addrinfos.empty?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
@@ -147,9 +146,9 @@ class Socket
 
               next if !connectable_sockets.empty?
 
-              if selectable_addrinfos.empty? && connecting_sockets.empty?
+              if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
                 state = :failure
-              elsif selectable_addrinfos.empty?
+              elsif selectable_addrinfos.out_of_stock?
                 state = :v46w
               else
                 sleep_until connection_attempt_delay_expires_at
@@ -161,16 +160,16 @@ class Socket
           end
         elsif hostname_resolved
           if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
-            state = selectable_addrinfos.empty? ? :v46w: :v46c
+            state = selectable_addrinfos.out_of_stock? ? :v46w: :v46c
 
-            if hostname_resolution_threads.size == resolved_addrinfos.size
+            if hostname_resolution_threads.size == selectable_addrinfos.size
               close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
               v46w_read_pipe = nil
             end
           else
-            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos)
+            update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos)
 
-            if hostname_resolution_threads.size == resolved_addrinfos.size
+            if hostname_resolution_threads.size == selectable_addrinfos.size
               close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
               v46w_read_pipe = nil
             end
@@ -178,7 +177,7 @@ class Socket
             sleep_until connection_attempt_delay_expires_at
             state = :v46c
           end
-        elsif !selectable_addrinfos.empty?
+        elsif !selectable_addrinfos.out_of_stock?
           # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
           sleep_until connection_attempt_delay_expires_at
           state = :v46c
@@ -220,7 +219,7 @@ class Socket
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
       mutex.synchronize do
-        addrinfos[family] = resolved_addrinfos
+        addrinfos.push [family, resolved_addrinfos]
         wpipe.putc ADDRESS_FAMILIES[family]
       end
     rescue => e
@@ -262,6 +261,12 @@ class Socket
     end
   end
   private_class_method :after_hostname_resolution_state
+
+  def self.update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos)
+    family_name, addrinfo = resolved_addrinfos.pop
+    selectable_addrinfos.add(family_name, addrinfo)
+  end
+  private_class_method :update_selectable_addrinfos
 
   def self.sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos = [])
     precedence_size = ADDRESS_FAMILY_PRECEDENCE.size
@@ -348,7 +353,7 @@ class Socket
       end
 
       precedences.each do |family_name|
-        addrinfo = @addrinfo_dict[family_name].shift
+        addrinfo = @addrinfo_dict[family_name]&.shift
 
         if addrinfo
           @last_family = family_name
