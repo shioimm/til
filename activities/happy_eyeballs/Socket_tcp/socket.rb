@@ -36,7 +36,7 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
-    resolved_addrinfos = Queue.new
+    resolved_addrinfos_queue = Queue.new
     selectable_addrinfos = SelectableAddrinfos.new
 
     connecting_sockets = []
@@ -61,7 +61,7 @@ class Socket
       when :start
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args =
-          [host, port, resolved_addrinfos, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
+          [host, port, resolved_addrinfos_queue, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
 
         hostname_resolution_threads.concat(
           hostname_resolution_family_names.map { |family|
@@ -79,11 +79,11 @@ class Socket
           hostname_resolution_threads.size - 1,
         )
 
-        update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos) if state == :v6c
+        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if state == :v6c
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
-        update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos)
+        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
         state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
@@ -161,7 +161,7 @@ class Socket
               v46w_read_pipe = nil
             end
           else
-            update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos)
+            update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
             if hostname_resolution_threads.size == selectable_addrinfos.size
               close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
@@ -256,8 +256,8 @@ class Socket
   end
   private_class_method :after_hostname_resolution_state
 
-  def self.update_selectable_addrinfos(resolved_addrinfos, selectable_addrinfos)
-    family_name, addrinfo = resolved_addrinfos.pop
+  def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+    family_name, addrinfo = resolved_addrinfos_queue.pop
     selectable_addrinfos.add(family_name, addrinfo)
   end
   private_class_method :update_selectable_addrinfos
