@@ -41,11 +41,12 @@ class Socket
     hostname_resolution_started_at = nil
     resolved_addrinfos = {}
     selectable_addrinfos = []
+    used_addrinfos = []
 
     connecting_sockets = []
     connection_attempt_delay_timer = nil
     connection_attempt_started_at = nil
-    sock_ai_pairs = {}
+    connecting_sock_ai_pairs = {}
     last_connecting_family = nil
     v46w_read_pipe = [hostname_resolution_read_pipe]
 
@@ -82,11 +83,11 @@ class Socket
           hostname_resolution_threads.size - 1,
         )
 
-        sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos) if state == :v6c
+        selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos) if state == :v6c
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
-        sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+        selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos)
         state = ipv6_resolved ? :v46c : :v4c
         next
       when :v4c, :v6c, :v46c
@@ -94,6 +95,7 @@ class Socket
         addrinfo = selectable_addrinfos.first
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
+        used_addrinfos.push addrinfo
         selectable_addrinfos.delete addrinfo
 
         if !local_addrinfos.empty?
@@ -110,7 +112,7 @@ class Socket
             state = :success
           when :wait_writable
             connecting_sockets.push socket
-            sock_ai_pairs[socket] = addrinfo
+            connecting_sock_ai_pairs[socket] = addrinfo
             state = :v46w
           end
         rescue SystemCallError => e
@@ -135,7 +137,7 @@ class Socket
           while (connectable_socket = connectable_sockets.pop)
             begin
               target_socket = connecting_sockets.delete(connectable_socket)
-              target_socket.connect_nonblock(sock_ai_pairs[target_socket])
+              target_socket.connect_nonblock(connecting_sock_ai_pairs[target_socket])
             rescue Errno::EISCONN # already connected
               connected_socket = target_socket
               state = :success
@@ -147,38 +149,38 @@ class Socket
 
               if selectable_addrinfos.empty? && connecting_sockets.empty?
                 state = :failure
+              elsif selectable_addrinfos.empty?
+                state = :v46w
               else
-                if selectable_addrinfos.empty?
-                  state = :v46w
-                else
-                  remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-                  sleep remaining_second
-                  state = :v46c
-                end
+                sleep_until connection_attempt_delay_expires_at
+                state = :v46c
               end
             ensure
-              sock_ai_pairs.reject! { |s, _| s == target_socket }
+              connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
         elsif hostname_resolved
           if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
             state = selectable_addrinfos.empty? ? :v46w: :v46c
+
+            if hostname_resolution_threads.size == resolved_addrinfos.size
+              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+              v46w_read_pipe = nil
+            end
           else
-            sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
-            remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-            sleep remaining_second
+            selectable_addrinfos = sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos)
+
+            if hostname_resolution_threads.size == resolved_addrinfos.size
+              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+              v46w_read_pipe = nil
+            end
+
+            sleep_until connection_attempt_delay_expires_at
             state = :v46c
           end
-
-          # FIXME 以下は全てのアドレスファミリの名前解決が完了した場合のみ行う
-          # 本当はsleepの前に呼びたいのでメソッドに切り出してもいいかも
-          hostname_resolution_read_pipe.close if !hostname_resolution_read_pipe.closed?
-          hostname_resolution_write_pipe.close if !hostname_resolution_write_pipe.closed?
-          v46w_read_pipe = nil
         elsif !selectable_addrinfos.empty?
           # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
-          remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-          sleep remaining_second
+          sleep_until connection_attempt_delay_expires_at
           state = :v46c
         else
           # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
@@ -210,15 +212,7 @@ class Socket
       th&.exit
     end
 
-    [hostname_resolution_read_pipe,
-     hostname_resolution_write_pipe,
-     connecting_sockets].each do |io|
-      begin
-        io.close if io && !io.closed?
-      rescue
-        # ignore error
-      end
-    end
+    close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe, *connecting_sockets)
   end
 
   def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors_queue)
@@ -269,23 +263,25 @@ class Socket
   end
   private_class_method :after_hostname_resolution_state
 
-  def self.sort_selectable_addrinfos!(resolved_addrinfos, selectable_addrinfos)
+  def self.sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos = [])
     precedence_size = ADDRESS_FAMILY_PRECEDENCE.size
     maximum_addrinfos_size = resolved_addrinfos.values.max_by(&:size).size
     address_family_precedences = maximum_addrinfos_size.times.map { ADDRESS_FAMILY_PRECEDENCE }
 
-    address_family_precedences.each do |precs|
-      precs.each do |prec|
-        addrinfo = resolved_addrinfos&.[](prec)&.first
+    [].tap { |selectable_addrinfos|
+      address_family_precedences.each_with_index do |precs, i|
+        precs.each do |prec|
+          addrinfo = resolved_addrinfos&.[](prec)&.[](i)
 
-        next unless addrinfo
+          next unless addrinfo
+          next if used_addrinfos.include? addrinfo
 
-        resolved_addrinfos[prec].delete addrinfo
-        selectable_addrinfos.push addrinfo
+          selectable_addrinfos.push addrinfo
+        end
       end
-    end
+    }
   end
-  private_class_method :sort_selectable_addrinfos!
+  private_class_method :sort_selectable_addrinfos
 
   def self.select_connecting_family(state, last_family) # TODO 不要になる予定
     case state
@@ -315,6 +311,23 @@ class Socket
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
   private_class_method :current_clocktime
+
+  def self.sleep_until(expires_at)
+    remaining_second = second_to_connection_timeout(expires_at)
+    sleep remaining_second
+  end
+  private_class_method :sleep_until
+
+  def self.close_fds(*fds)
+    fds.each do |fd|
+      begin
+        fd.close if fd && !fd.closed?
+      rescue
+        # ignore error
+      end
+    end
+  end
+  private_class_method :close_fds
 end
 
 # HOSTNAME = "www.kame.net"
@@ -344,6 +357,16 @@ PORT = 9292
 #     raise SocketError, 'getaddrinfo: Address family for hostname not supported'
 #   end
 # end
+#
+# 名前解決動作確認用 (複数)
+Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+  if family == Socket::AF_INET6
+    [Addrinfo.tcp("::1", PORT), Addrinfo.tcp("::1", PORT)]
+  else
+    sleep 0.1
+    [Addrinfo.tcp("127.0.0.1", PORT)]
+  end
+end
 #
 # # local_host / local_port を指定する場合
 # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
