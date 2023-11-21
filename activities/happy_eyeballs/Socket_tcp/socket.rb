@@ -13,9 +13,6 @@ class Socket
   }.freeze
   private_constant :ADDRESS_FAMILIES
 
-  ADDRESS_FAMILY_PRECEDENCE = [:ipv6, :ipv4]
-  private_constant :ADDRESS_FAMILY_PRECEDENCE
-
   HOSTNAME_RESOLUTION_FAILED = 0
   private_constant :HOSTNAME_RESOLUTION_FAILED
 
@@ -41,7 +38,6 @@ class Socket
     hostname_resolution_started_at = nil
     resolved_addrinfos = Queue.new
     selectable_addrinfos = SelectableAddrinfos.new
-    used_addrinfos = []
 
     connecting_sockets = []
     connection_attempt_delay_timer = nil
@@ -94,8 +90,6 @@ class Socket
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
         addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-
-        used_addrinfos.push addrinfo
 
         if !local_addrinfos.empty?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
@@ -267,42 +261,6 @@ class Socket
     selectable_addrinfos.add(family_name, addrinfo)
   end
   private_class_method :update_selectable_addrinfos
-
-  def self.sort_selectable_addrinfos(resolved_addrinfos, used_addrinfos = [])
-    precedence_size = ADDRESS_FAMILY_PRECEDENCE.size
-    maximum_addrinfos_size = resolved_addrinfos.values.max_by(&:size).size
-    address_family_precedences = maximum_addrinfos_size.times.map { ADDRESS_FAMILY_PRECEDENCE }
-
-    [].tap { |selectable_addrinfos|
-      address_family_precedences.each_with_index do |precs, i|
-        precs.each do |prec|
-          addrinfo = resolved_addrinfos&.[](prec)&.[](i)
-
-          next unless addrinfo
-          next if used_addrinfos.include? addrinfo
-
-          selectable_addrinfos.push addrinfo
-        end
-      end
-    }
-  end
-  private_class_method :sort_selectable_addrinfos
-
-  def self.select_connecting_family(state, last_family) # TODO 不要になる予定
-    case state
-    when :v46c
-      if last_family
-        family_name = ADDRESS_FAMILIES.key(last_family)
-        ADDRESS_FAMILIES.fetch(ADDRESS_FAMILIES.keys.find { |k| k != family_name })
-      else
-        ADDRESS_FAMILIES[:ipv6]
-      end
-    when :v6c, :v4c
-      family_name = "ipv#{state.to_s[1]}"
-      ADDRESS_FAMILIES[family_name.to_sym]
-    end
-  end
-  private_class_method :select_connecting_family
 
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at
