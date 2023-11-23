@@ -165,15 +165,13 @@ ID id_error_code; // Socket::ResolutionErrorのインスタンス変数
 
 #else
 
-  VALUE fmt;   // エラーメッセージの出力フォーマット
-  va_list ap;  // reason, gai_strerror(error)
-  VALUE msg = rb_vsprintf(fmt, ap); // エラーメッセージ
+  VALUE msg = rb_sprintf("%s: %s", reason, gai_strerror(error)); // エラーメッセージ
 
 #endif
 
 // 以下共通
 StringValue(msg); // エラーメッセージVALUEをGCから保護
 VALUE error_instance = rb_class_new_instance(1, &msg, exc); // SocketError.new(str)
-rb_ivar_set(error_instance, id_error_code, error) // errorをSocket::Constantsに変換しないといけないかも
+rb_ivar_set(error_instance, id_error_code, INT2NUM(error)); // errorをSocket::Constantsに変換しないといけないかも
 rb_exc_raise(error_instance);
 ```
