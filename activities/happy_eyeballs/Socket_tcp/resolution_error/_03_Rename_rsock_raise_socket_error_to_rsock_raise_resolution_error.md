@@ -1,0 +1,13 @@
+# `rsock_raise_socket_error`を`rsock_raise_resolution_error`へrename
+- ext/socket/init.c
+- ext/socket/raddrinfo.c
+  - `static void make_ipaddr0`
+  - `struct rb_addrinfo* rsock_getaddrinfo`
+  - `struct rb_addrinfo* rsock_addrinfo`
+  - `VALUE rsock_ipaddr`
+  - `VALUE rsock_inspect_sockaddr`
+  - `static VALUE addrinfo_mdump`
+  - `static VALUE addrinfo_getnameinfo`
+- ext/socket/rubysocket.h
+- ext/socket/socket.c
+  - `static VALUE sock_s_getnameinfo`
