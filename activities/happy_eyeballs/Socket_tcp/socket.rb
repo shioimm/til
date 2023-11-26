@@ -78,6 +78,10 @@ class Socket
           hostname_resolution_errors,
           hostname_resolution_threads.size - 1,
         )
+        # 先にv4の名前解決に成功 -> v4w
+        # 先にv6の名前解決に成功 -> v6c
+        # resolv_timeout -> timeout
+        # 両方エラー -> failure
 
         update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if %i[v6c v4w].include? state
         next
@@ -122,7 +126,7 @@ class Socket
           when 0
             connected_socket = socket
             state = :success
-          when :wait_writable
+          when :wait_writable # 接続試行中
             connecting_sockets.push socket
             connecting_sock_ai_pairs[socket] = addrinfo
             state = :v46w
@@ -163,12 +167,15 @@ class Socket
               next if connectable_sockets.any?
 
               if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
+                # 試行できるaddrinfoがなく、接続中のソケットもない場合
                 state = :failure
-              elsif selectable_addrinfos.out_of_stock? # selectable_addrinfosが空、connecting_socketsがある場合
-                connection_attempt_delay_expires_at = nil
+              elsif selectable_addrinfos.out_of_stock?
+                # 試行できるaddrinfosがなく、接続中のソケットはある場合 -> 接続中のソケットを待機する
                 state = :v46w
-              else # selectable_addrinfosがある場合 (+ connecting_socketsがある場合も)
-                # 次のループでConnection Attempt Delay タイムアウトを待つ
+                connection_attempt_delay_expires_at = nil
+              else
+                # 試行できるaddrinfosがある場合 (+ 接続中のソケットがある場合も)
+                # -> 次のループに進む。次のループでConnection Attempt Delay タイムアウトしたらv46cへ
                 state = :v46w
               end
             ensure
@@ -184,13 +191,13 @@ class Socket
           end
 
           state = :v46w
-        elsif !selectable_addrinfos.out_of_stock?
-          # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
-          state = :v46c
-        else
-          # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
-          state = :v46w
-          connection_attempt_delay_expires_at = nil
+        else # Connection Attempt Delayタイムアウト
+          if !selectable_addrinfos.out_of_stock? # 試行できるaddrinfosが残っている場合
+            state = :v46c
+          else # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
+            state = :v46w
+            connection_attempt_delay_expires_at = nil
+          end
         end
 
         next
