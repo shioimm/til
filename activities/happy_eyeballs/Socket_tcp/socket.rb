@@ -152,7 +152,7 @@ class Socket
               connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif hostname_resolved
+        elsif hostname_resolved && !hostname_resolved.empty?
           if hostname_resolution_read_pipe.getbyte != HOSTNAME_RESOLUTION_FAILED
             update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
           end
