@@ -93,7 +93,14 @@ class Socket
 
         if !local_addrinfos.empty?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
-          socket.bind(local_addrinfo) if local_addrinfo
+
+          if local_addrinfo
+            socket.bind(local_addrinfo)
+          elsif !local_addrinfo && hostname_resolution_threads.size == selectable_addrinfos.size
+            last_error = SocketError.new 'no appropriate local address'
+            state = :failure
+            next
+          end
         end
 
         connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
