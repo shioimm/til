@@ -122,8 +122,7 @@ class Socket
           next
         end
 
-        connection_attempt_delay_expires_at = connection_attempt_delay_timer.dup
-        remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
+        remaining_second = second_to_connection_timeout(connection_attempt_delay_timer)
         hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
         if connectable_sockets && !connectable_sockets.empty?
@@ -142,45 +141,38 @@ class Socket
 
               if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
                 state = :failure
-              elsif selectable_addrinfos.out_of_stock?
+              elsif selectable_addrinfos.out_of_stock? # selectable_addrinfosが空、connecting_socketsがある場合
+                connection_attempt_delay_timer = nil
                 state = :v46w
-              else
-                sleep_until connection_attempt_delay_expires_at
-                state = :v46c
+              else # selectable_addrinfosがある場合 (+ connecting_socketsがある場合も)
+                # 次のループでConnection Attempt Delay タイムアウトを待つ
+                state = :v46w
               end
             ensure
               connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
         elsif hostname_resolved
-          if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
-            state = selectable_addrinfos.out_of_stock? ? :v46w: :v46c
-
-            if hostname_resolution_threads.size == selectable_addrinfos.size
-              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
-              v46w_read_pipe = nil
-            end
-          else
+          if hostname_resolution_read_pipe.getbyte != HOSTNAME_RESOLUTION_FAILED
             update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-
-            if hostname_resolution_threads.size == selectable_addrinfos.size
-              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
-              v46w_read_pipe = nil
-            end
-
-            sleep_until connection_attempt_delay_expires_at
-            state = :v46c
           end
+
+          # FIXME: 今の実装ではHOSTNAME_RESOLUTION_FAILEDの場合selectable_addrinfosが==になることはない気がする
+          if hostname_resolution_threads.size == selectable_addrinfos.size
+            close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+            v46w_read_pipe = nil
+          end
+
+          state = :v46w
         elsif !selectable_addrinfos.out_of_stock?
           # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
-          sleep_until connection_attempt_delay_expires_at
           state = :v46c
         else
           # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
           state = :v46w
+          connection_attempt_delay_timer = nil
         end
 
-        connection_attempt_delay_timer = nil
         next
       when :success
         break connected_socket
