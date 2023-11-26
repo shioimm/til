@@ -321,7 +321,7 @@ class Socket
     end
 
     def out_of_stock?
-      @addrinfo_dict.values.flatten.empty?
+      @addrinfo_dict.all?{ |_, addrinfos| addrinfos.empty? }
     end
 
     def size
