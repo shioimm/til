@@ -130,7 +130,11 @@ class Socket
         rescue SystemCallError => e
           last_error = e
           socket.close unless socket.closed?
-          state = :failure
+
+          if selectable_addrinfos.out_of_stock? # 他に試行できるaddrinfosがない
+            state = :failure
+            next
+          end
         end
 
         last_connecting_family = addrinfo.afamily
