@@ -91,7 +91,7 @@ class Socket
         addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
-        if !local_addrinfos.empty?
+        if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
           if local_addrinfo
@@ -132,7 +132,7 @@ class Socket
         remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
         hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
-        if connectable_sockets && !connectable_sockets.empty?
+        if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
             begin
               target_socket = connecting_sockets.delete(connectable_socket)
@@ -144,7 +144,7 @@ class Socket
               last_error = e
               target_socket.close unless target_socket.closed?
 
-              next if !connectable_sockets.empty?
+              next if connectable_sockets.any?
 
               if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
                 state = :failure
@@ -159,7 +159,7 @@ class Socket
               connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif hostname_resolved && !hostname_resolved.empty?
+        elsif hostname_resolved&.any?
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
           if hostname_resolution_threads.size == selectable_addrinfos.size
