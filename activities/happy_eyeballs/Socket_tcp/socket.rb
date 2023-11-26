@@ -267,12 +267,6 @@ class Socket
   end
   private_class_method :current_clocktime
 
-  def self.sleep_until(expires_at)
-    remaining_second = second_to_connection_timeout(expires_at)
-    sleep remaining_second
-  end
-  private_class_method :sleep_until
-
   def self.close_fds(*fds)
     fds.each do |fd|
       begin
