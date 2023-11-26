@@ -92,6 +92,7 @@ class Socket
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
           if hostname_resolution_threads.size == selectable_addrinfos.size
+            hostname_resolution_read_pipe.getbyte
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
             v46w_read_pipe = nil
           end
@@ -186,6 +187,7 @@ class Socket
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
           if hostname_resolution_threads.size == selectable_addrinfos.size
+            hostname_resolution_read_pipe.getbyte
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
             v46w_read_pipe = nil
           end
