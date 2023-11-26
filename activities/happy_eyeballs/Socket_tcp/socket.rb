@@ -40,7 +40,7 @@ class Socket
     selectable_addrinfos = SelectableAddrinfos.new
 
     connecting_sockets = []
-    connection_attempt_delay_timer = nil
+    connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     connecting_sock_ai_pairs = {}
     last_connecting_family = nil
@@ -96,7 +96,7 @@ class Socket
           socket.bind(local_addrinfo) if local_addrinfo
         end
 
-        connection_attempt_delay_timer = current_clocktime + CONNECTION_ATTEMPT_DELAY
+        connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
 
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
@@ -122,7 +122,7 @@ class Socket
           next
         end
 
-        remaining_second = second_to_connection_timeout(connection_attempt_delay_timer)
+        remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
         hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
         if connectable_sockets && !connectable_sockets.empty?
@@ -142,7 +142,7 @@ class Socket
               if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
                 state = :failure
               elsif selectable_addrinfos.out_of_stock? # selectable_addrinfosが空、connecting_socketsがある場合
-                connection_attempt_delay_timer = nil
+                connection_attempt_delay_expires_at = nil
                 state = :v46w
               else # selectable_addrinfosがある場合 (+ connecting_socketsがある場合も)
                 # 次のループでConnection Attempt Delay タイムアウトを待つ
@@ -170,7 +170,7 @@ class Socket
         else
           # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
           state = :v46w
-          connection_attempt_delay_timer = nil
+          connection_attempt_delay_expires_at = nil
         end
 
         next
@@ -249,8 +249,8 @@ class Socket
   private_class_method :after_hostname_resolution_state
 
   def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-    family_name, addrinfo = resolved_addrinfos_queue.pop
-    selectable_addrinfos.add(family_name, addrinfo)
+    family_name, addrinfos = resolved_addrinfos_queue.pop
+    selectable_addrinfos.add(family_name, addrinfos)
   end
   private_class_method :update_selectable_addrinfos
 
