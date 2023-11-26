@@ -153,11 +153,8 @@ class Socket
             end
           end
         elsif hostname_resolved && !hostname_resolved.empty?
-          if hostname_resolution_read_pipe.getbyte != HOSTNAME_RESOLUTION_FAILED
-            update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-          end
+          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
-          # FIXME: 今の実装ではHOSTNAME_RESOLUTION_FAILEDの場合selectable_addrinfosが==になることはない気がする
           if hostname_resolution_threads.size == selectable_addrinfos.size
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
             v46w_read_pipe = nil
@@ -218,6 +215,7 @@ class Socket
         end
       else
         mutex.synchronize do
+          addrinfos.push [family, []]
           errors_queue.push e
           wpipe.putc HOSTNAME_RESOLUTION_FAILED
         end
