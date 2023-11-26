@@ -79,12 +79,24 @@ class Socket
           hostname_resolution_threads.size - 1,
         )
 
-        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if state == :v6c
+        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if %i[v6c v4w].include? state
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
-        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-        state = ipv6_resolved ? :v46c : :v4c
+
+        if ipv6_resolved # v4/v6共に名前解決済み
+          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+
+          if hostname_resolution_threads.size == selectable_addrinfos.size
+            close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+            v46w_read_pipe = nil
+          end
+
+          state = :v46c
+        else # v6はまだ名前解決中
+          state = :v4c
+        end
+
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
