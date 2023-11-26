@@ -277,8 +277,10 @@ class Socket
   private_class_method :after_hostname_resolution_state
 
   def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-    family_name, addrinfos = resolved_addrinfos_queue.pop
-    selectable_addrinfos.add(family_name, addrinfos)
+    until resolved_addrinfos_queue.empty?
+      family_name, addrinfos = resolved_addrinfos_queue.pop
+      selectable_addrinfos.add(family_name, addrinfos)
+    end
   end
   private_class_method :update_selectable_addrinfos
 
