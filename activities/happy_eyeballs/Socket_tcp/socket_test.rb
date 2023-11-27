@@ -66,7 +66,7 @@ class SocketTest < Minitest::Test
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
-        sleep 0.045
+        sleep 0.025
         [Addrinfo.tcp("::1", port)]
       else
         [Addrinfo.tcp("127.0.0.1", port)]

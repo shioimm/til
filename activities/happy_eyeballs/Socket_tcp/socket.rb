@@ -40,7 +40,7 @@ class Socket
     selectable_addrinfos = SelectableAddrinfos.new
 
     connecting_sockets = []
-    connection_attempt_delay_timer = nil
+    connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     connecting_sock_ai_pairs = {}
     last_connecting_family = nil
@@ -78,32 +78,56 @@ class Socket
           hostname_resolution_errors,
           hostname_resolution_threads.size - 1,
         )
+        # 先にv4の名前解決に成功 -> v4w
+        # 先にv6の名前解決に成功 -> v6c
+        # resolv_timeout -> timeout
+        # 両方エラー -> failure
 
-        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if state == :v6c
+        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if %i[v6c v4w].include? state
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
-        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-        state = ipv6_resolved ? :v46c : :v4c
+
+        if ipv6_resolved # v4/v6共に名前解決済み
+          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+
+          if hostname_resolution_threads.size == selectable_addrinfos.size
+            hostname_resolution_read_pipe.getbyte
+            close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+            v46w_read_pipe = nil
+          end
+
+          state = :v46c
+        else # v6はまだ名前解決中
+          state = :v4c
+        end
+
         next
       when :v4c, :v6c, :v46c
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
         addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
-        if !local_addrinfos.empty?
+        if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
-          socket.bind(local_addrinfo) if local_addrinfo
+
+          if local_addrinfo
+            socket.bind(local_addrinfo)
+          elsif !local_addrinfo && hostname_resolution_threads.size == selectable_addrinfos.size
+            last_error = SocketError.new 'no appropriate local address'
+            state = :failure
+            next
+          end
         end
 
-        connection_attempt_delay_timer = current_clocktime + CONNECTION_ATTEMPT_DELAY
+        connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
 
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
           when 0
             connected_socket = socket
             state = :success
-          when :wait_writable
+          when :wait_writable # 接続試行中
             connecting_sockets.push socket
             connecting_sock_ai_pairs[socket] = addrinfo
             state = :v46w
@@ -111,7 +135,11 @@ class Socket
         rescue SystemCallError => e
           last_error = e
           socket.close unless socket.closed?
-          state = :failure
+
+          if selectable_addrinfos.out_of_stock? # 他に試行できるaddrinfosがない
+            state = :failure
+            next
+          end
         end
 
         last_connecting_family = addrinfo.afamily
@@ -122,11 +150,10 @@ class Socket
           next
         end
 
-        connection_attempt_delay_expires_at = connection_attempt_delay_timer.dup
         remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
         hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
 
-        if connectable_sockets && !connectable_sockets.empty?
+        if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
             begin
               target_socket = connecting_sockets.delete(connectable_socket)
@@ -138,49 +165,43 @@ class Socket
               last_error = e
               target_socket.close unless target_socket.closed?
 
-              next if !connectable_sockets.empty?
+              next if connectable_sockets.any?
 
               if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
+                # 試行できるaddrinfoがなく、接続中のソケットもない場合
                 state = :failure
               elsif selectable_addrinfos.out_of_stock?
+                # 試行できるaddrinfosがなく、接続中のソケットはある場合 -> 接続中のソケットを待機する
                 state = :v46w
+                connection_attempt_delay_expires_at = nil
               else
-                sleep_until connection_attempt_delay_expires_at
-                state = :v46c
+                # 試行できるaddrinfosがある場合 (+ 接続中のソケットがある場合も)
+                # -> 次のループに進む。次のループでConnection Attempt Delay タイムアウトしたらv46cへ
+                state = :v46w
               end
             ensure
               connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
-        elsif hostname_resolved
-          if hostname_resolution_read_pipe.getbyte == HOSTNAME_RESOLUTION_FAILED
-            state = selectable_addrinfos.out_of_stock? ? :v46w: :v46c
+        elsif hostname_resolved&.any?
+          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
-            if hostname_resolution_threads.size == selectable_addrinfos.size
-              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
-              v46w_read_pipe = nil
-            end
-          else
-            update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-
-            if hostname_resolution_threads.size == selectable_addrinfos.size
-              close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
-              v46w_read_pipe = nil
-            end
-
-            sleep_until connection_attempt_delay_expires_at
-            state = :v46c
+          if hostname_resolution_threads.size == selectable_addrinfos.size
+            hostname_resolution_read_pipe.getbyte
+            close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
+            v46w_read_pipe = nil
           end
-        elsif !selectable_addrinfos.out_of_stock?
-          # Connection Attempt Delayタイムアウトでaddrinfosが残っている場合
-          sleep_until connection_attempt_delay_expires_at
-          state = :v46c
-        else
-          # Connection Attempt Delayタイムアウトでaddrinfosが残っておらずあとはもう待つしかできない場合
+
           state = :v46w
+        else # Connection Attempt Delayタイムアウト
+          if !selectable_addrinfos.out_of_stock? # 試行できるaddrinfosが残っている場合
+            state = :v46c
+          else # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
+            state = :v46w
+            connection_attempt_delay_expires_at = nil
+          end
         end
 
-        connection_attempt_delay_timer = nil
         next
       when :success
         break connected_socket
@@ -226,6 +247,7 @@ class Socket
         end
       else
         mutex.synchronize do
+          addrinfos.push [family, []]
           errors_queue.push e
           wpipe.putc HOSTNAME_RESOLUTION_FAILED
         end
@@ -257,8 +279,10 @@ class Socket
   private_class_method :after_hostname_resolution_state
 
   def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-    family_name, addrinfo = resolved_addrinfos_queue.pop
-    selectable_addrinfos.add(family_name, addrinfo)
+    until resolved_addrinfos_queue.empty?
+      family_name, addrinfos = resolved_addrinfos_queue.pop
+      selectable_addrinfos.add(family_name, addrinfos)
+    end
   end
   private_class_method :update_selectable_addrinfos
 
@@ -274,12 +298,6 @@ class Socket
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
   private_class_method :current_clocktime
-
-  def self.sleep_until(expires_at)
-    remaining_second = second_to_connection_timeout(expires_at)
-    sleep remaining_second
-  end
-  private_class_method :sleep_until
 
   def self.close_fds(*fds)
     fds.each do |fd|
@@ -321,7 +339,7 @@ class Socket
     end
 
     def out_of_stock?
-      @addrinfo_dict.values.flatten.empty?
+      @addrinfo_dict.all?{ |_, addrinfos| addrinfos.empty? }
     end
 
     def size
