@@ -43,7 +43,6 @@ class Socket
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     connecting_sock_ai_pairs = {}
-    last_connecting_family = nil
     v46w_read_pipe = [hostname_resolution_read_pipe]
 
     hostname_resolution_family_names, local_addrinfos =
@@ -142,7 +141,6 @@ class Socket
           end
         end
 
-        last_connecting_family = addrinfo.afamily
         next
       when :v46w
         if connect_timeout && second_to_connection_timeout(connection_attempt_started_at + connect_timeout).zero?
