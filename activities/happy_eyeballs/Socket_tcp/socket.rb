@@ -45,12 +45,12 @@ class Socket
     connecting_sock_ai_pairs = {}
     v46w_read_pipe = [hostname_resolution_read_pipe]
 
-    hostname_resolution_family_names, local_addrinfos =
+    resolving_family_names, local_addrinfos =
       if local_host && local_port
         local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
-        hostname_resolution_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
+        resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
 
-        [hostname_resolution_family_names, local_addrinfos]
+        [resolving_family_names, local_addrinfos]
       else
         [ADDRESS_FAMILIES.keys, []]
       end
@@ -63,7 +63,7 @@ class Socket
           [host, port, resolved_addrinfos_queue, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
 
         hostname_resolution_threads.concat(
-          hostname_resolution_family_names.map { |family|
+          resolving_family_names.map { |family|
             thread_args = [family].concat hostname_resolution_args
             Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
           }
@@ -95,7 +95,7 @@ class Socket
             hostname_resolution_retry_count -= 1
           end
 
-          hostname_resolution_family_names.delete(family_name) unless family_name == HOSTNAME_RESOLUTION_FAILED
+          resolving_family_names.delete(family_name) unless family_name == HOSTNAME_RESOLUTION_FAILED
         end
 
         if %i[v6c v4w].include? state
@@ -108,10 +108,10 @@ class Socket
 
         if ipv6_resolved # v4/v6共に名前解決済み
           family_name = hostname_resolution_read_pipe.getbyte
-          hostname_resolution_family_names.delete family_name
+          resolving_family_names.delete family_name
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
-          if hostname_resolution_family_names.empty?
+          if resolving_family_names.empty?
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
             v46w_read_pipe = nil
           end
@@ -203,10 +203,10 @@ class Socket
           end
         elsif hostname_resolved&.any?
           family_name = hostname_resolution_read_pipe.getbyte
-          hostname_resolution_family_names.delete family_name
+          resolving_family_names.delete family_name
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
-          if hostname_resolution_family_names.empty?
+          if resolving_family_names.empty?
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
             v46w_read_pipe = nil
           end
