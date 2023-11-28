@@ -43,7 +43,6 @@ class Socket
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     connecting_sock_ai_pairs = {}
-    last_connecting_family = nil
     v46w_read_pipe = [hostname_resolution_read_pipe]
 
     hostname_resolution_family_names, local_addrinfos =
@@ -70,20 +69,35 @@ class Socket
           }
         )
 
-        state, last_error = after_hostname_resolution_state(
-          hostname_resolution_read_pipe,
-          hostname_resolution_started_at,
-          resolv_timeout,
-          mutex,
-          hostname_resolution_errors,
-          hostname_resolution_threads.size - 1,
-        )
-        # 先にv4の名前解決に成功 -> v4w
-        # 先にv6の名前解決に成功 -> v6c
-        # resolv_timeout -> timeout
-        # 両方エラー -> failure
+        hostname_resolution_retry_count = hostname_resolution_threads.size - 1
 
-        update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos) if %i[v6c v4w].include? state
+        while hostname_resolution_retry_count >= 0
+          remaining_second =
+            resolv_timeout ? second_to_connection_timeout(hostname_resolution_started_at + resolv_timeout) : nil
+
+          hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, remaining_second)
+
+          unless hostname_resolved # resolv_timeoutでタイムアウトした場合
+            state = :timeout # "user specified timeout"
+            break
+          end
+
+          case hostname_resolution_read_pipe.getbyte
+          when ADDRESS_FAMILIES[:ipv6] then state = :v6c; break
+          when ADDRESS_FAMILIES[:ipv4] then state = :v4w; break
+          when HOSTNAME_RESOLUTION_FAILED
+            if hostname_resolution_retry_count.zero?
+              last_error = hostname_resolution_errors.pop
+              state = :failure
+            end
+            hostname_resolution_retry_count -= 1
+          end
+        end
+
+        if %i[v6c v4w].include? state
+          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+        end
+
         next
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
@@ -142,7 +156,6 @@ class Socket
           end
         end
 
-        last_connecting_family = addrinfo.afamily
         next
       when :v46w
         if connect_timeout && second_to_connection_timeout(connection_attempt_started_at + connect_timeout).zero?
@@ -255,28 +268,6 @@ class Socket
     end
   end
   private_class_method :hostname_resolution
-
-  def self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, retry_count)
-    remaining_second = timeout ? second_to_connection_timeout(started_at + timeout) : nil
-    hostname_resolved, _, = IO.select([rpipe], nil, nil, remaining_second)
-
-    unless hostname_resolved # resolv_timeoutでタイムアウトした場合
-      return [:timeout, nil] # "user specified timeout"
-    end
-
-    case rpipe.getbyte
-    when ADDRESS_FAMILIES[:ipv6] then [:v6c, nil]
-    when ADDRESS_FAMILIES[:ipv4] then [:v4w, nil]
-    when HOSTNAME_RESOLUTION_FAILED
-      if retry_count.zero?
-        error = errors_queue.pop
-        [:failure, error]
-      else
-        self.after_hostname_resolution_state(rpipe, started_at, timeout, mutex, errors_queue, retry_count - 1)
-      end
-    end
-  end
-  private_class_method :after_hostname_resolution_state
 
   def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
     until resolved_addrinfos_queue.empty?
