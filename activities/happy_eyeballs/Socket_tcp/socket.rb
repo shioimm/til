@@ -266,7 +266,6 @@ class Socket
         # ignore
       else
         mutex.synchronize do
-          addrinfos.push [family, []]
           errors_queue.push e
           wpipe.putc HOSTNAME_RESOLUTION_FAILED
         end
