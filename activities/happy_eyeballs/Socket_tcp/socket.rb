@@ -262,13 +262,8 @@ class Socket
         wpipe.putc ADDRESS_FAMILIES[family]
       end
     rescue => e
-      if e.is_a? SocketError
-        case e.message
-        when 'getaddrinfo: Address family for hostname not supported' # FIXME when IPv6 is not supported
-          # ignore
-        when 'getaddrinfo: Temporary failure in name resolution' # FIXME when timed out (EAI_AGAIN)
-          # ignore
-        end
+      if ignoreable_error?(e) # 動作確認用
+        # ignore
       else
         mutex.synchronize do
           addrinfos.push [family, []]
@@ -344,6 +339,25 @@ class Socket
 
     def size
       @addrinfo_dict.size
+    end
+  end
+  private_constant :SelectableAddrinfos
+
+  def self.ignoreable_error?(e)
+    if ENV['RBENV_VERSION'].to_f > 3.3
+      return false unless e.is_a? Socket::ResolutionError
+
+      [
+        Socket::EAI_AGAIN,      # when IPv6 is not supported↲
+        Socket::EAI_ADDRFAMILY, # when timed out (EAI_AGAIN)
+      ].include?(e.error_code)
+    else
+      return false unless e.is_a? SocketError
+
+      [
+        'getaddrinfo: Address family for hostname not supported', # when IPv6 is not supported
+        'getaddrinfo: Temporary failure in name resolution',      # when timed out (EAI_AGAIN)
+      ].include?(e.message)
     end
   end
 end
