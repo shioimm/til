@@ -121,4 +121,55 @@ class SocketTest < Test::Unit::TestCase
     ipv4_server.close
     socket.close if socket && !socket.closed?
   end
+
+  def test_tcp_socket_resolv_timeout
+    Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+    port = TCPServer.new("localhost", 0).addr[1]
+
+    assert_raise(Errno::ETIMEDOUT) do
+      Socket.tcp("localhost", port, resolv_timeout: 0.01)
+    end
+  end
+
+  def test_tcp_socket_one_hostname_resolution_succeeded_at_least
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    port = server.addr[1]
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      case family
+      when Socket::AF_INET6 then [Addrinfo.tcp("::1", port)]
+      when Socket::AF_INET then sleep(0.01); raise SocketError, "Last hostname resolution error"
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    socket = nil
+
+    assert_nothing_raised do
+      socket = Socket.tcp("localhost", port)
+    end
+  ensure
+    server_thread.value.close
+    server.close
+    socket.close if socket && !socket.closed?
+  end
+
+  def test_tcp_socket_all_hostname_resolution_failed
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      case family
+      when Socket::AF_INET6 then raise SocketError
+      when Socket::AF_INET then sleep(0.01); raise SocketError, "Last hostname resolution error"
+      end
+    end
+    port = TCPServer.new("localhost", 0).addr[1]
+
+    assert_raise_with_message(SocketError, "Last hostname resolution error") do
+      Socket.tcp("localhost", port)
+    end
+  end
 end
