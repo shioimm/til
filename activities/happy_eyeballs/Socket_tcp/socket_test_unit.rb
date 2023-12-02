@@ -91,4 +91,34 @@ class SocketTest < Test::Unit::TestCase
     server.close
     socket.close if socket && !socket.closed?
   end
+
+  def test_tcp_socket_v6_hostname_resolved_faster_and_v4_received_ack_faster
+    begin
+      ipv6_server = Socket.new(Socket::AF_INET6, :STREAM)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    ipv6_server.bind(Socket.pack_sockaddr_in(0, "::1"))
+    port = ipv6_server.connect_address.ip_port
+    ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
+    ipv4_server.bind(Socket.pack_sockaddr_in(port, "127.0.0.1"))
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      case family
+      when Socket::AF_INET6 then [Addrinfo.tcp("::1", port)]
+      when Socket::AF_INET then sleep(0.01); [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+    socket = Socket.tcp("localhost", port)
+    assert_true(socket.remote_address.ipv4?)
+  ensure
+    ipv6_server.close
+    accepted, _ = ipv4_server_thread.value
+    accepted.close
+    ipv4_server.close
+    socket.close if socket && !socket.closed?
+  end
 end
