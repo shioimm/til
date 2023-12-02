@@ -21,4 +21,74 @@ require "test/unit"
 require_relative "./socket"
 
 class SocketTest < Test::Unit::TestCase
+  def test_tcp_socket_v6_hostname_resolved_faster
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    port = server.addr[1]
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      case family
+      when Socket::AF_INET6 then [Addrinfo.tcp("::1", port)]
+      when Socket::AF_INET then sleep(10); [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    socket = Socket.tcp("localhost", port)
+    assert_true(socket.remote_address.ipv6?)
+  ensure
+    server_thread.value.close
+    server.close
+    socket.close if socket && !socket.closed?
+  end
+
+  def test_tcp_socket_v4_hostname_resolved_faster
+    server = TCPServer.new("127.0.0.1", 0)
+    port = server.addr[1]
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      case family
+      when Socket::AF_INET6 then sleep(10); [Addrinfo.tcp("::1", port)]
+      when Socket::AF_INET then [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    socket = Socket.tcp("localhost", port)
+    assert_true(socket.remote_address.ipv4?)
+  ensure
+    server_thread.value.close
+    server.close
+    socket.close if socket && !socket.closed?
+  end
+
+  def test_tcp_socket_v6_hostname_resolved_in_resolution_delay
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    port = server.addr[1]
+    delay_time = 0.025 # Socket::RESOLUTION_DELAY (private) is 0.05
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      case family
+      when Socket::AF_INET6 then sleep(delay_time); [Addrinfo.tcp("::1", port)]
+      when Socket::AF_INET then [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    socket = Socket.tcp("localhost", port)
+    assert_true(socket.remote_address.ipv6?)
+  ensure
+    server_thread.value.close
+    server.close
+    socket.close if socket && !socket.closed?
+  end
 end
