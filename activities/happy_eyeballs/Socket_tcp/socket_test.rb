@@ -22,14 +22,17 @@ class SocketTest < Minitest::Test
       end
     end
 
-    server_thread = Thread.new { server.accept; server.close }
+    server_thread = Thread.new { server.accept }
     connected_socket = Socket.tcp("localhost", port)
-    server_thread.join
 
     assert_equal(
       connected_socket.remote_address.ipv6?,
       true
     )
+  ensure
+    server_thread.value.close
+    server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time
@@ -45,7 +48,7 @@ class SocketTest < Minitest::Test
       end
     end
 
-    server_thread = Thread.new { server.accept; server.close }
+    server_thread = Thread.new { server.accept }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
@@ -53,6 +56,10 @@ class SocketTest < Minitest::Test
       connected_socket.remote_address.ipv4?,
       true
     )
+  ensure
+    server_thread.value.close
+    server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv6_address_name_resolved_in_resolution_delay
@@ -73,56 +80,53 @@ class SocketTest < Minitest::Test
       end
     end
 
-    server_thread = Thread.new { server.accept; server.close }
+    server_thread = Thread.new { server.accept }
     connected_socket = Socket.tcp("localhost", port)
-    server_thread.join
 
     assert_equal(
       connected_socket.remote_address.ipv6?,
       true
     )
+  ensure
+    server_thread.value.close
+    server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
     begin
       ipv6_server = Socket.new(Socket::AF_INET6, :STREAM)
-      ipv6_sockaddr = Socket.pack_sockaddr_in(0, "::1")
-      ipv6_server.bind(ipv6_sockaddr)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
       exit
     end
 
+    ipv6_server.bind(Socket.pack_sockaddr_in(0, "::1"))
     port = ipv6_server.connect_address.ip_port
     ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
-    ipv4_sockaddr = Socket.pack_sockaddr_in(port, "127.0.0.1")
-    ipv4_server.bind(ipv4_sockaddr)
+    ipv4_server.bind(Socket.pack_sockaddr_in(port, "127.0.0.1"))
 
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
-        sleep 0.045
+        sleep 0.025
         [Addrinfo.tcp("::1", port)]
       else
         [Addrinfo.tcp("127.0.0.1", port)]
       end
     end
 
-    ipv6_server_thread = Thread.new {
-      sleep 1
-      ipv6_server.listen(1)
-      ipv6_server.close
-    }
-    ipv4_server_thread = Thread.new {
-      ipv4_server.listen(1)
-      ipv4_server.accept
-      ipv4_server.close
-    }
+    ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
     connected_socket = Socket.tcp("localhost", port)
-    [ipv4_server_thread, ipv6_server_thread].map(&:join)
 
     assert_equal(
       connected_socket.remote_address.ipv4?,
       true
     )
+  ensure
+    ipv6_server.close
+    accepted, _ = ipv4_server_thread.value
+    accepted.close
+    ipv4_server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
@@ -143,7 +147,7 @@ class SocketTest < Minitest::Test
       end
     end
 
-    server_thread = Thread.new { server.accept; server.close }
+    server_thread = Thread.new { server.accept }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
@@ -151,6 +155,10 @@ class SocketTest < Minitest::Test
       connected_socket.remote_address.ipv6?,
       true
     )
+  ensure
+    server.close
+    server_thread.value.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_ignore_error_with_IPv4_hostname_resolution_after_successful_IPv6_hostname_resolution
@@ -171,12 +179,7 @@ class SocketTest < Minitest::Test
       end
     end
 
-    server_thread = Thread.new {
-      sleep 0.05
-      server.accept;
-      server.close
-    }
-
+    server_thread = Thread.new { sleep(0.05); server.accept }
     connected_socket = Socket.tcp("localhost", port)
     server_thread.join
 
@@ -184,6 +187,10 @@ class SocketTest < Minitest::Test
       connected_socket.remote_address.ipv6?,
       true
     )
+  ensure
+    server.close
+    server_thread.value.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_raises_last_error_with_failing_all_hostname_resolutions
