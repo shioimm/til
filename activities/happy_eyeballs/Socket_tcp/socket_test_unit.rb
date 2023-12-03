@@ -143,7 +143,7 @@ class SocketTest < Test::Unit::TestCase
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       case family
       when Socket::AF_INET6 then [Addrinfo.tcp("::1", port)]
-      when Socket::AF_INET then sleep(0.01); raise SocketError, "Last hostname resolution error"
+      when Socket::AF_INET then sleep(0.01); raise SocketError
       end
     end
 
