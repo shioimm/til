@@ -85,8 +85,8 @@ class Socket
           family_name = hostname_resolution_read_pipe.getbyte
 
           case family_name
-          when ADDRESS_FAMILIES[:ipv6] then state = :v6c; break
-          when ADDRESS_FAMILIES[:ipv4] then state = :v4w; break
+          when ADDRESS_FAMILIES[:ipv6] then state = :v6c
+          when ADDRESS_FAMILIES[:ipv4] then state = :v4w
           when HOSTNAME_RESOLUTION_FAILED
             if hostname_resolution_retry_count.zero?
               last_error = hostname_resolution_errors.pop
@@ -95,11 +95,10 @@ class Socket
             hostname_resolution_retry_count -= 1
           end
 
-          resolving_family_names.delete(family_name) unless family_name == HOSTNAME_RESOLUTION_FAILED
-        end
-
-        if %i[v6c v4w].include? state
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+          resolving_family_names.delete(ADDRESS_FAMILIES.key(family_name))
+
+          break unless family_name == HOSTNAME_RESOLUTION_FAILED
         end
 
         next
@@ -108,7 +107,7 @@ class Socket
 
         if ipv6_resolved # v4/v6共に名前解決済み
           family_name = hostname_resolution_read_pipe.getbyte
-          resolving_family_names.delete family_name
+          resolving_family_names.delete ADDRESS_FAMILIES.key(family_name)
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
           if resolving_family_names.empty?
@@ -203,7 +202,7 @@ class Socket
           end
         elsif hostname_resolved&.any?
           family_name = hostname_resolution_read_pipe.getbyte
-          resolving_family_names.delete family_name
+          resolving_family_names.delete ADDRESS_FAMILIES.key(family_name)
           update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
 
           if resolving_family_names.empty?
@@ -266,6 +265,7 @@ class Socket
         # ignore
       else
         mutex.synchronize do
+          addrinfos.push [family, nil]
           errors_queue.push e
           wpipe.putc HOSTNAME_RESOLUTION_FAILED
         end
@@ -389,23 +389,23 @@ PORT = 9292
 #   end
 # end
 #
-# 名前解決動作確認用 (複数)
-Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-  if family == Socket::AF_INET6
-    [Addrinfo.tcp("::1", PORT), Addrinfo.tcp("::1", PORT)]
-  else
-    sleep 0.1
-    [Addrinfo.tcp("127.0.0.1", PORT)]
-  end
-end
-#
+# # 名前解決動作確認用 (複数)
+# Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+#   if family == Socket::AF_INET6
+#     [Addrinfo.tcp("::1", PORT), Addrinfo.tcp("::1", PORT)]
+#   else
+#     sleep 0.1
+#     [Addrinfo.tcp("127.0.0.1", PORT)]
+#   end
+# end
+
 # # local_host / local_port を指定する場合
 # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
 #   print socket.read
 # end
-#
-Socket.tcp(HOSTNAME, PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-end
+
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
