@@ -161,6 +161,32 @@ class SocketTest < Minitest::Test
     connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
+  def test_that_returns_IPv4_connected_socket_when_IPv6_hostname_resolution_raises_SockerError
+    server = TCPServer.new("127.0.0.1", 0)
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        raise SocketError
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+    server_thread.join
+
+    assert_equal(
+      connected_socket.remote_address.ipv4?,
+      true
+    )
+  ensure
+    server.close
+    server_thread.value.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
+  end
+
   def test_that_ignore_error_with_IPv4_hostname_resolution_after_successful_IPv6_hostname_resolution
     begin
       server = TCPServer.new("::1", 0)

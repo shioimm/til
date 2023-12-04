@@ -82,9 +82,9 @@ class Socket
             break
           end
 
-          family_name = hostname_resolution_read_pipe.getbyte
+          family = hostname_resolution_read_pipe.getbyte
 
-          case family_name
+          case family
           when ADDRESS_FAMILIES[:ipv6] then state = :v6c
           when ADDRESS_FAMILIES[:ipv4] then state = :v4w
           when HOSTNAME_RESOLUTION_FAILED
@@ -95,10 +95,11 @@ class Socket
             hostname_resolution_retry_count -= 1
           end
 
-          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-          resolving_family_names.delete(ADDRESS_FAMILIES.key(family_name))
+          family_name, addrinfos = resolved_addrinfos_queue.pop
+          selectable_addrinfos.add(family_name, addrinfos)
+          resolving_family_names.delete(family_name)
 
-          break unless family_name == HOSTNAME_RESOLUTION_FAILED
+          break if %i[v6c v4w].include? state
         end
 
         next
@@ -106,9 +107,10 @@ class Socket
         ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
 
         if ipv6_resolved # v4/v6共に名前解決済み
-          family_name = hostname_resolution_read_pipe.getbyte
-          resolving_family_names.delete ADDRESS_FAMILIES.key(family_name)
-          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+          hostname_resolution_read_pipe.getbyte
+          family_name, addrinfos = resolved_addrinfos_queue.pop
+          selectable_addrinfos.add(family_name, addrinfos)
+          resolving_family_names.delete(family_name)
 
           if resolving_family_names.empty?
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
@@ -201,9 +203,10 @@ class Socket
             end
           end
         elsif hostname_resolved&.any?
-          family_name = hostname_resolution_read_pipe.getbyte
-          resolving_family_names.delete ADDRESS_FAMILIES.key(family_name)
-          update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
+          hostname_resolution_read_pipe.getbyte
+          family_name, addrinfos = resolved_addrinfos_queue.pop
+          selectable_addrinfos.add(family_name, addrinfos)
+          resolving_family_names.delete(family_name)
 
           if resolving_family_names.empty?
             close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
@@ -265,7 +268,7 @@ class Socket
         # ignore
       else
         mutex.synchronize do
-          addrinfos.push [family, nil]
+          addrinfos.push [family, []]
           errors_queue.push e
           wpipe.putc HOSTNAME_RESOLUTION_FAILED
         end
