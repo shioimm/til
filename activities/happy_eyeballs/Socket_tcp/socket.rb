@@ -16,6 +16,9 @@ class Socket
   HOSTNAME_RESOLUTION_FAILED = 0
   private_constant :HOSTNAME_RESOLUTION_FAILED
 
+  HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
+  private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
+
   def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
     # Happy Eyeballs' states
     # - :start
@@ -43,7 +46,6 @@ class Socket
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     connecting_sock_ai_pairs = {}
-    v46w_read_pipe = [hostname_resolution_read_pipe]
 
     resolving_family_names, local_addrinfos =
       if local_host && local_port
@@ -55,12 +57,15 @@ class Socket
         [ADDRESS_FAMILIES.keys, []]
       end
 
+    hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+
     connected_socket = loop do
+      p state
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args =
-          [host, port, resolved_addrinfos_queue, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
+          [host, port, hostname_resolution_queue, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
 
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
@@ -75,48 +80,40 @@ class Socket
           remaining_second =
             resolv_timeout ? second_to_connection_timeout(hostname_resolution_started_at + resolv_timeout) : nil
 
-          hostname_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, remaining_second)
+          hostname_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, remaining_second)
 
           unless hostname_resolved # resolv_timeoutでタイムアウトした場合
             state = :timeout # "user specified timeout"
             break
           end
 
-          family = hostname_resolution_read_pipe.getbyte
+          family_name, res = hostname_resolution_queue.get
 
-          case family
-          when ADDRESS_FAMILIES[:ipv6] then state = :v6c
-          when ADDRESS_FAMILIES[:ipv4] then state = :v4w
-          when HOSTNAME_RESOLUTION_FAILED
-            if hostname_resolution_retry_count.zero?
-              last_error = hostname_resolution_errors.pop
-              state = :failure
+          if res.is_a? Array # Addrinfoの配列
+            state =
+              case family_name
+              when :ipv6 then :v6c
+              when :ipv4 then last_error.nil? ? :v4w : :v4c
             end
+          else # 例外
+            last_error = res
+            state = :failure if hostname_resolution_retry_count.zero?
             hostname_resolution_retry_count -= 1
           end
 
-          family_name, addrinfos = resolved_addrinfos_queue.pop
-          selectable_addrinfos.add(family_name, addrinfos)
-          resolving_family_names.delete(family_name)
-
-          break if %i[v6c v4w].include? state
+          if %i[v6c v4w v4c].include? state
+            selectable_addrinfos.add(family_name, res)
+            break
+          end
         end
 
         next
       when :v4w
-        ipv6_resolved, _, = IO.select([hostname_resolution_read_pipe], nil, nil, RESOLUTION_DELAY)
+        ipv6_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, RESOLUTION_DELAY)
 
         if ipv6_resolved # v4/v6共に名前解決済み
-          hostname_resolution_read_pipe.getbyte
-          family_name, addrinfos = resolved_addrinfos_queue.pop
-          selectable_addrinfos.add(family_name, addrinfos)
-          resolving_family_names.delete(family_name)
-
-          if resolving_family_names.empty?
-            close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
-            v46w_read_pipe = nil
-          end
-
+          family_name, res = hostname_resolution_queue.get
+          selectable_addrinfos.add(family_name, res) if res.is_a? Array
           state = :v46c
         else # v6はまだ名前解決中
           state = :v4c
@@ -131,7 +128,7 @@ class Socket
         if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
-          if local_addrinfo.nil? && resolving_family_names.empty?
+          if local_addrinfo.nil? && hostname_resolution_queue.empty?
             last_error = SocketError.new 'no appropriate local address'
             state = :failure
             next
@@ -170,7 +167,8 @@ class Socket
         end
 
         remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-        hostname_resolved, connectable_sockets, = IO.select(v46w_read_pipe, connecting_sockets, nil, remaining_second)
+        v46w_rpipe = hostname_resolution_queue.rpipe.closed? ? nil : [hostname_resolution_queue.rpipe]
+        hostname_resolved, connectable_sockets, = IO.select(v46w_rpipe, connecting_sockets, nil, remaining_second)
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
@@ -203,16 +201,8 @@ class Socket
             end
           end
         elsif hostname_resolved&.any?
-          hostname_resolution_read_pipe.getbyte
-          family_name, addrinfos = resolved_addrinfos_queue.pop
-          selectable_addrinfos.add(family_name, addrinfos)
-          resolving_family_names.delete(family_name)
-
-          if resolving_family_names.empty?
-            close_fds(hostname_resolution_read_pipe, hostname_resolution_write_pipe)
-            v46w_read_pipe = nil
-          end
-
+          family_name, res = hostname_resolution_queue.get
+          selectable_addrinfos.add(family_name, res) if res.is_a? Array
           state = :v46w
         else # Connection Attempt Delayタイムアウト
           if !selectable_addrinfos.out_of_stock? # 試行できるaddrinfosが残っている場合
@@ -255,22 +245,19 @@ class Socket
     )
   end
 
-  def self.hostname_resolution(family, host, port, addrinfos, mutex, wpipe, errors_queue)
+  def self.hostname_resolution(family, host, port, hostname_resolution_queue, mutex, wpipe, errors_queue)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
 
       mutex.synchronize do
-        addrinfos.push [family, resolved_addrinfos]
-        wpipe.putc ADDRESS_FAMILIES[family]
+        hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
       end
     rescue => e
       if ignoreable_error?(e) # 動作確認用
         # ignore
       else
         mutex.synchronize do
-          addrinfos.push [family, []]
-          errors_queue.push e
-          wpipe.putc HOSTNAME_RESOLUTION_FAILED
+          hostname_resolution_queue.add_error(family, e)
         end
       end
     end
@@ -344,6 +331,46 @@ class Socket
     end
   end
   private_constant :SelectableAddrinfos
+
+  class HostnameResolutionQueue
+    attr_reader :rpipe, :taken_count
+
+    def initialize(size)
+      @size = size
+      @taken_count = 0
+      @rpipe, @wpipe = IO.pipe
+      @queue = Queue.new
+    end
+
+    def add_resolved(family, resolved_addrinfos)
+      @queue.push [family, resolved_addrinfos]
+      @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+    end
+
+    def add_error(family, error)
+      @queue.push [family, error]
+      @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+    end
+
+    def get
+      @rpipe.getbyte
+      res = @queue.pop
+      @taken_count += 1
+
+      if @taken_count == @size
+        @queue.close
+        @rpipe.close
+        @wpipe.close
+      end
+
+      res
+    end
+
+    def closed?
+      @queue.closed? && @rpipe.closed? && @wpipe.closed?
+    end
+  end
+  private_constant :HostnameResolutionQueue
 
   def self.ignoreable_error?(e)
     if ENV['RBENV_VERSION'].to_f > 3.3
