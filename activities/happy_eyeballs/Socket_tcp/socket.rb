@@ -60,7 +60,6 @@ class Socket
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
 
     connected_socket = loop do
-      p state
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
@@ -73,6 +72,7 @@ class Socket
             Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
           }
         )
+        hostname_resolution_queue.threads = hostname_resolution_threads
 
         hostname_resolution_retry_count = hostname_resolution_threads.size - 1
 
@@ -334,6 +334,7 @@ class Socket
 
   class HostnameResolutionQueue
     attr_reader :rpipe, :taken_count
+    attr_writer :threads
 
     def initialize(size)
       @size = size
@@ -355,9 +356,10 @@ class Socket
     def get
       @rpipe.getbyte
       res = @queue.pop
+
       @taken_count += 1
 
-      if @taken_count == @size
+      if @taken_count == @size && @threads.all? { |th| !th.alive? }
         @queue.close
         @rpipe.close
         @wpipe.close
