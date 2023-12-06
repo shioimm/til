@@ -34,7 +34,6 @@ class Socket
     state = :start
     last_error = nil
 
-    mutex = Mutex.new
     hostname_resolution_read_pipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
@@ -64,7 +63,7 @@ class Socket
       when :start
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args =
-          [host, port, hostname_resolution_queue, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
+          [host, port, hostname_resolution_queue, hostname_resolution_write_pipe, hostname_resolution_errors]
 
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
@@ -245,20 +244,15 @@ class Socket
     )
   end
 
-  def self.hostname_resolution(family, host, port, hostname_resolution_queue, mutex, wpipe, errors_queue)
+  def self.hostname_resolution(family, host, port, hostname_resolution_queue, wpipe, errors_queue)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
-
-      mutex.synchronize do
-        hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
-      end
+      hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
       if ignoreable_error?(e) # 動作確認用
         # ignore
       else
-        mutex.synchronize do
-          hostname_resolution_queue.add_error(family, e)
-        end
+        hostname_resolution_queue.add_error(family, e)
       end
     end
   end
@@ -341,25 +335,34 @@ class Socket
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @queue = Queue.new
+      @mutex = Mutex.new
     end
 
     def add_resolved(family, resolved_addrinfos)
-      @queue.push [family, resolved_addrinfos]
-      @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      @mutex.synchronize do
+        @queue.push [family, resolved_addrinfos]
+        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      end
     end
 
     def add_error(family, error)
-      @queue.push [family, error]
-      @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      @mutex.synchronize do
+        @queue.push [family, error]
+        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      end
     end
 
     def get
-      @rpipe.getbyte
-      res = @queue.pop
+      res = nil
+
+      @mutex.synchronize do
+        @rpipe.getbyte
+        res = @queue.pop
+      end
 
       @taken_count += 1
 
-      if @taken_count == @size && @threads.all? { |th| !th.alive? }
+      if @taken_count == @size
         @queue.close
         @rpipe.close
         @wpipe.close
