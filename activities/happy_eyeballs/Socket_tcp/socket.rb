@@ -34,7 +34,6 @@ class Socket
     state = :start
     last_error = nil
 
-    hostname_resolution_read_pipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
@@ -62,8 +61,7 @@ class Socket
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
-        hostname_resolution_args =
-          [host, port, hostname_resolution_queue, hostname_resolution_write_pipe, hostname_resolution_errors]
+        hostname_resolution_args = [host, port, hostname_resolution_queue]
 
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
@@ -236,15 +234,16 @@ class Socket
       th&.exit
     end
 
-    close_fds(
-      hostname_resolution_read_pipe,
-      hostname_resolution_write_pipe,
-      resolved_addrinfos_queue,
-      *connecting_sockets
-    )
+    connecting_sockets.each do |connecting_socket|
+      begin
+        connecting_socket.close if !connecting_socket.closed?
+      rescue
+        # ignore
+      end
+    end
   end
 
-  def self.hostname_resolution(family, host, port, hostname_resolution_queue, wpipe, errors_queue)
+  def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
       hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
@@ -258,12 +257,6 @@ class Socket
   end
   private_class_method :hostname_resolution
 
-  def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-    family_name, addrinfos = resolved_addrinfos_queue.pop
-    selectable_addrinfos.add(family_name, addrinfos)
-  end
-  private_class_method :update_selectable_addrinfos
-
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at
 
@@ -276,17 +269,6 @@ class Socket
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
   private_class_method :current_clocktime
-
-  def self.close_fds(*fds)
-    fds.each do |fd|
-      begin
-        fd.close if fd && !fd.closed?
-      rescue
-        # ignore error
-      end
-    end
-  end
-  private_class_method :close_fds
 
   class SelectableAddrinfos
     def initialize
