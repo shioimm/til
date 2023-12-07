@@ -28,16 +28,6 @@ class Socket
     # - :failure
     # - :timeout
 
-    state = :start
-    last_error = nil
-
-    hostname_resolution_threads = []
-    selectable_addrinfos = SelectableAddrinfos.new
-    connecting_sockets = []
-    connection_attempt_delay_expires_at = nil
-    connection_attempt_started_at = nil
-    connecting_sock_ai_pairs = {}
-
     resolving_family_names, local_addrinfos =
       if local_host && local_port
         local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
@@ -48,7 +38,14 @@ class Socket
         [ADDRESS_FAMILIES.keys, []]
       end
 
+    hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+    selectable_addrinfos = SelectableAddrinfos.new
+    connecting_sockets = ConnectingSockets.new
+    connection_attempt_delay_expires_at = nil
+    connection_attempt_started_at = nil
+    state = :start
+    last_error = nil
 
     connected_socket = loop do
       case state
@@ -134,8 +131,7 @@ class Socket
             connected_socket = socket
             state = :success
           when :wait_writable # 接続試行中
-            connecting_sockets.push socket
-            connecting_sock_ai_pairs[socket] = addrinfo
+            connecting_sockets.add(socket, addrinfo)
             state = :v46w
           end
         rescue SystemCallError => e
@@ -157,19 +153,18 @@ class Socket
 
         remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
         v46w_rpipe = hostname_resolution_queue.rpipe.closed? ? nil : [hostname_resolution_queue.rpipe]
-        hostname_resolved, connectable_sockets, = IO.select(v46w_rpipe, connecting_sockets, nil, remaining_second)
+        hostname_resolved, connectable_sockets, = IO.select(v46w_rpipe, connecting_sockets.all, nil, remaining_second)
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
             begin
-              target_socket = connecting_sockets.delete(connectable_socket)
-              target_socket.connect_nonblock(connecting_sock_ai_pairs[target_socket])
+              connecting_sockets.nonblocking_connect(connectable_socket)
             rescue Errno::EISCONN # already connected
-              connected_socket = target_socket
+              connected_socket = connectable_socket
               state = :success
             rescue => e
               last_error = e
-              target_socket.close unless target_socket.closed?
+              connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
 
@@ -185,8 +180,6 @@ class Socket
                 # -> 次のループに進む。次のループでConnection Attempt Delay タイムアウトしたらv46cへ
                 state = :v46w
               end
-            ensure
-              connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
         elsif hostname_resolved&.any?
