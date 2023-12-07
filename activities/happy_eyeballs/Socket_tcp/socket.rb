@@ -34,8 +34,6 @@ class Socket
     state = :start
     last_error = nil
 
-    mutex = Mutex.new
-    hostname_resolution_read_pipe, hostname_resolution_write_pipe = IO.pipe
     hostname_resolution_threads = []
     hostname_resolution_errors = []
     hostname_resolution_started_at = nil
@@ -60,12 +58,10 @@ class Socket
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
 
     connected_socket = loop do
-      p state
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
-        hostname_resolution_args =
-          [host, port, hostname_resolution_queue, mutex, hostname_resolution_write_pipe, hostname_resolution_errors]
+        hostname_resolution_args = [host, port, hostname_resolution_queue]
 
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
@@ -73,6 +69,7 @@ class Socket
             Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
           }
         )
+        hostname_resolution_queue.threads = hostname_resolution_threads
 
         hostname_resolution_retry_count = hostname_resolution_threads.size - 1
 
@@ -237,38 +234,28 @@ class Socket
       th&.exit
     end
 
-    close_fds(
-      hostname_resolution_read_pipe,
-      hostname_resolution_write_pipe,
-      resolved_addrinfos_queue,
-      *connecting_sockets
-    )
+    connecting_sockets.each do |connecting_socket|
+      begin
+        connecting_socket.close if !connecting_socket.closed?
+      rescue
+        # ignore
+      end
+    end
   end
 
-  def self.hostname_resolution(family, host, port, hostname_resolution_queue, mutex, wpipe, errors_queue)
+  def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
-
-      mutex.synchronize do
-        hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
-      end
+      hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
       if ignoreable_error?(e) # 動作確認用
         # ignore
       else
-        mutex.synchronize do
-          hostname_resolution_queue.add_error(family, e)
-        end
+        hostname_resolution_queue.add_error(family, e)
       end
     end
   end
   private_class_method :hostname_resolution
-
-  def self.update_selectable_addrinfos(resolved_addrinfos_queue, selectable_addrinfos)
-    family_name, addrinfos = resolved_addrinfos_queue.pop
-    selectable_addrinfos.add(family_name, addrinfos)
-  end
-  private_class_method :update_selectable_addrinfos
 
   def self.second_to_connection_timeout(ends_at)
     return 0 unless ends_at
@@ -282,17 +269,6 @@ class Socket
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
   private_class_method :current_clocktime
-
-  def self.close_fds(*fds)
-    fds.each do |fd|
-      begin
-        fd.close if fd && !fd.closed?
-      rescue
-        # ignore error
-      end
-    end
-  end
-  private_class_method :close_fds
 
   class SelectableAddrinfos
     def initialize
@@ -334,27 +310,38 @@ class Socket
 
   class HostnameResolutionQueue
     attr_reader :rpipe, :taken_count
+    attr_writer :threads
 
     def initialize(size)
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @queue = Queue.new
+      @mutex = Mutex.new
     end
 
     def add_resolved(family, resolved_addrinfos)
-      @queue.push [family, resolved_addrinfos]
-      @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      @mutex.synchronize do
+        @queue.push [family, resolved_addrinfos]
+        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      end
     end
 
     def add_error(family, error)
-      @queue.push [family, error]
-      @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      @mutex.synchronize do
+        @queue.push [family, error]
+        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      end
     end
 
     def get
-      @rpipe.getbyte
-      res = @queue.pop
+      res = nil
+
+      @mutex.synchronize do
+        @rpipe.getbyte
+        res = @queue.pop
+      end
+
       @taken_count += 1
 
       if @taken_count == @size
