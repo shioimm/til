@@ -346,6 +346,36 @@ class Socket
   end
   private_constant :HostnameResolutionQueue
 
+  class ConnectingSockets
+    def initialize
+      @socket_dict = {}
+    end
+
+    def all
+      @socket_dict.keys
+    end
+
+    def add(socket, addrinfo)
+      @socket_dict[socket] = addrinfo
+    end
+
+    def nonblocking_connect(socket)
+      addrinfo = @socket_dict.delete socket
+      socket.connect_nonblock(addrinfo)
+    end
+
+    def empty?
+      @socket_dict.empty?
+    end
+
+    def each
+      @socket_dict.keys.each do |socket|
+        yield socket
+      end
+    end
+  end
+  private_constant :ConnectingSockets
+
   def self.ignoreable_error?(e)
     if ENV['RBENV_VERSION'].to_f > 3.3
       return false unless e.is_a? Socket::ResolutionError
