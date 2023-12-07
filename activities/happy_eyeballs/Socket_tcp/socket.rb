@@ -13,9 +13,6 @@ class Socket
   }.freeze
   private_constant :ADDRESS_FAMILIES
 
-  HOSTNAME_RESOLUTION_FAILED = 0
-  private_constant :HOSTNAME_RESOLUTION_FAILED
-
   HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
   private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
 
@@ -35,11 +32,7 @@ class Socket
     last_error = nil
 
     hostname_resolution_threads = []
-    hostname_resolution_errors = []
-    hostname_resolution_started_at = nil
-    resolved_addrinfos_queue = Queue.new
     selectable_addrinfos = SelectableAddrinfos.new
-
     connecting_sockets = []
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
@@ -69,7 +62,6 @@ class Socket
             Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
           }
         )
-        hostname_resolution_queue.threads = hostname_resolution_threads
 
         hostname_resolution_retry_count = hostname_resolution_threads.size - 1
 
@@ -309,8 +301,7 @@ class Socket
   private_constant :SelectableAddrinfos
 
   class HostnameResolutionQueue
-    attr_reader :rpipe, :taken_count
-    attr_writer :threads
+    attr_reader :rpipe
 
     def initialize(size)
       @size = size
@@ -351,10 +342,6 @@ class Socket
       end
 
       res
-    end
-
-    def closed?
-      @queue.closed? && @rpipe.closed? && @wpipe.closed?
     end
   end
   private_constant :HostnameResolutionQueue
