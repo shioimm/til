@@ -13,9 +13,6 @@ class Socket
   }.freeze
   private_constant :ADDRESS_FAMILIES
 
-  HOSTNAME_RESOLUTION_FAILED = 0
-  private_constant :HOSTNAME_RESOLUTION_FAILED
-
   HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
   private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
 
@@ -31,20 +28,6 @@ class Socket
     # - :failure
     # - :timeout
 
-    state = :start
-    last_error = nil
-
-    hostname_resolution_threads = []
-    hostname_resolution_errors = []
-    hostname_resolution_started_at = nil
-    resolved_addrinfos_queue = Queue.new
-    selectable_addrinfos = SelectableAddrinfos.new
-
-    connecting_sockets = []
-    connection_attempt_delay_expires_at = nil
-    connection_attempt_started_at = nil
-    connecting_sock_ai_pairs = {}
-
     resolving_family_names, local_addrinfos =
       if local_host && local_port
         local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
@@ -55,7 +38,14 @@ class Socket
         [ADDRESS_FAMILIES.keys, []]
       end
 
+    hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+    selectable_addrinfos = SelectableAddrinfos.new
+    connecting_sockets = ConnectingSockets.new
+    connection_attempt_delay_expires_at = nil
+    connection_attempt_started_at = nil
+    state = :start
+    last_error = nil
 
     connected_socket = loop do
       case state
@@ -69,15 +59,12 @@ class Socket
             Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
           }
         )
-        hostname_resolution_queue.threads = hostname_resolution_threads
 
         hostname_resolution_retry_count = hostname_resolution_threads.size - 1
 
         while hostname_resolution_retry_count >= 0
-          remaining_second =
-            resolv_timeout ? second_to_connection_timeout(hostname_resolution_started_at + resolv_timeout) : nil
-
-          hostname_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, remaining_second)
+          remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
+          hostname_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, remaining)
 
           unless hostname_resolved # resolv_timeoutでタイムアウトした場合
             state = :timeout # "user specified timeout"
@@ -142,15 +129,14 @@ class Socket
             connected_socket = socket
             state = :success
           when :wait_writable # 接続試行中
-            connecting_sockets.push socket
-            connecting_sock_ai_pairs[socket] = addrinfo
+            connecting_sockets.add(socket, addrinfo)
             state = :v46w
           end
         rescue SystemCallError => e
           last_error = e
           socket.close unless socket.closed?
 
-          if selectable_addrinfos.out_of_stock? # 他に試行できるaddrinfosがない
+          if selectable_addrinfos.empty? # 他に試行できるaddrinfosがない
             state = :failure
             next
           end
@@ -158,33 +144,32 @@ class Socket
 
         next
       when :v46w
-        if connect_timeout && second_to_connection_timeout(connection_attempt_started_at + connect_timeout).zero?
+        if connect_timeout && second_to_timeout(connection_attempt_started_at + connect_timeout).zero?
           state = :timeout # "user specified timeout"
           next
         end
 
-        remaining_second = second_to_connection_timeout(connection_attempt_delay_expires_at)
-        v46w_rpipe = hostname_resolution_queue.rpipe.closed? ? nil : [hostname_resolution_queue.rpipe]
-        hostname_resolved, connectable_sockets, = IO.select(v46w_rpipe, connecting_sockets, nil, remaining_second)
+        remaining = second_to_timeout(connection_attempt_delay_expires_at)
+        rpipe = hostname_resolution_queue.rpipe.closed? ? nil : [hostname_resolution_queue.rpipe]
+        hostname_resolved, connectable_sockets, = IO.select(rpipe, connecting_sockets.all, nil, remaining)
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
             begin
-              target_socket = connecting_sockets.delete(connectable_socket)
-              target_socket.connect_nonblock(connecting_sock_ai_pairs[target_socket])
+              connecting_sockets.nonblocking_connect(connectable_socket)
             rescue Errno::EISCONN # already connected
-              connected_socket = target_socket
+              connected_socket = connectable_socket
               state = :success
             rescue => e
               last_error = e
-              target_socket.close unless target_socket.closed?
+              connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
 
-              if selectable_addrinfos.out_of_stock? && connecting_sockets.empty?
+              if selectable_addrinfos.empty? && connecting_sockets.empty?
                 # 試行できるaddrinfoがなく、接続中のソケットもない場合
                 state = :failure
-              elsif selectable_addrinfos.out_of_stock?
+              elsif selectable_addrinfos.empty?
                 # 試行できるaddrinfosがなく、接続中のソケットはある場合 -> 接続中のソケットを待機する
                 state = :v46w
                 connection_attempt_delay_expires_at = nil
@@ -193,8 +178,6 @@ class Socket
                 # -> 次のループに進む。次のループでConnection Attempt Delay タイムアウトしたらv46cへ
                 state = :v46w
               end
-            ensure
-              connecting_sock_ai_pairs.reject! { |s, _| s == target_socket }
             end
           end
         elsif hostname_resolved&.any?
@@ -202,7 +185,7 @@ class Socket
           selectable_addrinfos.add(family_name, res) if res.is_a? Array
           state = :v46w
         else # Connection Attempt Delayタイムアウト
-          if !selectable_addrinfos.out_of_stock? # 試行できるaddrinfosが残っている場合
+          if !selectable_addrinfos.empty? # 試行できるaddrinfosが残っている場合
             state = :v46c
           else # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
             state = :v46w
@@ -257,13 +240,13 @@ class Socket
   end
   private_class_method :hostname_resolution
 
-  def self.second_to_connection_timeout(ends_at)
+  def self.second_to_timeout(ends_at)
     return 0 unless ends_at
 
     remaining = (ends_at - current_clocktime)
     remaining.negative? ? 0 : remaining
   end
-  private_class_method :second_to_connection_timeout
+  private_class_method :second_to_timeout
 
   def self.current_clocktime
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -298,8 +281,8 @@ class Socket
       end
     end
 
-    def out_of_stock?
-      @addrinfo_dict.all?{ |_, addrinfos| addrinfos.empty? }
+    def empty?
+      @addrinfo_dict.all? { |_, addrinfos| addrinfos.empty? }
     end
 
     def size
@@ -309,8 +292,7 @@ class Socket
   private_constant :SelectableAddrinfos
 
   class HostnameResolutionQueue
-    attr_reader :rpipe, :taken_count
-    attr_writer :threads
+    attr_reader :rpipe
 
     def initialize(size)
       @size = size
@@ -352,12 +334,41 @@ class Socket
 
       res
     end
-
-    def closed?
-      @queue.closed? && @rpipe.closed? && @wpipe.closed?
-    end
   end
   private_constant :HostnameResolutionQueue
+
+  class ConnectingSockets
+    def initialize
+      @sockets = []
+      @socket_dict = {}
+    end
+
+    def all
+      @sockets
+    end
+
+    def add(socket, addrinfo)
+      @sockets.push socket
+      @socket_dict[socket] = addrinfo
+    end
+
+    def nonblocking_connect(socket)
+      @sockets.delete socket
+      addrinfo = @socket_dict.delete socket
+      socket.connect_nonblock(addrinfo)
+    end
+
+    def empty?
+      @sockets.empty?
+    end
+
+    def each
+      @sockets.each do |socket|
+        yield socket
+      end
+    end
+  end
+  private_constant :ConnectingSockets
 
   def self.ignoreable_error?(e)
     if ENV['RBENV_VERSION'].to_f > 3.3
