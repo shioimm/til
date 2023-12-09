@@ -388,30 +388,30 @@ end
 # PORT = 80
 HOSTNAME = "localhost"
 PORT = 9292
-#
-# # # 名前解決動作確認用 (遅延)
-# # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-# #   if family == Socket::AF_INET6
-# #     sleep 0.25
-# #     [Addrinfo.tcp("::1", PORT)]
-# #   else
-# #     [Addrinfo.tcp("127.0.0.1", PORT)]
-# #   end
-# # end
-#
-# # # 名前解決動作確認用 (タイムアウト)
-# # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
-#
+
+# # 名前解決動作確認用 (Connection Attempt Delay以内の遅延)
+# Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+#   if family == Socket::AF_INET6
+#     sleep 0.25
+#     [Addrinfo.tcp("::1", PORT)]
+#   else
+#     [Addrinfo.tcp("127.0.0.1", PORT)]
+#   end
+# end
+
+# # 名前解決動作確認用 (タイムアウト)
+# Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+
 # # 名前解決動作確認用 (例外)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-#   if family == :PF_INET6
+#   if family == Socket::AF_INET6
 #     [Addrinfo.tcp("::1", PORT)]
 #   else
 #     # NOTE ignoreされる
 #     raise SocketError, 'getaddrinfo: Address family for hostname not supported'
 #   end
 # end
-#
+
 # # 名前解決動作確認用 (複数)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
 #   if family == Socket::AF_INET6
@@ -423,9 +423,27 @@ PORT = 9292
 # end
 
 # # local_host / local_port を指定する場合
+# class Addrinfo
+#   class << self
+#     alias _getaddrinfo getaddrinfo
+#
+#     def getaddrinfo(nodename, service, family, *_)
+#       if service == 9292
+#         if family == Socket::AF_INET6
+#           [Addrinfo.tcp("::1", 9292)]
+#         else
+#           sleep
+#         end
+#       else
+#         _getaddrinfo(nodename, service, family)
+#       end
+#     end
+#   end
+# end
+#
 # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
+#    socket.write "GET / HTTP/1.0\r\n\r\n"
+#    print socket.read
 # end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
