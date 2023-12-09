@@ -28,6 +28,14 @@ class Socket
     # - :failure
     # - :timeout
 
+    hostname_resolution_threads = []
+    selectable_addrinfos = SelectableAddrinfos.new
+    connecting_sockets = ConnectingSockets.new
+    connection_attempt_delay_expires_at = nil
+    connection_attempt_started_at = nil
+    state = :start
+    last_error = nil
+
     resolving_family_names, local_addrinfos =
       if local_host && local_port
         local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
@@ -38,14 +46,7 @@ class Socket
         [ADDRESS_FAMILIES.keys, []]
       end
 
-    hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
-    selectable_addrinfos = SelectableAddrinfos.new
-    connecting_sockets = ConnectingSockets.new
-    connection_attempt_delay_expires_at = nil
-    connection_attempt_started_at = nil
-    state = :start
-    last_error = nil
 
     connected_socket = loop do
       case state
