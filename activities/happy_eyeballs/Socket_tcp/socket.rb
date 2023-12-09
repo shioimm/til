@@ -60,7 +60,7 @@ class Socket
           }
         )
 
-        hostname_resolution_retry_count = hostname_resolution_threads.size - 1
+        hostname_resolution_retry_count = resolving_family_names.size - 1
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
@@ -73,20 +73,17 @@ class Socket
 
           family_name, res = hostname_resolution_queue.get
 
-          if res.is_a? Array # Addrinfoの配列
-            state =
-              case family_name
-              when :ipv6 then :v6c
-              when :ipv4 then last_error.nil? ? :v4w : :v4c
-            end
-          else # 例外
+          if res.is_a? Exception
             last_error = res
             state = :failure if hostname_resolution_retry_count.zero?
             hostname_resolution_retry_count -= 1
-          end
-
-          if %i[v6c v4w v4c].include? state
+          else
+            state = case family_name
+                    when :ipv6 then :v6c
+                    when :ipv4 then last_error.nil? ? :v4w : :v4c
+                    end
             selectable_addrinfos.add(family_name, res)
+            last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
             break
           end
         end
@@ -97,7 +94,7 @@ class Socket
 
         if ipv6_resolved # v4/v6共に名前解決済み
           family_name, res = hostname_resolution_queue.get
-          selectable_addrinfos.add(family_name, res) if res.is_a? Array
+          selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           state = :v46c
         else # v6はまだ名前解決中
           state = :v4c
