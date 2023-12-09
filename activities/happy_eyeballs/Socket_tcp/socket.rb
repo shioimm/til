@@ -102,7 +102,7 @@ class Socket
         end
 
         next
-      when :v4c, :v6c, :v46c
+      when :v4c, :v6c, :v46c # v4の場合はv6名前解決中の可能性あり
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
         addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
@@ -110,10 +110,22 @@ class Socket
         if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
-          if local_addrinfo.nil? && hostname_resolution_queue.empty?
-            last_error = SocketError.new 'no appropriate local address'
-            state = :failure
-            next
+          if local_addrinfo.nil?
+            if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
+              # キューに残っているaddrinfoがなく、試行できるaddrinfoもない場合
+              last_error = SocketError.new 'no appropriate local address'
+              state = :failure
+              next
+            elsif !hostname_resolution_queue.empty?
+              # キューに残っているaddrinfoがある場合
+              # -> 次のループで名前解決を待つ
+              state = :v46w
+              next
+            elsif !selectable_addrinfos.empty?
+              # 試行可能な別のaddrinfoがある場合
+              # -> 次のループで別のaddrinfoを試してみる
+              next
+            end
           end
 
           socket.bind(local_addrinfo)
@@ -262,6 +274,8 @@ class Socket
     end
 
     def get
+      return nil if empty?
+
       case @last_family
       when :ipv4, nil
         precedences = [:ipv6, :ipv4]
@@ -315,6 +329,8 @@ class Socket
     end
 
     def get
+      return nil if @queue.empty?
+
       res = nil
 
       @mutex.synchronize do
@@ -331,6 +347,10 @@ class Socket
       end
 
       res
+    end
+
+    def empty?
+      @queue.empty?
     end
   end
   private_constant :HostnameResolutionQueue
