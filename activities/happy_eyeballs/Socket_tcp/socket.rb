@@ -182,28 +182,38 @@ class Socket
 
               next if connectable_sockets.any?
 
-              if selectable_addrinfos.empty? && connecting_sockets.empty?
-                # 試行できるaddrinfoがなく、接続中のソケットもない場合
+              if connecting_sockets.empty? && selectable_addrinfos.empty? && hostname_resolution_queue.empty?
+                # 接続中のソケットがなく、試行できるaddrinfoもキューに残っているaddrinfoもない場合
                 state = :failure
               elsif selectable_addrinfos.empty?
-                # 試行できるaddrinfosがなく、接続中のソケットはある場合 -> 接続中のソケットを待機する
+                # 接続中のソケットがあり、キューに残っているaddrinfoや試行できるaddrinfosはない場合
+                # -> 次のループでひたすら接続を待機する
+                # 接続中のソケットがなく、キューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
+                # -> 次のループでひたすら名前解決を待機する
                 state = :v46w
                 connection_attempt_delay_expires_at = nil
               else
-                # 試行できるaddrinfosがある場合 (+ 接続中のソケットがある場合も)
-                # -> 次のループに進む。次のループでConnection Attempt Delay タイムアウトしたらv46cへ
+                # 接続中のソケットがある場合
+                # -> 次のループで接続を待機する
+                # 接続中のソケットがなく、試行できるaddrinfosがある場合
+                # -> 次のループでConnection Attempt Delay タイムアウトを待つ (さらに次のループで接続試行を行う)
                 state = :v46w
               end
             end
           end
         elsif hostname_resolved&.any?
           family_name, res = hostname_resolution_queue.get
-          selectable_addrinfos.add(family_name, res) if res.is_a? Array
+          selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           state = :v46w
         else # Connection Attempt Delayタイムアウト
-          if !selectable_addrinfos.empty? # 試行できるaddrinfosが残っている場合
+          if !selectable_addrinfos.empty?
+            # 試行できるaddrinfosが残っている場合
             state = :v46c
-          else # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
+          else
+            # キューにaddrinfoが残っている場合
+            # -> 名前解決をひたすら待機する
+            # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
+            # -> 接続をひたすら待機する
             state = :v46w
             connection_attempt_delay_expires_at = nil
           end
