@@ -339,31 +339,28 @@ class Socket
 
   class ConnectingSockets
     def initialize
-      @sockets = []
       @socket_dict = {}
     end
 
     def all
-      @sockets
+      @socket_dict.keys
     end
 
     def add(socket, addrinfo)
-      @sockets.push socket
       @socket_dict[socket] = addrinfo
     end
 
     def nonblocking_connect(socket)
-      @sockets.delete socket
       addrinfo = @socket_dict.delete socket
       socket.connect_nonblock(addrinfo)
     end
 
     def empty?
-      @sockets.empty?
+      @socket_dict.empty?
     end
 
     def each
-      @sockets.each do |socket|
+      @socket_dict.keys.each do |socket|
         yield socket
       end
     end
