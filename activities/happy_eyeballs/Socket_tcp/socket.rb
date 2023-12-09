@@ -146,9 +146,15 @@ class Socket
           last_error = e
           socket.close unless socket.closed?
 
-          if selectable_addrinfos.empty? # 他に試行できるaddrinfosがない
+          if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
+            # キューに残っているaddrinfoがなく、他に試行できるaddrinfoもない場合
             state = :failure
-            next
+          else
+            # キューに残っているaddrinfoがある場合
+            # -> 次のループで名前解決を待つ
+            # 試行できるaddrinfoがある場合
+            # -> 次のループでConnection Attempt Delayを待つ (さらに次のループで接続試行を行う)
+            state = :v46w
           end
         end
 
