@@ -28,6 +28,14 @@ class Socket
     # - :failure
     # - :timeout
 
+    hostname_resolution_threads = []
+    selectable_addrinfos = SelectableAddrinfos.new
+    connecting_sockets = ConnectingSockets.new
+    connection_attempt_delay_expires_at = nil
+    connection_attempt_started_at = nil
+    state = :start
+    last_error = nil
+
     resolving_family_names, local_addrinfos =
       if local_host && local_port
         local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
@@ -38,14 +46,7 @@ class Socket
         [ADDRESS_FAMILIES.keys, []]
       end
 
-    hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
-    selectable_addrinfos = SelectableAddrinfos.new
-    connecting_sockets = ConnectingSockets.new
-    connection_attempt_delay_expires_at = nil
-    connection_attempt_started_at = nil
-    state = :start
-    last_error = nil
 
     connected_socket = loop do
       case state
@@ -60,7 +61,7 @@ class Socket
           }
         )
 
-        hostname_resolution_retry_count = hostname_resolution_threads.size - 1
+        hostname_resolution_retry_count = resolving_family_names.size - 1
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
@@ -73,20 +74,17 @@ class Socket
 
           family_name, res = hostname_resolution_queue.get
 
-          if res.is_a? Array # Addrinfoの配列
-            state =
-              case family_name
-              when :ipv6 then :v6c
-              when :ipv4 then last_error.nil? ? :v4w : :v4c
-            end
-          else # 例外
+          if res.is_a? Exception
             last_error = res
             state = :failure if hostname_resolution_retry_count.zero?
             hostname_resolution_retry_count -= 1
-          end
-
-          if %i[v6c v4w v4c].include? state
+          else
+            state = case family_name
+                    when :ipv6 then :v6c
+                    when :ipv4 then last_error.nil? ? :v4w : :v4c
+                    end
             selectable_addrinfos.add(family_name, res)
+            last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
             break
           end
         end
@@ -97,14 +95,14 @@ class Socket
 
         if ipv6_resolved # v4/v6共に名前解決済み
           family_name, res = hostname_resolution_queue.get
-          selectable_addrinfos.add(family_name, res) if res.is_a? Array
+          selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           state = :v46c
         else # v6はまだ名前解決中
           state = :v4c
         end
 
         next
-      when :v4c, :v6c, :v46c
+      when :v4c, :v6c, :v46c # v4の場合はv6名前解決中の可能性あり
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
         addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
@@ -112,10 +110,22 @@ class Socket
         if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
-          if local_addrinfo.nil? && hostname_resolution_queue.empty?
-            last_error = SocketError.new 'no appropriate local address'
-            state = :failure
-            next
+          if local_addrinfo.nil?
+            if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
+              # キューに残っているaddrinfoがなく、試行できるaddrinfoもない場合
+              last_error = SocketError.new 'no appropriate local address'
+              state = :failure
+              next
+            elsif !hostname_resolution_queue.empty?
+              # キューに残っているaddrinfoがある場合
+              # -> 次のループで名前解決を待つ
+              state = :v46w
+              next
+            elsif !selectable_addrinfos.empty?
+              # 試行可能な別のaddrinfoがある場合
+              # -> 次のループで別のaddrinfoを試してみる
+              next
+            end
           end
 
           socket.bind(local_addrinfo)
@@ -136,9 +146,15 @@ class Socket
           last_error = e
           socket.close unless socket.closed?
 
-          if selectable_addrinfos.empty? # 他に試行できるaddrinfosがない
+          if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
+            # キューに残っているaddrinfoがなく、他に試行できるaddrinfoもない場合
             state = :failure
-            next
+          else
+            # キューに残っているaddrinfoがある場合
+            # -> 次のループで名前解決を待つ
+            # 試行できるaddrinfoがある場合
+            # -> 次のループでConnection Attempt Delayを待つ (さらに次のループで接続試行を行う)
+            state = :v46w
           end
         end
 
@@ -166,28 +182,38 @@ class Socket
 
               next if connectable_sockets.any?
 
-              if selectable_addrinfos.empty? && connecting_sockets.empty?
-                # 試行できるaddrinfoがなく、接続中のソケットもない場合
+              if connecting_sockets.empty? && selectable_addrinfos.empty? && hostname_resolution_queue.empty?
+                # 接続中のソケットがなく、試行できるaddrinfoもキューに残っているaddrinfoもない場合
                 state = :failure
               elsif selectable_addrinfos.empty?
-                # 試行できるaddrinfosがなく、接続中のソケットはある場合 -> 接続中のソケットを待機する
+                # 接続中のソケットがあり、キューに残っているaddrinfoや試行できるaddrinfosはない場合
+                # -> 次のループでひたすら接続を待機する
+                # 接続中のソケットがなく、キューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
+                # -> 次のループでひたすら名前解決を待機する
                 state = :v46w
                 connection_attempt_delay_expires_at = nil
               else
-                # 試行できるaddrinfosがある場合 (+ 接続中のソケットがある場合も)
-                # -> 次のループに進む。次のループでConnection Attempt Delay タイムアウトしたらv46cへ
+                # 接続中のソケットがある場合
+                # -> 次のループで接続を待機する
+                # 接続中のソケットがなく、試行できるaddrinfosがある場合
+                # -> 次のループでConnection Attempt Delay タイムアウトを待つ (さらに次のループで接続試行を行う)
                 state = :v46w
               end
             end
           end
         elsif hostname_resolved&.any?
           family_name, res = hostname_resolution_queue.get
-          selectable_addrinfos.add(family_name, res) if res.is_a? Array
+          selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           state = :v46w
         else # Connection Attempt Delayタイムアウト
-          if !selectable_addrinfos.empty? # 試行できるaddrinfosが残っている場合
+          if !selectable_addrinfos.empty?
+            # 試行できるaddrinfosが残っている場合
             state = :v46c
-          else # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
+          else
+            # キューにaddrinfoが残っている場合
+            # -> 名前解決をひたすら待機する
+            # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
+            # -> 接続をひたすら待機する
             state = :v46w
             connection_attempt_delay_expires_at = nil
           end
@@ -264,6 +290,8 @@ class Socket
     end
 
     def get
+      return nil if empty?
+
       case @last_family
       when :ipv4, nil
         precedences = [:ipv6, :ipv4]
@@ -317,6 +345,8 @@ class Socket
     end
 
     def get
+      return nil if @queue.empty?
+
       res = nil
 
       @mutex.synchronize do
@@ -333,6 +363,10 @@ class Socket
       end
 
       res
+    end
+
+    def empty?
+      @queue.empty?
     end
   end
   private_constant :HostnameResolutionQueue
@@ -390,30 +424,30 @@ end
 # PORT = 80
 HOSTNAME = "localhost"
 PORT = 9292
-#
-# # # 名前解決動作確認用 (遅延)
-# # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-# #   if family == Socket::AF_INET6
-# #     sleep 0.25
-# #     [Addrinfo.tcp("::1", PORT)]
-# #   else
-# #     [Addrinfo.tcp("127.0.0.1", PORT)]
-# #   end
-# # end
-#
-# # # 名前解決動作確認用 (タイムアウト)
-# # Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
-#
+
+# # 名前解決動作確認用 (Connection Attempt Delay以内の遅延)
+# Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+#   if family == Socket::AF_INET6
+#     sleep 0.25
+#     [Addrinfo.tcp("::1", PORT)]
+#   else
+#     [Addrinfo.tcp("127.0.0.1", PORT)]
+#   end
+# end
+
+# # 名前解決動作確認用 (タイムアウト)
+# Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+
 # # 名前解決動作確認用 (例外)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-#   if family == :PF_INET6
+#   if family == Socket::AF_INET6
 #     [Addrinfo.tcp("::1", PORT)]
 #   else
 #     # NOTE ignoreされる
 #     raise SocketError, 'getaddrinfo: Address family for hostname not supported'
 #   end
 # end
-#
+
 # # 名前解決動作確認用 (複数)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
 #   if family == Socket::AF_INET6
@@ -425,9 +459,27 @@ PORT = 9292
 # end
 
 # # local_host / local_port を指定する場合
+# class Addrinfo
+#   class << self
+#     alias _getaddrinfo getaddrinfo
+#
+#     def getaddrinfo(nodename, service, family, *_)
+#       if service == 9292
+#         if family == Socket::AF_INET6
+#           [Addrinfo.tcp("::1", 9292)]
+#         else
+#           sleep
+#         end
+#       else
+#         _getaddrinfo(nodename, service, family)
+#       end
+#     end
+#   end
+# end
+#
 # Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
+#    socket.write "GET / HTTP/1.0\r\n\r\n"
+#    print socket.read
 # end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
