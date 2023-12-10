@@ -119,6 +119,7 @@ class Socket
             elsif !hostname_resolution_queue.empty?
               # キューに残っているaddrinfoがある場合
               # -> 次のループで名前解決を待つ
+              connection_attempt_delay_expires_at = nil
               state = :v46w
               next
             elsif !selectable_addrinfos.empty?
@@ -149,9 +150,12 @@ class Socket
           if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
             # キューに残っているaddrinfoがなく、他に試行できるaddrinfoもない場合
             state = :failure
-          else
+          elsif !hostname_resolution_queue.empty?
             # キューに残っているaddrinfoがある場合
             # -> 次のループで名前解決を待つ
+            connection_attempt_delay_expires_at = nil
+            state = :v46w
+          elsif !selectable_addrinfos.empty?
             # 試行できるaddrinfoがある場合
             # -> 次のループでConnection Attempt Delayを待つ (さらに次のループで接続試行を行う)
             state = :v46w
