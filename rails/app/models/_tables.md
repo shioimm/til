@@ -1,4 +1,10 @@
-# 管理用テーブル
+# テーブル一覧
+
+```ruby
+ActiveRecord::Base.connection.tables
+```
+
+## 管理用テーブル
 #### `schema_migrations`
 - マイグレーションの実行情報 (バージョン) を保存するテーブル
 - マイグレーションが実行される際、`schema_migrations`テーブル内にレコードが存在しないバージョンに対応する
