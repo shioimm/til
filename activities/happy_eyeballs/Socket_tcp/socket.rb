@@ -157,8 +157,8 @@ class Socket
             state = :v46w
           elsif !selectable_addrinfos.empty?
             # 試行できるaddrinfoがある場合
-            # -> 次のループでConnection Attempt Delayを待つ (さらに次のループで接続試行を行う)
-            state = :v46w
+            # -> 次のループで接続試行を行う
+            state = :v46c
           end
         end
 
