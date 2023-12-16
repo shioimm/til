@@ -32,3 +32,31 @@ end
 #
 #        user     system      total        real
 #    0.858527   2.411695   3.270222 (  3.370623)
+
+require 'benchmark/ips'
+
+Benchmark.ips do |x|
+  x.report do
+    n.times {
+      Socket.tcp(HOSTNAME, PORT) do |socket|
+        socket.write "hi\r\n"
+      end
+    }
+  end
+end
+
+# Original
+# ~/w/build ❯❯❯ ruby ../ruby/test.rb
+# ruby 3.2.2 (2023-03-30 revision e51014f9c0) [arm64-darwin22]
+# Warming up --------------------------------------
+#                          1.000 i/100ms
+# Calculating -------------------------------------
+#                           0.506 (± 0.0%) i/s -      3.000 in   5.929637s
+
+# HEv2
+# ~/w/build ❯❯❯ ../install/bin/ruby ../ruby/test.rb
+# ruby 3.3.0dev (2023-12-01T23:58:32Z Socket_tcp-hev2 9f6c6f88c3) [arm64-darwin22]
+# Warming up --------------------------------------
+#                          1.000 i/100ms
+# Calculating -------------------------------------
+#                           0.294 (± 0.0%) i/s -      2.000 in   6.792931s
