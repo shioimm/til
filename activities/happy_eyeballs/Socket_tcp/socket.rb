@@ -76,7 +76,10 @@ class Socket
 
           if res.is_a? Exception
             last_error = res
-            state = :failure if hostname_resolution_retry_count.zero?
+            if hostname_resolution_retry_count.zero?
+              state = :failure
+              break
+            end
             hostname_resolution_retry_count -= 1
           else
             state = case family_name
