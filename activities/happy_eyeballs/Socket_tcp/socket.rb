@@ -180,6 +180,7 @@ class Socket
             rescue Errno::EISCONN # already connected
               connected_socket = connectable_socket
               state = :success
+              break
             rescue => e
               last_error = e
               connectable_socket.close unless connectable_socket.closed?
