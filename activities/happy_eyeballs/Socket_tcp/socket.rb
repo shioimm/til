@@ -320,10 +320,6 @@ class Socket
     def empty?
       @addrinfo_dict.all? { |_, addrinfos| addrinfos.empty? }
     end
-
-    def size
-      @addrinfo_dict.size
-    end
   end
   private_constant :SelectableAddrinfos
 
