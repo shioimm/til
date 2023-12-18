@@ -76,7 +76,10 @@ class Socket
 
           if res.is_a? Exception
             last_error = res
-            state = :failure if hostname_resolution_retry_count.zero?
+            if hostname_resolution_retry_count.zero?
+              state = :failure
+              break
+            end
             hostname_resolution_retry_count -= 1
           else
             state = case family_name
@@ -180,6 +183,7 @@ class Socket
             rescue Errno::EISCONN # already connected
               connected_socket = connectable_socket
               state = :success
+              break
             rescue => e
               last_error = e
               connectable_socket.close unless connectable_socket.closed?
@@ -315,10 +319,6 @@ class Socket
 
     def empty?
       @addrinfo_dict.all? { |_, addrinfos| addrinfos.empty? }
-    end
-
-    def size
-      @addrinfo_dict.size
     end
   end
   private_constant :SelectableAddrinfos
