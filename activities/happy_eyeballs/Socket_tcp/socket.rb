@@ -118,18 +118,17 @@ class Socket
               # キューに残っているaddrinfoがなく、試行できるaddrinfoもない場合
               last_error = SocketError.new 'no appropriate local address'
               state = :failure
-              next
             elsif !hostname_resolution_queue.empty?
               # キューに残っているaddrinfoがある場合
               # -> 次のループで名前解決を待つ
               connection_attempt_delay_expires_at = nil
               state = :v46w
-              next
             elsif !selectable_addrinfos.empty?
               # 試行可能な別のaddrinfoがある場合
               # -> 次のループで別のaddrinfoを試してみる
-              next
+              state = :v46c
             end
+            next
           end
 
           socket.bind(local_addrinfo)
