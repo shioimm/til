@@ -177,14 +177,15 @@ class Socket
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
-            begin
-              connecting_sockets.nonblocking_connect(connectable_socket)
-            rescue Errno::EISCONN # already connected
+            if (r = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
               connected_socket = connectable_socket
+              connecting_sockets.delete connectable_socket
               state = :success
               break
-            rescue => e
-              last_error = e
+            else
+              failed_ai = connecting_sockets.delete connectable_socket
+              inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", r.int)
               connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
@@ -385,6 +386,10 @@ class Socket
 
     def add(socket, addrinfo)
       @socket_dict[socket] = addrinfo
+    end
+
+    def delete(socket)
+      @socket_dict.delete socket
     end
 
     def nonblocking_connect(socket)
