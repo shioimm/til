@@ -57,7 +57,9 @@ class Socket
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
             thread_args = [family].concat hostname_resolution_args
-            Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+            thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+            Thread.pass
+            thread
           }
         )
 
