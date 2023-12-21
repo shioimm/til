@@ -38,10 +38,8 @@ class Socket
 
     resolving_family_names, local_addrinfos =
       if local_host && local_port
-        local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
-        resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
-
-        [resolving_family_names, local_addrinfos]
+        [Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil),
+         local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }]
       else
         [ADDRESS_FAMILIES.keys, []]
       end
