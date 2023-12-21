@@ -57,7 +57,9 @@ class Socket
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
             thread_args = [family].concat hostname_resolution_args
-            Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+            thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+            Thread.pass
+            thread
           }
         )
 
@@ -123,10 +125,10 @@ class Socket
               # -> 次のループで名前解決を待つ
               connection_attempt_delay_expires_at = nil
               state = :v46w
-            elsif !selectable_addrinfos.empty?
-              # 試行可能な別のaddrinfoがある場合
-              # -> 次のループで別のaddrinfoを試してみる
-              state = :v46c
+            # elsif !selectable_addrinfos.empty?
+            #   # 試行可能な別のaddrinfoがある場合
+            #   # -> 次のループで別のaddrinfoを試してみる
+            #   state = :v46c
             end
             next
           end
@@ -157,10 +159,10 @@ class Socket
             # -> 次のループで名前解決を待つ
             connection_attempt_delay_expires_at = nil
             state = :v46w
-          elsif !selectable_addrinfos.empty?
-            # 試行できるaddrinfoがある場合
-            # -> 次のループで接続試行を行う
-            state = :v46c
+          # elsif !selectable_addrinfos.empty?
+          #   # 試行できるaddrinfoがある場合
+          #   # -> 次のループで接続試行を行う
+          #   state = :v46c
           end
         end
 
@@ -198,14 +200,14 @@ class Socket
                 # -> 次のループでひたすら接続を待機する
                 # 接続中のソケットがなく、キューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
                 # -> 次のループでひたすら名前解決を待機する
-                state = :v46w
+                # state = :v46w
                 connection_attempt_delay_expires_at = nil
-              else
-                # 接続中のソケットがある場合
-                # -> 次のループで接続を待機する
-                # 接続中のソケットがなく、試行できるaddrinfosがある場合
-                # -> 次のループでConnection Attempt Delay タイムアウトを待つ (さらに次のループで接続試行を行う)
-                state = :v46w
+              # else
+              #   # 接続中のソケットがある場合
+              #   # -> 次のループで接続を待機する
+              #   # 接続中のソケットがなく、試行できるaddrinfosがある場合
+              #   # -> 次のループでConnection Attempt Delay タイムアウトを待つ (さらに次のループで接続試行を行う)
+              #   state = :v46w
               end
             end
           end
@@ -222,7 +224,7 @@ class Socket
             # -> 名前解決をひたすら待機する
             # 試行できるaddrinfosが残っておらずあとはもう待つしかできない場合
             # -> 接続をひたすら待機する
-            state = :v46w
+            # state = :v46w
             connection_attempt_delay_expires_at = nil
           end
         end
