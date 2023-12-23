@@ -247,8 +247,8 @@ class Socket
       connected_socket
     end
   ensure
-    hostname_resolution_threads.each do |th|
-      th&.exit
+    hostname_resolution_threads.each do |thread|
+      thread&.exit
     end
 
     connecting_sockets.each do |connecting_socket|
@@ -390,11 +390,6 @@ class Socket
 
     def delete(socket)
       @socket_dict.delete socket
-    end
-
-    def nonblocking_connect(socket)
-      addrinfo = @socket_dict.delete socket
-      socket.connect_nonblock(addrinfo)
     end
 
     def empty?
