@@ -177,7 +177,7 @@ class Socket
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
-            if (r = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
+            if (sockopt = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
               state = :success
@@ -185,7 +185,7 @@ class Socket
             else
               failed_ai = connecting_sockets.delete connectable_socket
               inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
-              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", r.int)
+              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
               connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
@@ -195,16 +195,16 @@ class Socket
                 state = :failure
               elsif selectable_addrinfos.empty?
                 # 接続中のソケットがあり、キューに残っているaddrinfoや試行できるaddrinfosはない場合
-                # -> 次のループでひたすら接続を待機する
+                # 接続中のソケットやキューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
                 # 接続中のソケットがなく、キューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
-                # -> 次のループでひたすら名前解決を待機する
+                # -> 次のループでひたすら接続あるいは名前解決を待機する
                 # state = :v46w
                 connection_attempt_delay_expires_at = nil
               # else
-              #   # 接続中のソケットがある場合
-              #   # -> 次のループで接続を待機する
-              #   # 接続中のソケットがなく、試行できるaddrinfosがある場合
-              #   # -> 次のループでConnection Attempt Delay タイムアウトを待つ (さらに次のループで接続試行を行う)
+              #   # 接続中のソケットがあり、キューに残っているaddrinfoはなく、試行できるaddrinfosがある場合
+              #   # -> 次のループで接続を待機する。Connection Attempt Delay タイムアウトしたらv46cへ
+              #   # 接続中のソケットやキューに残っているaddrinfoはなく、試行できるaddrinfosがある場合
+              #   # -> 次のループでConnection Attempt Delay タイムアウトを待つ。タイムアウトしたらv46cへ
               #   state = :v46w
               end
             end
@@ -266,6 +266,7 @@ class Socket
       hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
       if ignoreable_error?(e) # 動作確認用
+        # TODO ここ本当にignoreできるのか考える。全てのアドレスファミリがここを通ったらどうなる?
         # ignore
       else
         hostname_resolution_queue.add_error(family, e)
@@ -309,11 +310,10 @@ class Socket
 
       precedences.each do |family_name|
         addrinfo = @addrinfo_dict[family_name]&.shift
+        next unless addrinfo
 
-        if addrinfo
-          @last_family = family_name
-          return addrinfo
-        end
+        @last_family = family_name
+        return addrinfo
       end
     end
 
