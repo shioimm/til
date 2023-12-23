@@ -289,6 +289,9 @@ class Socket
   private_class_method :current_clocktime
 
   class SelectableAddrinfos
+    PRIORITY_ON_V6 = [:ipv6, :ipv4]
+    PRIORITY_ON_V4 = [:ipv4, :ipv6]
+
     def initialize
       @addrinfo_dict = {}
       @last_family = nil
@@ -301,12 +304,10 @@ class Socket
     def get
       return nil if empty?
 
-      case @last_family
-      when :ipv4, nil
-        precedences = [:ipv6, :ipv4]
-      when :ipv6
-        precedences = [:ipv4, :ipv6]
-      end
+      precedences = case @last_family
+                    when :ipv4, nil then PRIORITY_ON_V6
+                    when :ipv6      then PRIORITY_ON_V4
+                    end
 
       precedences.each do |family_name|
         addrinfo = @addrinfo_dict[family_name]&.shift
