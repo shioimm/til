@@ -36,13 +36,13 @@ class Socket
     state = :start
     last_error = nil
 
-    resolving_family_names, local_addrinfos =
-      if local_host && local_port
-        [Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil),
-         local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }]
-      else
-        [ADDRESS_FAMILIES.keys, []]
-      end
+    if local_host && local_port
+      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
+      resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
+    else
+      local_addrinfos = []
+      resolving_family_names = ADDRESS_FAMILIES.keys
+    end
 
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
 
