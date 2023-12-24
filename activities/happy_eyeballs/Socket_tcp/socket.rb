@@ -266,7 +266,6 @@ class Socket
       hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
       if ignoreable_error?(e) # 動作確認用
-        # TODO ここ本当にignoreできるのか考える。全てのアドレスファミリがここを通ったらどうなる?
         # ignore
       else
         hostname_resolution_queue.add_error(family, e)
@@ -407,19 +406,9 @@ class Socket
 
   def self.ignoreable_error?(e)
     if ENV['RBENV_VERSION'].to_f > 3.3
-      return false unless e.is_a? Socket::ResolutionError
-
-      [
-        Socket::EAI_AGAIN,      # when IPv6 is not supported↲
-        Socket::EAI_ADDRFAMILY, # when timed out (EAI_AGAIN)
-      ].include?(e.error_code)
+      e.is_a?(Socket::ResolutionError) && (e.error_code == Socket::EAI_ADDRFAMILY)
     else
-      return false unless e.is_a? SocketError
-
-      [
-        'getaddrinfo: Address family for hostname not supported', # when IPv6 is not supported
-        'getaddrinfo: Temporary failure in name resolution',      # when timed out (EAI_AGAIN)
-      ].include?(e.message)
+      e.is_a?(SocketError) && (e.message == 'getaddrinfo: Address family for hostname not supported')
     end
   end
 end
