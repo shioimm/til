@@ -96,11 +96,11 @@ class Socket
       when :v4w
         ipv6_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, RESOLUTION_DELAY)
 
-        if ipv6_resolved # v4/v6共に名前解決済み
+        if ipv6_resolved # v6アドレス解決 / 名前解決エラー
           family_name, res = hostname_resolution_queue.get
           selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           state = :v46c
-        else # v6はまだ名前解決中
+        else # Resolution delay タイムアウト済み
           state = :v4c
         end
 
@@ -113,20 +113,19 @@ class Socket
         if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
-          if local_addrinfo.nil?
+          if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
             if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
-              # キューに残っているaddrinfoがなく、試行できるaddrinfoもない場合
               last_error = SocketError.new 'no appropriate local address'
               state = :failure
+            elsif selectable_addrinfos.any?
+              # case Selectable addrinfos: any && Hostname resolution queue: any
+              # case Selectable addrinfos: any && Hostname resolution queue: empty
+              # Try other Addrinfo in next loop
             elsif !hostname_resolution_queue.empty?
-              # キューに残っているaddrinfoがある場合
-              # -> 次のループで名前解決を待つ
+              # Selectable addrinfos: empty && Hostname resolution queue: any
+              # Wait for hostname resolution in next loop
               connection_attempt_delay_expires_at = nil
               state = :v46w
-            # elsif !selectable_addrinfos.empty?
-            #   # 試行可能な別のaddrinfoがある場合
-            #   # -> 次のループで別のaddrinfoを試してみる
-            #   state = :v46c
             end
             next
           end
@@ -149,18 +148,21 @@ class Socket
           last_error = e
           socket.close unless socket.closed?
 
-          if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
-            # キューに残っているaddrinfoがなく、他に試行できるaddrinfoもない場合
+          if hostname_resolution_queue.empty? && selectable_addrinfos.empty? && connecting_sockets.empty?
             state = :failure
-          elsif !hostname_resolution_queue.empty?
-            # キューに残っているaddrinfoがある場合
-            # -> 次のループで名前解決を待つ
+          elsif selectable_addrinfos.any?
+            # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
+            # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: empty
+            # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
+            # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: empty
+            # Try other Addrinfo in next loop
+          else
+            # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: any
+            # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: empty
+            # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: any
+            # Wait for connection to be established or hostname resolution in next loop
             connection_attempt_delay_expires_at = nil
             state = :v46w
-          # elsif !selectable_addrinfos.empty?
-          #   # 試行できるaddrinfoがある場合
-          #   # -> 次のループで接続試行を行う
-          #   state = :v46c
           end
         end
 
@@ -191,21 +193,19 @@ class Socket
               next if connectable_sockets.any?
 
               if connecting_sockets.empty? && selectable_addrinfos.empty? && hostname_resolution_queue.empty?
-                # 接続中のソケットがなく、試行できるaddrinfoもキューに残っているaddrinfoもない場合
                 state = :failure
-              elsif selectable_addrinfos.empty?
-                # 接続中のソケットがあり、キューに残っているaddrinfoや試行できるaddrinfosはない場合
-                # 接続中のソケットやキューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
-                # 接続中のソケットがなく、キューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
-                # -> 次のループでひたすら接続あるいは名前解決を待機する
-                # state = :v46w
+              elsif selectable_addrinfos.any?
+                # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
+                # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: empty
+                # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
+                # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: empty
+                # Wait for connection attempt delay timeout in next loop
+              else
+                # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: empty
+                # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: any
+                # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: any
+                # Wait for connection to be established or hostname resolution in next loop
                 connection_attempt_delay_expires_at = nil
-              # else
-              #   # 接続中のソケットがあり、キューに残っているaddrinfoはなく、試行できるaddrinfosがある場合
-              #   # -> 次のループで接続を待機する。Connection Attempt Delay タイムアウトしたらv46cへ
-              #   # 接続中のソケットやキューに残っているaddrinfoはなく、試行できるaddrinfosがある場合
-              #   # -> 次のループでConnection Attempt Delay タイムアウトを待つ。タイムアウトしたらv46cへ
-              #   state = :v46w
               end
             end
           end
@@ -214,7 +214,7 @@ class Socket
           selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           state = :v46w
         else # Connection Attempt Delayタイムアウト
-          if !selectable_addrinfos.empty?
+          if selectable_addrinfos.any?
             # 試行できるaddrinfosが残っている場合
             state = :v46c
           else
@@ -319,6 +319,10 @@ class Socket
 
     def empty?
       @addrinfo_dict.all? { |_, addrinfos| addrinfos.empty? }
+    end
+
+    def any?
+      @addrinfo_dict.any? { |_, addrinfos| addrinfos.any? }
     end
   end
   private_constant :SelectableAddrinfos
