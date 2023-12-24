@@ -36,13 +36,13 @@ class Socket
     state = :start
     last_error = nil
 
-    resolving_family_names, local_addrinfos =
-      if local_host && local_port
-        [Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil),
-         local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }]
-      else
-        [ADDRESS_FAMILIES.keys, []]
-      end
+    if local_host && local_port
+      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
+      resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
+    else
+      local_addrinfos = []
+      resolving_family_names = ADDRESS_FAMILIES.keys
+    end
 
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
 
@@ -54,7 +54,7 @@ class Socket
 
         hostname_resolution_threads.concat(
           resolving_family_names.map { |family|
-            thread_args = [family].concat hostname_resolution_args
+            thread_args = [family, *hostname_resolution_args]
             thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
             Thread.pass
             thread
@@ -177,7 +177,7 @@ class Socket
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
-            if (r = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
+            if (sockopt = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
               state = :success
@@ -185,7 +185,7 @@ class Socket
             else
               failed_ai = connecting_sockets.delete connectable_socket
               inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
-              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", r.int)
+              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
               connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
@@ -195,16 +195,16 @@ class Socket
                 state = :failure
               elsif selectable_addrinfos.empty?
                 # 接続中のソケットがあり、キューに残っているaddrinfoや試行できるaddrinfosはない場合
-                # -> 次のループでひたすら接続を待機する
+                # 接続中のソケットやキューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
                 # 接続中のソケットがなく、キューに残っているaddrinfoがあり、試行できるaddrinfosはない場合
-                # -> 次のループでひたすら名前解決を待機する
+                # -> 次のループでひたすら接続あるいは名前解決を待機する
                 # state = :v46w
                 connection_attempt_delay_expires_at = nil
               # else
-              #   # 接続中のソケットがある場合
-              #   # -> 次のループで接続を待機する
-              #   # 接続中のソケットがなく、試行できるaddrinfosがある場合
-              #   # -> 次のループでConnection Attempt Delay タイムアウトを待つ (さらに次のループで接続試行を行う)
+              #   # 接続中のソケットがあり、キューに残っているaddrinfoはなく、試行できるaddrinfosがある場合
+              #   # -> 次のループで接続を待機する。Connection Attempt Delay タイムアウトしたらv46cへ
+              #   # 接続中のソケットやキューに残っているaddrinfoはなく、試行できるaddrinfosがある場合
+              #   # -> 次のループでConnection Attempt Delay タイムアウトを待つ。タイムアウトしたらv46cへ
               #   state = :v46w
               end
             end
@@ -247,8 +247,8 @@ class Socket
       connected_socket
     end
   ensure
-    hostname_resolution_threads.each do |th|
-      th&.exit
+    hostname_resolution_threads.each do |thread|
+      thread&.exit
     end
 
     connecting_sockets.each do |connecting_socket|
@@ -266,6 +266,7 @@ class Socket
       hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
       if ignoreable_error?(e) # 動作確認用
+        # TODO ここ本当にignoreできるのか考える。全てのアドレスファミリがここを通ったらどうなる?
         # ignore
       else
         hostname_resolution_queue.add_error(family, e)
@@ -288,6 +289,9 @@ class Socket
   private_class_method :current_clocktime
 
   class SelectableAddrinfos
+    PRIORITY_ON_V6 = [:ipv6, :ipv4]
+    PRIORITY_ON_V4 = [:ipv4, :ipv6]
+
     def initialize
       @addrinfo_dict = {}
       @last_family = nil
@@ -300,20 +304,17 @@ class Socket
     def get
       return nil if empty?
 
-      case @last_family
-      when :ipv4, nil
-        precedences = [:ipv6, :ipv4]
-      when :ipv6
-        precedences = [:ipv4, :ipv6]
-      end
+      precedences = case @last_family
+                    when :ipv4, nil then PRIORITY_ON_V6
+                    when :ipv6      then PRIORITY_ON_V4
+                    end
 
       precedences.each do |family_name|
         addrinfo = @addrinfo_dict[family_name]&.shift
+        next unless addrinfo
 
-        if addrinfo
-          @last_family = family_name
-          return addrinfo
-        end
+        @last_family = family_name
+        return addrinfo
       end
     end
 
@@ -390,11 +391,6 @@ class Socket
 
     def delete(socket)
       @socket_dict.delete socket
-    end
-
-    def nonblocking_connect(socket)
-      addrinfo = @socket_dict.delete socket
-      socket.connect_nonblock(addrinfo)
     end
 
     def empty?
