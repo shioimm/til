@@ -116,7 +116,7 @@ class Socket
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
-            if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
+            if selectable_addrinfos.empty? && hostname_resolution_queue.empty?
               last_error = SocketError.new 'no appropriate local address'
               state = :failure
             elsif selectable_addrinfos.any?
@@ -150,7 +150,7 @@ class Socket
           last_error = e
           socket.close unless socket.closed?
 
-          if hostname_resolution_queue.empty? && selectable_addrinfos.empty? && connecting_sockets.empty?
+          if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
             state = :failure
           elsif selectable_addrinfos.any?
             # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
@@ -194,7 +194,7 @@ class Socket
 
               next if connectable_sockets.any?
 
-              if connecting_sockets.empty? && selectable_addrinfos.empty? && hostname_resolution_queue.empty?
+              if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
                 state = :failure
               elsif selectable_addrinfos.any?
                 # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
@@ -320,7 +320,7 @@ class Socket
     end
 
     def any?
-      @addrinfo_dict.any? { |_, addrinfos| addrinfos.any? }
+      !empty?
     end
   end
   private_constant :SelectableAddrinfos
