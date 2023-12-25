@@ -75,7 +75,7 @@ class Socket
           family_name, res = hostname_resolution_queue.get
 
           if res.is_a? Exception
-            last_error = res
+            last_error = res unless ignoreable_error?(res)
             if hostname_resolution_retry_count.zero?
               state = :failure
               break
@@ -265,11 +265,7 @@ class Socket
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
       hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
-      if ignoreable_error?(e) # 動作確認用
-        # ignore
-      else
-        hostname_resolution_queue.add_error(family, e)
-      end
+      hostname_resolution_queue.add_error(family, e)
     end
   end
   private_class_method :hostname_resolution
