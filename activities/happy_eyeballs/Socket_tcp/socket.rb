@@ -62,6 +62,7 @@ class Socket
         )
 
         hostname_resolution_retry_count = resolving_family_names.size - 1
+        resolution_failed_family_names = []
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
@@ -80,11 +81,12 @@ class Socket
               state = :failure
               break
             end
+            resolution_failed_family_names << family_name
             hostname_resolution_retry_count -= 1
           else
             state = case family_name
                     when :ipv6 then :v6c
-                    when :ipv4 then last_error.nil? ? :v4w : :v4c
+                    when :ipv4 then resolution_failed_family_names.any? ? :v4c : :v4w
                     end
             selectable_addrinfos.add(family_name, res)
             last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
