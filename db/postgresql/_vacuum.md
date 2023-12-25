@@ -22,7 +22,7 @@
 ```sql
 select
   relname            -- テーブル名
-  n_live_tup         -- 有効な行の推定値
+  , n_live_tup       -- 有効な行の推定値
   , n_dead_tup       -- 削除された行の推定値
   , last_vacuum      -- 最後にバキュームされた日時
   , last_autovacuum  -- 最後に自動バキュームされた
