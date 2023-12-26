@@ -62,6 +62,7 @@ class Socket
         )
 
         hostname_resolution_retry_count = resolving_family_names.size - 1
+        resolution_failed_family_names = []
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
@@ -75,16 +76,17 @@ class Socket
           family_name, res = hostname_resolution_queue.get
 
           if res.is_a? Exception
-            last_error = res
+            last_error = res unless ignoreable_error?(res)
             if hostname_resolution_retry_count.zero?
               state = :failure
               break
             end
+            resolution_failed_family_names << family_name
             hostname_resolution_retry_count -= 1
           else
             state = case family_name
                     when :ipv6 then :v6c
-                    when :ipv4 then last_error.nil? ? :v4w : :v4c
+                    when :ipv4 then resolution_failed_family_names.any? ? :v4c : :v4w
                     end
             selectable_addrinfos.add(family_name, res)
             last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
@@ -114,7 +116,7 @@ class Socket
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
-            if hostname_resolution_queue.empty? && selectable_addrinfos.empty?
+            if selectable_addrinfos.empty? && hostname_resolution_queue.empty?
               last_error = SocketError.new 'no appropriate local address'
               state = :failure
             elsif selectable_addrinfos.any?
@@ -148,7 +150,7 @@ class Socket
           last_error = e
           socket.close unless socket.closed?
 
-          if hostname_resolution_queue.empty? && selectable_addrinfos.empty? && connecting_sockets.empty?
+          if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
             state = :failure
           elsif selectable_addrinfos.any?
             # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
@@ -192,7 +194,7 @@ class Socket
 
               next if connectable_sockets.any?
 
-              if connecting_sockets.empty? && selectable_addrinfos.empty? && hostname_resolution_queue.empty?
+              if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
                 state = :failure
               elsif selectable_addrinfos.any?
                 # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
@@ -265,11 +267,7 @@ class Socket
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
       hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
     rescue => e
-      if ignoreable_error?(e) # 動作確認用
-        # ignore
-      else
-        hostname_resolution_queue.add_error(family, e)
-      end
+      hostname_resolution_queue.add_error(family, e)
     end
   end
   private_class_method :hostname_resolution
@@ -322,7 +320,7 @@ class Socket
     end
 
     def any?
-      @addrinfo_dict.any? { |_, addrinfos| addrinfos.any? }
+      !empty?
     end
   end
   private_constant :SelectableAddrinfos

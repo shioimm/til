@@ -169,6 +169,7 @@ class SocketTest < Minitest::Test
       if family == Socket::AF_INET6
         raise SocketError
       else
+        sleep 0.1
         [Addrinfo.tcp("127.0.0.1", port)]
       end
     end
@@ -233,7 +234,7 @@ class SocketTest < Minitest::Test
       Socket.tcp("localhost", 9)
     end
 
-    assert_equal(e.message, "Last hostname resolution error")
+    assert_equal("Last hostname resolution error", e.message)
   end
 
   def test_that_raises_ETIMEDOUT_with_resolv_timeout
