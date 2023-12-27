@@ -116,16 +116,21 @@ class Socket
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
-            if selectable_addrinfos.empty? && hostname_resolution_queue.empty?
+            if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
               last_error = SocketError.new 'no appropriate local address'
               state = :failure
             elsif selectable_addrinfos.any?
-              # case Selectable addrinfos: any && Hostname resolution queue: any
-              # case Selectable addrinfos: any && Hostname resolution queue: empty
+              # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: any
+              # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: empty
+              # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
+              # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: empty
               # Try other Addrinfo in next loop
-            elsif !hostname_resolution_queue.empty?
-              # Selectable addrinfos: empty && Hostname resolution queue: any
-              # Wait for hostname resolution in next loop
+            else
+              # case Selectable addrinfos: empty && Connecting sockets: any && Hostname resolution queue: any
+              # case Selectable addrinfos: empty && Connecting sockets: any && Hostname resolution queue: empty
+              # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: any
+              # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: empty
+              # Wait for connection to be established or hostname resolution in next loop
               connection_attempt_delay_expires_at = nil
               state = :v46w
             end
