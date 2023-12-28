@@ -187,6 +187,9 @@ class Socket
             if (sockopt = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
+              connectable_sockets.each do |other_connectable_socket|
+                other_connectable_socket.close unless other_connectable_socket.closed?
+              end
               state = :success
               break
             else
@@ -256,12 +259,10 @@ class Socket
       thread&.exit
     end
 
+    hostname_resolution_queue.close_all
+
     connecting_sockets.each do |connecting_socket|
-      begin
-        connecting_socket.close if !connecting_socket.closed?
-      rescue
-        # ignore
-      end
+      connecting_socket.close unless connecting_socket.closed?
     end
   end
 
@@ -364,18 +365,18 @@ class Socket
       end
 
       @taken_count += 1
-
-      if @taken_count == @size
-        @queue.close
-        @rpipe.close
-        @wpipe.close
-      end
-
+      close_all if @taken_count == @size
       res
     end
 
     def empty?
       @queue.empty?
+    end
+
+    def close_all
+      @queue.close unless @queue.closed?
+      @rpipe.close unless @rpipe.closed?
+      @wpipe.close unless @wpipe.closed?
     end
   end
   private_constant :HostnameResolutionQueue
