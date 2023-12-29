@@ -114,13 +114,19 @@ class Socket
         addrinfo = selectable_addrinfos.get
         socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
-        if local_addrinfos.any? # NOTE ここも対応が必要
+        if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
             if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-              last_error = SocketError.new 'no appropriate local address'
-              state = :failure
+              if !hostname_resolution_queue.rpipe.closed? && !wait_for_hostname_resolution_patiently
+                wait_for_hostname_resolution_patiently = true
+                connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
+                state = :v46w
+              else
+                last_error = SocketError.new 'no appropriate local address'
+                state = :failure
+              end
             elsif selectable_addrinfos.any?
               # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: any
               # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: empty
