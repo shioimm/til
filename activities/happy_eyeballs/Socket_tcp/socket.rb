@@ -440,7 +440,9 @@ class Socket
 
   def self.ignoreable_error?(e)
     if ENV['RBENV_VERSION'].to_f > 3.3
-      e.is_a?(Socket::ResolutionError) && (e.error_code == Socket::EAI_ADDRFAMILY)
+      e.is_a?(Socket.const_defined?(:EAI_ADDRFAMILY)) &&
+        (e.is_a?(Socket::ResolutionError)) &&
+        (e.error_code == Socket::EAI_ADDRFAMILY)
     else
       e.is_a?(SocketError) && (e.message == 'getaddrinfo: Address family for hostname not supported')
     end
