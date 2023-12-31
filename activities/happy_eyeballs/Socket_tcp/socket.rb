@@ -38,6 +38,7 @@ class Socket
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     state = :start
+    connected_socket = nil
     last_error = nil
 
     if local_host && local_port
@@ -50,7 +51,7 @@ class Socket
 
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
 
-    connected_socket = loop do
+    ret = loop do
       case state
       when :start
         hostname_resolution_started_at = current_clocktime
@@ -200,18 +201,21 @@ class Socket
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
-            if (sockopt = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)).int.zero?
+            begin
+              addrinfo = connecting_sockets.delete connectable_socket
+              connectable_socket.connect_nonblock(addrinfo)
+            rescue Errno::EISCONN # already connected
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
+
               connectable_sockets.each do |other_connectable_socket|
                 other_connectable_socket.close unless other_connectable_socket.closed?
               end
+
               state = :success
               break
-            else
-              failed_ai = connecting_sockets.delete connectable_socket
-              inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
-              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
+            rescue => e
+              last_error = e
               connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
@@ -236,6 +240,16 @@ class Socket
                 # Wait for connection to be established or hostname resolution in next loop
                 connection_attempt_delay_expires_at = nil
               end
+            else
+              connected_socket = connectable_socket
+              connecting_sockets.delete connectable_socket
+
+              connectable_sockets.each do |other_connectable_socket|
+                other_connectable_socket.close unless other_connectable_socket.closed?
+              end
+
+              state = :success
+              break
             end
           end
         elsif hostname_resolved&.any?
@@ -275,12 +289,12 @@ class Socket
 
     if block_given?
       begin
-        yield connected_socket
+        yield ret
       ensure
-        connected_socket.close
+        ret.close
       end
     else
-      connected_socket
+      ret
     end
   ensure
     hostname_resolution_threads.each do |thread|
