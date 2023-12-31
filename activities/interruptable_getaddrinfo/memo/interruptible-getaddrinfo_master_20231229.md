@@ -14,7 +14,7 @@
 ```c
 // ext/socket/raddrinfo.c
 
-// 環境ごとに呼び出す関数が異なる。中断可能なgetaddrinfoのターゲットはGETADDRINFO_IMPL == 2
+// 環境ごとに異なるrb_getaddrinfoを呼び出す。中断可能なgetaddrinfoのターゲットはGETADDRINFO_IMPL == 2
 // GETADDRINFO_IMPL == 0 : call getaddrinfo/getnameinfo directly
 // GETADDRINFO_IMPL == 1 : call getaddrinfo/getnameinfo without gvl (but uncancellable)
 // GETADDRINFO_IMPL == 2 : call getaddrinfo/getnameinfo in a dedicated pthread

@@ -6,7 +6,7 @@
 #### `Addrinfo.getaddrinfo`
 - `addrinfo_s_getaddrinfo` (ext/socket/raddrinfo.c)
   - `addrinfo_list_new` (ext/socket/raddrinfo.c)
-    - `call_getaddrinfo` (ext/socket/raddrinfo.c)
+    - `call_getaddrinfo` (ext/socket/raddrinfo.c) (引数でtimeoutを受け取っているが`rsock_getaddrinfo`に渡していない)
       - `rsock_getaddrinfo` (ext/socket/raddrinfo.c)
 
 #### 共通
