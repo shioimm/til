@@ -203,7 +203,7 @@ class Socket
           while (connectable_socket = connectable_sockets.pop)
             begin
               addrinfo = connecting_sockets.delete connectable_socket
-              connectable_socket.connect_nonblock(addrinfo)
+              connectable_socket.connect_nonblock(addrinfo) # MinGW対応
             rescue Errno::EISCONN # already connected
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
@@ -240,7 +240,7 @@ class Socket
                 # Wait for connection to be established or hostname resolution in next loop
                 connection_attempt_delay_expires_at = nil
               end
-            else
+            else # Ubuntu対応
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
 
