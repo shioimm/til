@@ -1,64 +1,15 @@
 # 2023/12/30 master
 - `rsock_init_socket_init` (ext/socket/init.c)
   - `rsock_init_tcpsocket` (ext/socket/tcpsocket.c) - `TCPSocket`クラス定義
-    - `tcp_init` - `initialize`メソッド定義。引数の処理など
+    - `tcp_init` - Socket系インスタンス生成時に呼ばれる`initialize`メソッド定義。メソッドの引数の処理など
       - `rsock_init_inetsock` (ext/socket/ipsocket.c) - `rb_ensure`の中で`init_inetsock_internal`を呼び出す
         - `init_inetsock_internal`
-          - `rsock_addrinfo` (ext/socket/raddrinfo.c)
+          - `rsock_addrinfo` (ext/socket/raddrinfo.c) (`resolv_timeout`を渡せない)
+            - `rb_getaddrinfo`
           - `rsock_socket` (ext/socket/init.c)
           - `rsock_connect` (ext/socket/init.c)
           - `rsock_init_sock` (ext/socket/init.c)
         - `inetsock_cleanup` (ext/socket/ipsocket.c) - `rb_ensure`の終了処理
-
-```c
-// ext/socket/tcpsocket.c
-
-void
-rsock_init_tcpsocket(void)
-{
-  // ...
-  rb_cTCPSocket = rb_define_class("TCPSocket", rb_cIPSocket);
-  // ...
-  // メソッドの引数はCの配列として第二引数に入れて渡される
-  rb_define_method(rb_cTCPSocket, "initialize", tcp_init, -1);
-}
-```
-
-```c
-// ext/socket/tcpsocket.c
-
-// 引数を確認して rsock_init_inetsock() を呼び出す
-static VALUE
-tcp_init(int argc, VALUE *argv, VALUE sock)
-{
-  VALUE remote_host, remote_serv;
-  VALUE local_host, local_serv;
-  VALUE opt;
-  static ID keyword_ids[2];
-  VALUE kwargs[2];
-  VALUE resolv_timeout = Qnil;
-  VALUE connect_timeout = Qnil;
-
-  if (!keyword_ids[0]) {
-    CONST_ID(keyword_ids[0], "resolv_timeout");
-    CONST_ID(keyword_ids[1], "connect_timeout");
-  }
-
-  rb_scan_args(argc, argv, "22:",
-               &remote_host, &remote_serv,
-               &local_host, &local_serv, &opt);
-
-  if (!NIL_P(opt)) {
-    rb_get_kwargs(opt, keyword_ids, 0, 2, kwargs);
-    if (kwargs[0] != Qundef) { resolv_timeout = kwargs[0]; }
-    if (kwargs[1] != Qundef) { connect_timeout = kwargs[1]; }
-  }
-
-  return rsock_init_inetsock(sock, remote_host, remote_serv,
-                             local_host, local_serv, INET_CLIENT,
-                             resolv_timeout, connect_timeout);
-}
-```
 
 ```c
 // ext/socket/ipsocket.c
@@ -71,6 +22,22 @@ rsock_init_inetsock(
   VALUE remote_host,
   VALUE remote_serv,
   VALUE local_host,
+  VALUE local_serv,
+  int type,
+  VALUE resolv_timeout,
+  VALUE connect_timeout
+)
+{
+  struct inetsock_arg arg;
+  arg.sock = sock;
+  arg.remote.host = remote_host;
+  arg.remote.serv = remote_serv;
+  arg.remote.res = 0;
+  arg.local.host = local_host;
+  arg.local.serv = local_serv;
+  arg.local.res = 0;
+  arg.type = type;
+  arg.fd = -1;
   VALUE local_serv,
   int type,
   VALUE resolv_timeout,
@@ -100,8 +67,6 @@ rsock_init_inetsock(
 ```
 
 ```c
-// ext/socket/ipsocket.c
-
 struct inetsock_arg
 {
   VALUE sock;
@@ -121,30 +86,6 @@ struct inetsock_arg
   VALUE resolv_timeout;
   VALUE connect_timeout;
 };
-
-// 終了処理
-//   freeaddrinfo()を実行
-//   fdを閉じる
-static VALUE
-inetsock_cleanup(VALUE v)
-{
-  struct inetsock_arg *arg = (void *)v;
-
-  if (arg->remote.res) {
-    rb_freeaddrinfo(arg->remote.res);
-    arg->remote.res = 0;
-  }
-
-  if (arg->local.res) {
-    rb_freeaddrinfo(arg->local.res);
-    arg->local.res = 0;
-  }
-
-  if (arg->fd >= 0) {
-    close(arg->fd);
-  }
-  return Qnil;
-}
 
 // シーケンシャルかつ同期的にアドレス解決・接続を試行し、接続に成功したソケットを rsock_init_sock() に渡す
 static VALUE
@@ -178,7 +119,7 @@ init_inetsock_internal(VALUE v)
   arg->remote.res = rsock_addrinfo(
     arg->remote.host, // host (VALUE)
     arg->remote.serv, // port (VALUE)
-    family,           // family
+    family,           // family (AF_UNSPEC)
     SOCK_STREAM,      // socktype
     (type == INET_SERVER) ? AI_PASSIVE : 0 // flags
   );
@@ -199,7 +140,9 @@ init_inetsock_internal(VALUE v)
 
   arg->fd = fd = -1;
 
-  // addrinfo を順に試行する
+  // ----------------------------------
+  // 取得したaddrinfoで順に接続試行する
+  // ----------------------------------
   for (res = arg->remote.res->ai; res; res = res->ai_next) {
 
 #if !defined(INET6) && defined(AF_INET6)
@@ -248,7 +191,7 @@ init_inetsock_internal(VALUE v)
 
     arg->fd = fd;
 
-    if (type == INET_SERVER) {
+    if (type == INET_SERVER) { // type == INET_SERVERの処理は変更不要 ...
       // ...
     } else { // TCPSocket.new の場合typeは INET_CLIENT なのでここ
       // local_host の指定がある場合は取得したアドレスのaddrinfoとbind
@@ -556,3 +499,41 @@ wait_connectable(int fd, struct timeval *timeout)
   return 0;
 }
 ```
+
+```c
+// ext/socket/ipsocket.c
+
+// 終了処理
+//   freeaddrinfo()を実行
+//   fdを閉じる
+static VALUE
+inetsock_cleanup(VALUE v)
+{
+  struct inetsock_arg *arg = (void *)v;
+
+  if (arg->remote.res) {
+    rb_freeaddrinfo(arg->remote.res);
+    arg->remote.res = 0;
+  }
+
+  if (arg->local.res) {
+    rb_freeaddrinfo(arg->local.res);
+    arg->local.res = 0;
+  }
+
+  if (arg->fd >= 0) {
+    close(arg->fd);
+  }
+  return Qnil;
+}
+```
+
+- 条件変数ではなくpipe + selectで待ち合わせる`rb_getaddrinfo2`を追加する必要あり
+  - `Socket.tcp`の`hostname_resolution`メソッドのように使う
+  - 既存の`rb_getaddrinfo`は置き換えない
+- `rsock_init_inetsock`の中で`INET_SERVER`と処理を分ける必要あり (クライアント専用の`init_inetsock_internal`をつくる)
+- `rb_getaddrinfo`は`rsock_addrinfo`から呼び出されているが
+  `rsock_addrinfo`は`rb_getaddrinfo`に渡すhints (addrinfo構造体) を用意しているだけなので
+  `rb_getaddrinfo2`の中でやっても良さそう
+- pthreadが使えない環境では普通にメインスレッドで`rsock_addrinfo` + `rb_getaddrinfo`を使って名前解決すれば良さそう
+  - `rb_getaddrinfo`はpthreadがない環境にも対応しているので
