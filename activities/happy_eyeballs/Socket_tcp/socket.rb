@@ -40,6 +40,7 @@ class Socket
     state = :start
     connected_socket = nil
     last_error = nil
+    is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     if local_host && local_port
       local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
@@ -201,21 +202,27 @@ class Socket
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
-            begin
-              addrinfo = connecting_sockets.delete connectable_socket
-              connectable_socket.connect_nonblock(addrinfo) # MinGW対応
-            rescue Errno::EISCONN # already connected
+            is_connected =
+              if is_windows_environment
+                sockopt = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
+                sockopt.unpack('i').first >= 0
+              else
+                sockopt = connectable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+                sockopt.int.zero?
+              end
+
+            if is_connected
               connected_socket = connectable_socket
               connecting_sockets.delete connectable_socket
-
               connectable_sockets.each do |other_connectable_socket|
                 other_connectable_socket.close unless other_connectable_socket.closed?
               end
-
               state = :success
               break
-            rescue => e
-              last_error = e
+            else
+              failed_ai = connecting_sockets.delete connectable_socket
+              inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+              last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
               connectable_socket.close unless connectable_socket.closed?
 
               next if connectable_sockets.any?
