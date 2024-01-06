@@ -1,7 +1,7 @@
-# スレッド関連
+# `rb_nativethread_lock_lock` / `rb_nativethread_lock_unlock`
+- `include/ruby/thread_native.h` / `thread.c`
 
 ```c
-// Blocks until the current thread obtains a lock.
 // このスレッドがロックを獲得するまで待つ
 void rb_nativethread_lock_lock(rb_nativethread_lock_t *lock);
 void rb_native_mutex_lock(rb_nativethread_lock_t *lock);
