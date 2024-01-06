@@ -120,7 +120,7 @@ rb_getaddrinfo2_test(int argc, VALUE *argv, VALUE self)
     res->allocated_by_malloc = 0;
     res->ai = ai;
 
-    // 取得したaddrinfoからRubyオブジェクトを作成
+    // 取得したaddrinfoを表示
     struct addrinfo *r;
     for (r = res->ai; r; r = r->ai_next) {
       printf("r->ai_addr %p\n", r->ai_addr);
@@ -140,7 +140,7 @@ rsock_init_addrinfo(void)
 }
 ```
 
-```c
+```ruby
 # test/socket/test_addrinfo.rb
 
 def test_rb_getaddrinfo2_test
