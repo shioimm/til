@@ -1,4 +1,4 @@
-# 実装3
+# 2024/1/5
 - `GETADDRINFO_IMPL == 1`とinterruptable getaddrinfo導入前の`rsock_getaddrinfo`を参考に
   名前解決用の関数をシングルスレッドで行うようにした
 - 動作確認のため、`Addrinfo.rb_getaddrinfo2_test`の返り値を`Addrinfo`オブジェクトにした

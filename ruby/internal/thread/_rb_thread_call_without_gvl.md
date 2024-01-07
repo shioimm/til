@@ -26,6 +26,11 @@ void *rb_thread_call_without_gvl(
 5. GVLを取得 (これにより、他のRubyスレッドは並列に実行不可能になる)
 6. `void *(*func)(void *)`の返り値 (中断された場合は0) を返す
 
+```c
+// 使い方
+VALUE ret = (VALUE)rb_thread_call_without_gvl(<C API>, &arg, RUBY_UBF_IO, 0);
+```
+
 #### `rb_thread_call_without_gvl2`
 - `rb_thread_call_without_gvl`と大体同じ
 - シグナルによる割り込みに反応しない
@@ -48,6 +53,11 @@ void *rb_thread_call_without_gvl2(
     - 中断された場合、どこで中断されたかにかかわらず即座に返る
 5. GVLを取得 (これにより、他のRubyスレッドは並列に実行不可能になる)
 6. `void *(*func)(void *)`の返り値 (中断された場合は0) を返す
+
+```c
+// 使い方
+VALUE ret = (VALUE)rb_thread_call_without_gvl2(<C API>, &arg, RUBY_UBF_IO, 0);
+```
 
 #### UBF
 - `void *(*func)(void *)` の呼び出しをキャンセルするか、キャンセルフラグを立てて実行を中断するための関数

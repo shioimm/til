@@ -1,4 +1,4 @@
-# 実装2
+# 2024/1/4
 - `Addrinfo.getaddrinfo`を同じインターフェースで`Addrinfo.rb_getaddrinfo2_test`を呼び出せるようにした
 - `rb_getaddrinfo`を`rb_getaddrinfo2`にコピーし、この後改修するための雛形を作った
 
