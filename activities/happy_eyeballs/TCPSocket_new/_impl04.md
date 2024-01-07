@@ -1,8 +1,6 @@
-# 2024/1/6
-- 関数名を実態に合わせて変更
-- mainから`rb_getaddrinfo2`を呼ぶ際の引数にパイプを追加し、名前解決終了時にパイプへの書き込みを行うように変更
-- mainではパイプへの書き込みをselectで待つように変更
-- `rb_getaddrinfo`の実行をスレッドの中で行うように変更
+# 2024/1/7
+- 名前解決の待機を`rb_thread_call_without_gvl2`の中で行うように変更
+- 待機中の中断処理を追加
 
 ```c
 # ext/socket/raddrinfo.c
@@ -18,6 +16,7 @@ struct rb_getaddrinfo2_arg
     const struct addrinfo *hints;
     struct addrinfo **ai;
     int writer; // 追加
+    int cancelled; // 追加
 };
 
 // GETADDRINFO_IMPL == 1のnogvl_getaddrinfoとrsock_getaddrinfoを参考にしている
@@ -34,9 +33,36 @@ rb_getaddrinfo2(void *ptr)
     if (ret == EAI_SYSTEM && errno == ENOENT)
         ret = EAI_NONAME;
 #endif
-    // 名前解決が終了したら書き込み
-    write(arg->writer, HOSTNAME_RESOLUTION_PIPE_UPDATED, strlen(HOSTNAME_RESOLUTION_PIPE_UPDATED));
+    if (arg->cancelled) {
+      freeaddrinfo(*arg->ai);
+    } else {
+      write(arg->writer, HOSTNAME_RESOLUTION_PIPE_UPDATED, strlen(HOSTNAME_RESOLUTION_PIPE_UPDATED));
+    }
     return (void *)(VALUE)ret;
+}
+
+struct wait_rb_getaddrinfo2_arg
+{
+    int reader;
+    int retval;
+    fd_set *rfds;
+};
+
+static void *
+wait_rb_getaddrinfo2(void *ptr)
+{
+    struct wait_rb_getaddrinfo2_arg *arg = (struct wait_rb_getaddrinfo2_arg *)ptr;
+    int retval;
+    retval = select(arg->reader + 1, arg->rfds, NULL, NULL, NULL);
+    arg->retval = retval;
+    return 0;
+}
+
+static void
+cancel_rb_getaddrinfo2(void *ptr)
+{
+    struct rb_getaddrinfo2_arg *arg = (struct rb_getaddrinfo2_arg *)ptr;
+    arg->cancelled = 1;
 }
 
 static VALUE
@@ -105,7 +131,13 @@ rb_getaddrinfo2_main(int argc, VALUE *argv, VALUE self)
     // getaddrinfoの待機
     int retval;
     fd_set rfds;
-    retval = select(pipefd[0] + 1, &rfds, NULL, NULL, NULL);
+    struct wait_rb_getaddrinfo2_arg wait_arg;
+    MEMZERO(&wait_arg, struct wait_rb_getaddrinfo2_arg, 1);
+    wait_arg.rfds = &rfds;
+    wait_arg.reader = pipefd[0];
+    rb_thread_call_without_gvl2(wait_rb_getaddrinfo2, &wait_arg, cancel_rb_getaddrinfo2, &arg);
+
+    retval = wait_arg.retval;
 
     if (retval < 0){
         perror("select()");
