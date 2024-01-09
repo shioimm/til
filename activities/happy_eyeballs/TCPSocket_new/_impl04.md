@@ -1,6 +1,7 @@
-# 2024/1/7
+# 2024/1/7 - 2024/1/8
 - 名前解決の待機を`rb_thread_call_without_gvl2`の中で行うように変更
 - 待機中の中断処理を追加
+- 名前解決のエラーハンドリングを追加
 
 ```c
 # ext/socket/raddrinfo.c
@@ -16,29 +17,39 @@ struct rb_getaddrinfo2_arg
     const struct addrinfo *hints;
     struct addrinfo **ai;
     int writer; // 追加
-    int cancelled; // 追加
+    int err, cancelled; // 追加
+    rb_nativethread_lock_t lock;
 };
 
 // GETADDRINFO_IMPL == 1のnogvl_getaddrinfoとrsock_getaddrinfoを参考にしている
 static void *
 rb_getaddrinfo2(void *ptr)
 {
-    int ret;
     struct rb_getaddrinfo2_arg *arg = (struct rb_getaddrinfo2_arg *)ptr;
-    ret = getaddrinfo(arg->node, arg->service, arg->hints, arg->ai);
+
+    int err;
+    err = getaddrinfo(arg->node, arg->service, arg->hints, arg->ai);
 #ifdef __linux__
     /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
      * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
      */
-    if (ret == EAI_SYSTEM && errno == ENOENT)
-        ret = EAI_NONAME;
+    if (err == EAI_SYSTEM && errno == ENOENT)
+        err = EAI_NONAME;
 #endif
-    if (arg->cancelled) {
-      freeaddrinfo(*arg->ai);
-    } else {
-      write(arg->writer, HOSTNAME_RESOLUTION_PIPE_UPDATED, strlen(HOSTNAME_RESOLUTION_PIPE_UPDATED));
+
+    rb_nativethread_lock_lock(&arg->lock);
+    {
+        arg->err = err;
+        if (arg->cancelled) {
+            freeaddrinfo(*arg->ai);
+        }
+        else {
+            write(arg->writer, HOSTNAME_RESOLUTION_PIPE_UPDATED, strlen(HOSTNAME_RESOLUTION_PIPE_UPDATED));
+        }
     }
-    return (void *)(VALUE)ret;
+    rb_nativethread_lock_unlock(&arg->lock);
+
+    return 0;
 }
 
 struct wait_rb_getaddrinfo2_arg
@@ -101,16 +112,20 @@ rb_getaddrinfo2_main(int argc, VALUE *argv, VALUE self)
     hostp = host_str(node, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(service, pbuf, sizeof(pbuf), &additional_flags);
 
-    int pipefd[2];
-    pipe(pipefd);
-
     struct rb_getaddrinfo2_arg arg;
     MEMZERO(&arg, struct rb_getaddrinfo2_arg, 1);
     arg.node = hostp;
     arg.service = portp;
     arg.hints = &hints;
     arg.ai = &ai;
+
+    int pipefd[2];
+    pipe(pipefd);
     arg.writer = pipefd[1];
+
+    rb_nativethread_lock_t lock;
+    rb_nativethread_lock_initialize(&lock);
+    arg.lock = lock;
 
     // getaddrinfoの実行
     pthread_attr_t attr;
@@ -140,45 +155,51 @@ rb_getaddrinfo2_main(int argc, VALUE *argv, VALUE self)
     retval = wait_arg.retval;
 
     if (retval < 0){
-        perror("select()");
+        // selectの実行失敗。SystemCallError?
+        rsock_raise_resolution_error("rb_getaddrinfo2_main", EAI_SYSTEM);
     }
     else if (retval > 0){
-        char result[4];
-        read(pipefd[0], result, sizeof result);
-        if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) == 0) {
-          printf("\nHostname resolurion finished\n");
+        if (arg.err == 0) {
+            char result[4];
+            read(pipefd[0], result, sizeof result);
+            if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) == 0) {
+              printf("\nHostname resolurion finished\n");
 
-          // 動作確認のため取得したaddrinfoからRubyオブジェクトを作成
-          struct rb_addrinfo *res;
-          res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-          res->allocated_by_malloc = 0;
-          res->ai = ai;
-          struct addrinfo *r;
-          VALUE inspectname = make_inspectname(node, service, res->ai);
-          VALUE ret = rb_ary_new();
-          for (r = res->ai; r; r = r->ai_next) {
-              VALUE addr;
-              VALUE canonname = Qnil;
+              // 動作確認のため取得したaddrinfoからRubyオブジェクトを作成
+              struct rb_addrinfo *res;
+              res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+              res->allocated_by_malloc = 0;
+              res->ai = ai;
+              struct addrinfo *r;
+              VALUE inspectname = make_inspectname(node, service, res->ai);
+              VALUE ret = rb_ary_new();
+              for (r = res->ai; r; r = r->ai_next) {
+                  VALUE addr;
+                  VALUE canonname = Qnil;
 
-              if (r->ai_canonname) {
-                  canonname = rb_str_new_cstr(r->ai_canonname);
-                  OBJ_FREEZE(canonname);
+                  if (r->ai_canonname) {
+                      canonname = rb_str_new_cstr(r->ai_canonname);
+                      OBJ_FREEZE(canonname);
+                  }
+
+                  addr = rsock_addrinfo_new(r->ai_addr, r->ai_addrlen,
+                                            r->ai_family, r->ai_socktype, r->ai_protocol,
+                                            canonname, inspectname);
+
+                  rb_ary_push(ret, addr);
+                  printf("r->ai_addr %p\n", r->ai_addr);
               }
 
-              addr = rsock_addrinfo_new(r->ai_addr, r->ai_addrlen,
-                                        r->ai_family, r->ai_socktype, r->ai_protocol,
-                                        canonname, inspectname);
-
-              rb_ary_push(ret, addr);
-              printf("r->ai_addr %p\n", r->ai_addr);
-          }
-
-          // 後処理
-          rb_freeaddrinfo(res);
-          return ret;
+              // 後処理
+              rb_freeaddrinfo(res);
+              return ret;
+            }
+            else {
+              rsock_raise_resolution_error("rb_getaddrinfo2_main", arg.err);
+            }
         }
         else {
-          // TODO: 書き込まれた値を確認した上でraiseするようにした方が良い
+          // selectの返り値が0 = 時間切れの場合。いったんこのまま
           return Qnil;
         }
     }
