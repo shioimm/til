@@ -20,7 +20,7 @@ struct rb_getaddrinfo2_arg
     rb_nativethread_lock_t lock;
 };
 
-static struct rb_getaddrinfo2_arg *
+struct rb_getaddrinfo2_arg *
 allocate_rb_getaddrinfo2_arg(const char *hostp, const char *portp, const struct addrinfo *hints)
 {
     size_t hostp_offset = sizeof(struct rb_getaddrinfo2_arg);
@@ -58,14 +58,14 @@ allocate_rb_getaddrinfo2_arg(const char *hostp, const char *portp, const struct 
     return arg;
 }
 
-static void
+void
 free_rb_getaddrinfo2_arg(struct rb_getaddrinfo2_arg *arg)
 {
     free(arg);
 }
 
 // GETADDRINFO_IMPL == 1のnogvl_getaddrinfoとrsock_getaddrinfoを参考にしている
-static void *
+void *
 do_rb_getaddrinfo2(void *ptr)
 {
     struct rb_getaddrinfo2_arg *arg = (struct rb_getaddrinfo2_arg *)ptr;
@@ -106,7 +106,7 @@ struct wait_rb_getaddrinfo2_arg
     fd_set *rfds;
 };
 
-static void *
+void *
 wait_rb_getaddrinfo2(void *ptr)
 {
     struct wait_rb_getaddrinfo2_arg *arg = (struct wait_rb_getaddrinfo2_arg *)ptr;
@@ -116,7 +116,7 @@ wait_rb_getaddrinfo2(void *ptr)
     return 0;
 }
 
-static void
+void
 cancel_rb_getaddrinfo2(void *ptr)
 {
     struct rb_getaddrinfo2_arg *arg = (struct rb_getaddrinfo2_arg *)ptr;
@@ -127,7 +127,7 @@ cancel_rb_getaddrinfo2(void *ptr)
     rb_nativethread_lock_unlock(&arg->lock);
 }
 
-static VALUE
+VALUE
 rb_getaddrinfo2_main(int argc, VALUE *argv, VALUE self)
 {
     // 引数の処理
