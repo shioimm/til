@@ -43,7 +43,6 @@ init_inetsock_internal_happy(VALUE v)
     arg->remote.res = rsock_addrinfo(arg->remote.host, arg->remote.serv,
                                      family, SOCK_STREAM, remote_addrinfo_hints);
 
-
     /*
      * Maybe also accept a local address
      */
