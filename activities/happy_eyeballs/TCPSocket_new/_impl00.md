@@ -1,5 +1,6 @@
 # 2024/1/12
-- 一旦`init_inetsock_internal`の実装をコピー
+- 一旦`init_inetsock_internal`の実装をコピーし、typeによる不要な分岐を削除
+  - `init_inetsock_internal_happy`はtypeが`INET_CLIENT`の場合にのみ呼ばれるため
 
 ```c
 // ext/socket/ipsocket.c
@@ -10,20 +11,17 @@
      !defined(__MINGW32__) && !defined(__MINGW64__) && \
      defined(F_SETFL) && defined(F_GETFL)
 #    include "ruby/thread_native.h"
-#    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 0
-#  else
 #    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 1
+#  else
+#    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 0
 #  endif
 #endif
 
-// HEv2用
-#if HAPPY_EYEBALLS_INIT_INETSOCK_IMPL == 0
 static VALUE
-init_inetsock_internal(VALUE v)
+init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_arg *arg = (void *)v;
     int error = 0;
-    int type = arg->type;
     struct addrinfo *res, *lres;
     int fd, status = 0, local = 0;
     int family = AF_UNSPEC;
@@ -38,9 +36,6 @@ init_inetsock_internal(VALUE v)
         tv = &tv_storage;
     }
 
-    if (type == INET_SERVER) {
-      remote_addrinfo_hints |= AI_PASSIVE;
-    }
 #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
 #endif
@@ -53,7 +48,7 @@ init_inetsock_internal(VALUE v)
      * Maybe also accept a local address
      */
 
-    if (type != INET_SERVER && (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv))) {
+    if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
         arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
                                         family, SOCK_STREAM, 0);
     }
@@ -86,32 +81,21 @@ init_inetsock_internal(VALUE v)
             continue;
         }
         arg->fd = fd;
-        if (type == INET_SERVER) {
+        if (lres) {
 #if !defined(_WIN32) && !defined(__CYGWIN__)
             status = 1;
             setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                        (char*)&status, (socklen_t)sizeof(status));
 #endif
-            status = bind(fd, res->ai_addr, res->ai_addrlen);
+            status = bind(fd, lres->ai_addr, lres->ai_addrlen);
+            local = status;
             syscall = "bind(2)";
         }
-        else {
-            if (lres) {
-#if !defined(_WIN32) && !defined(__CYGWIN__)
-                status = 1;
-                setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                           (char*)&status, (socklen_t)sizeof(status));
-#endif
-                status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-                local = status;
-                syscall = "bind(2)";
-            }
 
-            if (status >= 0) {
-                status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
-                                       (type == INET_SOCKS), tv);
-                syscall = "connect(2)";
-            }
+        if (status >= 0) {
+            status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
+                                   false, tv);
+            syscall = "connect(2)";
         }
 
         if (status < 0) {
@@ -138,24 +122,10 @@ init_inetsock_internal(VALUE v)
 
     arg->fd = -1;
 
-    if (type == INET_SERVER) {
-        status = listen(fd, SOMAXCONN);
-        if (status < 0) {
-            error = errno;
-            close(fd);
-            rb_syserr_fail(error, "listen(2)");
-        }
-    }
-
     /* create new instance */
     return rsock_init_sock(arg->sock, fd);
 }
 
-#elif HAPPY_EYEBALLS_INIT_INETSOCK_IMPL == 1
-// 従来のinit_inetsock_internal
-#endif
-
-// 変更なし
 VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
@@ -173,7 +143,13 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.fd = -1;
     arg.resolv_timeout = resolv_timeout;
     arg.connect_timeout = connect_timeout;
-    return rb_ensure(init_inetsock_internal, (VALUE)&arg,
-                     inetsock_cleanup, (VALUE)&arg);
+
+    if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
+      return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
+                       inetsock_cleanup, (VALUE)&arg);
+    } else {
+      return rb_ensure(init_inetsock_internal, (VALUE)&arg,
+                       inetsock_cleanup, (VALUE)&arg);
+    }
 }
 ```
