@@ -1,4 +1,6 @@
-# 2024/1/15
+# 2024/1/16
+- `getaddrinfo/_impl07`を使用
+- 引数の準備
 
 ```c
 // ext/socket/ipsocket.c
@@ -20,7 +22,6 @@ init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_arg *arg = (void *)v;
     int error = 0;
-    int type = arg->type;
     struct addrinfo *res, *lres;
     int fd, status = 0, local = 0;
     int family = AF_UNSPEC;
@@ -35,22 +36,33 @@ init_inetsock_internal_happy(VALUE v)
         tv = &tv_storage;
     }
 
-    if (type == INET_SERVER) {
-      remote_addrinfo_hints |= AI_PASSIVE;
-    }
 #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
 #endif
 
+    // HEv2 ----------------------------------------------
+    struct addrinfo hints;
+    MEMZERO(&hints, struct addrinfo, 1);
+    hints.ai_family = family;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = remote_addrinfo_hints;
+
+    char *hostp, *portp;
+    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+    int additional_flags = 0;
+    hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
+    portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+    // ---------------------------------------------------
+
     arg->remote.res = rsock_addrinfo(arg->remote.host, arg->remote.serv,
                                      family, SOCK_STREAM, remote_addrinfo_hints);
-
 
     /*
      * Maybe also accept a local address
      */
 
-    if (type != INET_SERVER && (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv))) {
+    if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
         arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
                                         family, SOCK_STREAM, 0);
     }
@@ -83,32 +95,21 @@ init_inetsock_internal_happy(VALUE v)
             continue;
         }
         arg->fd = fd;
-        if (type == INET_SERVER) {
+        if (lres) {
 #if !defined(_WIN32) && !defined(__CYGWIN__)
             status = 1;
             setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                        (char*)&status, (socklen_t)sizeof(status));
 #endif
-            status = bind(fd, res->ai_addr, res->ai_addrlen);
+            status = bind(fd, lres->ai_addr, lres->ai_addrlen);
+            local = status;
             syscall = "bind(2)";
         }
-        else {
-            if (lres) {
-#if !defined(_WIN32) && !defined(__CYGWIN__)
-                status = 1;
-                setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                           (char*)&status, (socklen_t)sizeof(status));
-#endif
-                status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-                local = status;
-                syscall = "bind(2)";
-            }
 
-            if (status >= 0) {
-                status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
-                                       (type == INET_SOCKS), tv);
-                syscall = "connect(2)";
-            }
+        if (status >= 0) {
+            status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
+                                   false, tv);
+            syscall = "connect(2)";
         }
 
         if (status < 0) {
@@ -134,15 +135,6 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     arg->fd = -1;
-
-    if (type == INET_SERVER) {
-        status = listen(fd, SOMAXCONN);
-        if (status < 0) {
-            error = errno;
-            close(fd);
-            rb_syserr_fail(error, "listen(2)");
-        }
-    }
 
     /* create new instance */
     return rsock_init_sock(arg->sock, fd);
@@ -174,4 +166,25 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                        inetsock_cleanup, (VALUE)&arg);
     }
 }
+```
+
+```c
+// ext/socket/rubysocket.h
+
+// 追加 -------------------
+char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
+char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
+
+struct rb_getaddrinfo_happy_arg
+{
+    char *node, *service;
+    struct addrinfo hints;
+    struct addrinfo *ai;
+    int err, refcount, cancelled;
+    int writer;
+    rb_nativethread_lock_t lock;
+};
+
+struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
+// -------------------------
 ```
