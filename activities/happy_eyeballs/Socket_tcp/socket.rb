@@ -81,7 +81,10 @@ class Socket
           family_name, res = hostname_resolution_queue.get
 
           if res.is_a? Exception
-            last_error = res unless ignoreable_error?(res)
+            unless ignoreable_error?(res)
+              last_error = res
+            end
+
             if hostname_resolution_retry_count.zero?
               state = :failure
               break
@@ -247,16 +250,6 @@ class Socket
                 # Wait for connection to be established or hostname resolution in next loop
                 connection_attempt_delay_expires_at = nil
               end
-            else # Ubuntu対応
-              connected_socket = connectable_socket
-              connecting_sockets.delete connectable_socket
-
-              connectable_sockets.each do |other_connectable_socket|
-                other_connectable_socket.close unless other_connectable_socket.closed?
-              end
-
-              state = :success
-              break
             end
           end
         elsif hostname_resolved&.any?
