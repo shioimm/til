@@ -19,7 +19,7 @@ class Socket
   HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
   private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
 
-  def self.tcp(host, port, local_host = nil, local_port = nil, resolv_timeout: nil, connect_timeout: nil)
+  def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil) # :yield: socket
     # Happy Eyeballs' states
     # - :start
     # - :v6c
@@ -42,9 +42,19 @@ class Socket
     last_error = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
+    if host.chars.count { |c| c == ':' } >= 2
+      specified_family_name = :ipv6
+      next_state = :v6c
+    elsif host.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/
+      specified_family_name = :ipv4
+      next_state = :v4c
+    else
+      specified_family_name = nil
+    end
+
     if local_host && local_port
-      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
-      resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }
+      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM, nil)
+      resolving_family_names = specified_family_name.nil? ? local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) } : []
     else
       local_addrinfos = []
       resolving_family_names = ADDRESS_FAMILIES.keys
@@ -55,6 +65,13 @@ class Socket
     ret = loop do
       case state
       when :start
+        if specified_family_name
+          addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+          selectable_addrinfos.add(specified_family_name, addrinfos)
+          state = next_state
+          next
+        end
+
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args = [host, port, hostname_resolution_queue]
 
@@ -81,7 +98,10 @@ class Socket
           family_name, res = hostname_resolution_queue.get
 
           if res.is_a? Exception
-            last_error = res unless ignoreable_error?(res)
+            unless ignoreable_error?(res)
+              last_error = res
+            end
+
             if hostname_resolution_retry_count.zero?
               state = :failure
               break
@@ -90,7 +110,7 @@ class Socket
           else
             state = case family_name
                     when :ipv6 then :v6c
-                    when :ipv4 then hostname_resolution_queue.rpipe.closed? ? :v4c : :v4w
+                    when :ipv4 then hostname_resolution_queue.rpipe_closed? ? :v4c : :v4w
                     end
             selectable_addrinfos.add(family_name, res)
             last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
@@ -121,7 +141,7 @@ class Socket
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
             if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-              if !hostname_resolution_queue.rpipe.closed? && !wait_for_hostname_resolution_patiently
+              if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
                 wait_for_hostname_resolution_patiently = true
                 connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
                 state = :v46w
@@ -166,7 +186,7 @@ class Socket
           socket.close unless socket.closed?
 
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-            if !hostname_resolution_queue.rpipe.closed? && !wait_for_hostname_resolution_patiently
+            if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
               wait_for_hostname_resolution_patiently = true
               connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
               state = :v46w
@@ -197,7 +217,7 @@ class Socket
         end
 
         remaining = second_to_timeout(connection_attempt_delay_expires_at)
-        rpipe = hostname_resolution_queue.rpipe.closed? ? nil : [hostname_resolution_queue.rpipe]
+        rpipe = hostname_resolution_queue.rpipe_closed? ? nil : [hostname_resolution_queue.rpipe]
         hostname_resolved, connectable_sockets, = IO.select(rpipe, connecting_sockets.all, nil, remaining)
 
         if connectable_sockets&.any?
@@ -228,7 +248,7 @@ class Socket
               next if connectable_sockets.any?
 
               if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-                if !hostname_resolution_queue.rpipe.closed? && !wait_for_hostname_resolution_patiently
+                if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
                   wait_for_hostname_resolution_patiently = true
                   connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
                 else
@@ -247,16 +267,6 @@ class Socket
                 # Wait for connection to be established or hostname resolution in next loop
                 connection_attempt_delay_expires_at = nil
               end
-            else # Ubuntu対応
-              connected_socket = connectable_socket
-              connecting_sockets.delete connectable_socket
-
-              connectable_sockets.each do |other_connectable_socket|
-                other_connectable_socket.close unless other_connectable_socket.closed?
-              end
-
-              state = :success
-              break
             end
           end
         elsif hostname_resolved&.any?
@@ -378,10 +388,13 @@ class Socket
   end
   private_constant :SelectableAddrinfos
 
+  # TODO IPアドレスを受け取った場合はクラスごと分けるようにする (Null Objectっぽくする)
   class HostnameResolutionQueue
     attr_reader :rpipe
 
     def initialize(size)
+      return if size.zero?
+
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
@@ -422,7 +435,15 @@ class Socket
       @queue.empty?
     end
 
+    def rpipe_closed?
+      return true if @rpipe.nil?
+
+      @rpipe.closed?
+    end
+
     def close_all
+      return @rpipe.nil?
+
       @queue.close unless @queue.closed?
       @rpipe.close unless @rpipe.closed?
       @wpipe.close unless @wpipe.closed?

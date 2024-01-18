@@ -250,6 +250,32 @@ class SocketTest < Minitest::Test
     connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
+  def test_that_returns_IPv6_connected_socket_when_IPv6_address_passed
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
+
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |*_|
+      [Addrinfo.tcp("::1", port)]
+    end
+
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp('::1', port)
+
+    assert_equal(
+      connected_socket.remote_address.ipv6?,
+      true
+    )
+  ensure
+    server_thread.value.close
+    server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
+  end
+
   def test_that_raises_last_error_with_failing_all_hostname_resolutions
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
