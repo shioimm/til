@@ -60,7 +60,11 @@ class Socket
       resolving_family_names = ADDRESS_FAMILIES.keys
     end
 
-    hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+    hostname_resolution_queue = if resolving_family_names.size.zero?
+                                  DummyQueue.new
+                                else
+                                  HostnameResolutionQueue.new(resolving_family_names.size)
+                                end
 
     ret = loop do
       case state
@@ -388,13 +392,39 @@ class Socket
   end
   private_constant :SelectableAddrinfos
 
-  # TODO IPアドレスを受け取った場合はクラスごと分けるようにする (Null Objectっぽくする)
+  class DummyQueue
+    attr_reader :rpipe
+
+    def add_resolved(_, _)
+      raise StandardError, "This #{self.class} cannot respond to:"
+    end
+
+    def add_error(_, _)
+      raise StandardError, "This #{self.class} cannot respond to:"
+    end
+
+    def get
+      nil
+    end
+
+    def empty?
+      true
+    end
+
+    def rpipe_closed?
+      true
+    end
+
+    def close_all
+      # Do nothing
+    end
+  end
+  private_constant :DummyQueue
+
   class HostnameResolutionQueue
     attr_reader :rpipe
 
     def initialize(size)
-      return if size.zero?
-
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
@@ -436,14 +466,10 @@ class Socket
     end
 
     def rpipe_closed?
-      return true if @rpipe.nil?
-
       @rpipe.closed?
     end
 
     def close_all
-      return @rpipe.nil?
-
       @queue.close unless @queue.closed?
       @rpipe.close unless @rpipe.closed?
       @wpipe.close unless @wpipe.closed?
