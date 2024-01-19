@@ -42,6 +42,12 @@ class Socket
     last_error = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
+
+    # TODO
+    # - クライアントホストがシングルスタックの場合もメインスレッドで名前解決する
+    #   - HostnameResolutionQueueは使わない
+    # - メインスレッドで名前解決した上でIPアドレスが一つしかない場合はconnectを使う
+    #   - ConnectingSocketsは使わない
     if host.chars.count { |c| c == ':' } >= 2
       specified_family_name = :ipv6
       next_state = :v6c
