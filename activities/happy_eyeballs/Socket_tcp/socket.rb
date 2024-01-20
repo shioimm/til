@@ -375,6 +375,10 @@ class Socket
     def get
       return nil if empty?
 
+      if @addrinfo_dict.size == 1
+        @addrinfo_dict.each { |_, addrinfos| return addrinfos.shift }
+      end
+
       precedences = case @last_family
                     when :ipv4, nil then PRIORITY_ON_V6
                     when :ipv6      then PRIORITY_ON_V4
