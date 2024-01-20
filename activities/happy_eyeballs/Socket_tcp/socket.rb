@@ -42,12 +42,9 @@ class Socket
     last_error = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-
     # TODO
-    # - クライアントホストがシングルスタックの場合もメインスレッドで名前解決する
-    #   - HostnameResolutionQueueは使わない
-    # - メインスレッドで名前解決した上でIPアドレスが一つしかない場合はconnectを使う
-    #   - ConnectingSocketsは使わない
+    # case Remote host: IP address || Local host: IP address || 実行環境のスタック: single
+    #   単一のアドレスファミリを扱う
     if host.chars.count { |c| c == ':' } >= 2
       specified_family_name = :ipv6
       next_state = :v6c
@@ -183,6 +180,9 @@ class Socket
 
         connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
 
+        # TODO
+        # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: empty
+        #   connectを使う
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
           when 0
