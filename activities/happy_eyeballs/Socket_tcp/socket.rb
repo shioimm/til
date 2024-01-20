@@ -67,7 +67,7 @@ class Socket
     end
 
     hostname_resolution_queue = if resolving_family_names.size.zero?
-                                  DummyQueue.new
+                                  NoHostnameResolutionQueue.new
                                 else
                                   HostnameResolutionQueue.new(resolving_family_names.size)
                                 end
@@ -398,7 +398,7 @@ class Socket
   end
   private_constant :SelectableAddrinfos
 
-  class DummyQueue
+  class NoHostnameResolutionQueue
     attr_reader :rpipe
 
     def add_resolved(_, _)
@@ -425,7 +425,7 @@ class Socket
       # Do nothing
     end
   end
-  private_constant :DummyQueue
+  private_constant :NoHostnameResolutionQueue
 
   class HostnameResolutionQueue
     attr_reader :rpipe
