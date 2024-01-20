@@ -35,6 +35,9 @@ class Socket
     wait_for_hostname_resolution_patiently = false
     selectable_addrinfos = SelectableAddrinfos.new
     connecting_sockets = ConnectingSockets.new
+    hostname_resolution_queue = nil
+    hostname_resolution_waiting = nil
+    local_addrinfos = []
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     state = :start
@@ -42,44 +45,26 @@ class Socket
     last_error = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-    # TODO
-    # case Remote host: IP address || Local host: IP address || 実行環境のスタック: single
-    #   単一のアドレスファミリを扱う
-    if host.chars.count { |c| c == ':' } >= 2
-      specified_family_name = :ipv6
-      next_state = :v6c
-    elsif host.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/
-      specified_family_name = :ipv4
-      next_state = :v4c
-    else
-      specified_family_name = nil
-    end
-
-    if local_host && local_port
-      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM, nil)
-      resolving_family_names = specified_family_name.nil? ? local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq : []
-    else
-      local_addrinfos = []
-      resolving_family_names = ADDRESS_FAMILIES.keys
-    end
-
-    hostname_resolution_queue = if resolving_family_names.size.zero?
-                                  NoHostnameResolutionQueue.new
-                                else
-                                  HostnameResolutionQueue.new(resolving_family_names.size)
-                                end
-    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
-
     ret = loop do
       case state
       when :start
+        specified_family_name, next_state = specified_family_name_and_next_state(remote: host, local: local_host)
+
+        if local_host && local_port
+          local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+        end
+
         if specified_family_name
           addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
           selectable_addrinfos.add(specified_family_name, addrinfos)
+          hostname_resolution_queue = NoHostnameResolutionQueue.new
           state = next_state
           next
         end
 
+        resolving_family_names = ADDRESS_FAMILIES.keys
+        hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+        hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args = [host, port, hostname_resolution_queue]
 
@@ -329,12 +314,45 @@ class Socket
       thread&.exit
     end
 
-    hostname_resolution_queue.close_all
+    hostname_resolution_queue&.close_all
 
     connecting_sockets.each do |connecting_socket|
       connecting_socket.close unless connecting_socket.closed?
     end
   end
+
+  def self.specified_family_name_and_next_state(**hostnames)
+    hostnames.each do |_, hostname|
+      next unless hostname
+
+      if    hostname.chars.count { |c| c == ':' } >= 2      then return [:ipv6, :v6c]
+      elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then return [:ipv4, :v4c]
+      end
+    end
+
+    if /^localhost$|
+        ^::1$|
+        ^127\.
+         (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.
+         (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.
+         (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.match?(hostnames[:remote])
+      return nil
+    end
+
+    filtered_ip_addresses = Socket.ip_address_list.reject { |address|
+      address.ipv4_loopback? || address.ipv6_loopback? ||
+      address.ipv4_multicast? || address.ipv6_multicast? ||
+      (address.ipv4? && address.ip_address.start_with?("169.254")) ||
+      (address.ipv6? && address.ip_address.start_with?("fe80"))
+    }
+
+    if    filtered_ip_addresses.all?(&:ipv6?) then return [:ipv6, :v6c]
+    elsif filtered_ip_addresses.all?(&:ipv4?) then return [:ipv4, :v4c]
+    end
+
+    nil
+  end
+  private_class_method :specified_family_name_and_next_state
 
   def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
@@ -532,10 +550,11 @@ class Socket
   end
 end
 
-# HOSTNAME = "www.kame.net"
-# PORT = 80
 HOSTNAME = "localhost"
 PORT = 9292
+
+# HOSTNAME = "www.ruby-lang.org"
+# PORT = 80
 
 # # 名前解決動作確認用 (Connection Attempt Delay以内の遅延)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
@@ -580,7 +599,7 @@ PORT = 9292
 #         if family == Socket::AF_INET6
 #           [Addrinfo.tcp("::1", 9292)]
 #         else
-#           sleep
+#           [Addrinfo.tcp("127.0.0.1", 9292)]
 #         end
 #       else
 #         _getaddrinfo(nodename, service, family)
@@ -589,12 +608,14 @@ PORT = 9292
 #   end
 # end
 #
-# Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
+# local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
+#
+# Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
 #    socket.write "GET / HTTP/1.0\r\n\r\n"
 #    print socket.read
 # end
 
-# Socket.tcp(HOSTNAME, PORT) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
+Socket.tcp(HOSTNAME, PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
