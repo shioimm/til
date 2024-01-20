@@ -48,9 +48,10 @@ class Socket
     ret = loop do
       case state
       when :start
-        specified_family_name, next_state = specified_family_name_and_next_state(remote: host, local: local_host)
+        specified_family_name, next_state = specified_family_name_and_next_state(host)
 
         if local_host && local_port
+          specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
           local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
         end
 
@@ -321,36 +322,12 @@ class Socket
     end
   end
 
-  def self.specified_family_name_and_next_state(**hostnames)
-    hostnames.each do |_, hostname|
-      next unless hostname
-
-      if    hostname.chars.count { |c| c == ':' } >= 2      then return [:ipv6, :v6c]
-      elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then return [:ipv4, :v4c]
-      end
+  def self.specified_family_name_and_next_state(hostname)
+    if    hostname.chars.count { |c| c == ':' } >= 2      then return [:ipv6, :v6c]
+    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then return [:ipv4, :v4c]
+    else
+      nil
     end
-
-    if /^localhost$|
-        ^::1$|
-        ^127\.
-         (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.
-         (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.
-         (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.match?(hostnames[:remote])
-      return nil
-    end
-
-    filtered_ip_addresses = Socket.ip_address_list.reject { |address|
-      address.ipv4_loopback? || address.ipv6_loopback? ||
-      address.ipv4_multicast? || address.ipv6_multicast? ||
-      (address.ipv4? && address.ip_address.start_with?("169.254")) ||
-      (address.ipv6? && address.ip_address.start_with?("fe80"))
-    }
-
-    if    filtered_ip_addresses.all?(&:ipv6?) then return [:ipv6, :v6c]
-    elsif filtered_ip_addresses.all?(&:ipv4?) then return [:ipv4, :v4c]
-    end
-
-    nil
   end
   private_class_method :specified_family_name_and_next_state
 
