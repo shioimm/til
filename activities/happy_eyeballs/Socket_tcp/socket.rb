@@ -71,6 +71,7 @@ class Socket
                                 else
                                   HostnameResolutionQueue.new(resolving_family_names.size)
                                 end
+    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
 
     ret = loop do
       case state
@@ -98,7 +99,7 @@ class Socket
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
-          hostname_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, remaining)
+          hostname_resolved, _, = IO.select(hostname_resolution_waiting, nil, nil, remaining)
 
           unless hostname_resolved # resolv_timeoutでタイムアウトした場合
             state = :timeout # "user specified timeout"
@@ -120,7 +121,7 @@ class Socket
           else
             state = case family_name
                     when :ipv6 then :v6c
-                    when :ipv4 then hostname_resolution_queue.rpipe_closed? ? :v4c : :v4w
+                    when :ipv4 then hostname_resolution_queue.closed? ? :v4c : :v4w
                     end
             selectable_addrinfos.add(family_name, res)
             last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
@@ -130,7 +131,7 @@ class Socket
 
         next
       when :v4w
-        ipv6_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, RESOLUTION_DELAY)
+        ipv6_resolved, _, = IO.select(hostname_resolution_waiting, nil, nil, RESOLUTION_DELAY)
 
         if ipv6_resolved # v6アドレス解決 / 名前解決エラー
           family_name, res = hostname_resolution_queue.get
@@ -151,7 +152,7 @@ class Socket
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
             if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-              if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
+              if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
                 wait_for_hostname_resolution_patiently = true
                 connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
                 state = :v46w
@@ -196,7 +197,7 @@ class Socket
           socket.close unless socket.closed?
 
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-            if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
+            if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
               wait_for_hostname_resolution_patiently = true
               connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
               state = :v46w
@@ -227,8 +228,8 @@ class Socket
         end
 
         remaining = second_to_timeout(connection_attempt_delay_expires_at)
-        rpipe = hostname_resolution_queue.rpipe_closed? ? nil : [hostname_resolution_queue.rpipe]
-        hostname_resolved, connectable_sockets, = IO.select(rpipe, connecting_sockets.all, nil, remaining)
+        hostname_resolution_waiting = hostname_resolution_waiting && hostname_resolution_queue.closed? ? nil : hostname_resolution_waiting
+        hostname_resolved, connectable_sockets, = IO.select(hostname_resolution_waiting, connecting_sockets.all, nil, remaining)
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
@@ -258,7 +259,7 @@ class Socket
               next if connectable_sockets.any?
 
               if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-                if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
+                if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
                   wait_for_hostname_resolution_patiently = true
                   connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
                 else
@@ -399,7 +400,9 @@ class Socket
   private_constant :SelectableAddrinfos
 
   class NoHostnameResolutionQueue
-    attr_reader :rpipe
+    def waiting_pipe
+      nil
+    end
 
     def add_resolved(_, _)
       raise StandardError, "This #{self.class} cannot respond to:"
@@ -417,7 +420,7 @@ class Socket
       true
     end
 
-    def rpipe_closed?
+    def closed?
       true
     end
 
@@ -428,14 +431,16 @@ class Socket
   private_constant :NoHostnameResolutionQueue
 
   class HostnameResolutionQueue
-    attr_reader :rpipe
-
     def initialize(size)
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @queue = Queue.new
       @mutex = Mutex.new
+    end
+
+    def waiting_pipe
+      [@rpipe]
     end
 
     def add_resolved(family, resolved_addrinfos)
@@ -471,7 +476,7 @@ class Socket
       @queue.empty?
     end
 
-    def rpipe_closed?
+    def closed?
       @rpipe.closed?
     end
 
