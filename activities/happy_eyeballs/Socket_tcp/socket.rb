@@ -328,10 +328,8 @@ class Socket
   end
 
   def self.specified_family_name_and_next_state(hostname)
-    if    hostname.chars.count { |c| c == ':' } >= 2      then return [:ipv6, :v6c]
-    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then return [:ipv4, :v4c]
-    else
-      nil
+    if    hostname.chars.count { |c| c == ':' } >= 2      then [:ipv6, :v6c]
+    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then [:ipv4, :v4c]
     end
   end
   private_class_method :specified_family_name_and_next_state
