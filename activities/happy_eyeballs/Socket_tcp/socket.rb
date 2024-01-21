@@ -1,6 +1,12 @@
 require 'socket'
 
 class Socket
+  @tcp_fast_fallback = true
+
+  class << self
+    attr_accessor :tcp_fast_fallback
+  end
+
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
 
@@ -19,7 +25,11 @@ class Socket
   HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
   private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
 
-  def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil) # :yield: socket
+  def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
+    unless fast_fallback
+      return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    end
+
     # Happy Eyeballs' states
     # - :start
     # - :v6c
@@ -316,14 +326,16 @@ class Socket
       ret
     end
   ensure
-    hostname_resolution_threads.each do |thread|
-      thread&.exit
-    end
+    if fast_fallback
+      hostname_resolution_threads.each do |thread|
+        thread&.exit
+      end
 
-    hostname_resolution_queue&.close_all
+      hostname_resolution_queue&.close_all
 
-    connecting_sockets.each do |connecting_socket|
-      connecting_socket.close unless connecting_socket.closed?
+      connecting_sockets.each do |connecting_socket|
+        connecting_socket.close unless connecting_socket.closed?
+      end
     end
   end
 
@@ -519,6 +531,52 @@ class Socket
   end
   private_constant :ConnectingSockets
 
+  def self.tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    last_error = nil
+    ret = nil
+
+    local_addr_list = nil
+    if local_host != nil || local_port != nil
+      local_addr_list = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, nil)
+    end
+
+    Addrinfo.foreach(host, port, nil, :STREAM, timeout: resolv_timeout) {|ai|
+      if local_addr_list
+        local_addr = local_addr_list.find {|local_ai| local_ai.afamily == ai.afamily }
+        next unless local_addr
+      else
+        local_addr = nil
+      end
+      begin
+        sock = local_addr ?
+          ai.connect_from(local_addr, timeout: connect_timeout) :
+          ai.connect(timeout: connect_timeout)
+      rescue SystemCallError
+        last_error = $!
+        next
+      end
+      ret = sock
+      break
+    }
+    unless ret
+      if last_error
+        raise last_error
+      else
+        raise SocketError, "no appropriate local address"
+      end
+    end
+    if block_given?
+      begin
+        yield ret
+      ensure
+        ret.close
+      end
+    else
+      ret
+    end
+  end
+  private_class_method :tcp_without_fast_fallback
+
   def self.ignoreable_error?(e)
     if ENV['RBENV_VERSION'].to_f > 3.3
       e.is_a?(Socket.const_defined?(:EAI_ADDRFAMILY)) &&
@@ -594,6 +652,11 @@ PORT = 9292
 #    socket.write "GET / HTTP/1.0\r\n\r\n"
 #    print socket.read
 # end
+
+Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
