@@ -31,12 +31,13 @@ class Socket
     # - :failure
     # - :timeout
 
+    specified_family_name = nil
     hostname_resolution_threads = []
+    hostname_resolution_queue = nil
+    hostname_resolution_waiting = nil
     wait_for_hostname_resolution_patiently = false
     selectable_addrinfos = SelectableAddrinfos.new
     connecting_sockets = ConnectingSockets.new
-    hostname_resolution_queue = nil
-    hostname_resolution_waiting = nil
     local_addrinfos = []
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
@@ -166,11 +167,15 @@ class Socket
 
         connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
 
-        # TODO
-        # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: empty
-        #   connectを使う
         begin
-          case socket.connect_nonblock(addrinfo, exception: false)
+          result = if specified_family_name && selectable_addrinfos.empty? &&
+                       connecting_sockets.empty? && hostname_resolution_queue.empty?
+                     socket.connect(addrinfo)
+                   else
+                     socket.connect_nonblock(addrinfo, exception: false)
+                   end
+
+          case result
           when 0
             connected_socket = socket
             state = :success
@@ -592,7 +597,7 @@ PORT = 9292
 #    print socket.read
 # end
 
-Socket.tcp(HOSTNAME, PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-end
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
