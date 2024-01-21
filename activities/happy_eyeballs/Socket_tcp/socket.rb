@@ -35,6 +35,9 @@ class Socket
     wait_for_hostname_resolution_patiently = false
     selectable_addrinfos = SelectableAddrinfos.new
     connecting_sockets = ConnectingSockets.new
+    hostname_resolution_queue = nil
+    hostname_resolution_waiting = nil
+    local_addrinfos = []
     connection_attempt_delay_expires_at = nil
     connection_attempt_started_at = nil
     state = :start
@@ -42,46 +45,27 @@ class Socket
     last_error = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-
-    # TODO
-    # - クライアントホストがシングルスタックの場合もメインスレッドで名前解決する
-    #   - HostnameResolutionQueueは使わない
-    # - メインスレッドで名前解決した上でIPアドレスが一つしかない場合はconnectを使う
-    #   - ConnectingSocketsは使わない
-    if host.chars.count { |c| c == ':' } >= 2
-      specified_family_name = :ipv6
-      next_state = :v6c
-    elsif host.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/
-      specified_family_name = :ipv4
-      next_state = :v4c
-    else
-      specified_family_name = nil
-    end
-
-    if local_host && local_port
-      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM, nil)
-      resolving_family_names = specified_family_name.nil? ? local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) } : []
-    else
-      local_addrinfos = []
-      resolving_family_names = ADDRESS_FAMILIES.keys
-    end
-
-    hostname_resolution_queue = if resolving_family_names.size.zero?
-                                  DummyQueue.new
-                                else
-                                  HostnameResolutionQueue.new(resolving_family_names.size)
-                                end
-
     ret = loop do
       case state
       when :start
+        specified_family_name, next_state = specified_family_name_and_next_state(host)
+
+        if local_host && local_port
+          specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
+          local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+        end
+
         if specified_family_name
           addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
           selectable_addrinfos.add(specified_family_name, addrinfos)
+          hostname_resolution_queue = NoHostnameResolutionQueue.new
           state = next_state
           next
         end
 
+        resolving_family_names = ADDRESS_FAMILIES.keys
+        hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+        hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
         hostname_resolution_started_at = current_clocktime
         hostname_resolution_args = [host, port, hostname_resolution_queue]
 
@@ -98,7 +82,7 @@ class Socket
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
-          hostname_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, remaining)
+          hostname_resolved, _, = IO.select(hostname_resolution_waiting, nil, nil, remaining)
 
           unless hostname_resolved # resolv_timeoutでタイムアウトした場合
             state = :timeout # "user specified timeout"
@@ -120,7 +104,7 @@ class Socket
           else
             state = case family_name
                     when :ipv6 then :v6c
-                    when :ipv4 then hostname_resolution_queue.rpipe_closed? ? :v4c : :v4w
+                    when :ipv4 then hostname_resolution_queue.closed? ? :v4c : :v4w
                     end
             selectable_addrinfos.add(family_name, res)
             last_error = nil # これ以降は接続時のエラーを保存したいので一旦リセット
@@ -130,7 +114,7 @@ class Socket
 
         next
       when :v4w
-        ipv6_resolved, _, = IO.select([hostname_resolution_queue.rpipe], nil, nil, RESOLUTION_DELAY)
+        ipv6_resolved, _, = IO.select(hostname_resolution_waiting, nil, nil, RESOLUTION_DELAY)
 
         if ipv6_resolved # v6アドレス解決 / 名前解決エラー
           family_name, res = hostname_resolution_queue.get
@@ -151,7 +135,7 @@ class Socket
 
           if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
             if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-              if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
+              if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
                 wait_for_hostname_resolution_patiently = true
                 connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
                 state = :v46w
@@ -182,6 +166,9 @@ class Socket
 
         connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
 
+        # TODO
+        # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: empty
+        #   connectを使う
         begin
           case socket.connect_nonblock(addrinfo, exception: false)
           when 0
@@ -196,7 +183,7 @@ class Socket
           socket.close unless socket.closed?
 
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-            if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
+            if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
               wait_for_hostname_resolution_patiently = true
               connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
               state = :v46w
@@ -227,8 +214,8 @@ class Socket
         end
 
         remaining = second_to_timeout(connection_attempt_delay_expires_at)
-        rpipe = hostname_resolution_queue.rpipe_closed? ? nil : [hostname_resolution_queue.rpipe]
-        hostname_resolved, connectable_sockets, = IO.select(rpipe, connecting_sockets.all, nil, remaining)
+        hostname_resolution_waiting = hostname_resolution_waiting && hostname_resolution_queue.closed? ? nil : hostname_resolution_waiting
+        hostname_resolved, connectable_sockets, = IO.select(hostname_resolution_waiting, connecting_sockets.all, nil, remaining)
 
         if connectable_sockets&.any?
           while (connectable_socket = connectable_sockets.pop)
@@ -258,7 +245,7 @@ class Socket
               next if connectable_sockets.any?
 
               if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
-                if !hostname_resolution_queue.rpipe_closed? && !wait_for_hostname_resolution_patiently
+                if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
                   wait_for_hostname_resolution_patiently = true
                   connection_attempt_delay_expires_at = current_clocktime + PATIENTLY_RESOLUTION_DELAY
                 else
@@ -328,12 +315,21 @@ class Socket
       thread&.exit
     end
 
-    hostname_resolution_queue.close_all
+    hostname_resolution_queue&.close_all
 
     connecting_sockets.each do |connecting_socket|
       connecting_socket.close unless connecting_socket.closed?
     end
   end
+
+  def self.specified_family_name_and_next_state(hostname)
+    if    hostname.chars.count { |c| c == ':' } >= 2      then return [:ipv6, :v6c]
+    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then return [:ipv4, :v4c]
+    else
+      nil
+    end
+  end
+  private_class_method :specified_family_name_and_next_state
 
   def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
@@ -374,6 +370,10 @@ class Socket
     def get
       return nil if empty?
 
+      if @addrinfo_dict.size == 1
+        @addrinfo_dict.each { |_, addrinfos| return addrinfos.shift }
+      end
+
       precedences = case @last_family
                     when :ipv4, nil then PRIORITY_ON_V6
                     when :ipv6      then PRIORITY_ON_V4
@@ -398,8 +398,10 @@ class Socket
   end
   private_constant :SelectableAddrinfos
 
-  class DummyQueue
-    attr_reader :rpipe
+  class NoHostnameResolutionQueue
+    def waiting_pipe
+      nil
+    end
 
     def add_resolved(_, _)
       raise StandardError, "This #{self.class} cannot respond to:"
@@ -417,7 +419,7 @@ class Socket
       true
     end
 
-    def rpipe_closed?
+    def closed?
       true
     end
 
@@ -425,17 +427,19 @@ class Socket
       # Do nothing
     end
   end
-  private_constant :DummyQueue
+  private_constant :NoHostnameResolutionQueue
 
   class HostnameResolutionQueue
-    attr_reader :rpipe
-
     def initialize(size)
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @queue = Queue.new
       @mutex = Mutex.new
+    end
+
+    def waiting_pipe
+      [@rpipe]
     end
 
     def add_resolved(family, resolved_addrinfos)
@@ -471,7 +475,7 @@ class Socket
       @queue.empty?
     end
 
-    def rpipe_closed?
+    def closed?
       @rpipe.closed?
     end
 
@@ -523,10 +527,11 @@ class Socket
   end
 end
 
-# HOSTNAME = "www.kame.net"
-# PORT = 80
 HOSTNAME = "localhost"
 PORT = 9292
+
+# HOSTNAME = "www.ruby-lang.org"
+# PORT = 80
 
 # # 名前解決動作確認用 (Connection Attempt Delay以内の遅延)
 # Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
@@ -571,7 +576,7 @@ PORT = 9292
 #         if family == Socket::AF_INET6
 #           [Addrinfo.tcp("::1", 9292)]
 #         else
-#           sleep
+#           [Addrinfo.tcp("127.0.0.1", 9292)]
 #         end
 #       else
 #         _getaddrinfo(nodename, service, family)
@@ -580,12 +585,14 @@ PORT = 9292
 #   end
 # end
 #
-# Socket.tcp(HOSTNAME, PORT, 'localhost', (32768..61000).to_a.sample) do |socket|
+# local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
+#
+# Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
 #    socket.write "GET / HTTP/1.0\r\n\r\n"
 #    print socket.read
 # end
 
-# Socket.tcp(HOSTNAME, PORT) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
+Socket.tcp(HOSTNAME, PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end

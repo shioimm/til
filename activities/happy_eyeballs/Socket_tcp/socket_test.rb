@@ -276,6 +276,28 @@ class SocketTest < Minitest::Test
     connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
+  def test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
+    server = TCPServer.new("127.0.0.1", 0)
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |*_|
+      [Addrinfo.tcp("127.0.0.1", port)]
+    end
+
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("127.0.0.1", port)
+    server_thread.join
+
+    assert_equal(
+      connected_socket.remote_address.ipv4?,
+      true
+    )
+  ensure
+    server_thread.value.close
+    server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
+  end
+
   def test_that_raises_last_error_with_failing_all_hostname_resolutions
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
