@@ -5,6 +5,7 @@ require_relative "./socket"
 
 class SocketTest < Minitest::Test
   def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
+    p :test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
     begin
       server = TCPServer.new("::1", 0)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -36,6 +37,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time
+    p :test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
 
@@ -63,6 +65,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv6_address_name_resolved_in_resolution_delay
+    p :test_that_returns_IPv6_connected_socket_when_IPv6_address_name_resolved_in_resolution_delay
     begin
       server = TCPServer.new("::1", 0)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -94,6 +97,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_tcp_socket_v6_hostname_resolved_faster_and_v4_received_ack_faster
+    p :test_tcp_socket_v6_hostname_resolved_faster_and_v4_received_ack_faster
     begin
       ipv6_server = Socket.new(Socket::AF_INET6, :STREAM)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -124,6 +128,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
+    p :test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
     begin
       ipv6_server = Socket.new(Socket::AF_INET6, :STREAM)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -160,6 +165,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
+    p :test_that_returns_IPv6_connected_socket_when_IPv4_hostname_resolution_raises_SockerError
     begin
       server = TCPServer.new("::1", 0)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -192,6 +198,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv4_connected_socket_when_IPv6_hostname_resolution_raises_SockerError
+    p :test_that_returns_IPv4_connected_socket_when_IPv6_hostname_resolution_raises_SockerError
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
 
@@ -219,6 +226,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_ignore_error_with_IPv4_hostname_resolution_after_successful_IPv6_hostname_resolution
+    p :test_that_ignore_error_with_IPv4_hostname_resolution_after_successful_IPv6_hostname_resolution
     begin
       server = TCPServer.new("::1", 0)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -251,6 +259,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv6_address_passed
+    p :test_that_returns_IPv6_connected_socket_when_IPv6_address_passed
     begin
       server = TCPServer.new("::1", 0)
     rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -277,6 +286,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
+    p :test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
 
@@ -299,6 +309,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_raises_last_error_with_failing_all_hostname_resolutions
+    p :test_that_raises_last_error_with_failing_all_hostname_resolutions
     Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
       if family == Socket::AF_INET6
         sleep 0.1
@@ -316,6 +327,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_raises_ETIMEDOUT_with_resolv_timeout
+    p :test_that_raises_ETIMEDOUT_with_resolv_timeout
     Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
 
     assert_raises(Errno::ETIMEDOUT) do
@@ -324,6 +336,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_raises_ETIMEDOUT_with_connection_timeout
+    p :test_that_raises_ETIMEDOUT_with_connection_timeout
     server = Socket.new(Socket::AF_INET, :STREAM)
     sockaddr = Socket.pack_sockaddr_in(0, "127.0.0.1")
     server.bind(sockaddr)
@@ -345,6 +358,7 @@ class SocketTest < Minitest::Test
   end
 
   def test_that_raises_ECONNREFUSED_with_connection_failure
+    p :test_that_raises_ECONNREFUSED_with_connection_failure
     server = TCPServer.new("127.0.0.1", 12345)
     _, port, = server.addr
 
