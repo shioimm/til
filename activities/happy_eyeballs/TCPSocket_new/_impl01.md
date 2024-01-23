@@ -1,6 +1,7 @@
-# 2024/1/16
+# 2024/1/16、1/23
 - `getaddrinfo/_impl07`を使用
-- 引数の準備
+- 諸々引数の準備
+- スレッドを作成してその中で`do_rb_getaddrinfo_happy`を実行
 
 ```c
 // ext/socket/ipsocket.c
@@ -41,6 +42,7 @@ init_inetsock_internal_happy(VALUE v)
 #endif
 
     // HEv2 ----------------------------------------------
+    // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
     struct addrinfo hints;
     MEMZERO(&hints, struct addrinfo, 1);
     hints.ai_family = family;
@@ -48,11 +50,35 @@ init_inetsock_internal_happy(VALUE v)
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = remote_addrinfo_hints;
 
+    // getaddrinfoを実行するための準備 (rsock_getaddrinfoに該当)
     char *hostp, *portp;
     char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
     int additional_flags = 0;
     hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+
+    // do_rb_getaddrinfo_happyに渡す引数の準備
+    int pipefd[2];
+    pipe(pipefd);
+    rb_nativethread_lock_t lock;
+    rb_nativethread_lock_initialize(&lock);
+
+    struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
+    getaddrinfo_arg = allocate_rb_getaddrinfo_happy_arg(hostp, portp, &hints); // TODO &外したい
+    if (!getaddrinfo_arg) {
+        return EAI_MEMORY;
+    }
+
+    getaddrinfo_arg->writer = pipefd[1];
+    getaddrinfo_arg->lock = lock;
+
+    // getaddrinfoの実行
+    pthread_t th;
+    if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
+        free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+        return EAI_AGAIN;
+    }
+    pthread_detach(th);
     // ---------------------------------------------------
 
     arg->remote.res = rsock_addrinfo(arg->remote.host, arg->remote.serv,
@@ -186,5 +212,9 @@ struct rb_getaddrinfo_happy_arg
 };
 
 struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
+
+int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
+void * do_rb_getaddrinfo_happy(void *ptr);
+void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
 // -------------------------
 ```
