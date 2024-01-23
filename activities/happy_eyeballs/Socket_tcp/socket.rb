@@ -139,7 +139,6 @@ class Socket
       when :v4c, :v6c, :v46c # v4の場合はv6名前解決中の可能性あり
         connection_attempt_started_at = current_clocktime unless connection_attempt_started_at
         addrinfo = selectable_addrinfos.get
-        socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
 
         if local_addrinfos.any?
           local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
@@ -171,8 +170,6 @@ class Socket
             end
             next
           end
-
-          socket.bind(local_addrinfo)
         end
 
         connection_attempt_delay_expires_at = current_clocktime + CONNECTION_ATTEMPT_DELAY
@@ -180,8 +177,12 @@ class Socket
         begin
           result = if specified_family_name && selectable_addrinfos.empty? &&
                        connecting_sockets.empty? && hostname_resolution_queue.empty?
-                     socket.connect(addrinfo)
+                     local_addrinfo ?
+                       addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                       addrinfo.connect(timeout: connect_timeout)
                    else
+                     socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+                     socket.bind(local_addrinfo) if local_addrinfo
                      socket.connect_nonblock(addrinfo, exception: false)
                    end
 
@@ -189,13 +190,16 @@ class Socket
           when 0
             connected_socket = socket
             state = :success
+          when Socket
+            connected_socket = result
+            state = :success
           when :wait_writable # 接続試行中
             connecting_sockets.add(socket, addrinfo)
             state = :v46w
           end
         rescue SystemCallError => e
           last_error = e
-          socket.close unless socket.closed?
+          socket.close if socket && !socket.closed?
 
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
             if !hostname_resolution_queue.closed? && !wait_for_hostname_resolution_patiently
