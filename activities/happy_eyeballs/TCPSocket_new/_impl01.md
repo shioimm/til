@@ -2,6 +2,7 @@
 - `getaddrinfo/_impl07`を使用
 - 諸々引数の準備
 - スレッドを作成してその中で`do_rb_getaddrinfo_happy`を実行
+- 名前解決を待機し、解決できたaddrinfoを取得
 
 ```c
 // ext/socket/ipsocket.c
@@ -42,6 +43,9 @@ init_inetsock_internal_happy(VALUE v)
 #endif
 
     // HEv2 ----------------------------------------------
+    struct addrinfo *getaddrinfo_ai;
+    int getaddrinfo_error = 0;
+
     // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
     struct addrinfo hints;
     MEMZERO(&hints, struct addrinfo, 1);
@@ -79,6 +83,67 @@ init_inetsock_internal_happy(VALUE v)
         return EAI_AGAIN;
     }
     pthread_detach(th);
+
+    // getaddrinfoの待機
+    int retval;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(pipefd[0], &rfds);
+    struct wait_rb_getaddrinfo_happy_arg wait_arg;
+    wait_arg.rfds = &rfds;
+    wait_arg.reader = pipefd[0];
+    rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
+
+    retval = wait_arg.retval;
+    int need_free = 0;
+
+    if (retval < 0){
+        // selectの実行失敗。SystemCallError?
+        rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
+    }
+    else if (retval > 0){
+        getaddrinfo_error = getaddrinfo_arg->err;
+        if (getaddrinfo_error == 0) {
+            getaddrinfo_ai = getaddrinfo_arg->ai;
+            char result[4];
+            read(pipefd[0], result, sizeof result);
+            if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) == 0) {
+              printf("\nHostname resolurion finished\n");
+
+              // 動作確認のため取得したaddrinfoからRubyオブジェクトを作成
+              struct rb_addrinfo *getaddrinfo_res;
+              getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+              getaddrinfo_res->allocated_by_malloc = 0;
+              getaddrinfo_res->ai = getaddrinfo_ai;
+              struct addrinfo *r;
+              for (r = getaddrinfo_res->ai; r; r = r->ai_next) {
+                  printf("r->ai_addr %p\n", r->ai_addr);
+              }
+
+              // 後処理
+              rb_freeaddrinfo(getaddrinfo_res);
+              rb_nativethread_lock_lock(&lock);
+              {
+                if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+              }
+              rb_nativethread_lock_unlock(&lock);
+              if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+            }
+            else {
+              rb_nativethread_lock_lock(&lock);
+              {
+                if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+              }
+              rb_nativethread_lock_unlock(&lock);
+              if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+
+              rsock_raise_resolution_error("init_inetsock_internal_happy", error);
+            }
+        }
+        else {
+          // selectの返り値が0 = 時間切れの場合。いったんこのまま
+        }
+    }
     // ---------------------------------------------------
 
     arg->remote.res = rsock_addrinfo(arg->remote.host, arg->remote.serv,
@@ -198,6 +263,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 // ext/socket/rubysocket.h
 
 // 追加 -------------------
+#define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
+
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
@@ -211,10 +278,19 @@ struct rb_getaddrinfo_happy_arg
     rb_nativethread_lock_t lock;
 };
 
+struct wait_rb_getaddrinfo_happy_arg
+{
+    int reader;
+    int retval;
+    fd_set *rfds;
+};
+
 struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
 void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
+void * wait_rb_getaddrinfo_happy(void *ptr);
+void cancel_rb_getaddrinfo_happy(void *ptr);
 // -------------------------
 ```
