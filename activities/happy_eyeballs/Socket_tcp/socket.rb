@@ -59,7 +59,7 @@ class Socket
     ret = loop do
       case state
       when :start
-        specified_family_name, next_state = specified_family_name_and_next_state(host)
+        specified_family_name, next_state = single_stack_family_name_and_next_state(host) || specified_family_name_and_next_state(host)
 
         if local_host && local_port
           specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
@@ -342,6 +342,24 @@ class Socket
       end
     end
   end
+
+  def self.single_stack_family_name_and_next_state(hostname)
+    local_addrinfos = Socket.ip_address_list
+
+    if hostname.match?(/^localhost$/)
+      return local_addrinfos.none?(&:ipv6_loopback?) ? [:ipv4, :v4c] : nil
+    end
+
+    external_local_addrinfos = local_addrinfos.reject { |ai|
+      ai.ipv6_loopback? || ai.ipv6_multicast? || (ai.ipv6? && ai.ip_address.start_with?("fe80")) ||
+      ai.ipv4_loopback? || ai.ipv4_multicast? || (ai.ipv4? && ai.ip_address.start_with?("169.254"))
+    }
+
+    if    external_local_addrinfos.all?(&:ipv6?) then [:ipv6, :v6c]
+    elsif external_local_addrinfos.all?(&:ipv4?) then [:ipv4, :v4c]
+    end
+  end
+  private_class_method :single_stack_family_name_and_next_state
 
   def self.specified_family_name_and_next_state(hostname)
     if    hostname.match? /:/                             then [:ipv6, :v6c]
