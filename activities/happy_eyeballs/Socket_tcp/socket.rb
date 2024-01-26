@@ -59,7 +59,7 @@ class Socket
     ret = loop do
       case state
       when :start
-        specified_family_name, next_state = single_stack_family_name_and_next_state(host) || specified_family_name_and_next_state(host)
+        specified_family_name, next_state = specified_family_name_and_next_state(host) || single_stack_family_name_and_next_state(host)
 
         if local_host && local_port
           specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
@@ -343,6 +343,13 @@ class Socket
     end
   end
 
+  def self.specified_family_name_and_next_state(hostname)
+    if    hostname.match? /:/                             then [:ipv6, :v6c]
+    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then [:ipv4, :v4c]
+    end
+  end
+  private_class_method :specified_family_name_and_next_state
+
   def self.single_stack_family_name_and_next_state(hostname)
     local_addrinfos = Socket.ip_address_list
 
@@ -360,13 +367,6 @@ class Socket
     end
   end
   private_class_method :single_stack_family_name_and_next_state
-
-  def self.specified_family_name_and_next_state(hostname)
-    if    hostname.match? /:/                             then [:ipv6, :v6c]
-    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then [:ipv4, :v4c]
-    end
-  end
-  private_class_method :specified_family_name_and_next_state
 
   def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
