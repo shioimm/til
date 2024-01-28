@@ -54,6 +54,7 @@ init_inetsock_internal_happy(VALUE v)
     int additional_flags = 0;
     hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+    hints->ai_flags |= additional_flags;
 
     // do_rb_getaddrinfo_happyに渡す引数の準備
     int pipefd[2];
