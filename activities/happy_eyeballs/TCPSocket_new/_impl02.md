@@ -1,5 +1,6 @@
-# 2024/1/27
+# 2024/1/27、1/28
 - `do_rb_getaddrinfo_happy`で解決したアドレス情報でSocketオブジェクトを作成するようにした
+- ソケットfdを作成・接続後、Socketオブジェクトを作成する処理をループの外で行うようにした
 
 ```c
 // ext/socket/ipsocket.c
@@ -98,128 +99,125 @@ init_inetsock_internal_happy(VALUE v)
         // selectの実行失敗。SystemCallError?
         rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
     }
-    else if (retval > 0){
-        error = getaddrinfo_arg->err;
-        if (error == 0) {
-            char result[4];
-            read(reader, result, sizeof result);
-            if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) == 0) {
-              printf("\nHostname resolurion finished\n");
+    else if (retval == 0) {
+        // selectの返り値が0 = 時間切れの場合。いったんこのまま
+        return Qnil;
+    }
+    error = getaddrinfo_arg->err;
+    if (error != 0) {
+        rb_nativethread_lock_lock(&lock);
+        {
+          if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+        }
+        rb_nativethread_lock_unlock(&lock);
+        if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
-              getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-              getaddrinfo_res->allocated_by_malloc = 0;
-              getaddrinfo_res->ai = getaddrinfo_arg->ai;
+        rsock_raise_resolution_error("init_inetsock_internal_happy", error);
+    }
+    char result[4];
+    read(reader, result, sizeof result);
+    if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
+        // 何かしらのエラー
+        return Qnil;
+    }
 
-              arg->remote.res = getaddrinfo_res;
-              arg->fd = fd = -1;
+    getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+    getaddrinfo_res->allocated_by_malloc = 0;
+    getaddrinfo_res->ai = getaddrinfo_arg->ai;
 
-              /*
-               * Maybe also accept a local address
-               */
+    arg->remote.res = getaddrinfo_res;
+    arg->fd = fd = -1;
 
-              if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
-                  arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                                  family, SOCK_STREAM, 0);
-              }
+    /*
+     * Maybe also accept a local address
+     */
 
-              for (res = arg->remote.res->ai; res; res = res->ai_next) {
+    if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
+        arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
+                                        family, SOCK_STREAM, 0);
+    }
+
+    for (res = arg->remote.res->ai; res; res = res->ai_next) {
 #if !defined(INET6) && defined(AF_INET6)
-                  if (res->ai_family == AF_INET6)
-                      continue;
+        if (res->ai_family == AF_INET6)
+            continue;
 #endif
-                  lres = NULL;
-                  if (arg->local.res) {
-                      for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
-                          if (lres->ai_family == res->ai_family)
-                              break;
-                      }
-                      if (!lres) {
-                          if (res->ai_next || status < 0)
-                              continue;
-                          /* Use a different family local address if no choice, this
-                           * will cause EAFNOSUPPORT. */
-                          lres = arg->local.res->ai;
-                      }
-                  }
-                  status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
-                  syscall = "socket(2)";
-                  fd = status;
-                  if (fd < 0) {
-                      error = errno;
-                      continue;
-                  }
-                  arg->fd = fd;
-                  if (lres) {
-#if !defined(_WIN32) && !defined(__CYGWIN__)
-                      status = 1;
-                      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                                 (char*)&status, (socklen_t)sizeof(status));
-#endif
-                      status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-                      local = status;
-                      syscall = "bind(2)";
-                  }
-
-                  if (status >= 0) {
-                      status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
-                                             false, tv);
-                      syscall = "connect(2)";
-                  }
-
-                  if (status < 0) {
-                      error = errno;
-                      close(fd);
-                      arg->fd = fd = -1;
-                      continue;
-                  } else
-                      break;
-              }
-
-              // 後処理
-              rb_nativethread_lock_lock(&lock);
-              {
-                if (--getaddrinfo_arg->refcount == 0) need_free = 1;
-              }
-              rb_nativethread_lock_unlock(&lock);
-              if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-
-              if (status < 0) {
-                  VALUE host, port;
-
-                  if (local < 0) {
-                      host = arg->local.host;
-                      port = arg->local.serv;
-                  } else {
-                      host = arg->remote.host;
-                      port = arg->remote.serv;
-                  }
-
-                  rsock_syserr_fail_host_port(error, syscall, host, port);
-              }
-
-              arg->fd = -1;
-
-              /* create new instance */
-              return rsock_init_sock(arg->sock, fd);
+        lres = NULL;
+        if (arg->local.res) {
+            for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
+                if (lres->ai_family == res->ai_family)
+                    break;
             }
-            else {
-              rb_nativethread_lock_lock(&lock);
-              {
-                if (--getaddrinfo_arg->refcount == 0) need_free = 1;
-              }
-              rb_nativethread_lock_unlock(&lock);
-              if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-
-              rsock_raise_resolution_error("init_inetsock_internal_happy", error);
+            if (!lres) {
+                if (res->ai_next || status < 0)
+                    continue;
+                /* Use a different family local address if no choice, this
+                 * will cause EAFNOSUPPORT. */
+                lres = arg->local.res->ai;
             }
         }
-        else {
-          // selectの返り値が0 = 時間切れの場合。いったんこのまま
-          return Qnil;
+        status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
+        syscall = "socket(2)";
+        fd = status;
+        if (fd < 0) {
+            error = errno;
+            continue;
+        }
+        arg->fd = fd;
+        if (lres) {
+#if !defined(_WIN32) && !defined(__CYGWIN__)
+            status = 1;
+            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+                       (char*)&status, (socklen_t)sizeof(status));
+#endif
+            status = bind(fd, lres->ai_addr, lres->ai_addrlen);
+            local = status;
+            syscall = "bind(2)";
+        }
+
+        if (status >= 0) {
+            status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
+                                   false, tv);
+            syscall = "connect(2)";
+        }
+
+        if (status < 0) {
+            error = errno;
+            close(fd);
+            arg->fd = fd = -1;
+            res = res->ai_next;
+            continue;
+        } else {
+            break;
         }
     }
-    return Qnil;
-}
+
+    // 後処理
+    rb_nativethread_lock_lock(&lock);
+    {
+        if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+    }
+    rb_nativethread_lock_unlock(&lock);
+    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+
+    if (status < 0) {
+        VALUE host, port;
+
+        if (local < 0) {
+            host = arg->local.host;
+            port = arg->local.serv;
+        } else {
+            host = arg->remote.host;
+            port = arg->remote.serv;
+        }
+
+        rsock_syserr_fail_host_port(error, syscall, host, port);
+    }
+
+    arg->fd = -1;
+
+    /* create new instance */
+    return rsock_init_sock(arg->sock, fd);
 }
 
 VALUE
