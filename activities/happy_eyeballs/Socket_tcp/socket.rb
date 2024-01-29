@@ -86,11 +86,11 @@ class Socket
 
         if local_host && local_port
           specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
-          local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+          local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM, timeout: resolv_timeout)
         end
 
         if specified_family_name
-          addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+          addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM, timeout: resolv_timeout)
           selectable_addrinfos.add(specified_family_name, addrinfos)
           hostname_resolution_queue = NoHostnameResolutionQueue.new
           state = next_state
