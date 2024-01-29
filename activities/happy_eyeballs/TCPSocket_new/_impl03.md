@@ -1,6 +1,7 @@
-# 2024/1/27、1/28
-- `do_rb_getaddrinfo_happy`で解決したアドレス情報でSocketオブジェクトを作成するようにした
-- ソケットfdを作成・接続後、Socketオブジェクトを作成する処理をループの外で行うようにした
+# 2024/1/28
+- 状態を定義
+- whileループの中で各処理を行うように変更
+- TODO: switch文の中で実行するようにする
 
 ```c
 // ext/socket/ipsocket.c
@@ -17,12 +18,25 @@
 #  endif
 #endif
 
+enum sock_he_state {
+    START,                /* Start to hostname resolution */
+    V4W,                  /* Wait for Resolution Delay */
+    V4C,                  /* Start to connect with IPv4 addrinfo */
+    V6C,                  /* Start to connect with IPv4 addrinfo */
+    V46C,                 /* Start to connect with IPv6 addrinfo or IPv4addrinfo */
+    V46W,                 /* Wait for connecting with IPv6 addrinfo or IPv4addrinfo */
+    SUCCESS,              /* Connection established */
+    FAILURE,              /* Connection failed */
+    TIMEOUT,              /* Connection timed out */
+};
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_arg *arg = (void *)v;
     int error = 0;
-    struct addrinfo *res, *lres;
+    struct addrinfo *res = NULL;
+    struct addrinfo *lres;
     int fd, status = 0, local = 0;
     int family = AF_UNSPEC;
     const char *syscall = 0;
@@ -54,7 +68,7 @@ init_inetsock_internal_happy(VALUE v)
     int additional_flags = 0;
     hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-    hints->ai_flags |= additional_flags;
+    hints.ai_flags |= additional_flags;
 
     // do_rb_getaddrinfo_happyに渡す引数の準備
     int pipefd[2];
@@ -73,76 +87,81 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_arg->writer = writer;
     getaddrinfo_arg->lock = lock;
 
-    // getaddrinfoの実行
-    pthread_t th;
-    if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
-        free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-        return EAI_AGAIN;
-    }
-    pthread_detach(th);
-
-    // getaddrinfoの待機
-    int retval;
-    fd_set rfds;
-    FD_ZERO(&rfds);
-    FD_SET(reader, &rfds);
-    struct wait_rb_getaddrinfo_happy_arg wait_arg;
-    wait_arg.rfds = &rfds;
-    wait_arg.reader = reader;
-    rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
-
-    retval = wait_arg.retval;
+    int stop = 0;
     int need_free = 0;
 
-    struct rb_addrinfo *getaddrinfo_res = NULL;
+    while (!stop) {
+        if (res == NULL) {
+            // getaddrinfoの実行
+            pthread_t th;
+            if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
+                free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                return EAI_AGAIN;
+            }
+            pthread_detach(th);
 
-    if (retval < 0){
-        // selectの実行失敗。SystemCallError?
-        rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
-    }
-    else if (retval == 0) {
-        // selectの返り値が0 = 時間切れの場合。いったんこのまま
-        return Qnil;
-    }
-    error = getaddrinfo_arg->err;
-    if (error != 0) {
-        rb_nativethread_lock_lock(&lock);
-        {
-          if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+            // getaddrinfoの待機
+            int retval;
+            fd_set rfds;
+            FD_ZERO(&rfds);
+            FD_SET(reader, &rfds);
+            struct wait_rb_getaddrinfo_happy_arg wait_arg;
+            wait_arg.rfds = &rfds;
+            wait_arg.reader = reader;
+            rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
+
+            retval = wait_arg.retval;
+
+            struct rb_addrinfo *getaddrinfo_res = NULL;
+
+            if (retval < 0){
+                // selectの実行失敗。SystemCallError?
+                rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
+            }
+            else if (retval == 0) {
+                // selectの返り値が0 = 時間切れの場合。いったんこのまま
+                return Qnil;
+            }
+            error = getaddrinfo_arg->err;
+            if (error != 0) {
+                rb_nativethread_lock_lock(&lock);
+                {
+                  if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+                }
+                rb_nativethread_lock_unlock(&lock);
+                if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+
+                rsock_raise_resolution_error("init_inetsock_internal_happy", error);
+            }
+            char result[4];
+            read(reader, result, sizeof result);
+            if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
+                // 何かしらのエラー
+                return Qnil;
+            }
+
+            getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+            getaddrinfo_res->allocated_by_malloc = 0;
+            getaddrinfo_res->ai = getaddrinfo_arg->ai;
+
+            arg->remote.res = getaddrinfo_res;
+            arg->fd = fd = -1;
+            res = arg->remote.res->ai;
+
+            /*
+             * Maybe also accept a local address
+             */
+
+            if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
+                arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
+                                                family, SOCK_STREAM, 0);
+            }
         }
-        rb_nativethread_lock_unlock(&lock);
-        if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
-        rsock_raise_resolution_error("init_inetsock_internal_happy", error);
-    }
-    char result[4];
-    read(reader, result, sizeof result);
-    if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
-        // 何かしらのエラー
-        return Qnil;
-    }
-
-    getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-    getaddrinfo_res->allocated_by_malloc = 0;
-    getaddrinfo_res->ai = getaddrinfo_arg->ai;
-
-    arg->remote.res = getaddrinfo_res;
-    arg->fd = fd = -1;
-
-    /*
-     * Maybe also accept a local address
-     */
-
-    if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
-        arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                        family, SOCK_STREAM, 0);
-    }
-
-    for (res = arg->remote.res->ai; res; res = res->ai_next) {
-#if !defined(INET6) && defined(AF_INET6)
+        #if !defined(INET6) && defined(AF_INET6)
         if (res->ai_family == AF_INET6)
             continue;
-#endif
+        #endif
         lres = NULL;
         if (arg->local.res) {
             for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
@@ -166,11 +185,11 @@ init_inetsock_internal_happy(VALUE v)
         }
         arg->fd = fd;
         if (lres) {
-#if !defined(_WIN32) && !defined(__CYGWIN__)
+            #if !defined(_WIN32) && !defined(__CYGWIN__)
             status = 1;
             setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                        (char*)&status, (socklen_t)sizeof(status));
-#endif
+            #endif
             status = bind(fd, lres->ai_addr, lres->ai_addrlen);
             local = status;
             syscall = "bind(2)";
@@ -189,7 +208,7 @@ init_inetsock_internal_happy(VALUE v)
             res = res->ai_next;
             continue;
         } else {
-            break;
+            stop = 1;
         }
     }
 

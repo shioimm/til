@@ -1,5 +1,5 @@
-# 2024/1/16
-- 関数名・構造体名などを修正
+# 2024/1/28
+- `do_rb_getaddrinfo_happy`の中で`numeric_getaddrinfo`を実行するように変更
 
 ```c
 # ext/socket/raddrinfo.c
@@ -56,15 +56,18 @@ do_rb_getaddrinfo_happy(void *ptr)
 {
     struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)ptr;
 
-    int err;
-    err = getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
+    int err = 0;
+    err = numeric_getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
+    if (err != 0) {
+        err = getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
 #ifdef __linux__
-    /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
-     * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
-     */
-    if (err == EAI_SYSTEM && errno == ENOENT)
-        err = EAI_NONAME;
+       /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
+        * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
+        */
+       if (err == EAI_SYSTEM && errno == ENOENT)
+           err = EAI_NONAME;
 #endif
+    }
 
     int need_free = 0;
     rb_nativethread_lock_lock(&arg->lock);
@@ -84,13 +87,6 @@ do_rb_getaddrinfo_happy(void *ptr)
 
     return 0;
 }
-
-struct wait_rb_getaddrinfo_happy_arg
-{
-    int reader;
-    int retval;
-    fd_set *rfds;
-};
 
 void *
 wait_rb_getaddrinfo_happy(void *ptr)
@@ -126,7 +122,7 @@ rb_getaddrinfo_happy_main(int argc, VALUE *argv, VALUE self)
         timeout = Qnil;
     }
 
-    // 引数を元にしてhintsに値を格納 (rsock_addrinfoに該当)
+    // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
     struct addrinfo hints;
     MEMZERO(&hints, struct addrinfo, 1);
     hints.ai_family = NIL_P(family) ? PF_UNSPEC : rsock_family_arg(family);
@@ -178,6 +174,8 @@ rb_getaddrinfo_happy_main(int argc, VALUE *argv, VALUE self)
     // getaddrinfoの待機
     int retval;
     fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(pipefd[0], &rfds);
     struct wait_rb_getaddrinfo_happy_arg wait_arg;
     wait_arg.rfds = &rfds;
     wait_arg.reader = pipefd[0];
@@ -266,6 +264,8 @@ rsock_init_addrinfo(void)
 // ext/socket/rubysocket.h
 
 // 追加 -------------------
+#define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
+
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
@@ -279,7 +279,20 @@ struct rb_getaddrinfo_happy_arg
     rb_nativethread_lock_t lock;
 };
 
+struct wait_rb_getaddrinfo_happy_arg
+{
+    int reader;
+    int retval;
+    fd_set *rfds;
+};
+
 struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
+
+int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
+void * do_rb_getaddrinfo_happy(void *ptr);
+void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
+void * wait_rb_getaddrinfo_happy(void *ptr);
+void cancel_rb_getaddrinfo_happy(void *ptr);
 // -------------------------
 ```
 
