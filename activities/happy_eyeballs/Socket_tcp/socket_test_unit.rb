@@ -1,22 +1,5 @@
 # frozen_string_literal: true
 
-# Socket.tcpの動作を検証しているテスト項目
-#   #test_accept_loop
-#   #test_accept_loop_multi_port
-#   #test_connect_timeout
-#
-# 追加するテスト項目
-#   名前解決の検証
-#     先にIPv6 addrinfoを取得した場合 -> assert_true(ipv6?)
-#     先にIPv4 addrinfoを取得した場合 -> assert_true(ipv4?)
-#     先にIPv4 addrinfoを取得したが、Resolution Delay中にIPv6 addrinfoを取得した場合 -> assert_true(ipv6?)
-#  接続の検証
-#     IPv6 addrinfo -> IPv4 addrinfoの順でconnectを開始し、先にIPv4 addrinfoで接続確立した場合 -> assert_true(ipv4?)
-#  エラーの検証
-#     名前解決中にresolv_timeoutがタイムアウトした場合 -> assert_raise(Errno::ETIMEDOUT)
-#     Aレコードの取得に失敗した後AAAAレコードの取得に成功した場合 -> assert_nothing_raised
-#     名前解決がSocketErrorで失敗した場合 -> assert_raise_with_message(SocketError, ...) (最後のmessageを取得)
-
 require "test/unit"
 require_relative "./socket"
 
@@ -26,6 +9,10 @@ class SocketTest < Test::Unit::TestCase
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
     begin;
+      exit if Socket.ip_address_list.none? do |ai|
+        ai.ipv6? && (!ai.ipv6_loopback? && !ai.ipv6_multicast? && !ai.ipv6_linklocal?)
+      end
+
       begin
         server = TCPServer.new("::1", 0)
       rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -79,6 +66,10 @@ class SocketTest < Test::Unit::TestCase
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
     begin;
+      exit if Socket.ip_address_list.none? do |ai|
+        ai.ipv6? && (!ai.ipv6_loopback? && !ai.ipv6_multicast? && !ai.ipv6_linklocal?)
+      end
+
       begin
         server = TCPServer.new("::1", 0)
       rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
@@ -137,8 +128,17 @@ class SocketTest < Test::Unit::TestCase
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
     begin;
-      Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
-      port = TCPServer.new("localhost", 0).addr[1]
+      Addrinfo.define_singleton_method(:getaddrinfo) { |*_|
+        if Socket.ip_address_list.none? { |ai|
+          ai.ipv6? && (!ai.ipv6_loopback? && !ai.ipv6_multicast? && !ai.ipv6_linklocal?)
+        }
+          raise Errno::ETIMEDOUT
+        else
+          sleep
+        end
+      }
+
+      port = TCPServer.new("127.0.0.1", 0).addr[1]
 
       assert_raise(Errno::ETIMEDOUT) do
         Socket.tcp("localhost", port, resolv_timeout: 0.01)
@@ -151,18 +151,13 @@ class SocketTest < Test::Unit::TestCase
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
     begin;
-      begin
-        server = TCPServer.new("::1", 0)
-      rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-        exit
-      end
-
+      server = TCPServer.new("127.0.0.1", 0)
       port = server.addr[1]
 
       Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
         case family
-        when Socket::AF_INET6 then [Addrinfo.tcp("::1", port)]
-        when Socket::AF_INET then sleep(0.001); raise SocketError
+        when Socket::AF_INET6 then sleep(0.01); raise SocketError
+        when Socket::AF_INET then [Addrinfo.tcp("127.0.0.1", port)]
         end
       end
 

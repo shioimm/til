@@ -86,11 +86,11 @@ class Socket
 
         if local_host && local_port
           specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
-          local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+          local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, ADDRESS_FAMILIES[specified_family_name], :STREAM, timeout: resolv_timeout)
         end
 
         if specified_family_name
-          addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM)
+          addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[specified_family_name], :STREAM, timeout: resolv_timeout)
           selectable_addrinfos.add(specified_family_name, addrinfos)
           hostname_resolution_queue = NoHostnameResolutionQueue.new
           state = next_state
@@ -367,29 +367,11 @@ class Socket
   end
 
   def self.specified_family_name_and_next_state(hostname)
-    if    hostname.match? /:/                             then [:ipv6, :v6c]
-    elsif hostname.match? /^([0-9]{1,3}\.){3}[0-9]{1,3}$/ then [:ipv4, :v4c]
+    if    hostname.match?(/:/)                             then [:ipv6, :v6c]
+    elsif hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/) then [:ipv4, :v4c]
     end
   end
   private_class_method :specified_family_name_and_next_state
-
-  def self.single_stack_family_name_and_next_state(hostname)
-    local_addrinfos = Socket.ip_address_list
-
-    if hostname.match?(/^localhost$/)
-      return local_addrinfos.none?(&:ipv6_loopback?) ? [:ipv4, :v4c] : nil
-    end
-
-    external_local_addrinfos = local_addrinfos.reject { |ai|
-      ai.ipv6_loopback? || ai.ipv6_multicast? || (ai.ipv6? && ai.ip_address.start_with?("fe80")) ||
-      ai.ipv4_loopback? || ai.ipv4_multicast? || (ai.ipv4? && ai.ip_address.start_with?("169.254"))
-    }
-
-    if    external_local_addrinfos.all?(&:ipv6?) then [:ipv6, :v6c]
-    elsif external_local_addrinfos.all?(&:ipv4?) then [:ipv4, :v4c]
-    end
-  end
-  private_class_method :single_stack_family_name_and_next_state
 
   def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
