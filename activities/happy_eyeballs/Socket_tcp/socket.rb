@@ -78,11 +78,13 @@ class Socket
       when :start
         specified_family_name, next_state =
           (host && specified_family_name_and_next_state(host)) ||
-          ((host == "localhost" || host.nil?) && @local_ip_address_list.none?(&:ipv6_loopback?) ? [:ipv4, :v4c] : nil ) ||
-          (if @has_public_ipv4_addr && @has_public_ipv6_addr then nil
-           elsif @has_public_ipv4_addr then [:ipv4, :v4c]
-           elsif @has_public_ipv6_addr then [:ipv6, :v6c]
-           end)
+          ((host == "localhost" || host.nil?) &&
+           @local_ip_address_list.none?(&:ipv6_loopback?) ? [:ipv4, :v4c] : nil ) ||
+          ((host != "localhost" && !host.nil?) &&
+           (if @has_public_ipv4_addr && @has_public_ipv6_addr then nil
+            elsif @has_public_ipv4_addr then [:ipv4, :v4c]
+            elsif @has_public_ipv6_addr then [:ipv6, :v6c]
+            end))
 
         if local_host && local_port
           specified_family_name, next_state = specified_family_name_and_next_state(local_host) unless specified_family_name
