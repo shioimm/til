@@ -77,8 +77,8 @@ class Socket
       case state
       when :start
         specified_family_name, next_state =
-          specified_family_name_and_next_state(host) ||
-          (host == "localhost" && @local_ip_address_list.none?(&:ipv6_loopback?) ? [:ipv4, :v4c] : nil ) ||
+          (host && specified_family_name_and_next_state(host)) ||
+          ((host == "localhost" || host.nil?) && @local_ip_address_list.none?(&:ipv6_loopback?) ? [:ipv4, :v4c] : nil ) ||
           (if @has_public_ipv4_addr && @has_public_ipv6_addr then nil
            elsif @has_public_ipv4_addr then [:ipv4, :v4c]
            elsif @has_public_ipv6_addr then [:ipv6, :v6c]
