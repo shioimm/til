@@ -1,4 +1,4 @@
-# 2024/1/28、2/1
+# 2024/1/28、2/1、2/2
 - 状態を定義
 - whileループの中で各処理を行うように変更
 - switch文を導入
@@ -34,7 +34,7 @@ static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_arg *arg = (void *)v;
-    int error = 0;
+    int last_error = 0;
     struct addrinfo *res = NULL;
     struct addrinfo *lres;
     int fd, status = 0, local = 0;
@@ -93,6 +93,7 @@ init_inetsock_internal_happy(VALUE v)
     pthread_t th;
 
     while (!stop) {
+        printf("\nstate %d\n", state);
         switch (state) {
             case START:
                 // getaddrinfoの実行
@@ -124,8 +125,8 @@ init_inetsock_internal_happy(VALUE v)
                     // selectの返り値が0 = 時間切れの場合。いったんこのまま
                     return Qnil;
                 }
-                error = getaddrinfo_arg->err;
-                if (error != 0) {
+                last_error = getaddrinfo_arg->err;
+                if (last_error != 0) {
                     rb_nativethread_lock_lock(&lock);
                     {
                       if (--getaddrinfo_arg->refcount == 0) need_free = 1;
@@ -133,7 +134,7 @@ init_inetsock_internal_happy(VALUE v)
                     rb_nativethread_lock_unlock(&lock);
                     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
-                    rsock_raise_resolution_error("init_inetsock_internal_happy", error);
+                    rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
                 char result[4];
                 read(reader, result, sizeof result);
@@ -162,7 +163,12 @@ init_inetsock_internal_happy(VALUE v)
                 state = V46C;
                 continue;
 
-            default:
+            case V4W:
+                continue;
+
+            case V6C:
+            case V4C:
+            case V46C:
                 #if !defined(INET6) && defined(AF_INET6)
                 if (res->ai_family == AF_INET6)
                     continue;
@@ -185,7 +191,7 @@ init_inetsock_internal_happy(VALUE v)
                 syscall = "socket(2)";
                 fd = status;
                 if (fd < 0) {
-                    error = errno;
+                    last_error = errno;
                     continue;
                 }
                 arg->fd = fd;
@@ -199,25 +205,41 @@ init_inetsock_internal_happy(VALUE v)
                     local = status;
                     syscall = "bind(2)";
                 }
-        
+
                 if (status >= 0) {
                     status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
                                            false, tv);
                     syscall = "connect(2)";
                 }
-        
+
                 if (status < 0) {
-                    error = errno;
+                    last_error = errno;
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
-                    continue;
+                    state = V46C;
                 } else {
-                    stop = 1;
+                    state = SUCCESS;
                 }
+                continue;
+
+            case V46W:
+                continue;
+
+            case SUCCESS:
+                stop = 1;
+                continue;
+
+            case FAILURE:
+                stop = 1;
+                continue;
+
+            case TIMEOUT:
+                stop = 1;
+                continue;
         }
     }
-        
+
     // 後処理
     rb_nativethread_lock_lock(&lock);
     {
@@ -237,7 +259,7 @@ init_inetsock_internal_happy(VALUE v)
             port = arg->remote.serv;
         }
 
-        rsock_syserr_fail_host_port(error, syscall, host, port);
+        rsock_syserr_fail_host_port(last_error, syscall, host, port);
     }
 
     arg->fd = -1;
