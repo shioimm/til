@@ -1,7 +1,7 @@
-# 2024/1/28
+# 2024/1/28、2/1
 - 状態を定義
 - whileループの中で各処理を行うように変更
-- TODO: switch文の中で実行するようにする
+- switch文を導入
 
 ```c
 // ext/socket/ipsocket.c
@@ -89,129 +89,135 @@ init_inetsock_internal_happy(VALUE v)
 
     int stop = 0;
     int need_free = 0;
+    int state = START;
+    pthread_t th;
 
     while (!stop) {
-        if (res == NULL) {
-            // getaddrinfoの実行
-            pthread_t th;
-            if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
-                free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-                return EAI_AGAIN;
-            }
-            pthread_detach(th);
-
-            // getaddrinfoの待機
-            int retval;
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            FD_SET(reader, &rfds);
-            struct wait_rb_getaddrinfo_happy_arg wait_arg;
-            wait_arg.rfds = &rfds;
-            wait_arg.reader = reader;
-            rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
-
-            retval = wait_arg.retval;
-
-            struct rb_addrinfo *getaddrinfo_res = NULL;
-
-            if (retval < 0){
-                // selectの実行失敗。SystemCallError?
-                rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
-            }
-            else if (retval == 0) {
-                // selectの返り値が0 = 時間切れの場合。いったんこのまま
-                return Qnil;
-            }
-            error = getaddrinfo_arg->err;
-            if (error != 0) {
-                rb_nativethread_lock_lock(&lock);
-                {
-                  if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+        switch (state) {
+            case START:
+                // getaddrinfoの実行
+                if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
+                    free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                    return EAI_AGAIN;
                 }
-                rb_nativethread_lock_unlock(&lock);
-                if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                pthread_detach(th);
 
-                rsock_raise_resolution_error("init_inetsock_internal_happy", error);
-            }
-            char result[4];
-            read(reader, result, sizeof result);
-            if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
-                // 何かしらのエラー
-                return Qnil;
-            }
+                // getaddrinfoの待機
+                int retval;
+                fd_set rfds;
+                FD_ZERO(&rfds);
+                FD_SET(reader, &rfds);
+                struct wait_rb_getaddrinfo_happy_arg wait_arg;
+                wait_arg.rfds = &rfds;
+                wait_arg.reader = reader;
+                rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
 
-            getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-            getaddrinfo_res->allocated_by_malloc = 0;
-            getaddrinfo_res->ai = getaddrinfo_arg->ai;
+                retval = wait_arg.retval;
 
-            arg->remote.res = getaddrinfo_res;
-            arg->fd = fd = -1;
-            res = arg->remote.res->ai;
+                struct rb_addrinfo *getaddrinfo_res = NULL;
 
-            /*
-             * Maybe also accept a local address
-             */
+                if (retval < 0){
+                    // selectの実行失敗。SystemCallError?
+                    rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
+                }
+                else if (retval == 0) {
+                    // selectの返り値が0 = 時間切れの場合。いったんこのまま
+                    return Qnil;
+                }
+                error = getaddrinfo_arg->err;
+                if (error != 0) {
+                    rb_nativethread_lock_lock(&lock);
+                    {
+                      if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+                    }
+                    rb_nativethread_lock_unlock(&lock);
+                    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
-            if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
-                arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                                family, SOCK_STREAM, 0);
-            }
-        }
+                    rsock_raise_resolution_error("init_inetsock_internal_happy", error);
+                }
+                char result[4];
+                read(reader, result, sizeof result);
+                if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
+                    // 何かしらのエラー
+                    return Qnil;
+                }
 
-        #if !defined(INET6) && defined(AF_INET6)
-        if (res->ai_family == AF_INET6)
-            continue;
-        #endif
-        lres = NULL;
-        if (arg->local.res) {
-            for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
-                if (lres->ai_family == res->ai_family)
-                    break;
-            }
-            if (!lres) {
-                if (res->ai_next || status < 0)
+                getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+                getaddrinfo_res->allocated_by_malloc = 0;
+                getaddrinfo_res->ai = getaddrinfo_arg->ai;
+
+                arg->remote.res = getaddrinfo_res;
+                arg->fd = fd = -1;
+                res = arg->remote.res->ai;
+
+                /*
+                 * Maybe also accept a local address
+                 */
+
+                if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
+                    arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
+                                                    family, SOCK_STREAM, 0);
+                }
+
+                state = V46C;
+                continue;
+
+            default:
+                #if !defined(INET6) && defined(AF_INET6)
+                if (res->ai_family == AF_INET6)
                     continue;
-                /* Use a different family local address if no choice, this
-                 * will cause EAFNOSUPPORT. */
-                lres = arg->local.res->ai;
-            }
-        }
-        status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
-        syscall = "socket(2)";
-        fd = status;
-        if (fd < 0) {
-            error = errno;
-            continue;
-        }
-        arg->fd = fd;
-        if (lres) {
-            #if !defined(_WIN32) && !defined(__CYGWIN__)
-            status = 1;
-            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                       (char*)&status, (socklen_t)sizeof(status));
-            #endif
-            status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-            local = status;
-            syscall = "bind(2)";
-        }
-
-        if (status >= 0) {
-            status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
-                                   false, tv);
-            syscall = "connect(2)";
-        }
-
-        if (status < 0) {
-            error = errno;
-            close(fd);
-            arg->fd = fd = -1;
-            res = res->ai_next;
-            continue;
-        } else {
-            stop = 1;
+                #endif
+                lres = NULL;
+                if (arg->local.res) {
+                    for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
+                        if (lres->ai_family == res->ai_family)
+                            break;
+                    }
+                    if (!lres) {
+                        if (res->ai_next || status < 0)
+                            continue;
+                        /* Use a different family local address if no choice, this
+                         * will cause EAFNOSUPPORT. */
+                        lres = arg->local.res->ai;
+                    }
+                }
+                status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
+                syscall = "socket(2)";
+                fd = status;
+                if (fd < 0) {
+                    error = errno;
+                    continue;
+                }
+                arg->fd = fd;
+                if (lres) {
+                    #if !defined(_WIN32) && !defined(__CYGWIN__)
+                    status = 1;
+                    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+                               (char*)&status, (socklen_t)sizeof(status));
+                    #endif
+                    status = bind(fd, lres->ai_addr, lres->ai_addrlen);
+                    local = status;
+                    syscall = "bind(2)";
+                }
+        
+                if (status >= 0) {
+                    status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
+                                           false, tv);
+                    syscall = "connect(2)";
+                }
+        
+                if (status < 0) {
+                    error = errno;
+                    close(fd);
+                    arg->fd = fd = -1;
+                    res = res->ai_next;
+                    continue;
+                } else {
+                    stop = 1;
+                }
         }
     }
-
+        
     // 後処理
     rb_nativethread_lock_lock(&lock);
     {
