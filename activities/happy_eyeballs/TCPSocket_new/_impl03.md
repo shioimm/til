@@ -50,9 +50,9 @@ init_inetsock_internal_happy(VALUE v)
         tv = &tv_storage;
     }
 
-#ifdef HAVE_CONST_AI_ADDRCONFIG
+    #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
-#endif
+    #endif
 
     // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
     struct addrinfo hints;
@@ -217,7 +217,11 @@ init_inetsock_internal_happy(VALUE v)
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
-                    state = V46C;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
                 } else {
                     state = SUCCESS;
                 }
@@ -231,8 +235,19 @@ init_inetsock_internal_happy(VALUE v)
                 continue;
 
             case FAILURE:
-                stop = 1;
-                continue;
+            {
+                VALUE host, port;
+
+                if (local < 0) {
+                    host = arg->local.host;
+                    port = arg->local.serv;
+                } else {
+                    host = arg->remote.host;
+                    port = arg->remote.serv;
+                }
+
+                rsock_syserr_fail_host_port(last_error, syscall, host, port);
+            }
 
             case TIMEOUT:
             {
@@ -250,20 +265,6 @@ init_inetsock_internal_happy(VALUE v)
     }
     rb_nativethread_lock_unlock(&lock);
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-
-    if (status < 0) {
-        VALUE host, port;
-
-        if (local < 0) {
-            host = arg->local.host;
-            port = arg->local.serv;
-        } else {
-            host = arg->remote.host;
-            port = arg->remote.serv;
-        }
-
-        rsock_syserr_fail_host_port(last_error, syscall, host, port);
-    }
 
     arg->fd = -1;
 
