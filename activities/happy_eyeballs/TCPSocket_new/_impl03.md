@@ -2,6 +2,8 @@
 - 状態を定義
 - whileループの中で各処理を行うように変更
 - switch文を導入
+  - start -> v46c -> success / failure / timeout
+  - start -> v6c -> success
 
 ```c
 // ext/socket/ipsocket.c
@@ -38,7 +40,7 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo *res = NULL;
     struct addrinfo *lres;
     int fd, status = 0, local = 0;
-    int family = AF_UNSPEC;
+    int family = AF_INET6; // TODO あとでAF_INETでも試す
     const char *syscall = 0;
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
@@ -55,6 +57,7 @@ init_inetsock_internal_happy(VALUE v)
     #endif
 
     // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
+    // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
     struct addrinfo hints;
     MEMZERO(&hints, struct addrinfo, 1);
     hints.ai_family = family;
@@ -95,6 +98,7 @@ init_inetsock_internal_happy(VALUE v)
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
+        {
             case START:
                 // getaddrinfoの実行
                 if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
@@ -160,8 +164,13 @@ init_inetsock_internal_happy(VALUE v)
                                                     family, SOCK_STREAM, 0);
                 }
 
-                state = V46C;
+                if (res->ai_family == AF_INET6) {
+                    state = V6C;
+                } else if (res->ai_family == AF_INET6) {
+                    state = V4C;
+                }
                 continue;
+            }
 
             case V4W:
                 continue;
