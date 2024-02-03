@@ -1,4 +1,4 @@
-# 2024/1/28、2/1、2/2
+# 2024/1/28、2/1 - 2/3
 - 状態を定義
 - whileループの中で各処理を行うように変更
 - switch文を導入
@@ -235,8 +235,11 @@ init_inetsock_internal_happy(VALUE v)
                 continue;
 
             case TIMEOUT:
-                stop = 1;
-                continue;
+            {
+                VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
+                VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
+                rb_raise(etimedout_error, "user specified timeout");
+            }
         }
     }
 
