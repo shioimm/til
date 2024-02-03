@@ -169,8 +169,16 @@ init_inetsock_internal_happy(VALUE v)
             case V6C:
             case V4C:
             case V46C:
+            {
                 #if !defined(INET6) && defined(AF_INET6)
                 if (res->ai_family == AF_INET6)
+                    arg->fd = fd = -1; // これはなに
+                    res = res->ai_next;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
                     continue;
                 #endif
                 lres = NULL;
@@ -179,19 +187,31 @@ init_inetsock_internal_happy(VALUE v)
                         if (lres->ai_family == res->ai_family)
                             break;
                     }
-                    if (!lres) {
-                        if (res->ai_next || status < 0)
+                    if (!lres) { // 見つからなかった
+                        if (res->ai_next || status < 0) { // 他のリモートアドレスファミリを試す
+                            arg->fd = fd = -1; // これはなに
+                            res = res->ai_next;
+                            state = V46C;
                             continue;
-                        /* Use a different family local address if no choice, this
-                         * will cause EAFNOSUPPORT. */
-                        lres = arg->local.res->ai;
+                        } else {
+                            /* Use a different family local address if no choice, this
+                             * will cause EAFNOSUPPORT. */
+                            lres = arg->local.res->ai;
+                        }
                     }
                 }
                 status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
                 syscall = "socket(2)";
                 fd = status;
-                if (fd < 0) {
+                if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
+                    arg->fd = fd = -1; // これはなに
+                    res = res->ai_next;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
                     continue;
                 }
                 arg->fd = fd;
@@ -214,6 +234,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status < 0) {
                     last_error = errno;
+                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
@@ -226,6 +247,7 @@ init_inetsock_internal_happy(VALUE v)
                     state = SUCCESS;
                 }
                 continue;
+            }
 
             case V46W:
                 continue;
@@ -239,6 +261,7 @@ init_inetsock_internal_happy(VALUE v)
                 VALUE host, port;
 
                 if (local < 0) {
+                    // TODO ローカルアドレスのbindに失敗した時用。複数試す場合は最後のlocalを保存するようにする必要あり
                     host = arg->local.host;
                     port = arg->local.serv;
                 } else {
