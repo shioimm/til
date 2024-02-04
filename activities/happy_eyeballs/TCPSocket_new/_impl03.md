@@ -1,9 +1,10 @@
-# 2024/1/28、2/1 - 2/3
+# 2024/1/28、2/1 - 2/4
 - 状態を定義
 - whileループの中で各処理を行うように変更
 - switch文を導入
   - start -> v46c -> success / failure / timeout
   - start -> v6c -> success
+  - start -> v6c -> v46w -> success
 
 ```c
 // ext/socket/ipsocket.c
@@ -31,6 +32,79 @@ enum sock_he_state {
     FAILURE,              /* Connection failed */
     TIMEOUT,              /* Connection timed out */
 };
+
+static void
+socket_nonblock_set(int fd, int nonblock)
+{
+    int flags = fcntl(fd, F_GETFL);
+    if (flags == -1) {
+        rb_sys_fail(0);
+    }
+
+    if (nonblock) {
+        if ((flags & O_NONBLOCK) != 0) {
+            return;
+        } else {
+            flags |= O_NONBLOCK;
+        }
+    } else {
+        if ((flags & O_NONBLOCK) == 0) {
+            return;
+        } else {
+            flags &= ~O_NONBLOCK;
+        }
+    }
+
+    if (fcntl(fd, F_SETFL, flags) == -1) {
+        rb_sys_fail(0);
+    }
+
+    return;
+}
+
+static int
+set_fds(const VALUE fds, rb_fdset_t *set) {
+    int nfds = 0;
+    rb_fd_init(set);
+
+    for (int i = 0; i < RARRAY_LEN(fds); i++) {
+        int fd = FIX2INT(RARRAY_AREF(fds, i));
+        if (fd > nfds) {
+            nfds = fd;
+        }
+        rb_fd_set(fd, set);
+    }
+
+    nfds++;
+    return nfds;
+}
+
+static int
+find_connected_socket(VALUE fds, rb_fdset_t *writefds) {
+    for (int i = 0; i < RARRAY_LEN(fds); i++) {
+        int fd = FIX2INT(RARRAY_AREF(fds, i));
+
+        if (rb_fd_isset(fd, writefds)) {
+            int error;
+            socklen_t len = (socklen_t)sizeof(error);
+            getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&error, &len);
+
+            switch (error) {
+                case 0: // success
+                    return fd;
+                case EINPROGRESS:
+                    break;
+                default: // fail
+                    errno = error;
+                    close(fd);
+                    rb_ary_delete_at(fds, i);
+                    i--;
+                    break;
+            }
+        }
+    }
+    return -1;
+}
 
 static VALUE
 init_inetsock_internal_happy(VALUE v)
@@ -94,6 +168,9 @@ init_inetsock_internal_happy(VALUE v)
     int need_free = 0;
     int state = START;
     pthread_t th;
+    VALUE connecting_fds = rb_ary_tmp_new(1);
+    rb_fdset_t writefds;
+    int nfds;
 
     while (!stop) {
         printf("\nstate %d\n", state);
@@ -152,7 +229,7 @@ init_inetsock_internal_happy(VALUE v)
                 getaddrinfo_res->ai = getaddrinfo_arg->ai;
 
                 arg->remote.res = getaddrinfo_res;
-                arg->fd = fd = -1;
+                arg->fd = fd = -1; // 初期化?
                 res = arg->remote.res->ai;
 
                 /*
@@ -179,7 +256,7 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
-                #if !defined(INET6) && defined(AF_INET6)
+                #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
                 if (res->ai_family == AF_INET6)
                     arg->fd = fd = -1; // これはなに
                     res = res->ai_next;
@@ -236,12 +313,12 @@ init_inetsock_internal_happy(VALUE v)
                 }
 
                 if (status >= 0) {
-                    status = rsock_connect(fd, res->ai_addr, res->ai_addrlen,
-                                           false, tv);
+                    socket_nonblock_set(fd, true);
+                    status = connect(fd, res->ai_addr, res->ai_addrlen);
                     syscall = "connect(2)";
                 }
 
-                if (status < 0) {
+                if (status < 0 && errno != EINPROGRESS) {
                     last_error = errno;
                     // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
@@ -252,14 +329,49 @@ init_inetsock_internal_happy(VALUE v)
                     } else {
                         state = V46C;
                     }
-                } else {
+                } else if (status == 0) { // 接続に成功
                     state = SUCCESS;
+                } else { // 接続中
+                    rb_ary_push(connecting_fds, INT2FIX(fd));
+                    nfds = set_fds(connecting_fds, &writefds);
+                    state = V46W;
                 }
                 continue;
             }
 
             case V46W:
+            {
+                // TODO 名前解決も待つようにする
+                status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, NULL);
+                syscall = "select(2)";
+
+                if (status >= 0) {
+                    arg->fd = fd = find_connected_socket(connecting_fds, &writefds);
+                    if (fd >= 0) {
+                        state = SUCCESS;
+                    } else {
+                        last_error = errno;
+                        res = res->ai_next;
+                        if (res == NULL) {
+                            state = FAILURE;
+                        } else {
+                            state = V46C;
+                        }
+                    }
+                } else {
+                    last_error = errno;
+                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
+                    close(fd);
+                    arg->fd = fd = -1;
+                    res = res->ai_next;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
+                }
                 continue;
+            }
 
             case SUCCESS:
                 stop = 1;
