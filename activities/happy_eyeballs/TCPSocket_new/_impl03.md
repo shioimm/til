@@ -243,7 +243,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (res->ai_family == AF_INET6) {
                     state = V6C;
-                } else if (res->ai_family == AF_INET6) {
+                } else if (res->ai_family == AF_INET) {
                     state = V4C;
                 }
                 continue;
