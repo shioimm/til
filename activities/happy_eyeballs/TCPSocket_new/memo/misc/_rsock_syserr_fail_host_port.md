@@ -1,4 +1,4 @@
-#### `rsock_syserr_fail_host_port`
+# `rsock_syserr_fail_host_port`
 
 ```c
 // ext/socket/socket.c

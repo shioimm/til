@@ -31,13 +31,13 @@ rsock_init_inetsock(
   arg.resolv_timeout = resolv_timeout;
   arg.connect_timeout = connect_timeout;
 
-#if defined(F_SETFL) && defined(F_GETFL) // if nonblocking mode is available
+  #if defined(F_SETFL) && defined(F_GETFL) // if nonblocking mode is available
   // Happy Eyeballs 2を適用する場合
   // init_inetsock_internal_happy() を呼び出す
   if (type == INET_CLIENT) {
     return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg, inetsock_cleanup, (VALUE)&arg);
   }
-#endif
+  #endif
 
   // Happy Eyeballs 2を適用しない場合
   return rb_ensure(init_inetsock_internal, (VALUE)&arg, inetsock_cleanup, (VALUE)&arg);
@@ -138,12 +138,12 @@ init_inetsock_internal_happy(VALUE v)
   // addrinfo を順に試行する
   for (res = arg->remote.res->ai; res; res = res->ai_next) {
 
-#if !defined(INET6) && defined(AF_INET6)
+    #if !defined(INET6) && defined(AF_INET6)
     // ホストがIPv6に対応していない場合、かつ ai_family がIPv6の場合はスキップ
     if (res->ai_family == AF_INET6) {
       continue;
     }
-#endif
+    #endif
 
     lres = NULL;
 
@@ -187,10 +187,10 @@ init_inetsock_internal_happy(VALUE v)
     // local_hostやlocal_servが指定されており、ローカルアドレスが取得できた場合は
     // 取得したアドレスのaddrinfoと作成したソケットをbind
     if (lres) {
-#if !defined(_WIN32) && !defined(__CYGWIN__)
+      #if !defined(_WIN32) && !defined(__CYGWIN__)
       status = 1;
       setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&status, (socklen_t)sizeof(status));
-#endif
+      #endif
 
       status = bind(fd, lres->ai_addr, lres->ai_addrlen);
       local = status;
@@ -443,10 +443,10 @@ set_fds(const VALUE fds, rb_fdset_t *set) {
 static void
 getclockofday(struct timespec *ts)
 {
-#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+  #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
   if (clock_gettime(CLOCK_MONOTONIC, ts) == 0)
     return;
-#endif
+  #endif
   rb_timespec_now(ts);
 }
 

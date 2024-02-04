@@ -1,7 +1,9 @@
-# 2024/1/28、2/1、2/2
+# 2024/1/28、2/1 - 2/3
 - 状態を定義
 - whileループの中で各処理を行うように変更
 - switch文を導入
+  - start -> v46c -> success / failure / timeout
+  - start -> v6c -> success
 
 ```c
 // ext/socket/ipsocket.c
@@ -38,7 +40,7 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo *res = NULL;
     struct addrinfo *lres;
     int fd, status = 0, local = 0;
-    int family = AF_UNSPEC;
+    int family = AF_INET6; // TODO あとでAF_INETでも試す
     const char *syscall = 0;
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
@@ -50,11 +52,12 @@ init_inetsock_internal_happy(VALUE v)
         tv = &tv_storage;
     }
 
-#ifdef HAVE_CONST_AI_ADDRCONFIG
+    #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
-#endif
+    #endif
 
     // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
+    // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
     struct addrinfo hints;
     MEMZERO(&hints, struct addrinfo, 1);
     hints.ai_family = family;
@@ -95,6 +98,7 @@ init_inetsock_internal_happy(VALUE v)
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
+        {
             case START:
                 // getaddrinfoの実行
                 if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
@@ -160,8 +164,13 @@ init_inetsock_internal_happy(VALUE v)
                                                     family, SOCK_STREAM, 0);
                 }
 
-                state = V46C;
+                if (res->ai_family == AF_INET6) {
+                    state = V6C;
+                } else if (res->ai_family == AF_INET6) {
+                    state = V4C;
+                }
                 continue;
+            }
 
             case V4W:
                 continue;
@@ -169,8 +178,16 @@ init_inetsock_internal_happy(VALUE v)
             case V6C:
             case V4C:
             case V46C:
+            {
                 #if !defined(INET6) && defined(AF_INET6)
                 if (res->ai_family == AF_INET6)
+                    arg->fd = fd = -1; // これはなに
+                    res = res->ai_next;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
                     continue;
                 #endif
                 lres = NULL;
@@ -179,19 +196,31 @@ init_inetsock_internal_happy(VALUE v)
                         if (lres->ai_family == res->ai_family)
                             break;
                     }
-                    if (!lres) {
-                        if (res->ai_next || status < 0)
+                    if (!lres) { // 見つからなかった
+                        if (res->ai_next || status < 0) { // 他のリモートアドレスファミリを試す
+                            arg->fd = fd = -1; // これはなに
+                            res = res->ai_next;
+                            state = V46C;
                             continue;
-                        /* Use a different family local address if no choice, this
-                         * will cause EAFNOSUPPORT. */
-                        lres = arg->local.res->ai;
+                        } else {
+                            /* Use a different family local address if no choice, this
+                             * will cause EAFNOSUPPORT. */
+                            lres = arg->local.res->ai;
+                        }
                     }
                 }
                 status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
                 syscall = "socket(2)";
                 fd = status;
-                if (fd < 0) {
+                if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
+                    arg->fd = fd = -1; // これはなに
+                    res = res->ai_next;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
                     continue;
                 }
                 arg->fd = fd;
@@ -214,14 +243,20 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status < 0) {
                     last_error = errno;
+                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
-                    state = V46C;
+                    if (res == NULL) {
+                        state = FAILURE;
+                    } else {
+                        state = V46C;
+                    }
                 } else {
                     state = SUCCESS;
                 }
                 continue;
+            }
 
             case V46W:
                 continue;
@@ -231,12 +266,27 @@ init_inetsock_internal_happy(VALUE v)
                 continue;
 
             case FAILURE:
-                stop = 1;
-                continue;
+            {
+                VALUE host, port;
+
+                if (local < 0) {
+                    // TODO ローカルアドレスのbindに失敗した時用。複数試す場合は最後のlocalを保存するようにする必要あり
+                    host = arg->local.host;
+                    port = arg->local.serv;
+                } else {
+                    host = arg->remote.host;
+                    port = arg->remote.serv;
+                }
+
+                rsock_syserr_fail_host_port(last_error, syscall, host, port);
+            }
 
             case TIMEOUT:
-                stop = 1;
-                continue;
+            {
+                VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
+                VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
+                rb_raise(etimedout_error, "user specified timeout");
+            }
         }
     }
 
@@ -247,20 +297,6 @@ init_inetsock_internal_happy(VALUE v)
     }
     rb_nativethread_lock_unlock(&lock);
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-
-    if (status < 0) {
-        VALUE host, port;
-
-        if (local < 0) {
-            host = arg->local.host;
-            port = arg->local.serv;
-        } else {
-            host = arg->remote.host;
-            port = arg->remote.serv;
-        }
-
-        rsock_syserr_fail_host_port(last_error, syscall, host, port);
-    }
 
     arg->fd = -1;
 
