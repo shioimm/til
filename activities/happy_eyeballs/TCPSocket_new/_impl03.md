@@ -5,6 +5,7 @@
   - start -> v46c -> success / failure / timeout
   - start -> v6c -> success
   - start -> v6c -> v46w -> success
+  - start -> v4w -> v46c -> v46w -> success
 
 ```c
 // ext/socket/ipsocket.c
@@ -16,6 +17,7 @@
      defined(F_SETFL) && defined(F_GETFL)
 #    include "ruby/thread_native.h"
 #    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 1
+#    define RESOLUTION_DELAY_USEC 50000 /* 50ms is a recommended value in RFC8305 */
 #  else
 #    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 0
 #  endif
@@ -114,7 +116,8 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo *res = NULL;
     struct addrinfo *lres;
     int fd, status = 0, local = 0;
-    int family = AF_INET6; // TODO あとでAF_INETでも試す
+    // int family = AF_INET6; // TODO あとでAF_INETでも試す
+    int family = AF_INET;
     const char *syscall = 0;
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
@@ -168,9 +171,11 @@ init_inetsock_internal_happy(VALUE v)
     int need_free = 0;
     int state = START;
     pthread_t th;
+    VALUE waiting_pipes = rb_ary_tmp_new(1);
     VALUE connecting_fds = rb_ary_tmp_new(1);
-    rb_fdset_t writefds;
+    rb_fdset_t readfds, writefds;
     int nfds;
+    struct timeval resolution_delay;
 
     while (!stop) {
         printf("\nstate %d\n", state);
@@ -244,13 +249,31 @@ init_inetsock_internal_happy(VALUE v)
                 if (res->ai_family == AF_INET6) {
                     state = V6C;
                 } else if (res->ai_family == AF_INET) {
-                    state = V4C;
+                    state = V4W; // とりあえず
                 }
                 continue;
             }
 
             case V4W:
+            {
+                rb_ary_push(waiting_pipes, INT2FIX(reader));
+                nfds = set_fds(waiting_pipes, &readfds); // 本当にこれでいいか確認が必要かも...
+
+                resolution_delay.tv_sec = 0;
+                resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
+                status = rb_thread_fd_select(nfds, &readfds, NULL, NULL, &resolution_delay);
+                syscall = "select(2)";
+
+                if (status == 0) {
+                    state = V4C;
+                } else {
+                    // TODO (ref Socket.tcp)
+                    // family_name, res = hostname_resolution_queue.get
+                    // selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
+                    state = V46C;
+                }
                 continue;
+            }
 
             case V6C:
             case V4C:
