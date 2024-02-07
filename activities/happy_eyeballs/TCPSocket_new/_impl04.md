@@ -194,11 +194,10 @@ init_inetsock_internal_happy(VALUE v)
 
                 // getaddrinfoの待機
                 int retval;
-                fd_set rfds;
-                FD_ZERO(&rfds);
-                FD_SET(reader, &rfds);
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 struct wait_rb_getaddrinfo_happy_arg wait_arg;
-                wait_arg.rfds = &rfds;
+                wait_arg.rfds = &readfds;
                 wait_arg.reader = reader;
                 rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
 
