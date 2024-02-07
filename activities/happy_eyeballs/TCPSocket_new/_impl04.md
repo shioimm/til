@@ -364,8 +364,8 @@ init_inetsock_internal_happy(VALUE v)
 
             case V46W:
             {
-                // TODO 名前解決も待つようにする・Connection Attempt Delay
-                status = select(nfds, NULL, &writefds, NULL, NULL);
+                // TODO Connection Attempt Delay
+                status = select(nfds, &readfds, &writefds, NULL, NULL);
                 syscall = "select(2)";
 
                 if (status >= 0) {
