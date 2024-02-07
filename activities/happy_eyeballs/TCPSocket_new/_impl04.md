@@ -200,7 +200,6 @@ init_inetsock_internal_happy(VALUE v)
                 wait_arg.rfds = &readfds;
                 wait_arg.reader = reader;
                 rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
-
                 retval = wait_arg.retval;
 
                 struct rb_addrinfo *getaddrinfo_res = NULL;
@@ -258,6 +257,8 @@ init_inetsock_internal_happy(VALUE v)
 
             case V4W:
             {
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 status = select(reader + 1, &readfds, NULL, NULL, &resolution_delay);
@@ -364,6 +365,8 @@ init_inetsock_internal_happy(VALUE v)
             case V46W:
             {
                 // TODO Connection Attempt Delay
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 status = select(nfds, &readfds, &writefds, NULL, NULL);
                 syscall = "select(2)";
 
