@@ -193,22 +193,22 @@ init_inetsock_internal_happy(VALUE v)
                 pthread_detach(th);
 
                 // getaddrinfoの待機
-                int retval;
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 struct wait_rb_getaddrinfo_happy_arg wait_arg;
                 wait_arg.rfds = &readfds;
                 wait_arg.reader = reader;
+
                 rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
-                retval = wait_arg.retval;
+                status = wait_arg.retval;
 
                 struct rb_addrinfo *getaddrinfo_res = NULL;
 
-                if (retval < 0){
+                if (status < 0){
                     // selectの実行失敗。SystemCallError?
                     rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
                 }
-                else if (retval == 0) {
+                else if (status == 0) {
                     // selectの返り値が0 = 時間切れの場合。いったんこのまま
                     return Qnil;
                 }
@@ -261,6 +261,8 @@ init_inetsock_internal_happy(VALUE v)
                 FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
+
+                // TODO 直接select(2)を呼ぶ代わりにrb_thread_call_without_gvl2で呼んで後始末もできるようにする
                 status = select(reader + 1, &readfds, NULL, NULL, &resolution_delay);
                 syscall = "select(2)";
 
@@ -367,6 +369,8 @@ init_inetsock_internal_happy(VALUE v)
                 // TODO Connection Attempt Delay
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
+
+                // TODO 直接select(2)を呼ぶ代わりにrb_thread_call_without_gvl2で呼んで後始末もできるようにする
                 status = select(nfds, &readfds, &writefds, NULL, NULL);
                 syscall = "select(2)";
 
