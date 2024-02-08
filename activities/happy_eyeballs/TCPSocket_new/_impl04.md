@@ -1,11 +1,5 @@
-# 2024/1/28、2/1 - 2/5
-- 状態を定義
-- whileループの中で各処理を行うように変更
-- switch文を導入
-  - start -> v46c -> success / failure / timeout
-  - start -> v6c -> success
-  - start -> v6c -> v46w -> success
-  - start -> v4w -> v46c -> v46w -> success
+# 2024/2/6
+- 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 
 ```c
 // ext/socket/ipsocket.c
@@ -65,17 +59,17 @@ socket_nonblock_set(int fd, int nonblock)
 }
 
 static int
-set_fds(const VALUE fds, rb_fdset_t *set)
+set_fds(const int *fds, int fds_len, fd_set *set)
 {
     int nfds = 0;
-    rb_fd_init(set);
+    FD_ZERO(set);
 
-    for (int i = 0; i < RARRAY_LEN(fds); i++) {
-        int fd = FIX2INT(RARRAY_AREF(fds, i));
+    for (int i = 0; i < fds_len; i++) {
+        int fd = fds[i];
         if (fd > nfds) {
             nfds = fd;
         }
-        rb_fd_set(fd, set);
+        FD_SET(fd, set);
     }
 
     nfds++;
@@ -83,27 +77,28 @@ set_fds(const VALUE fds, rb_fdset_t *set)
 }
 
 static int
-find_connected_socket(VALUE fds, rb_fdset_t *writefds)
+find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
 {
-    for (int i = 0; i < RARRAY_LEN(fds); i++) {
-        int fd = FIX2INT(RARRAY_AREF(fds, i));
+    for (int i = 0; i < fds_len; i++) {
+        int fd = fds[i];
 
-        if (rb_fd_isset(fd, writefds)) {
+        if (fd < 0) continue;
+
+        if (FD_ISSET(fd, writefds)) {
             int error;
-            socklen_t len = (socklen_t)sizeof(error);
-            getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&error, &len);
-
-            switch (error) {
-                case 0: // success
-                    return fd;
-                case EINPROGRESS:
-                    break;
-                default: // fail
-                    errno = error;
-                    close(fd);
-                    rb_ary_delete_at(fds, i);
-                    i--;
-                    break;
+            socklen_t len = sizeof(error);
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+                switch (error) {
+                    case 0: // success
+                        return fd;
+                    case EINPROGRESS: // operation in progress
+                        break;
+                    default: // fail
+                        errno = error;
+                        close(fd);
+                        i--;
+                        break;
+                }
             }
         }
     }
@@ -173,9 +168,15 @@ init_inetsock_internal_happy(VALUE v)
     int need_free = 0;
     int state = START;
     pthread_t th;
-    VALUE waiting_pipes = rb_ary_tmp_new(1);
-    VALUE connecting_fds = rb_ary_tmp_new(1);
-    rb_fdset_t readfds, writefds;
+    int *connecting_fds;
+    int connecting_fds_count = 0;
+    int capa = 10;
+    connecting_fds = malloc(capa * sizeof(int));  // 動的に増やすための関数を用意する
+    if (!connecting_fds) {
+        perror("Failed to allocate memory");
+        return -1;
+    }
+    fd_set readfds, writefds;
     int nfds;
     struct timeval resolution_delay;
 
@@ -193,14 +194,12 @@ init_inetsock_internal_happy(VALUE v)
 
                 // getaddrinfoの待機
                 int retval;
-                fd_set rfds;
-                FD_ZERO(&rfds);
-                FD_SET(reader, &rfds);
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 struct wait_rb_getaddrinfo_happy_arg wait_arg;
-                wait_arg.rfds = &rfds;
+                wait_arg.rfds = &readfds;
                 wait_arg.reader = reader;
                 rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
-
                 retval = wait_arg.retval;
 
                 struct rb_addrinfo *getaddrinfo_res = NULL;
@@ -258,12 +257,11 @@ init_inetsock_internal_happy(VALUE v)
 
             case V4W:
             {
-                rb_ary_push(waiting_pipes, INT2FIX(reader));
-                nfds = set_fds(waiting_pipes, &readfds); // 本当にこれでいいか確認が必要かも...
-
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
-                status = rb_thread_fd_select(nfds, &readfds, NULL, NULL, &resolution_delay);
+                status = select(reader + 1, &readfds, NULL, NULL, &resolution_delay);
                 syscall = "select(2)";
 
                 if (status == 0) {
@@ -357,8 +355,8 @@ init_inetsock_internal_happy(VALUE v)
                 } else if (status == 0) { // 接続に成功
                     state = SUCCESS;
                 } else { // 接続中
-                    rb_ary_push(connecting_fds, INT2FIX(fd));
-                    nfds = set_fds(connecting_fds, &writefds);
+                    connecting_fds[connecting_fds_count++] = fd;
+                    nfds = set_fds(connecting_fds, connecting_fds_count, &writefds);
                     state = V46W;
                 }
                 continue;
@@ -366,12 +364,14 @@ init_inetsock_internal_happy(VALUE v)
 
             case V46W:
             {
-                // TODO 名前解決も待つようにする
-                status = rb_thread_fd_select(nfds, NULL, &writefds, NULL, NULL);
+                // TODO Connection Attempt Delay
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
+                status = select(nfds, &readfds, &writefds, NULL, NULL);
                 syscall = "select(2)";
 
                 if (status >= 0) {
-                    arg->fd = fd = find_connected_socket(connecting_fds, &writefds);
+                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_count, &writefds);
                     if (fd >= 0) {
                         state = SUCCESS;
                     } else {
@@ -434,6 +434,7 @@ init_inetsock_internal_happy(VALUE v)
     }
     rb_nativethread_lock_unlock(&lock);
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+    free(connecting_fds);
 
     arg->fd = -1;
 
