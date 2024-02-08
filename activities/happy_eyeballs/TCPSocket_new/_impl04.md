@@ -2,9 +2,9 @@
 - (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 - select(2)のラッパー関数を`raddrinfo.c`から移動
+- `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
 
 #### TODO
-- `wait_happy_eyeballs_fds_arg`に接続中のソケットのfdsを渡し、同時に待てるようにする
 - select(2)を呼び出している箇所を`rb_thread_call_without_gvl2`の呼び出しに置き換える
 - `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義する
   - `getaddrinfo`のために確保したリソースと接続中のソケットのfdsを渡す
@@ -116,19 +116,19 @@ find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
 
 static struct wait_happy_eyeballs_fds_arg
 {
-    int reader;
-    int retval;
-    fd_set *rfds;
+    int status, nfds;
+    fd_set *readfds, *writefds;
+    // TODO メンバとして待機時間を持つようにする
 };
 
 static void *
 wait_happy_eyeballs_fds(void *ptr)
 {
-    // TODO 接続中のソケットも待機できるようにする。待機時間を受け取ることができるようにする
+    // TODO 待機時間を受け取ることができるようにする
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
-    int retval;
-    retval = select(arg->reader + 1, arg->rfds, NULL, NULL, NULL);
-    arg->retval = retval;
+    int status;
+    status = select(arg->nfds, arg->readfds, arg->writefds, NULL, NULL);
+    arg->status = status;
     return 0;
 }
 
@@ -235,13 +235,12 @@ init_inetsock_internal_happy(VALUE v)
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 struct wait_happy_eyeballs_fds_arg wait_arg;
-                wait_arg.rfds = &readfds;
-                wait_arg.reader = reader;
+                wait_arg.readfds = &readfds;
+                wait_arg.writefds = &writefds;
+                wait_arg.nfds = reader + 1;
 
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_arg);
-                status = wait_arg.retval;
-
-                struct rb_addrinfo *getaddrinfo_res = NULL;
+                status = wait_arg.status;
 
                 if (status < 0){
                     // selectの実行失敗。SystemCallError?
@@ -269,6 +268,7 @@ init_inetsock_internal_happy(VALUE v)
                     return Qnil;
                 }
 
+                struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
                 getaddrinfo_res->allocated_by_malloc = 0;
                 getaddrinfo_res->ai = getaddrinfo_arg->ai;
