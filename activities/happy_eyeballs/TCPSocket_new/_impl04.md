@@ -114,7 +114,14 @@ find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
     return -1;
 }
 
-void *
+static struct wait_happy_eyeballs_fds_arg
+{
+    int reader;
+    int retval;
+    fd_set *rfds;
+};
+
+static void *
 wait_happy_eyeballs_fds(void *ptr)
 {
     // TODO 接続中のソケットも待機できるようにする。待機時間を受け取ることができるようにする
@@ -125,7 +132,7 @@ wait_happy_eyeballs_fds(void *ptr)
     return 0;
 }
 
-void
+static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
     // TODO 接続中のソケットの後始末もできるようにする
@@ -525,19 +532,10 @@ struct rb_getaddrinfo_happy_arg
     rb_nativethread_lock_t lock;
 };
 
-struct wait_happy_eyeballs_fds_arg // 動作確認のため
-{
-    int reader;
-    int retval;
-    fd_set *rfds;
-};
-
 struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
 void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
-void * wait_happy_eyeballs_fds(void *ptr); // 動作確認のため
-void cancel_happy_eyeballs_fds(void *ptr); // 動作確認のため
 // -------------------------
 ```
