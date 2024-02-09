@@ -114,9 +114,10 @@ find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
     return -1;
 }
 
-static struct wait_happy_eyeballs_fds_arg
+struct wait_happy_eyeballs_fds_arg
 {
-    int status, nfds;
+    int status;
+    int *nfds;
     fd_set *readfds, *writefds;
     // TODO メンバとして待機時間を持つようにする
 };
@@ -217,6 +218,10 @@ init_inetsock_internal_happy(VALUE v)
     }
     fd_set readfds, writefds;
     int nfds;
+    struct wait_happy_eyeballs_fds_arg wait_arg;
+    wait_arg.readfds = &readfds;
+    wait_arg.writefds = &writefds;
+    wait_arg.nfds = &nfds;
     struct timeval resolution_delay;
 
     while (!stop) {
@@ -234,11 +239,7 @@ init_inetsock_internal_happy(VALUE v)
                 // getaddrinfoの待機
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
-                struct wait_happy_eyeballs_fds_arg wait_arg;
-                wait_arg.readfds = &readfds;
-                wait_arg.writefds = &writefds;
-                wait_arg.nfds = reader + 1;
-
+                nfds = reader + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_arg);
                 status = wait_arg.status;
 
