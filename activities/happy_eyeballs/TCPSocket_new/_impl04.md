@@ -5,9 +5,8 @@
 - `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
 
 #### TODO
-- `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義する
-  - `getaddrinfo`のために確保したリソースと接続中のソケットのfdsを渡す
-- `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加する
+- `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義し、必要な要素を渡す
+- `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加し、メモリを解放する
 
 ```c
 // ext/socket/ipsocket.c
@@ -132,10 +131,22 @@ wait_happy_eyeballs_fds(void *ptr)
     return 0;
 }
 
+struct cancel_happy_eyeballs_fds_arg
+{
+    int *cancelled;
+    rb_nativethread_lock_t *lock;
+    // TODO connecting_fdsのポインタを追加する
+};
+
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
-    // TODO 接続中のソケットの後始末もできるようにする
+    // TODO
+    //   名前解決の後始末:
+    //     rb_getaddrinfo_happy_argを丸ごと受け取る必要はないので必要なものだけポインタで受け取る
+    //     実際のリソース解放はスレッドの中でやる、ので基本的には今の処理の方向性を踏襲
+    //   接続中のソケットの後始末:
+    //     ここで配列の先頭からcloseし、メモリを解放する
     struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)ptr;
     rb_nativethread_lock_lock(&arg->lock);
     {
