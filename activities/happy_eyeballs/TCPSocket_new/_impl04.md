@@ -1,5 +1,14 @@
 # 2024/2/6
+- (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
+- select(2)のラッパー関数を`raddrinfo.c`から移動
+- `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
+
+#### TODO
+- select(2)を呼び出している箇所を`rb_thread_call_without_gvl2`の呼び出しに置き換える
+- `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義する
+  - `getaddrinfo`のために確保したリソースと接続中のソケットのfdsを渡す
+- `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加する
 
 ```c
 // ext/socket/ipsocket.c
@@ -105,6 +114,36 @@ find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
     return -1;
 }
 
+static struct wait_happy_eyeballs_fds_arg
+{
+    int status, nfds;
+    fd_set *readfds, *writefds;
+    // TODO メンバとして待機時間を持つようにする
+};
+
+static void *
+wait_happy_eyeballs_fds(void *ptr)
+{
+    // TODO 待機時間を受け取ることができるようにする
+    struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
+    int status;
+    status = select(arg->nfds, arg->readfds, arg->writefds, NULL, NULL);
+    arg->status = status;
+    return 0;
+}
+
+static void
+cancel_happy_eyeballs_fds(void *ptr)
+{
+    // TODO 接続中のソケットの後始末もできるようにする
+    struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)ptr;
+    rb_nativethread_lock_lock(&arg->lock);
+    {
+      arg->cancelled = 1;
+    }
+    rb_nativethread_lock_unlock(&arg->lock);
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -193,22 +232,21 @@ init_inetsock_internal_happy(VALUE v)
                 pthread_detach(th);
 
                 // getaddrinfoの待機
-                int retval;
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
-                struct wait_rb_getaddrinfo_happy_arg wait_arg;
-                wait_arg.rfds = &readfds;
-                wait_arg.reader = reader;
-                rb_thread_call_without_gvl2(wait_rb_getaddrinfo_happy, &wait_arg, cancel_rb_getaddrinfo_happy, &getaddrinfo_arg);
-                retval = wait_arg.retval;
+                struct wait_happy_eyeballs_fds_arg wait_arg;
+                wait_arg.readfds = &readfds;
+                wait_arg.writefds = &writefds;
+                wait_arg.nfds = reader + 1;
 
-                struct rb_addrinfo *getaddrinfo_res = NULL;
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_arg);
+                status = wait_arg.status;
 
-                if (retval < 0){
+                if (status < 0){
                     // selectの実行失敗。SystemCallError?
                     rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
                 }
-                else if (retval == 0) {
+                else if (status == 0) {
                     // selectの返り値が0 = 時間切れの場合。いったんこのまま
                     return Qnil;
                 }
@@ -230,6 +268,7 @@ init_inetsock_internal_happy(VALUE v)
                     return Qnil;
                 }
 
+                struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
                 getaddrinfo_res->allocated_by_malloc = 0;
                 getaddrinfo_res->ai = getaddrinfo_arg->ai;
@@ -261,6 +300,8 @@ init_inetsock_internal_happy(VALUE v)
                 FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
+
+                // TODO 直接select(2)を呼ぶ代わりにrb_thread_call_without_gvl2で呼んで後始末もできるようにする
                 status = select(reader + 1, &readfds, NULL, NULL, &resolution_delay);
                 syscall = "select(2)";
 
@@ -367,6 +408,8 @@ init_inetsock_internal_happy(VALUE v)
                 // TODO Connection Attempt Delay
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
+
+                // TODO 直接select(2)を呼ぶ代わりにrb_thread_call_without_gvl2で呼んで後始末もできるようにする
                 status = select(nfds, &readfds, &writefds, NULL, NULL);
                 syscall = "select(2)";
 
@@ -489,19 +532,10 @@ struct rb_getaddrinfo_happy_arg
     rb_nativethread_lock_t lock;
 };
 
-struct wait_rb_getaddrinfo_happy_arg
-{
-    int reader;
-    int retval;
-    fd_set *rfds;
-};
-
 struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
 void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
-void * wait_rb_getaddrinfo_happy(void *ptr);
-void cancel_rb_getaddrinfo_happy(void *ptr);
 // -------------------------
 ```
