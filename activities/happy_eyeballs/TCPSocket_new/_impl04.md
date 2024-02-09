@@ -5,7 +5,6 @@
 - `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
 
 #### TODO
-- select(2)を呼び出している箇所を`rb_thread_call_without_gvl2`の呼び出しに置き換える
 - `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義する
   - `getaddrinfo`のために確保したリソースと接続中のソケットのfdsを渡す
 - `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加する
@@ -119,7 +118,7 @@ struct wait_happy_eyeballs_fds_arg
     int status;
     int *nfds;
     fd_set *readfds, *writefds;
-    // TODO メンバとして待機時間を持つようにする
+    struct timeval *delay;
 };
 
 static void *
@@ -128,7 +127,7 @@ wait_happy_eyeballs_fds(void *ptr)
     // TODO 待機時間を受け取ることができるようにする
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
-    status = select(arg->nfds, arg->readfds, arg->writefds, NULL, NULL);
+    status = select(*arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
     arg->status = status;
     return 0;
 }
@@ -242,6 +241,7 @@ init_inetsock_internal_happy(VALUE v)
                 nfds = reader + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_arg);
                 status = wait_arg.status;
+                syscall = "select(2)";
 
                 if (status < 0){
                     // selectの実行失敗。SystemCallError?
@@ -301,9 +301,11 @@ init_inetsock_internal_happy(VALUE v)
                 FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
-
-                // TODO 直接select(2)を呼ぶ代わりにrb_thread_call_without_gvl2で呼んで後始末もできるようにする
-                status = select(reader + 1, &readfds, NULL, NULL, &resolution_delay);
+                wait_arg.delay = &resolution_delay;
+                nfds = reader + 1;
+                // TODO 第三・四引数
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
+                status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status == 0) {
@@ -398,7 +400,6 @@ init_inetsock_internal_happy(VALUE v)
                     state = SUCCESS;
                 } else { // 接続中
                     connecting_fds[connecting_fds_count++] = fd;
-                    nfds = set_fds(connecting_fds, connecting_fds_count, &writefds);
                     state = V46W;
                 }
                 continue;
@@ -406,12 +407,13 @@ init_inetsock_internal_happy(VALUE v)
 
             case V46W:
             {
-                // TODO Connection Attempt Delay
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
-
-                // TODO 直接select(2)を呼ぶ代わりにrb_thread_call_without_gvl2で呼んで後始末もできるようにする
-                status = select(nfds, &readfds, &writefds, NULL, NULL);
+                wait_arg.delay = NULL; // TODO Connection Attempt Delay
+                nfds = set_fds(connecting_fds, connecting_fds_count, &writefds);
+                // TODO 第三・四引数
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
+                status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status >= 0) {
