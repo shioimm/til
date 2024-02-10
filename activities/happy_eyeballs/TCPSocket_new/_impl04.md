@@ -179,6 +179,16 @@ init_inetsock_internal_happy(VALUE v)
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
+    // do_rb_getaddrinfo_happyに渡す引数の準備
+    int pipefd[2];
+    pipe(pipefd);
+    int reader = pipefd[0];
+    int writer = pipefd[1];
+    rb_nativethread_lock_t lock;
+    rb_nativethread_lock_initialize(&lock);
+    int need_free = 0;
+    pthread_t threads[1];
+
     // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
     // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
     struct addrinfo hints;
@@ -196,14 +206,6 @@ init_inetsock_internal_happy(VALUE v)
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
     hints.ai_flags |= additional_flags;
 
-    // do_rb_getaddrinfo_happyに渡す引数の準備
-    int pipefd[2];
-    pipe(pipefd);
-    int reader = pipefd[0];
-    int writer = pipefd[1];
-    rb_nativethread_lock_t lock;
-    rb_nativethread_lock_initialize(&lock);
-
     struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
     getaddrinfo_arg = allocate_rb_getaddrinfo_happy_arg(hostp, portp, &hints); // TODO &外したい
     if (!getaddrinfo_arg) {
@@ -213,10 +215,6 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_arg->writer = writer;
     getaddrinfo_arg->lock = lock;
 
-    int stop = 0;
-    int need_free = 0;
-    int state = START;
-    pthread_t th;
     int *connecting_fds;
     int connecting_fds_size = 0;
     int capa = 10;
@@ -240,17 +238,22 @@ init_inetsock_internal_happy(VALUE v)
     cancel_arg.lock = &getaddrinfo_arg->lock;
     cancel_arg.connecting_fds = connecting_fds;
 
+    int stop = 0;
+    int state = START;
+
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
         {
             case START:
                 // getaddrinfoの実行
-                if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
-                    free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-                    return EAI_AGAIN;
+                for (int i = 0; i < 1; i++) {
+                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
+                        free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                        return EAI_AGAIN;
+                    }
+                    pthread_detach(threads[i]);
                 }
-                pthread_detach(th);
 
                 // getaddrinfoの待機
                 FD_ZERO(&readfds);
@@ -298,7 +301,6 @@ init_inetsock_internal_happy(VALUE v)
                 /*
                  * Maybe also accept a local address
                  */
-
                 if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
                     arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
                                                     family, SOCK_STREAM, 0);
@@ -492,12 +494,13 @@ init_inetsock_internal_happy(VALUE v)
         if (--getaddrinfo_arg->refcount == 0) need_free = 1;
     }
     rb_nativethread_lock_unlock(&lock);
+
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
         if ((fcntl(connecting_fd, F_GETFL) != -1) && connecting_fd != fd) {
-          close(connecting_fd);
+            close(connecting_fd);
         }
     }
     free(connecting_fds);
