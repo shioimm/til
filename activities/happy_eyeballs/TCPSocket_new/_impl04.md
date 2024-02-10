@@ -3,8 +3,6 @@
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 - select(2)のラッパー関数を`raddrinfo.c`から移動
 - `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
-
-#### TODO
 - `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義し、必要な要素を渡す
 - `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加し、メモリを解放する
 
@@ -123,7 +121,6 @@ struct wait_happy_eyeballs_fds_arg
 static void *
 wait_happy_eyeballs_fds(void *ptr)
 {
-    // TODO 待機時間を受け取ることができるようにする
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
     status = select(*arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
@@ -133,26 +130,28 @@ wait_happy_eyeballs_fds(void *ptr)
 
 struct cancel_happy_eyeballs_fds_arg
 {
-    int *cancelled;
+    int *cancelled, *connecting_fds, connecting_fds_size;
     rb_nativethread_lock_t *lock;
-    // TODO connecting_fdsのポインタを追加する
 };
 
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
-    // TODO
-    //   名前解決の後始末:
-    //     rb_getaddrinfo_happy_argを丸ごと受け取る必要はないので必要なものだけポインタで受け取る
-    //     実際のリソース解放はスレッドの中でやる、ので基本的には今の処理の方向性を踏襲
-    //   接続中のソケットの後始末:
-    //     ここで配列の先頭からcloseし、メモリを解放する
-    struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)ptr;
-    rb_nativethread_lock_lock(&arg->lock);
+    struct cancel_happy_eyeballs_fds_arg *arg = (struct cancel_happy_eyeballs_fds_arg *)ptr;
+
+    rb_nativethread_lock_lock(arg->lock);
     {
-      arg->cancelled = 1;
+      *arg->cancelled = 1;
     }
-    rb_nativethread_lock_unlock(&arg->lock);
+    rb_nativethread_lock_unlock(arg->lock);
+
+    for (int i = 0; i < arg->connecting_fds_size; i++) {
+        int fd = arg->connecting_fds[i];
+        if (fcntl(fd, F_GETFL) != -1) {
+          close(fd);
+        }
+    }
+    free(arg->connecting_fds);
 }
 
 static VALUE
@@ -236,6 +235,11 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.nfds = &nfds;
     wait_arg.delay = NULL;
 
+    struct cancel_happy_eyeballs_fds_arg cancel_arg;
+    cancel_arg.cancelled = &getaddrinfo_arg->cancelled;
+    cancel_arg.lock = &getaddrinfo_arg->lock;
+    cancel_arg.connecting_fds = connecting_fds;
+
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
@@ -252,7 +256,7 @@ init_inetsock_internal_happy(VALUE v)
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 nfds = reader + 1;
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_arg);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -316,8 +320,7 @@ init_inetsock_internal_happy(VALUE v)
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 nfds = reader + 1;
-                // TODO 第三・四引数
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -423,8 +426,7 @@ init_inetsock_internal_happy(VALUE v)
                 FD_SET(reader, &readfds);
                 wait_arg.delay = NULL; // TODO Connection Attempt Delay
                 nfds = set_fds(connecting_fds, connecting_fds_size, &writefds);
-                // TODO 第三・四引数
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
