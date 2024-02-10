@@ -282,12 +282,9 @@ init_inetsock_internal_happy(VALUE v)
 
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
-                char result[4];
-                read(reader, result, sizeof result);
-                if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
-                    // 何かしらのエラー
-                    return Qnil;
-                }
+
+                char buffer[1];
+                read(reader, buffer, sizeof(buffer)); // readerを空にする
 
                 struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
