@@ -1,4 +1,4 @@
-# 2024/2/6
+# 2024/2/8-10
 - (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 - select(2)のラッパー関数を`raddrinfo.c`から移動
@@ -66,12 +66,12 @@ socket_nonblock_set(int fd, int nonblock)
 }
 
 static int
-set_fds(const int *fds, int fds_len, fd_set *set)
+set_fds(const int *fds, int fds_size, fd_set *set)
 {
     int nfds = 0;
     FD_ZERO(set);
 
-    for (int i = 0; i < fds_len; i++) {
+    for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
         if (fd > nfds) {
             nfds = fd;
@@ -84,9 +84,9 @@ set_fds(const int *fds, int fds_len, fd_set *set)
 }
 
 static int
-find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
+find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
 {
-    for (int i = 0; i < fds_len; i++) {
+    for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
 
         if (fd < 0) continue;
@@ -219,7 +219,7 @@ init_inetsock_internal_happy(VALUE v)
     int state = START;
     pthread_t th;
     int *connecting_fds;
-    int connecting_fds_count = 0;
+    int connecting_fds_size = 0;
     int capa = 10;
     connecting_fds = malloc(capa * sizeof(int));  // 動的に増やすための関数を用意する
     if (!connecting_fds) {
@@ -228,11 +228,13 @@ init_inetsock_internal_happy(VALUE v)
     }
     fd_set readfds, writefds;
     int nfds;
+    struct timeval resolution_delay;
+
     struct wait_happy_eyeballs_fds_arg wait_arg;
     wait_arg.readfds = &readfds;
     wait_arg.writefds = &writefds;
     wait_arg.nfds = &nfds;
-    struct timeval resolution_delay;
+    wait_arg.delay = NULL;
 
     while (!stop) {
         printf("\nstate %d\n", state);
@@ -256,7 +258,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status < 0){
                     // selectの実行失敗。SystemCallError?
-                    rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
+                    rsock_raise_resolution_error("rb_getaddrinfo_happy", EAI_SYSTEM);
                 }
                 else if (status == 0) {
                     // selectの返り値が0 = 時間切れの場合。いったんこのまま
@@ -308,11 +310,11 @@ init_inetsock_internal_happy(VALUE v)
 
             case V4W:
             {
-                FD_ZERO(&readfds);
-                FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 nfds = reader + 1;
                 // TODO 第三・四引数
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
@@ -410,7 +412,7 @@ init_inetsock_internal_happy(VALUE v)
                 } else if (status == 0) { // 接続に成功
                     state = SUCCESS;
                 } else { // 接続中
-                    connecting_fds[connecting_fds_count++] = fd;
+                    connecting_fds[connecting_fds_size++] = fd;
                     state = V46W;
                 }
                 continue;
@@ -421,14 +423,14 @@ init_inetsock_internal_happy(VALUE v)
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 wait_arg.delay = NULL; // TODO Connection Attempt Delay
-                nfds = set_fds(connecting_fds, connecting_fds_count, &writefds);
+                nfds = set_fds(connecting_fds, connecting_fds_size, &writefds);
                 // TODO 第三・四引数
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status >= 0) {
-                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_count, &writefds);
+                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
                     if (fd >= 0) {
                         state = SUCCESS;
                     } else {
