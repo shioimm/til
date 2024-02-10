@@ -250,6 +250,8 @@ init_inetsock_internal_happy(VALUE v)
                 for (int i = 0; i < 1; i++) {
                     if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
                         free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                        close(reader);
+                        close(writer);
                         return EAI_AGAIN;
                     }
                     pthread_detach(threads[i]);
@@ -278,8 +280,10 @@ init_inetsock_internal_happy(VALUE v)
                       if (--getaddrinfo_arg->refcount == 0) need_free = 1;
                     }
                     rb_nativethread_lock_unlock(&lock);
-                    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
+                    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                    close(reader);
+                    close(writer);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
 
@@ -298,6 +302,7 @@ init_inetsock_internal_happy(VALUE v)
                 /*
                  * Maybe also accept a local address
                  */
+
                 if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
                     arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
                                                     family, SOCK_STREAM, 0);
@@ -493,6 +498,8 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_unlock(&lock);
 
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+    close(reader);
+    close(writer);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
