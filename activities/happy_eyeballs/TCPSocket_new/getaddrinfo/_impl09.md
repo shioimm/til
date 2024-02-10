@@ -1,6 +1,7 @@
 # 2024/2/8
 - 待機用関数`wait_rb_getaddrinfo_happy`を`wait_happy_eyeballs_fds`へrenameしてext/socket/ipsocket.cへ移動
 - UBF`cancel_rb_getaddrinfo_happy`を`cancel_happy_eyeballs_fds`へrenameしてext/socket/ipsocket.cへ移動
+- `free_rb_getaddrinfo_happy`時にMutexのロックを削除するようにした
 
 ```c
 # ext/socket/raddrinfo.c
@@ -48,6 +49,7 @@ allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const st
 void
 free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg)
 {
+    rb_nativethread_lock_destroy(&arg->lock);
     free(arg);
 }
 
