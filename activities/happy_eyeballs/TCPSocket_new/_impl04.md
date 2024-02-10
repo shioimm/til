@@ -398,9 +398,8 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "connect(2)";
                 }
 
-                if (status < 0 && errno != EINPROGRESS) {
+                if (status < 0 && errno != EINPROGRESS) { // bindに失敗 or connectに失敗
                     last_error = errno;
-                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
@@ -444,7 +443,6 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else {
                     last_error = errno;
-                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
@@ -493,6 +491,13 @@ init_inetsock_internal_happy(VALUE v)
     }
     rb_nativethread_lock_unlock(&lock);
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+
+    for (int i = 0; i < connecting_fds_size; i++) {
+        int connecting_fd = connecting_fds[i];
+        if ((fcntl(connecting_fd, F_GETFL) != -1) && connecting_fd != fd) {
+          close(connecting_fd);
+        }
+    }
     free(connecting_fds);
 
     arg->fd = -1;
