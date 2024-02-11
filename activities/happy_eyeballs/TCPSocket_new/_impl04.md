@@ -34,6 +34,40 @@ enum sock_he_state {
     TIMEOUT,              /* Connection timed out */
 };
 
+tatic void
+allocate_rb_getaddrinfo_happy_arg_buffer(char **buf, const char *portp, size_t *portp_offset)
+{
+    size_t getaddrinfo_arg_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
+    char *getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+
+    if (!getaddrinfo_arg_buf) {
+        rb_gc();
+        getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+    }
+
+    *buf = getaddrinfo_arg_buf;
+}
+
+static void
+allocate_rb_getaddrinfo_happy_arg_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
+    if (source) {
+        *endpoint = buf + *offset;
+        strcpy(*endpoint, source);
+    } else {
+        *endpoint = NULL;
+    }
+}
+
+static void allocate_rb_getaddrinfo_happy_arg_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+{
+    MEMZERO(hints, struct addrinfo, 1);
+    hints->ai_family = family;
+    hints->ai_socktype = SOCK_STREAM;
+    hints->ai_protocol = IPPROTO_TCP;
+    hints->ai_flags = remote_addrinfo_hints;
+    hints->ai_flags |= additional_flags;
+}
+
 static void
 socket_nonblock_set(int fd, int nonblock)
 {
@@ -197,50 +231,27 @@ init_inetsock_internal_happy(VALUE v)
 
     size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
-    size_t getaddrinfo_arg_bufsize = portp_offset + (portp ? strlen(portp) + 1 : 0);
 
-    // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
+    // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため) -----
     struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
     struct addrinfo hints;
+    char *getaddrinfo_arg_buf;
 
-    char *getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
-    if (!getaddrinfo_arg_buf) {
-        rb_gc();
-        getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
-        if (!getaddrinfo_arg_buf) return EAI_MEMORY;
-    }
+    allocate_rb_getaddrinfo_happy_arg_buffer(&getaddrinfo_arg_buf, portp, &portp_offset);
 
     getaddrinfo_arg = (struct rb_getaddrinfo_happy_arg *)getaddrinfo_arg_buf;
+    if (!getaddrinfo_arg) return EAI_MEMORY;
 
-    if (hostp) {
-        getaddrinfo_arg->node = getaddrinfo_arg_buf + hostp_offset;
-        strcpy(getaddrinfo_arg->node, hostp);
-    }
-    else {
-        getaddrinfo_arg->node = NULL;
-    }
+    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_arg->node, hostp, &hostp_offset, getaddrinfo_arg_buf);
+    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_arg->service, portp, &portp_offset, getaddrinfo_arg_buf);
+    allocate_rb_getaddrinfo_happy_arg_hints(&hints, family, remote_addrinfo_hints, additional_flags);
 
-    if (portp) {
-        getaddrinfo_arg->service = getaddrinfo_arg_buf + portp_offset;
-        strcpy(getaddrinfo_arg->service, portp);
-    }
-    else {
-        getaddrinfo_arg->service = NULL;
-    }
-
+    getaddrinfo_arg->hints = hints;
     getaddrinfo_arg->ai = NULL;
     getaddrinfo_arg->refcount = 2;
     getaddrinfo_arg->writer = writer;
     getaddrinfo_arg->lock = lock;
-
-    MEMZERO(&hints, struct addrinfo, 1);
-    hints.ai_family = family;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    hints.ai_flags = remote_addrinfo_hints;
-    hints.ai_flags |= additional_flags;
-
-    getaddrinfo_arg->hints = hints;
+    // ----------------------------------------------------------------------
 
     int *connecting_fds;
     int connecting_fds_size = 0;
