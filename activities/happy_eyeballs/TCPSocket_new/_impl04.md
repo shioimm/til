@@ -1,4 +1,4 @@
-# 2024/2/8-10
+# 2024/2/8-11
 - (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 - select(2)のラッパー関数を`raddrinfo.c`から移動
@@ -23,18 +23,18 @@
 #endif
 
 enum sock_he_state {
-    START,                /* Start to hostname resolution */
-    V4W,                  /* Wait for Resolution Delay */
-    V4C,                  /* Start to connect with IPv4 addrinfo */
-    V6C,                  /* Start to connect with IPv4 addrinfo */
-    V46C,                 /* Start to connect with IPv6 addrinfo or IPv4addrinfo */
-    V46W,                 /* Wait for connecting with IPv6 addrinfo or IPv4addrinfo */
-    SUCCESS,              /* Connection established */
-    FAILURE,              /* Connection failed */
-    TIMEOUT,              /* Connection timed out */
+    START,                /* 0 Start to hostname resolution */
+    V4W,                  /* 1 Wait for Resolution Delay */
+    V4C,                  /* 2 Start to connect with IPv4 addrinfo */
+    V6C,                  /* 3 Start to connect with IPv4 addrinfo */
+    V46C,                 /* 4 Start to connect with IPv6 addrinfo or IPv4addrinfo */
+    V46W,                 /* 5 Wait for connecting with IPv6 addrinfo or IPv4addrinfo */
+    SUCCESS,              /* 6 Connection established */
+    FAILURE,              /* 7 Connection failed */
+    TIMEOUT,              /* 8 Connection timed out */
 };
 
-tatic void
+static void
 allocate_rb_getaddrinfo_happy_arg_buffer(char **buf, const char *portp, size_t *portp_offset)
 {
     size_t getaddrinfo_arg_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
@@ -219,6 +219,8 @@ init_inetsock_internal_happy(VALUE v)
     int additional_flags = 0;
     hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
+    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
     int pipefd[2];
     pipe(pipefd);
@@ -227,10 +229,8 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_t lock;
     rb_nativethread_lock_initialize(&lock);
     int need_free = 0;
+    int cancelled = 0;
     pthread_t threads[1];
-
-    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
-    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
     // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため) -----
     struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
@@ -249,6 +249,7 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_arg->hints = hints;
     getaddrinfo_arg->ai = NULL;
     getaddrinfo_arg->refcount = 2;
+    getaddrinfo_arg->cancelled = &cancelled;
     getaddrinfo_arg->writer = writer;
     getaddrinfo_arg->lock = lock;
     // ----------------------------------------------------------------------
@@ -272,7 +273,7 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.delay = NULL;
 
     struct cancel_happy_eyeballs_fds_arg cancel_arg;
-    cancel_arg.cancelled = &getaddrinfo_arg->cancelled;
+    cancel_arg.cancelled = &cancelled;
     cancel_arg.lock = &getaddrinfo_arg->lock;
     cancel_arg.connecting_fds = connecting_fds;
 
@@ -286,6 +287,7 @@ init_inetsock_internal_happy(VALUE v)
             case START:
                 // getaddrinfoの実行
                 for (int i = 0; i < 1; i++) {
+                    // TODO 引数をここで用意する
                     if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
                         free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
                         close(reader);
@@ -595,8 +597,8 @@ struct rb_getaddrinfo_happy_arg
     char *node, *service;
     struct addrinfo hints;
     struct addrinfo *ai;
-    int err, refcount, cancelled;
-    int writer;
+    int err, refcount, writer;
+    int *cancelled;
     rb_nativethread_lock_t lock;
 };
 

@@ -1,4 +1,4 @@
-# 2024/2/8
+# 2024/2/8, 2/11
 - 待機用関数`wait_rb_getaddrinfo_happy`を`wait_happy_eyeballs_fds`へrenameしてext/socket/ipsocket.cへ移動
 - UBF`cancel_rb_getaddrinfo_happy`を`cancel_happy_eyeballs_fds`へrenameしてext/socket/ipsocket.cへ移動
 - `free_rb_getaddrinfo_happy`時にMutexのロックを削除するようにした
@@ -38,11 +38,15 @@ do_rb_getaddrinfo_happy(void *ptr)
     rb_nativethread_lock_lock(&arg->lock);
     {
         arg->err = err;
-        if (arg->cancelled) {
+        if (*arg->cancelled) {
             freeaddrinfo(arg->ai);
         }
         else {
-            write(arg->writer, HOSTNAME_RESOLUTION_PIPE_UPDATED, strlen(HOSTNAME_RESOLUTION_PIPE_UPDATED));
+            if (arg->family == AF_INET6) {
+              write(arg->writer, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
+            } else if (arg->family == AF_INET) {
+              write(arg->writer, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
+            }
         }
         if (--arg->refcount == 0) need_free = 1;
     }
@@ -58,7 +62,8 @@ do_rb_getaddrinfo_happy(void *ptr)
 // ext/socket/rubysocket.h
 
 // 追加 -------------------
-#define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
+#define IPV6_HOSTNAME_RESOLVED "1"
+#define IPV4_HOSTNAME_RESOLVED "2"
 
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
@@ -68,8 +73,8 @@ struct rb_getaddrinfo_happy_arg
     char *node, *service;
     struct addrinfo hints;
     struct addrinfo *ai;
-    int err, refcount, cancelled;
-    int writer;
+    int family, err, refcount, writer;
+    int *cancelled;
     rb_nativethread_lock_t lock;
 };
 
