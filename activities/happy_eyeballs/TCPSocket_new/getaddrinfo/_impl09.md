@@ -8,44 +8,6 @@
 
 #define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
 
-struct rb_getaddrinfo_happy_arg *
-allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints)
-{
-    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
-    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
-    size_t bufsize = portp_offset + (portp ? strlen(portp) + 1 : 0);
-
-    char *buf = malloc(bufsize);
-    if (!buf) {
-        rb_gc();
-        buf = malloc(bufsize);
-        if (!buf) return NULL;
-    }
-    struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)buf;
-
-    if (hostp) {
-        arg->node = buf + hostp_offset;
-        strcpy(arg->node, hostp);
-    }
-    else {
-        arg->node = NULL;
-    }
-
-    if (portp) {
-        arg->service = buf + portp_offset;
-        strcpy(arg->service, portp);
-    }
-    else {
-        arg->service = NULL;
-    }
-
-    arg->hints = *hints;
-    arg->ai = NULL;
-    arg->refcount = 2;
-
-    return arg;
-}
-
 void
 free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg)
 {
@@ -110,8 +72,6 @@ struct rb_getaddrinfo_happy_arg
     int writer;
     rb_nativethread_lock_t lock;
 };
-
-struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);

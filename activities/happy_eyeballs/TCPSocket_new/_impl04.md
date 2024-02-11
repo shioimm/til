@@ -180,6 +180,12 @@ init_inetsock_internal_happy(VALUE v)
     #endif
 
     // do_rb_getaddrinfo_happyに渡す引数の準備
+    char *hostp, *portp;
+    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+    int additional_flags = 0;
+    hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
+    portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+
     int pipefd[2];
     pipe(pipefd);
     int reader = pipefd[0];
@@ -189,31 +195,52 @@ init_inetsock_internal_happy(VALUE v)
     int need_free = 0;
     pthread_t threads[1];
 
-    // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
+    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
+    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
+    size_t getaddrinfo_arg_bufsize = portp_offset + (portp ? strlen(portp) + 1 : 0);
+
     // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
+    struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
     struct addrinfo hints;
+
+    char *getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+    if (!getaddrinfo_arg_buf) {
+        rb_gc();
+        getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+        if (!getaddrinfo_arg_buf) return EAI_MEMORY;
+    }
+
+    getaddrinfo_arg = (struct rb_getaddrinfo_happy_arg *)getaddrinfo_arg_buf;
+
+    if (hostp) {
+        getaddrinfo_arg->node = getaddrinfo_arg_buf + hostp_offset;
+        strcpy(getaddrinfo_arg->node, hostp);
+    }
+    else {
+        getaddrinfo_arg->node = NULL;
+    }
+
+    if (portp) {
+        getaddrinfo_arg->service = getaddrinfo_arg_buf + portp_offset;
+        strcpy(getaddrinfo_arg->service, portp);
+    }
+    else {
+        getaddrinfo_arg->service = NULL;
+    }
+
+    getaddrinfo_arg->ai = NULL;
+    getaddrinfo_arg->refcount = 2;
+    getaddrinfo_arg->writer = writer;
+    getaddrinfo_arg->lock = lock;
+
     MEMZERO(&hints, struct addrinfo, 1);
     hints.ai_family = family;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = remote_addrinfo_hints;
-
-    // getaddrinfoを実行するための準備 (rsock_getaddrinfoに該当)
-    char *hostp, *portp;
-    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
-    int additional_flags = 0;
-    hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
-    portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
     hints.ai_flags |= additional_flags;
 
-    struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
-    getaddrinfo_arg = allocate_rb_getaddrinfo_happy_arg(hostp, portp, &hints); // TODO &外したい
-    if (!getaddrinfo_arg) {
-        return EAI_MEMORY;
-    }
-
-    getaddrinfo_arg->writer = writer;
-    getaddrinfo_arg->lock = lock;
+    getaddrinfo_arg->hints = hints;
 
     int *connecting_fds;
     int connecting_fds_size = 0;
@@ -561,8 +588,6 @@ struct rb_getaddrinfo_happy_arg
     int writer;
     rb_nativethread_lock_t lock;
 };
-
-struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
