@@ -1,10 +1,8 @@
-# 2024/2/6
+# 2024/2/8-10
 - (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 - select(2)のラッパー関数を`raddrinfo.c`から移動
 - `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
-
-#### TODO
 - `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義し、必要な要素を渡す
 - `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加し、メモリを解放する
 
@@ -66,12 +64,12 @@ socket_nonblock_set(int fd, int nonblock)
 }
 
 static int
-set_fds(const int *fds, int fds_len, fd_set *set)
+set_fds(const int *fds, int fds_size, fd_set *set)
 {
     int nfds = 0;
     FD_ZERO(set);
 
-    for (int i = 0; i < fds_len; i++) {
+    for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
         if (fd > nfds) {
             nfds = fd;
@@ -84,9 +82,9 @@ set_fds(const int *fds, int fds_len, fd_set *set)
 }
 
 static int
-find_connected_socket(const int *fds, int fds_len, fd_set *writefds)
+find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
 {
-    for (int i = 0; i < fds_len; i++) {
+    for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
 
         if (fd < 0) continue;
@@ -123,7 +121,6 @@ struct wait_happy_eyeballs_fds_arg
 static void *
 wait_happy_eyeballs_fds(void *ptr)
 {
-    // TODO 待機時間を受け取ることができるようにする
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
     status = select(*arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
@@ -133,26 +130,28 @@ wait_happy_eyeballs_fds(void *ptr)
 
 struct cancel_happy_eyeballs_fds_arg
 {
-    int *cancelled;
+    int *cancelled, *connecting_fds, connecting_fds_size;
     rb_nativethread_lock_t *lock;
-    // TODO connecting_fdsのポインタを追加する
 };
 
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
-    // TODO
-    //   名前解決の後始末:
-    //     rb_getaddrinfo_happy_argを丸ごと受け取る必要はないので必要なものだけポインタで受け取る
-    //     実際のリソース解放はスレッドの中でやる、ので基本的には今の処理の方向性を踏襲
-    //   接続中のソケットの後始末:
-    //     ここで配列の先頭からcloseし、メモリを解放する
-    struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)ptr;
-    rb_nativethread_lock_lock(&arg->lock);
+    struct cancel_happy_eyeballs_fds_arg *arg = (struct cancel_happy_eyeballs_fds_arg *)ptr;
+
+    rb_nativethread_lock_lock(arg->lock);
     {
-      arg->cancelled = 1;
+      *arg->cancelled = 1;
     }
-    rb_nativethread_lock_unlock(&arg->lock);
+    rb_nativethread_lock_unlock(arg->lock);
+
+    for (int i = 0; i < arg->connecting_fds_size; i++) {
+        int fd = arg->connecting_fds[i];
+        if (fcntl(fd, F_GETFL) != -1) {
+          close(fd);
+        }
+    }
+    free(arg->connecting_fds);
 }
 
 static VALUE
@@ -180,6 +179,16 @@ init_inetsock_internal_happy(VALUE v)
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
+    // do_rb_getaddrinfo_happyに渡す引数の準備
+    int pipefd[2];
+    pipe(pipefd);
+    int reader = pipefd[0];
+    int writer = pipefd[1];
+    rb_nativethread_lock_t lock;
+    rb_nativethread_lock_initialize(&lock);
+    int need_free = 0;
+    pthread_t threads[1];
+
     // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
     // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
     struct addrinfo hints;
@@ -197,14 +206,6 @@ init_inetsock_internal_happy(VALUE v)
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
     hints.ai_flags |= additional_flags;
 
-    // do_rb_getaddrinfo_happyに渡す引数の準備
-    int pipefd[2];
-    pipe(pipefd);
-    int reader = pipefd[0];
-    int writer = pipefd[1];
-    rb_nativethread_lock_t lock;
-    rb_nativethread_lock_initialize(&lock);
-
     struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
     getaddrinfo_arg = allocate_rb_getaddrinfo_happy_arg(hostp, portp, &hints); // TODO &外したい
     if (!getaddrinfo_arg) {
@@ -214,12 +215,8 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_arg->writer = writer;
     getaddrinfo_arg->lock = lock;
 
-    int stop = 0;
-    int need_free = 0;
-    int state = START;
-    pthread_t th;
     int *connecting_fds;
-    int connecting_fds_count = 0;
+    int connecting_fds_size = 0;
     int capa = 10;
     connecting_fds = malloc(capa * sizeof(int));  // 動的に増やすための関数を用意する
     if (!connecting_fds) {
@@ -228,11 +225,21 @@ init_inetsock_internal_happy(VALUE v)
     }
     fd_set readfds, writefds;
     int nfds;
+    struct timeval resolution_delay;
+
     struct wait_happy_eyeballs_fds_arg wait_arg;
     wait_arg.readfds = &readfds;
     wait_arg.writefds = &writefds;
     wait_arg.nfds = &nfds;
-    struct timeval resolution_delay;
+    wait_arg.delay = NULL;
+
+    struct cancel_happy_eyeballs_fds_arg cancel_arg;
+    cancel_arg.cancelled = &getaddrinfo_arg->cancelled;
+    cancel_arg.lock = &getaddrinfo_arg->lock;
+    cancel_arg.connecting_fds = connecting_fds;
+
+    int stop = 0;
+    int state = START;
 
     while (!stop) {
         printf("\nstate %d\n", state);
@@ -240,23 +247,27 @@ init_inetsock_internal_happy(VALUE v)
         {
             case START:
                 // getaddrinfoの実行
-                if (do_pthread_create(&th, do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
-                    free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
-                    return EAI_AGAIN;
+                for (int i = 0; i < 1; i++) {
+                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
+                        free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                        close(reader);
+                        close(writer);
+                        return EAI_AGAIN;
+                    }
+                    pthread_detach(threads[i]);
                 }
-                pthread_detach(th);
 
                 // getaddrinfoの待機
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 nfds = reader + 1;
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_arg);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status < 0){
                     // selectの実行失敗。SystemCallError?
-                    rsock_raise_resolution_error("rb_getaddrinfo_happy_main", EAI_SYSTEM);
+                    rsock_raise_resolution_error("rb_getaddrinfo_happy", EAI_SYSTEM);
                 }
                 else if (status == 0) {
                     // selectの返り値が0 = 時間切れの場合。いったんこのまま
@@ -269,16 +280,15 @@ init_inetsock_internal_happy(VALUE v)
                       if (--getaddrinfo_arg->refcount == 0) need_free = 1;
                     }
                     rb_nativethread_lock_unlock(&lock);
-                    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
 
+                    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                    close(reader);
+                    close(writer);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
-                char result[4];
-                read(reader, result, sizeof result);
-                if (strncmp(result, HOSTNAME_RESOLUTION_PIPE_UPDATED, sizeof HOSTNAME_RESOLUTION_PIPE_UPDATED) != 0) {
-                    // 何かしらのエラー
-                    return Qnil;
-                }
+
+                char buffer[1];
+                read(reader, buffer, sizeof(buffer)); // readerを空にする
 
                 struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
@@ -308,14 +318,13 @@ init_inetsock_internal_happy(VALUE v)
 
             case V4W:
             {
-                FD_ZERO(&readfds);
-                FD_SET(reader, &readfds);
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
+                FD_ZERO(&readfds);
+                FD_SET(reader, &readfds);
                 nfds = reader + 1;
-                // TODO 第三・四引数
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -396,9 +405,8 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "connect(2)";
                 }
 
-                if (status < 0 && errno != EINPROGRESS) {
+                if (status < 0 && errno != EINPROGRESS) { // bindに失敗 or connectに失敗
                     last_error = errno;
-                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
@@ -410,7 +418,7 @@ init_inetsock_internal_happy(VALUE v)
                 } else if (status == 0) { // 接続に成功
                     state = SUCCESS;
                 } else { // 接続中
-                    connecting_fds[connecting_fds_count++] = fd;
+                    connecting_fds[connecting_fds_size++] = fd;
                     state = V46W;
                 }
                 continue;
@@ -421,14 +429,13 @@ init_inetsock_internal_happy(VALUE v)
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
                 wait_arg.delay = NULL; // TODO Connection Attempt Delay
-                nfds = set_fds(connecting_fds, connecting_fds_count, &writefds);
-                // TODO 第三・四引数
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, NULL, NULL);
+                nfds = set_fds(connecting_fds, connecting_fds_size, &writefds);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status >= 0) {
-                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_count, &writefds);
+                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
                     if (fd >= 0) {
                         state = SUCCESS;
                     } else {
@@ -442,7 +449,6 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else {
                     last_error = errno;
-                    // TODO ここでcloseせず、SUCCESS、FAILURE、TIMEOUTでまとめてcloseできるようにする
                     close(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
@@ -490,7 +496,17 @@ init_inetsock_internal_happy(VALUE v)
         if (--getaddrinfo_arg->refcount == 0) need_free = 1;
     }
     rb_nativethread_lock_unlock(&lock);
+
     if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+    close(reader);
+    close(writer);
+
+    for (int i = 0; i < connecting_fds_size; i++) {
+        int connecting_fd = connecting_fds[i];
+        if ((fcntl(connecting_fd, F_GETFL) != -1) && connecting_fd != fd) {
+            close(connecting_fd);
+        }
+    }
     free(connecting_fds);
 
     arg->fd = -1;
