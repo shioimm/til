@@ -232,14 +232,14 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_initialize(&lock);
     int cancelled = 0;
 
-    pthread_t threads[1];
-    int families[1] = {AF_INET6};
-    int need_frees[1];
+    pthread_t threads[2];
+    int families[2] = {AF_INET6, AF_INET};
+    int need_frees[2];
     int tmp_need_free = 0;
-    struct rb_getaddrinfo_happy_arg *getaddrinfo_args[1];
+    struct rb_getaddrinfo_happy_arg *getaddrinfo_args[2]; // TODO 01 要素に名前をつける
     struct rb_getaddrinfo_happy_arg *tmp_getaddrinfo_arg;
-    struct addrinfo getaddrinfo_hints[1];
-    char *getaddrinfo_arg_bufs[1];
+    struct addrinfo getaddrinfo_hints[2];
+    char *getaddrinfo_arg_bufs[2];
 
     char written[2];
 
@@ -275,7 +275,7 @@ init_inetsock_internal_happy(VALUE v)
         {
             case START:
                 // getaddrinfoの実行
-                for (int i = 0; i < 1; i++) {
+                for (int i = 0; i < 2; i++) {
                     allocate_rb_getaddrinfo_happy_arg_buffer(&getaddrinfo_arg_bufs[i], portp, &portp_offset);
 
                     getaddrinfo_args[i] = (struct rb_getaddrinfo_happy_arg *)getaddrinfo_arg_bufs[i];
@@ -322,13 +322,12 @@ init_inetsock_internal_happy(VALUE v)
                 ssize_t bytes_read = read(reader, written, sizeof(written) - 1);
                 written[bytes_read] = '\0';
 
-                // TODO 03 インデックスを修正する
                 if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                     tmp_getaddrinfo_arg = getaddrinfo_args[0];
                     tmp_need_free = need_frees[0];
                 } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_arg = getaddrinfo_args[0];
-                    tmp_need_free = need_frees[0];
+                    tmp_getaddrinfo_arg = getaddrinfo_args[1];
+                    tmp_need_free = need_frees[1];
                 }
 
                 last_error = tmp_getaddrinfo_arg->err;
@@ -491,18 +490,26 @@ init_inetsock_internal_happy(VALUE v)
                 syscall = "select(2)";
 
                 if (status >= 0) {
-                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
-                    if (fd >= 0) {
-                        state = SUCCESS;
+                    if (FD_ISSET(reader, &readfds)) {
+                        read(reader, written, sizeof(written) - 1);
+                        // TODO 01 取得したaddrinfoを次のループ以降選択可能にする
+                        state = V46W;
                     } else {
-                        last_error = errno;
-                        res = res->ai_next;
-                        if (res == NULL) {
-                            state = FAILURE;
+                        arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
+                        if (fd >= 0) {
+                            state = SUCCESS;
                         } else {
-                            state = V46C;
+                            last_error = errno;
+                            res = res->ai_next;
+                            if (res == NULL) {
+                                state = FAILURE;
+                            } else {
+                                state = V46C;
+                            }
                         }
                     }
+                } else if (status == 0) {
+                    // TODO connect_timeout
                 } else {
                     last_error = errno;
                     close_fd(fd);
@@ -549,15 +556,13 @@ init_inetsock_internal_happy(VALUE v)
     // 後処理
     rb_nativethread_lock_lock(&lock);
     {
-        // TODO 03 インデックスを修正
-        for (int i = 0; i < 1; i++) {
+        for (int i = 0; i < 2; i++) {
             if (--getaddrinfo_args[i]->refcount == 0) need_frees[i] = 1;
         }
     }
     rb_nativethread_lock_unlock(&lock);
 
-    // TODO 03 インデックスを修正
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 2; i++) {
         if (need_frees[i]) free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
     }
     close_fd(reader);
