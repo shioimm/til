@@ -237,6 +237,8 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo getaddrinfo_hints[1];
     char *getaddrinfo_arg_bufs[1];
 
+    char written[2];
+
     int *connecting_fds;
     int connecting_fds_size = 0;
     int capa = 10;
@@ -313,15 +315,14 @@ init_inetsock_internal_happy(VALUE v)
                     return Qnil;
                 }
 
-                char result[2];
-                ssize_t bytes_read = read(reader, result, sizeof(result) - 1);
-                result[bytes_read] = '\0';
+                ssize_t bytes_read = read(reader, written, sizeof(written) - 1);
+                written[bytes_read] = '\0';
 
                 // TODO 03 インデックスを修正する
-                if (strcmp(result, IPV6_HOSTNAME_RESOLVED) == 0) {
+                if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                     tmp_getaddrinfo_arg = getaddrinfo_args[0];
                     tmp_need_free = need_frees[0];
-                } else if (strcmp(result, IPV4_HOSTNAME_RESOLVED) == 0) {
+                } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                     tmp_getaddrinfo_arg = getaddrinfo_args[0];
                     tmp_need_free = need_frees[0];
                 }
@@ -386,6 +387,7 @@ init_inetsock_internal_happy(VALUE v)
                     // TODO (ref Socket.tcp)
                     // family_name, res = hostname_resolution_queue.get
                     // selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
+                    read(reader, written, sizeof(written) - 1);
                     state = V46C;
                 }
                 continue;
