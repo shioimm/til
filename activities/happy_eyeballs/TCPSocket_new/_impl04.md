@@ -35,21 +35,21 @@ enum sock_he_state {
 };
 
 static void
-allocate_rb_getaddrinfo_happy_arg_buffer(char **buf, const char *portp, size_t *portp_offset)
+allocate_rb_getaddrinfo_happy_entry_buffer(char **buf, const char *portp, size_t *portp_offset)
 {
-    size_t getaddrinfo_arg_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
-    char *getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+    size_t getaddrinfo_entry_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
+    char *getaddrinfo_entry_buf = malloc(getaddrinfo_entry_bufsize);
 
-    if (!getaddrinfo_arg_buf) {
+    if (!getaddrinfo_entry_buf) {
         rb_gc();
-        getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+        getaddrinfo_entry_buf = malloc(getaddrinfo_entry_bufsize);
     }
 
-    *buf = getaddrinfo_arg_buf;
+    *buf = getaddrinfo_entry_buf;
 }
 
 static void
-allocate_rb_getaddrinfo_happy_arg_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
+allocate_rb_getaddrinfo_happy_entry_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
     if (source) {
         *endpoint = buf + *offset;
         strcpy(*endpoint, source);
@@ -58,7 +58,7 @@ allocate_rb_getaddrinfo_happy_arg_endpoint(char **endpoint, const char *source, 
     }
 }
 
-static void allocate_rb_getaddrinfo_happy_arg_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+static void allocate_rb_getaddrinfo_happy_entry_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
 {
     MEMZERO(hints, struct addrinfo, 1);
     hints->ai_family = family;
@@ -221,7 +221,7 @@ init_inetsock_internal_happy(VALUE v)
     int additional_flags = 0;
     hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
+    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_entry);
     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
     int pipefd[2];
@@ -236,10 +236,10 @@ init_inetsock_internal_happy(VALUE v)
     int families[2] = {AF_INET6, AF_INET};
     int need_frees[2];
     int tmp_need_free = 0;
-    struct rb_getaddrinfo_happy_arg *getaddrinfo_args[2]; // TODO 01 要素に名前をつける
-    struct rb_getaddrinfo_happy_arg *tmp_getaddrinfo_arg;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2]; // TODO 01 要素に名前をつける
+    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry;
     struct addrinfo getaddrinfo_hints[2];
-    char *getaddrinfo_arg_bufs[2];
+    char *getaddrinfo_entry_bufs[2];
 
     char written[2];
 
@@ -276,25 +276,25 @@ init_inetsock_internal_happy(VALUE v)
             case START:
                 // getaddrinfoの実行
                 for (int i = 0; i < 2; i++) {
-                    allocate_rb_getaddrinfo_happy_arg_buffer(&getaddrinfo_arg_bufs[i], portp, &portp_offset);
+                    allocate_rb_getaddrinfo_happy_entry_buffer(&getaddrinfo_entry_bufs[i], portp, &portp_offset);
 
-                    getaddrinfo_args[i] = (struct rb_getaddrinfo_happy_arg *)getaddrinfo_arg_bufs[i];
-                    if (!getaddrinfo_args[i]) return EAI_MEMORY;
+                    getaddrinfo_entries[i] = (struct rb_getaddrinfo_happy_entry *)getaddrinfo_entry_bufs[i];
+                    if (!getaddrinfo_entries[i]) return EAI_MEMORY;
 
-                    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_args[i]->node, hostp, &hostp_offset, getaddrinfo_arg_bufs[i]);
-                    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_args[i]->service, portp, &portp_offset, getaddrinfo_arg_bufs[i]);
-                    allocate_rb_getaddrinfo_happy_arg_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(&getaddrinfo_entries[i]->node, hostp, &hostp_offset, getaddrinfo_entry_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(&getaddrinfo_entries[i]->service, portp, &portp_offset, getaddrinfo_entry_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_entry_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
 
-                    getaddrinfo_args[i]->hints = getaddrinfo_hints[i];
-                    getaddrinfo_args[i]->ai = NULL;
-                    getaddrinfo_args[i]->family = families[i];
-                    getaddrinfo_args[i]->refcount = 2;
-                    getaddrinfo_args[i]->cancelled = &cancelled;
-                    getaddrinfo_args[i]->writer = writer;
-                    getaddrinfo_args[i]->lock = lock;
+                    getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
+                    getaddrinfo_entries[i]->ai = NULL;
+                    getaddrinfo_entries[i]->family = families[i];
+                    getaddrinfo_entries[i]->refcount = 2;
+                    getaddrinfo_entries[i]->cancelled = &cancelled;
+                    getaddrinfo_entries[i]->writer = writer;
+                    getaddrinfo_entries[i]->lock = lock;
 
-                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_args[i]) != 0) {
-                        free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
+                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_entries[i]) != 0) {
+                        free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
                         close_fd(reader);
                         close_fd(writer);
                         return EAI_AGAIN;
@@ -323,22 +323,22 @@ init_inetsock_internal_happy(VALUE v)
                 written[bytes_read] = '\0';
 
                 if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_arg = getaddrinfo_args[0];
+                    tmp_getaddrinfo_entry = getaddrinfo_entries[0];
                     tmp_need_free = need_frees[0];
                 } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_arg = getaddrinfo_args[1];
+                    tmp_getaddrinfo_entry = getaddrinfo_entries[1];
                     tmp_need_free = need_frees[1];
                 }
 
-                last_error = tmp_getaddrinfo_arg->err;
+                last_error = tmp_getaddrinfo_entry->err;
                 if (last_error != 0) {
                     rb_nativethread_lock_lock(&lock);
                     {
-                      if (--tmp_getaddrinfo_arg->refcount == 0) tmp_need_free = 1;
+                      if (--tmp_getaddrinfo_entry->refcount == 0) tmp_need_free = 1;
                     }
                     rb_nativethread_lock_unlock(&lock);
 
-                    if (tmp_need_free) free_rb_getaddrinfo_happy_arg(tmp_getaddrinfo_arg);
+                    if (tmp_need_free) free_rb_getaddrinfo_happy_entry(tmp_getaddrinfo_entry);
                     close_fd(reader);
                     close_fd(writer);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
@@ -347,7 +347,7 @@ init_inetsock_internal_happy(VALUE v)
                 struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
                 getaddrinfo_res->allocated_by_malloc = 0;
-                getaddrinfo_res->ai = tmp_getaddrinfo_arg->ai;
+                getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
 
                 arg->remote.res = getaddrinfo_res;
                 arg->fd = fd = -1; // 初期化?
@@ -557,13 +557,13 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_lock(&lock);
     {
         for (int i = 0; i < 2; i++) {
-            if (--getaddrinfo_args[i]->refcount == 0) need_frees[i] = 1;
+            if (--getaddrinfo_entries[i]->refcount == 0) need_frees[i] = 1;
         }
     }
     rb_nativethread_lock_unlock(&lock);
 
     for (int i = 0; i < 2; i++) {
-        if (need_frees[i]) free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
+        if (need_frees[i]) free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
     }
     close_fd(reader);
     close_fd(writer);
@@ -618,18 +618,18 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
-struct rb_getaddrinfo_happy_arg
+struct rb_getaddrinfo_happy_entry
 {
     char *node, *service;
-    struct addrinfo hints;
-    struct addrinfo *ai;
     int family, err, refcount, writer;
     int *cancelled;
     rb_nativethread_lock_t lock;
+    struct addrinfo hints;
+    struct addrinfo *ai;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
-void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
+void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry);
 // -------------------------
 ```

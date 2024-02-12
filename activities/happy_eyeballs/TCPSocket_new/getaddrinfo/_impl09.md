@@ -6,53 +6,51 @@
 ```c
 # ext/socket/raddrinfo.c
 
-#define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
-
 void
-free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg)
+free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry)
 {
-    rb_nativethread_lock_destroy(&arg->lock);
-    free(arg);
+    rb_nativethread_lock_destroy(&entry->lock);
+    free(entry);
 }
 
 // GETADDRINFO_IMPL == 1のnogvl_getaddrinfoとrsock_getaddrinfoを参考にしている
 void *
 do_rb_getaddrinfo_happy(void *ptr)
 {
-    struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)ptr;
+    struct rb_getaddrinfo_happy_entry *entry = (struct rb_getaddrinfo_happy_entry *)ptr;
 
     int err = 0;
-    err = numeric_getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
+    err = numeric_getaddrinfo(entry->node, entry->service, &entry->hints, &entry->ai);
     if (err != 0) {
-        err = getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
-       #ifdef __linux__
+        err = getaddrinfo(entry->node, entry->service, &entry->hints, &entry->ai);
+#ifdef __linux__
        /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
         * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
         */
        if (err == EAI_SYSTEM && errno == ENOENT)
            err = EAI_NONAME;
-       #endif
+#endif
     }
 
     int need_free = 0;
-    rb_nativethread_lock_lock(&arg->lock);
+    rb_nativethread_lock_lock(&entry->lock);
     {
-        arg->err = err;
-        if (*arg->cancelled) {
-            freeaddrinfo(arg->ai);
+        entry->err = err;
+        if (*entry->cancelled) {
+            freeaddrinfo(entry->ai);
         }
         else {
-            if (arg->family == AF_INET6) {
-              write(arg->writer, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
-            } else if (arg->family == AF_INET) {
-              write(arg->writer, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
+            if (entry->family == AF_INET6) {
+              write(entry->writer, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
+            } else if (entry->family == AF_INET) {
+              write(entry->writer, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
             }
         }
-        if (--arg->refcount == 0) need_free = 1;
+        if (--entry->refcount == 0) need_free = 1;
     }
-    rb_nativethread_lock_unlock(&arg->lock);
+    rb_nativethread_lock_unlock(&entry->lock);
 
-    if (need_free) free_rb_getaddrinfo_happy_arg(arg);
+    if (need_free) free_rb_getaddrinfo_happy_entry(entry);
 
     return 0;
 }
@@ -68,19 +66,19 @@ do_rb_getaddrinfo_happy(void *ptr)
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
-struct rb_getaddrinfo_happy_arg
+struct rb_getaddrinfo_happy_entry
 {
     char *node, *service;
-    struct addrinfo hints;
-    struct addrinfo *ai;
     int family, err, refcount, writer;
     int *cancelled;
     rb_nativethread_lock_t lock;
+    struct addrinfo hints;
+    struct addrinfo *ai;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
-void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
+void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry);
 // -------------------------
 ```
 
