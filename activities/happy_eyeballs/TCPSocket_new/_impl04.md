@@ -358,10 +358,9 @@ init_inetsock_internal_happy(VALUE v)
                  * Maybe also accept a local address
                  */
 
-                // TODO 03 インデックスを修正
                 if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
                     arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                                    families[0], SOCK_STREAM, 0);
+                                                    AF_UNSPEC, SOCK_STREAM, 0);
                 }
 
                 if (res->ai_family == AF_INET6) {
