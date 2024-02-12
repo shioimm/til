@@ -115,6 +115,12 @@ set_fds(const int *fds, int fds_size, fd_set *set)
     return nfds;
 }
 
+static void
+close_fd(int fd)
+{
+    if (fcntl(fd, F_GETFL) != -1) close(fd);
+}
+
 static int
 find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
 {
@@ -134,7 +140,7 @@ find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
                         break;
                     default: // fail
                         errno = error;
-                        close(fd);
+                        close_fd(fd);
                         i--;
                         break;
                 }
@@ -181,9 +187,7 @@ cancel_happy_eyeballs_fds(void *ptr)
 
     for (int i = 0; i < arg->connecting_fds_size; i++) {
         int fd = arg->connecting_fds[i];
-        if (fcntl(fd, F_GETFL) != -1) {
-          close(fd);
-        }
+        close_fd(fd);
     }
     free(arg->connecting_fds);
 }
@@ -291,8 +295,8 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_args[i]) != 0) {
                         free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
-                        close(reader);
-                        close(writer);
+                        close_fd(reader);
+                        close_fd(writer);
                         return EAI_AGAIN;
                     }
                     pthread_detach(threads[i]);
@@ -336,9 +340,8 @@ init_inetsock_internal_happy(VALUE v)
                     rb_nativethread_lock_unlock(&lock);
 
                     if (tmp_need_free) free_rb_getaddrinfo_happy_arg(tmp_getaddrinfo_arg);
-                    // TODO 02 reader / writerのclose時に状態を調べるようにする
-                    close(reader);
-                    close(writer);
+                    close_fd(reader);
+                    close_fd(writer);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
 
@@ -461,7 +464,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status < 0 && errno != EINPROGRESS) { // bindに失敗 or connectに失敗
                     last_error = errno;
-                    close(fd);
+                    close_fd(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
                     if (res == NULL) {
@@ -503,7 +506,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else {
                     last_error = errno;
-                    close(fd);
+                    close_fd(fd);
                     arg->fd = fd = -1;
                     res = res->ai_next;
                     if (res == NULL) {
@@ -558,15 +561,12 @@ init_inetsock_internal_happy(VALUE v)
     for (int i = 0; i < 1; i++) {
         if (need_frees[i]) free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
     }
-    // TODO 02 reader / writerのclose時に状態を調べるようにする
-    close(reader);
-    close(writer);
+    close_fd(reader);
+    close_fd(writer);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
-        if ((fcntl(connecting_fd, F_GETFL) != -1) && connecting_fd != fd) {
-            close(connecting_fd);
-        }
+        if (connecting_fd != fd) close_fd(connecting_fd);
     }
     free(connecting_fds);
 
