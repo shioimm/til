@@ -1,4 +1,4 @@
-# 2024/2/8
+# 2024/2/8, 2/11
 - 待機用関数`wait_rb_getaddrinfo_happy`を`wait_happy_eyeballs_fds`へrenameしてext/socket/ipsocket.cへ移動
 - UBF`cancel_rb_getaddrinfo_happy`を`cancel_happy_eyeballs_fds`へrenameしてext/socket/ipsocket.cへ移動
 - `free_rb_getaddrinfo_happy`時にMutexのロックを削除するようにした
@@ -7,44 +7,6 @@
 # ext/socket/raddrinfo.c
 
 #define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
-
-struct rb_getaddrinfo_happy_arg *
-allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints)
-{
-    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
-    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
-    size_t bufsize = portp_offset + (portp ? strlen(portp) + 1 : 0);
-
-    char *buf = malloc(bufsize);
-    if (!buf) {
-        rb_gc();
-        buf = malloc(bufsize);
-        if (!buf) return NULL;
-    }
-    struct rb_getaddrinfo_happy_arg *arg = (struct rb_getaddrinfo_happy_arg *)buf;
-
-    if (hostp) {
-        arg->node = buf + hostp_offset;
-        strcpy(arg->node, hostp);
-    }
-    else {
-        arg->node = NULL;
-    }
-
-    if (portp) {
-        arg->service = buf + portp_offset;
-        strcpy(arg->service, portp);
-    }
-    else {
-        arg->service = NULL;
-    }
-
-    arg->hints = *hints;
-    arg->ai = NULL;
-    arg->refcount = 2;
-
-    return arg;
-}
 
 void
 free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg)
@@ -76,11 +38,15 @@ do_rb_getaddrinfo_happy(void *ptr)
     rb_nativethread_lock_lock(&arg->lock);
     {
         arg->err = err;
-        if (arg->cancelled) {
+        if (*arg->cancelled) {
             freeaddrinfo(arg->ai);
         }
         else {
-            write(arg->writer, HOSTNAME_RESOLUTION_PIPE_UPDATED, strlen(HOSTNAME_RESOLUTION_PIPE_UPDATED));
+            if (arg->family == AF_INET6) {
+              write(arg->writer, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
+            } else if (arg->family == AF_INET) {
+              write(arg->writer, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
+            }
         }
         if (--arg->refcount == 0) need_free = 1;
     }
@@ -96,7 +62,8 @@ do_rb_getaddrinfo_happy(void *ptr)
 // ext/socket/rubysocket.h
 
 // 追加 -------------------
-#define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
+#define IPV6_HOSTNAME_RESOLVED "1"
+#define IPV4_HOSTNAME_RESOLVED "2"
 
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
@@ -106,12 +73,10 @@ struct rb_getaddrinfo_happy_arg
     char *node, *service;
     struct addrinfo hints;
     struct addrinfo *ai;
-    int err, refcount, cancelled;
-    int writer;
+    int family, err, refcount, writer;
+    int *cancelled;
     rb_nativethread_lock_t lock;
 };
-
-struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);

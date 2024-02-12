@@ -1,4 +1,4 @@
-# 2024/2/8-10
+# 2024/2/8-11
 - (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
 - select(2)のラッパー関数を`raddrinfo.c`から移動
@@ -23,16 +23,50 @@
 #endif
 
 enum sock_he_state {
-    START,                /* Start to hostname resolution */
-    V4W,                  /* Wait for Resolution Delay */
-    V4C,                  /* Start to connect with IPv4 addrinfo */
-    V6C,                  /* Start to connect with IPv4 addrinfo */
-    V46C,                 /* Start to connect with IPv6 addrinfo or IPv4addrinfo */
-    V46W,                 /* Wait for connecting with IPv6 addrinfo or IPv4addrinfo */
-    SUCCESS,              /* Connection established */
-    FAILURE,              /* Connection failed */
-    TIMEOUT,              /* Connection timed out */
+    START,                /* 0 Start to hostname resolution */
+    V4W,                  /* 1 Wait for Resolution Delay */
+    V4C,                  /* 2 Start to connect with IPv4 addrinfo */
+    V6C,                  /* 3 Start to connect with IPv4 addrinfo */
+    V46C,                 /* 4 Start to connect with IPv6 addrinfo or IPv4addrinfo */
+    V46W,                 /* 5 Wait for connecting with IPv6 addrinfo or IPv4addrinfo */
+    SUCCESS,              /* 6 Connection established */
+    FAILURE,              /* 7 Connection failed */
+    TIMEOUT,              /* 8 Connection timed out */
 };
+
+static void
+allocate_rb_getaddrinfo_happy_arg_buffer(char **buf, const char *portp, size_t *portp_offset)
+{
+    size_t getaddrinfo_arg_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
+    char *getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+
+    if (!getaddrinfo_arg_buf) {
+        rb_gc();
+        getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+    }
+
+    *buf = getaddrinfo_arg_buf;
+}
+
+static void
+allocate_rb_getaddrinfo_happy_arg_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
+    if (source) {
+        *endpoint = buf + *offset;
+        strcpy(*endpoint, source);
+    } else {
+        *endpoint = NULL;
+    }
+}
+
+static void allocate_rb_getaddrinfo_happy_arg_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+{
+    MEMZERO(hints, struct addrinfo, 1);
+    hints->ai_family = family;
+    hints->ai_socktype = SOCK_STREAM;
+    hints->ai_protocol = IPPROTO_TCP;
+    hints->ai_flags = remote_addrinfo_hints;
+    hints->ai_flags |= additional_flags;
+}
 
 static void
 socket_nonblock_set(int fd, int nonblock)
@@ -162,8 +196,6 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo *res = NULL;
     struct addrinfo *lres;
     int fd, status = 0, local = 0;
-    // int family = AF_INET6; // TODO あとでAF_INETでも試す
-    int family = AF_INET;
     const char *syscall = 0;
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
@@ -180,45 +212,35 @@ init_inetsock_internal_happy(VALUE v)
     #endif
 
     // do_rb_getaddrinfo_happyに渡す引数の準備
+    char *hostp, *portp;
+    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+    int additional_flags = 0;
+    hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
+    portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
+    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
+
     int pipefd[2];
     pipe(pipefd);
     int reader = pipefd[0];
     int writer = pipefd[1];
     rb_nativethread_lock_t lock;
     rb_nativethread_lock_initialize(&lock);
-    int need_free = 0;
+    int cancelled = 0;
+
     pthread_t threads[1];
-
-    // 引数を元にしてhintsに値を格納 (call_getaddrinfoに該当)
-    // TODO アドレスファミリごとに用意する必要あり (hints.ai_familyが異なるため)
-    struct addrinfo hints;
-    MEMZERO(&hints, struct addrinfo, 1);
-    hints.ai_family = family;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    hints.ai_flags = remote_addrinfo_hints;
-
-    // getaddrinfoを実行するための準備 (rsock_getaddrinfoに該当)
-    char *hostp, *portp;
-    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
-    int additional_flags = 0;
-    hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
-    portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-    hints.ai_flags |= additional_flags;
-
-    struct rb_getaddrinfo_happy_arg *getaddrinfo_arg;
-    getaddrinfo_arg = allocate_rb_getaddrinfo_happy_arg(hostp, portp, &hints); // TODO &外したい
-    if (!getaddrinfo_arg) {
-        return EAI_MEMORY;
-    }
-
-    getaddrinfo_arg->writer = writer;
-    getaddrinfo_arg->lock = lock;
+    int families[1] = {AF_INET6};
+    int need_frees[1];
+    int tmp_need_free = 0;
+    struct rb_getaddrinfo_happy_arg *getaddrinfo_args[1];
+    struct rb_getaddrinfo_happy_arg *tmp_getaddrinfo_arg;
+    struct addrinfo getaddrinfo_hints[1];
+    char *getaddrinfo_arg_bufs[1];
 
     int *connecting_fds;
     int connecting_fds_size = 0;
     int capa = 10;
-    connecting_fds = malloc(capa * sizeof(int));  // 動的に増やすための関数を用意する
+    connecting_fds = malloc(capa * sizeof(int));  // TODO 動的に増やすための関数を用意する
     if (!connecting_fds) {
         perror("Failed to allocate memory");
         return -1;
@@ -234,8 +256,8 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.delay = NULL;
 
     struct cancel_happy_eyeballs_fds_arg cancel_arg;
-    cancel_arg.cancelled = &getaddrinfo_arg->cancelled;
-    cancel_arg.lock = &getaddrinfo_arg->lock;
+    cancel_arg.cancelled = &cancelled;
+    cancel_arg.lock = &lock;
     cancel_arg.connecting_fds = connecting_fds;
 
     int stop = 0;
@@ -248,8 +270,25 @@ init_inetsock_internal_happy(VALUE v)
             case START:
                 // getaddrinfoの実行
                 for (int i = 0; i < 1; i++) {
-                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_arg) != 0) {
-                        free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                    allocate_rb_getaddrinfo_happy_arg_buffer(&getaddrinfo_arg_bufs[i], portp, &portp_offset);
+
+                    getaddrinfo_args[i] = (struct rb_getaddrinfo_happy_arg *)getaddrinfo_arg_bufs[i];
+                    if (!getaddrinfo_args[i]) return EAI_MEMORY;
+
+                    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_args[i]->node, hostp, &hostp_offset, getaddrinfo_arg_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_args[i]->service, portp, &portp_offset, getaddrinfo_arg_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_arg_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
+
+                    getaddrinfo_args[i]->hints = getaddrinfo_hints[i];
+                    getaddrinfo_args[i]->ai = NULL;
+                    getaddrinfo_args[i]->family = families[i];
+                    getaddrinfo_args[i]->refcount = 2;
+                    getaddrinfo_args[i]->cancelled = &cancelled;
+                    getaddrinfo_args[i]->writer = writer;
+                    getaddrinfo_args[i]->lock = lock;
+
+                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_args[i]) != 0) {
+                        free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
                         close(reader);
                         close(writer);
                         return EAI_AGAIN;
@@ -273,27 +312,39 @@ init_inetsock_internal_happy(VALUE v)
                     // selectの返り値が0 = 時間切れの場合。いったんこのまま
                     return Qnil;
                 }
-                last_error = getaddrinfo_arg->err;
+
+                char result[2];
+                ssize_t bytes_read = read(reader, result, sizeof(result) - 1);
+                result[bytes_read] = '\0';
+
+                // TODO 03 インデックスを修正する
+                if (strcmp(result, IPV6_HOSTNAME_RESOLVED) == 0) {
+                    tmp_getaddrinfo_arg = getaddrinfo_args[0];
+                    tmp_need_free = need_frees[0];
+                } else if (strcmp(result, IPV4_HOSTNAME_RESOLVED) == 0) {
+                    tmp_getaddrinfo_arg = getaddrinfo_args[0];
+                    tmp_need_free = need_frees[0];
+                }
+
+                last_error = tmp_getaddrinfo_arg->err;
                 if (last_error != 0) {
                     rb_nativethread_lock_lock(&lock);
                     {
-                      if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+                      if (--tmp_getaddrinfo_arg->refcount == 0) tmp_need_free = 1;
                     }
                     rb_nativethread_lock_unlock(&lock);
 
-                    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+                    if (tmp_need_free) free_rb_getaddrinfo_happy_arg(tmp_getaddrinfo_arg);
+                    // TODO 02 reader / writerのclose時に状態を調べるようにする
                     close(reader);
                     close(writer);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
 
-                char buffer[1];
-                read(reader, buffer, sizeof(buffer)); // readerを空にする
-
                 struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
                 getaddrinfo_res->allocated_by_malloc = 0;
-                getaddrinfo_res->ai = getaddrinfo_arg->ai;
+                getaddrinfo_res->ai = tmp_getaddrinfo_arg->ai;
 
                 arg->remote.res = getaddrinfo_res;
                 arg->fd = fd = -1; // 初期化?
@@ -303,9 +354,10 @@ init_inetsock_internal_happy(VALUE v)
                  * Maybe also accept a local address
                  */
 
+                // TODO 03 インデックスを修正
                 if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
                     arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                                    family, SOCK_STREAM, 0);
+                                                    families[0], SOCK_STREAM, 0);
                 }
 
                 if (res->ai_family == AF_INET6) {
@@ -493,11 +545,18 @@ init_inetsock_internal_happy(VALUE v)
     // 後処理
     rb_nativethread_lock_lock(&lock);
     {
-        if (--getaddrinfo_arg->refcount == 0) need_free = 1;
+        // TODO 03 インデックスを修正
+        for (int i = 0; i < 1; i++) {
+            if (--getaddrinfo_args[i]->refcount == 0) need_frees[i] = 1;
+        }
     }
     rb_nativethread_lock_unlock(&lock);
 
-    if (need_free) free_rb_getaddrinfo_happy_arg(getaddrinfo_arg);
+    // TODO 03 インデックスを修正
+    for (int i = 0; i < 1; i++) {
+        if (need_frees[i]) free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
+    }
+    // TODO 02 reader / writerのclose時に状態を調べるようにする
     close(reader);
     close(writer);
 
@@ -547,7 +606,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 // ext/socket/rubysocket.h
 
 // 追加 -------------------
-#define HOSTNAME_RESOLUTION_PIPE_UPDATED "1"
+#define IPV6_HOSTNAME_RESOLVED "1"
+#define IPV4_HOSTNAME_RESOLVED "2"
 
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
@@ -557,12 +617,10 @@ struct rb_getaddrinfo_happy_arg
     char *node, *service;
     struct addrinfo hints;
     struct addrinfo *ai;
-    int err, refcount, cancelled;
-    int writer;
+    int family, err, refcount, writer;
+    int *cancelled;
     rb_nativethread_lock_t lock;
 };
-
-struct rb_getaddrinfo_happy_arg *allocate_rb_getaddrinfo_happy_arg(const char *hostp, const char *portp, const struct addrinfo *hints);
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
