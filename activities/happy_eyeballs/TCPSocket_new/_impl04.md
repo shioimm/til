@@ -197,8 +197,8 @@ init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_arg *arg = (void *)v;
     int last_error = 0;
-    struct addrinfo *res = NULL;
-    struct addrinfo *lres;
+    struct addrinfo *remote_ai = NULL;
+    struct addrinfo *local_ai;
     int fd, status = 0, local = 0;
     const char *syscall = 0;
     VALUE connect_timeout = arg->connect_timeout;
@@ -232,15 +232,18 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_initialize(&lock);
     int cancelled = 0;
 
-    pthread_t threads[2];
-    int families[2] = {AF_INET6, AF_INET};
-    int need_frees[2];
+    int families[2] = { AF_INET6, AF_INET }; // TODO 要IPアドレス指定対応 / シングルスタック対応
+
     int tmp_need_free = 0;
-    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2]; // TODO 01 要素に名前をつける
-    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry;
+    int need_frees[2];
+    struct rb_getaddrinfo_happy_entry *ipv6_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry *ipv4_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2] = { ipv6_getaddrinfo_entry, ipv4_getaddrinfo_entry };
     struct addrinfo getaddrinfo_hints[2];
     char *getaddrinfo_entry_bufs[2];
 
+    pthread_t threads[2];
     char written[2];
 
     int *connecting_fds;
@@ -265,6 +268,11 @@ init_inetsock_internal_happy(VALUE v)
     cancel_arg.cancelled = &cancelled;
     cancel_arg.lock = &lock;
     cancel_arg.connecting_fds = connecting_fds;
+
+    // TODO 01 connect(二回目以降)時のaddrinfoを選択する
+    int priority_on_v6[2] = { AF_INET6, AF_INET };
+    int priority_on_v4[2] = { AF_INET, AF_INET6 };
+    int last_family;
 
     int stop = 0;
     int state = START;
@@ -351,7 +359,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 arg->remote.res = getaddrinfo_res;
                 arg->fd = fd = -1; // 初期化?
-                res = arg->remote.res->ai;
+                remote_ai = arg->remote.res->ai;
 
                 /*
                  * Maybe also accept a local address
@@ -362,9 +370,9 @@ init_inetsock_internal_happy(VALUE v)
                                                     AF_UNSPEC, SOCK_STREAM, 0);
                 }
 
-                if (res->ai_family == AF_INET6) {
+                if (remote_ai->ai_family == AF_INET6) {
                     state = V6C;
-                } else if (res->ai_family == AF_INET) {
+                } else if (remote_ai->ai_family == AF_INET) {
                     state = V4W; // とりあえず
                 }
                 continue;
@@ -384,7 +392,8 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status == 0) {
                     state = V4C;
-                } else {
+                } else { // 名前解決できた
+                    // TODO 01 取得したaddrinfoを次のループ以降選択可能にする
                     // TODO (ref Socket.tcp)
                     // family_name, res = hostname_resolution_queue.get
                     // selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
@@ -398,75 +407,79 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
+                // TODO 01 connect(二回目以降)時のaddrinfoを選択する
                 #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
-                if (res->ai_family == AF_INET6)
+                if (remote_ai->ai_family == AF_INET6)
                     arg->fd = fd = -1; // これはなに
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next; // TODO 01 IPv4のaddrinfoを選択する
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
                     continue;
                 #endif
-                lres = NULL;
-                if (arg->local.res) {
-                    for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
-                        if (lres->ai_family == res->ai_family)
+                local_ai = NULL;
+                if (arg->local.res) { // locat_host / local_portが指定された場合
+                    for (local_ai = arg->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
+                        if (local_ai->ai_family == remote_ai->ai_family)
                             break;
                     }
-                    if (!lres) { // 見つからなかった
-                        if (res->ai_next || status < 0) { // 他のリモートアドレスファミリを試す
+                    if (!local_ai) { // 見つからなかった
+                        if (remote_ai->ai_next || status < 0) { // TODO 01 次のaddrinfoを選択する
                             arg->fd = fd = -1; // これはなに
-                            res = res->ai_next;
+                            remote_ai = remote_ai->ai_next; // TODO 01 次のaddrinfoを選択する
                             state = V46C;
                             continue;
                         } else {
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
-                            lres = arg->local.res->ai;
+                            local_ai = arg->local.res->ai;
                         }
                     }
                 }
-                status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
+                status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype,　remote_ai->ai_protocol);
                 syscall = "socket(2)";
                 fd = status;
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
                     arg->fd = fd = -1; // これはなに
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next;
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
                     continue;
                 }
                 arg->fd = fd;
-                if (lres) {
+                if (local_ai) {
                     #if !defined(_WIN32) && !defined(__CYGWIN__)
                     status = 1;
                     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                                (char*)&status, (socklen_t)sizeof(status));
                     #endif
-                    status = bind(fd, lres->ai_addr, lres->ai_addrlen);
+                    status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
                     local = status;
                     syscall = "bind(2)";
                 }
 
                 if (status >= 0) {
                     socket_nonblock_set(fd, true);
-                    status = connect(fd, res->ai_addr, res->ai_addrlen);
+                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
                 }
 
-                if (status < 0 && errno != EINPROGRESS) { // bindに失敗 or connectに失敗
+                // TODO 01 bind(2)に失敗した場合とconnect(2)に失敗した場合で処理を分ける
+                // bind(2)に失敗した場合、次のaddrinfoはremote_ai->ai_next;
+                // connect(2)に失敗した場合、次のaddrinfoは選択が必要
+                if (status < 0 && errno != EINPROGRESS) { // bind(2)に失敗 or connect(2)に失敗
                     last_error = errno;
                     close_fd(fd);
                     arg->fd = fd = -1;
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next;
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
@@ -500,9 +513,9 @@ init_inetsock_internal_happy(VALUE v)
                             state = SUCCESS;
                         } else {
                             last_error = errno;
-                            res = res->ai_next;
-                            if (res == NULL) {
-                                state = FAILURE;
+                            remote_ai = remote_ai->ai_next; // TODO 01 次のaddrinfoを選択する
+                            if (remote_ai == NULL) {
+                                state = FAILURE; // TODO 02 V46Wとの分岐が必要
                             } else {
                                 state = V46C;
                             }
@@ -510,13 +523,13 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else if (status == 0) {
                     // TODO connect_timeout
-                } else {
+                } else { // selectに失敗
                     last_error = errno;
                     close_fd(fd);
                     arg->fd = fd = -1;
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next;
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
