@@ -35,21 +35,21 @@ enum sock_he_state {
 };
 
 static void
-allocate_rb_getaddrinfo_happy_arg_buffer(char **buf, const char *portp, size_t *portp_offset)
+allocate_rb_getaddrinfo_happy_entry_buffer(char **buf, const char *portp, size_t *portp_offset)
 {
-    size_t getaddrinfo_arg_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
-    char *getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+    size_t getaddrinfo_entry_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
+    char *getaddrinfo_entry_buf = malloc(getaddrinfo_entry_bufsize);
 
-    if (!getaddrinfo_arg_buf) {
+    if (!getaddrinfo_entry_buf) {
         rb_gc();
-        getaddrinfo_arg_buf = malloc(getaddrinfo_arg_bufsize);
+        getaddrinfo_entry_buf = malloc(getaddrinfo_entry_bufsize);
     }
 
-    *buf = getaddrinfo_arg_buf;
+    *buf = getaddrinfo_entry_buf;
 }
 
 static void
-allocate_rb_getaddrinfo_happy_arg_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
+allocate_rb_getaddrinfo_happy_entry_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
     if (source) {
         *endpoint = buf + *offset;
         strcpy(*endpoint, source);
@@ -58,7 +58,7 @@ allocate_rb_getaddrinfo_happy_arg_endpoint(char **endpoint, const char *source, 
     }
 }
 
-static void allocate_rb_getaddrinfo_happy_arg_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+static void allocate_rb_getaddrinfo_happy_entry_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
 {
     MEMZERO(hints, struct addrinfo, 1);
     hints->ai_family = family;
@@ -115,6 +115,12 @@ set_fds(const int *fds, int fds_size, fd_set *set)
     return nfds;
 }
 
+static void
+close_fd(int fd)
+{
+    if (fcntl(fd, F_GETFL) != -1) close(fd);
+}
+
 static int
 find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
 {
@@ -134,7 +140,7 @@ find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
                         break;
                     default: // fail
                         errno = error;
-                        close(fd);
+                        close_fd(fd);
                         i--;
                         break;
                 }
@@ -181,9 +187,7 @@ cancel_happy_eyeballs_fds(void *ptr)
 
     for (int i = 0; i < arg->connecting_fds_size; i++) {
         int fd = arg->connecting_fds[i];
-        if (fcntl(fd, F_GETFL) != -1) {
-          close(fd);
-        }
+        close_fd(fd);
     }
     free(arg->connecting_fds);
 }
@@ -193,8 +197,8 @@ init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_arg *arg = (void *)v;
     int last_error = 0;
-    struct addrinfo *res = NULL;
-    struct addrinfo *lres;
+    struct addrinfo *remote_ai = NULL;
+    struct addrinfo *local_ai;
     int fd, status = 0, local = 0;
     const char *syscall = 0;
     VALUE connect_timeout = arg->connect_timeout;
@@ -217,7 +221,7 @@ init_inetsock_internal_happy(VALUE v)
     int additional_flags = 0;
     hostp = host_str(arg->remote.host, hbuf, sizeof(hbuf), &additional_flags);
     portp = port_str(arg->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_arg);
+    size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_entry);
     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
     int pipefd[2];
@@ -228,14 +232,19 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_initialize(&lock);
     int cancelled = 0;
 
-    pthread_t threads[1];
-    int families[1] = {AF_INET6};
-    int need_frees[1];
+    int families[2] = { AF_INET6, AF_INET }; // TODO 要IPアドレス指定対応 / シングルスタック対応
+
     int tmp_need_free = 0;
-    struct rb_getaddrinfo_happy_arg *getaddrinfo_args[1];
-    struct rb_getaddrinfo_happy_arg *tmp_getaddrinfo_arg;
-    struct addrinfo getaddrinfo_hints[1];
-    char *getaddrinfo_arg_bufs[1];
+    int need_frees[2];
+    struct rb_getaddrinfo_happy_entry *ipv6_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry *ipv4_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2] = { ipv6_getaddrinfo_entry, ipv4_getaddrinfo_entry };
+    struct addrinfo getaddrinfo_hints[2];
+    char *getaddrinfo_entry_bufs[2];
+
+    pthread_t threads[2];
+    char written[2];
 
     int *connecting_fds;
     int connecting_fds_size = 0;
@@ -260,6 +269,11 @@ init_inetsock_internal_happy(VALUE v)
     cancel_arg.lock = &lock;
     cancel_arg.connecting_fds = connecting_fds;
 
+    // TODO 01 connect(二回目以降)時のaddrinfoを選択する
+    int priority_on_v6[2] = { AF_INET6, AF_INET };
+    int priority_on_v4[2] = { AF_INET, AF_INET6 };
+    int last_family;
+
     int stop = 0;
     int state = START;
 
@@ -269,28 +283,28 @@ init_inetsock_internal_happy(VALUE v)
         {
             case START:
                 // getaddrinfoの実行
-                for (int i = 0; i < 1; i++) {
-                    allocate_rb_getaddrinfo_happy_arg_buffer(&getaddrinfo_arg_bufs[i], portp, &portp_offset);
+                for (int i = 0; i < 2; i++) {
+                    allocate_rb_getaddrinfo_happy_entry_buffer(&getaddrinfo_entry_bufs[i], portp, &portp_offset);
 
-                    getaddrinfo_args[i] = (struct rb_getaddrinfo_happy_arg *)getaddrinfo_arg_bufs[i];
-                    if (!getaddrinfo_args[i]) return EAI_MEMORY;
+                    getaddrinfo_entries[i] = (struct rb_getaddrinfo_happy_entry *)getaddrinfo_entry_bufs[i];
+                    if (!getaddrinfo_entries[i]) return EAI_MEMORY;
 
-                    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_args[i]->node, hostp, &hostp_offset, getaddrinfo_arg_bufs[i]);
-                    allocate_rb_getaddrinfo_happy_arg_endpoint(&getaddrinfo_args[i]->service, portp, &portp_offset, getaddrinfo_arg_bufs[i]);
-                    allocate_rb_getaddrinfo_happy_arg_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(&getaddrinfo_entries[i]->node, hostp, &hostp_offset, getaddrinfo_entry_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(&getaddrinfo_entries[i]->service, portp, &portp_offset, getaddrinfo_entry_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_entry_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
 
-                    getaddrinfo_args[i]->hints = getaddrinfo_hints[i];
-                    getaddrinfo_args[i]->ai = NULL;
-                    getaddrinfo_args[i]->family = families[i];
-                    getaddrinfo_args[i]->refcount = 2;
-                    getaddrinfo_args[i]->cancelled = &cancelled;
-                    getaddrinfo_args[i]->writer = writer;
-                    getaddrinfo_args[i]->lock = lock;
+                    getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
+                    getaddrinfo_entries[i]->ai = NULL;
+                    getaddrinfo_entries[i]->family = families[i];
+                    getaddrinfo_entries[i]->refcount = 2;
+                    getaddrinfo_entries[i]->cancelled = &cancelled;
+                    getaddrinfo_entries[i]->writer = writer;
+                    getaddrinfo_entries[i]->lock = lock;
 
-                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_args[i]) != 0) {
-                        free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
-                        close(reader);
-                        close(writer);
+                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_entries[i]) != 0) {
+                        free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
+                        close_fd(reader);
+                        close_fd(writer);
                         return EAI_AGAIN;
                     }
                     pthread_detach(threads[i]);
@@ -313,56 +327,52 @@ init_inetsock_internal_happy(VALUE v)
                     return Qnil;
                 }
 
-                char result[2];
-                ssize_t bytes_read = read(reader, result, sizeof(result) - 1);
-                result[bytes_read] = '\0';
+                ssize_t bytes_read = read(reader, written, sizeof(written) - 1);
+                written[bytes_read] = '\0';
 
-                // TODO 03 インデックスを修正する
-                if (strcmp(result, IPV6_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_arg = getaddrinfo_args[0];
+                if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
+                    tmp_getaddrinfo_entry = getaddrinfo_entries[0];
                     tmp_need_free = need_frees[0];
-                } else if (strcmp(result, IPV4_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_arg = getaddrinfo_args[0];
-                    tmp_need_free = need_frees[0];
+                } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
+                    tmp_getaddrinfo_entry = getaddrinfo_entries[1];
+                    tmp_need_free = need_frees[1];
                 }
 
-                last_error = tmp_getaddrinfo_arg->err;
+                last_error = tmp_getaddrinfo_entry->err;
                 if (last_error != 0) {
                     rb_nativethread_lock_lock(&lock);
                     {
-                      if (--tmp_getaddrinfo_arg->refcount == 0) tmp_need_free = 1;
+                      if (--tmp_getaddrinfo_entry->refcount == 0) tmp_need_free = 1;
                     }
                     rb_nativethread_lock_unlock(&lock);
 
-                    if (tmp_need_free) free_rb_getaddrinfo_happy_arg(tmp_getaddrinfo_arg);
-                    // TODO 02 reader / writerのclose時に状態を調べるようにする
-                    close(reader);
-                    close(writer);
+                    if (tmp_need_free) free_rb_getaddrinfo_happy_entry(tmp_getaddrinfo_entry);
+                    close_fd(reader);
+                    close_fd(writer);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
 
                 struct rb_addrinfo *getaddrinfo_res = NULL;
                 getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
                 getaddrinfo_res->allocated_by_malloc = 0;
-                getaddrinfo_res->ai = tmp_getaddrinfo_arg->ai;
+                getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
 
                 arg->remote.res = getaddrinfo_res;
                 arg->fd = fd = -1; // 初期化?
-                res = arg->remote.res->ai;
+                remote_ai = arg->remote.res->ai;
 
                 /*
                  * Maybe also accept a local address
                  */
 
-                // TODO 03 インデックスを修正
                 if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
                     arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                                    families[0], SOCK_STREAM, 0);
+                                                    AF_UNSPEC, SOCK_STREAM, 0);
                 }
 
-                if (res->ai_family == AF_INET6) {
+                if (remote_ai->ai_family == AF_INET6) {
                     state = V6C;
-                } else if (res->ai_family == AF_INET) {
+                } else if (remote_ai->ai_family == AF_INET) {
                     state = V4W; // とりあえず
                 }
                 continue;
@@ -382,10 +392,12 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status == 0) {
                     state = V4C;
-                } else {
+                } else { // 名前解決できた
+                    // TODO 01 取得したaddrinfoを次のループ以降選択可能にする
                     // TODO (ref Socket.tcp)
                     // family_name, res = hostname_resolution_queue.get
                     // selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
+                    read(reader, written, sizeof(written) - 1);
                     state = V46C;
                 }
                 continue;
@@ -395,75 +407,79 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
+                // TODO 01 connect(二回目以降)時のaddrinfoを選択する
                 #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
-                if (res->ai_family == AF_INET6)
+                if (remote_ai->ai_family == AF_INET6)
                     arg->fd = fd = -1; // これはなに
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next; // TODO 01 IPv4のaddrinfoを選択する
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
                     continue;
                 #endif
-                lres = NULL;
-                if (arg->local.res) {
-                    for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
-                        if (lres->ai_family == res->ai_family)
+                local_ai = NULL;
+                if (arg->local.res) { // locat_host / local_portが指定された場合
+                    for (local_ai = arg->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
+                        if (local_ai->ai_family == remote_ai->ai_family)
                             break;
                     }
-                    if (!lres) { // 見つからなかった
-                        if (res->ai_next || status < 0) { // 他のリモートアドレスファミリを試す
+                    if (!local_ai) { // 見つからなかった
+                        if (remote_ai->ai_next || status < 0) { // TODO 01 次のaddrinfoを選択する
                             arg->fd = fd = -1; // これはなに
-                            res = res->ai_next;
+                            remote_ai = remote_ai->ai_next; // TODO 01 次のaddrinfoを選択する
                             state = V46C;
                             continue;
                         } else {
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
-                            lres = arg->local.res->ai;
+                            local_ai = arg->local.res->ai;
                         }
                     }
                 }
-                status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
+                status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype,　remote_ai->ai_protocol);
                 syscall = "socket(2)";
                 fd = status;
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
                     arg->fd = fd = -1; // これはなに
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next;
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
                     continue;
                 }
                 arg->fd = fd;
-                if (lres) {
+                if (local_ai) {
                     #if !defined(_WIN32) && !defined(__CYGWIN__)
                     status = 1;
                     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                                (char*)&status, (socklen_t)sizeof(status));
                     #endif
-                    status = bind(fd, lres->ai_addr, lres->ai_addrlen);
+                    status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
                     local = status;
                     syscall = "bind(2)";
                 }
 
                 if (status >= 0) {
                     socket_nonblock_set(fd, true);
-                    status = connect(fd, res->ai_addr, res->ai_addrlen);
+                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
                 }
 
-                if (status < 0 && errno != EINPROGRESS) { // bindに失敗 or connectに失敗
+                // TODO 01 bind(2)に失敗した場合とconnect(2)に失敗した場合で処理を分ける
+                // bind(2)に失敗した場合、次のaddrinfoはremote_ai->ai_next;
+                // connect(2)に失敗した場合、次のaddrinfoは選択が必要
+                if (status < 0 && errno != EINPROGRESS) { // bind(2)に失敗 or connect(2)に失敗
                     last_error = errno;
-                    close(fd);
+                    close_fd(fd);
                     arg->fd = fd = -1;
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next;
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
@@ -487,25 +503,33 @@ init_inetsock_internal_happy(VALUE v)
                 syscall = "select(2)";
 
                 if (status >= 0) {
-                    arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
-                    if (fd >= 0) {
-                        state = SUCCESS;
+                    if (FD_ISSET(reader, &readfds)) {
+                        read(reader, written, sizeof(written) - 1);
+                        // TODO 01 取得したaddrinfoを次のループ以降選択可能にする
+                        state = V46W;
                     } else {
-                        last_error = errno;
-                        res = res->ai_next;
-                        if (res == NULL) {
-                            state = FAILURE;
+                        arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
+                        if (fd >= 0) {
+                            state = SUCCESS;
                         } else {
-                            state = V46C;
+                            last_error = errno;
+                            remote_ai = remote_ai->ai_next; // TODO 01 次のaddrinfoを選択する
+                            if (remote_ai == NULL) {
+                                state = FAILURE; // TODO 02 V46Wとの分岐が必要
+                            } else {
+                                state = V46C;
+                            }
                         }
                     }
-                } else {
+                } else if (status == 0) {
+                    // TODO connect_timeout
+                } else { // selectに失敗
                     last_error = errno;
-                    close(fd);
+                    close_fd(fd);
                     arg->fd = fd = -1;
-                    res = res->ai_next;
-                    if (res == NULL) {
-                        state = FAILURE;
+                    remote_ai = remote_ai->ai_next;
+                    if (remote_ai == NULL) {
+                        state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
@@ -545,26 +569,21 @@ init_inetsock_internal_happy(VALUE v)
     // 後処理
     rb_nativethread_lock_lock(&lock);
     {
-        // TODO 03 インデックスを修正
-        for (int i = 0; i < 1; i++) {
-            if (--getaddrinfo_args[i]->refcount == 0) need_frees[i] = 1;
+        for (int i = 0; i < 2; i++) {
+            if (--getaddrinfo_entries[i]->refcount == 0) need_frees[i] = 1;
         }
     }
     rb_nativethread_lock_unlock(&lock);
 
-    // TODO 03 インデックスを修正
-    for (int i = 0; i < 1; i++) {
-        if (need_frees[i]) free_rb_getaddrinfo_happy_arg(getaddrinfo_args[i]);
+    for (int i = 0; i < 2; i++) {
+        if (need_frees[i]) free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
     }
-    // TODO 02 reader / writerのclose時に状態を調べるようにする
-    close(reader);
-    close(writer);
+    close_fd(reader);
+    close_fd(writer);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
-        if ((fcntl(connecting_fd, F_GETFL) != -1) && connecting_fd != fd) {
-            close(connecting_fd);
-        }
+        if (connecting_fd != fd) close_fd(connecting_fd);
     }
     free(connecting_fds);
 
@@ -612,18 +631,18 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
-struct rb_getaddrinfo_happy_arg
+struct rb_getaddrinfo_happy_entry
 {
     char *node, *service;
-    struct addrinfo hints;
-    struct addrinfo *ai;
     int family, err, refcount, writer;
     int *cancelled;
     rb_nativethread_lock_t lock;
+    struct addrinfo hints;
+    struct addrinfo *ai;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
-void free_rb_getaddrinfo_happy_arg(struct rb_getaddrinfo_happy_arg *arg);
+void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry);
 // -------------------------
 ```
