@@ -1,10 +1,9 @@
-# 2024/2/8-11
+# 2024/2/8-13
 - (参照先: `getaddrinfo/_impl09`)
 - 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
-- select(2)のラッパー関数を`raddrinfo.c`から移動
-- `writefds`を`wait_happy_eyeballs_fds`の中で待機できるように変更
-- `cancel_happy_eyeballs_fds`に渡す引数のための構造体を定義し、必要な要素を渡す
-- `cancel_happy_eyeballs_fds`に接続中のソケットのfdsをcloseする処理を追加し、メモリを解放する
+- select(2)を`rb_thread_call_without_gvl2`を利用したselect(2)のラッパ関数の実行に置き換え、UBFを実行できるように変更
+- 名前解決を並列に行うようにする
+- Connection Attempt Delayの追加
 
 ```c
 // ext/socket/ipsocket.c
@@ -17,6 +16,7 @@
 #    include "ruby/thread_native.h"
 #    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 1
 #    define RESOLUTION_DELAY_USEC 50000 /* 50ms is a recommended value in RFC8305 */
+#    define CONNECTION_ATTEMPT_DELAY_NSEC 250000 /* 250ms is a recommended value in RFC8305 */
 #  else
 #    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 0
 #  endif
@@ -192,6 +192,33 @@ cancel_happy_eyeballs_fds(void *ptr)
     free(arg->connecting_fds);
 }
 
+struct timespec current_clocktime_ts()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts;
+}
+
+struct timespec connection_attempt_delay_expires_at_ts()
+{
+    struct timespec ts = current_clocktime_ts();
+    ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
+    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        ts.tv_nsec -= 1000000000;
+        ts.tv_sec += 1;
+    }
+    return ts;
+}
+
+long usec_to_timeout(struct timespec ends_at)
+{
+    struct timespec starts_at = current_clocktime_ts();
+    long sec_diff = ends_at.tv_sec - starts_at.tv_sec;
+    long nsec_diff = ends_at.tv_nsec - starts_at.tv_nsec;
+    long remaining = sec_diff * 1000000L + nsec_diff / 1000;
+    return remaining > 0 ? remaining : 0;
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -257,6 +284,8 @@ init_inetsock_internal_happy(VALUE v)
     fd_set readfds, writefds;
     int nfds;
     struct timeval resolution_delay;
+    struct timeval connection_attempt_delay;
+    struct timespec connection_attempt_delay_expires_at;
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     wait_arg.readfds = &readfds;
@@ -419,7 +448,9 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     continue;
                 #endif
+
                 local_ai = NULL;
+
                 if (arg->local.res) { // locat_host / local_portが指定された場合
                     for (local_ai = arg->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
                         if (local_ai->ai_family == remote_ai->ai_family)
@@ -438,9 +469,11 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                 }
-                status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype,　remote_ai->ai_protocol);
+
+                status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
                 syscall = "socket(2)";
                 fd = status;
+
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
                     arg->fd = fd = -1; // これはなに
@@ -452,7 +485,9 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     continue;
                 }
+
                 arg->fd = fd;
+
                 if (local_ai) {
                     #if !defined(_WIN32) && !defined(__CYGWIN__)
                     status = 1;
@@ -463,6 +498,8 @@ init_inetsock_internal_happy(VALUE v)
                     local = status;
                     syscall = "bind(2)";
                 }
+
+                connection_attempt_delay_expires_at = connection_attempt_delay_expires_at_ts();
 
                 if (status >= 0) {
                     socket_nonblock_set(fd, true);
@@ -496,7 +533,11 @@ init_inetsock_internal_happy(VALUE v)
             {
                 FD_ZERO(&readfds);
                 FD_SET(reader, &readfds);
-                wait_arg.delay = NULL; // TODO Connection Attempt Delay
+
+                connection_attempt_delay.tv_sec = 0;
+                connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
+                wait_arg.delay = &connection_attempt_delay;
+
                 nfds = set_fds(connecting_fds, connecting_fds_size, &writefds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
@@ -522,7 +563,8 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                 } else if (status == 0) {
-                    // TODO connect_timeout
+                    // TODO 03 Connection Attempt Delay timeout
+                    state = V46C; // いったんこれで
                 } else { // selectに失敗
                     last_error = errno;
                     close_fd(fd);
