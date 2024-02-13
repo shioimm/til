@@ -4,6 +4,7 @@
 - select(2)を`rb_thread_call_without_gvl2`を利用したselect(2)のラッパ関数の実行に置き換え、UBFを実行できるように変更
 - 名前解決を並列に行うようにする
 - Connection Attempt Delayの追加
+- アドレス選択機能の導入
 
 ```c
 // ext/socket/ipsocket.c
@@ -219,6 +220,11 @@ long usec_to_timeout(struct timespec ends_at)
     return remaining > 0 ? remaining : 0;
 }
 
+struct resolved_addrinfos {
+    struct addrinfo *ip6_ai;
+    struct addrinfo *ip4_ai;
+};
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -272,6 +278,7 @@ init_inetsock_internal_happy(VALUE v)
 
     pthread_t threads[2];
     char written[2];
+    ssize_t bytes_read;
 
     int *connecting_fds;
     int connecting_fds_size = 0;
@@ -301,7 +308,10 @@ init_inetsock_internal_happy(VALUE v)
     // TODO 01 connect(二回目以降)時のaddrinfoを選択する
     int priority_on_v6[2] = { AF_INET6, AF_INET };
     int priority_on_v4[2] = { AF_INET, AF_INET6 };
-    int last_family;
+    int *precedences = NULL;
+    int last_family = 0;
+    struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
+    struct addrinfo *tmp_selected_ai;
 
     int stop = 0;
     int state = START;
@@ -356,15 +366,17 @@ init_inetsock_internal_happy(VALUE v)
                     return Qnil;
                 }
 
-                ssize_t bytes_read = read(reader, written, sizeof(written) - 1);
+                bytes_read = read(reader, written, sizeof(written) - 1);
                 written[bytes_read] = '\0';
 
                 if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                     tmp_getaddrinfo_entry = getaddrinfo_entries[0];
                     tmp_need_free = need_frees[0];
+                    selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                 } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                     tmp_getaddrinfo_entry = getaddrinfo_entries[1];
                     tmp_need_free = need_frees[1];
+                    selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                 }
 
                 last_error = tmp_getaddrinfo_entry->err;
@@ -381,14 +393,15 @@ init_inetsock_internal_happy(VALUE v)
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
 
-                struct rb_addrinfo *getaddrinfo_res = NULL;
-                getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-                getaddrinfo_res->allocated_by_malloc = 0;
-                getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
+                // 不要かも?
+                // struct rb_addrinfo *getaddrinfo_res = NULL;
+                // getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+                // getaddrinfo_res->allocated_by_malloc = 0;
+                // getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
 
-                arg->remote.res = getaddrinfo_res;
-                arg->fd = fd = -1; // 初期化?
-                remote_ai = arg->remote.res->ai;
+                // arg->remote.res = getaddrinfo_res;
+                // arg->fd = fd = -1; // 初期化?
+                // remote_ai = arg->remote.res->ai;
 
                 /*
                  * Maybe also accept a local address
@@ -399,9 +412,9 @@ init_inetsock_internal_happy(VALUE v)
                                                     AF_UNSPEC, SOCK_STREAM, 0);
                 }
 
-                if (remote_ai->ai_family == AF_INET6) {
+                if (tmp_getaddrinfo_entry->family == AF_INET6) {
                     state = V6C;
-                } else if (remote_ai->ai_family == AF_INET) {
+                } else if (tmp_getaddrinfo_entry->family == AF_INET) {
                     state = V4W; // とりあえず
                 }
                 continue;
@@ -422,11 +435,8 @@ init_inetsock_internal_happy(VALUE v)
                 if (status == 0) {
                     state = V4C;
                 } else { // 名前解決できた
-                    // TODO 01 取得したaddrinfoを次のループ以降選択可能にする
-                    // TODO (ref Socket.tcp)
-                    // family_name, res = hostname_resolution_queue.get
-                    // selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
                     read(reader, written, sizeof(written) - 1);
+                    selectable_addrinfos.ip6_ai = getaddrinfo_entries[0]->ai;
                     state = V46C;
                 }
                 continue;
@@ -436,6 +446,32 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
+                // TODO 01 WIP 関数に切り出したい
+                precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
+                for (int i = 0; i < 2; i++) {
+                    tmp_selected_ai = NULL;
+                    if (precedences[i] == AF_INET6) {
+                        tmp_selected_ai = selectable_addrinfos.ip6_ai;
+                        if (tmp_selected_ai) {
+                            selectable_addrinfos.ip6_ai = tmp_selected_ai->ai_next;
+                            break;
+                        }
+                    } else {
+                        tmp_selected_ai = selectable_addrinfos.ip4_ai;
+                        if (tmp_selected_ai) {
+                            selectable_addrinfos.ip4_ai = tmp_selected_ai->ai_next;
+                            break;
+                        }
+                    }
+                }
+                if (tmp_selected_ai) {
+                    arg->fd = fd = -1;
+                    remote_ai = tmp_selected_ai;
+                } else {
+                    state = FAILURE; // TODO 02 V46Wとの分岐が必要
+                    continue;
+                }
+
                 // TODO 01 connect(二回目以降)時のaddrinfoを選択する
                 #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
                 if (remote_ai->ai_family == AF_INET6)
@@ -519,6 +555,9 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "connect(2)";
                 }
 
+                // TODO 01 WIP
+                last_family = remote_ai->ai_family;
+
                 if (status == 0) { // 接続に成功
                     state = SUCCESS;
                 } else if (errno == EINPROGRESS) { // 接続中
@@ -555,8 +594,16 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status >= 0) {
                     if (FD_ISSET(reader, &readfds)) {
-                        read(reader, written, sizeof(written) - 1);
                         // TODO 01 取得したaddrinfoを次のループ以降選択可能にする
+                        bytes_read = read(reader, written, sizeof(written) - 1);
+                        written[bytes_read] = '\0';
+
+                        if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
+                            selectable_addrinfos.ip6_ai = getaddrinfo_entries[0]->ai;
+                        } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
+                            selectable_addrinfos.ip4_ai = getaddrinfo_entries[1]->ai;
+                        }
+
                         state = V46W;
                     } else {
                         arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
