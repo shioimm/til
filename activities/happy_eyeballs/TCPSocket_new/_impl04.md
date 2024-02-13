@@ -497,6 +497,18 @@ init_inetsock_internal_happy(VALUE v)
                     status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
                     local = status;
                     syscall = "bind(2)";
+
+                    if (status < 0) { // bind(2) に失敗
+                        last_error = errno;
+                        arg->fd = fd = -1; // これはなに
+                        remote_ai = remote_ai->ai_next;
+                        if (remote_ai == NULL) {
+                            state = FAILURE; // TODO 02 V46Wとの分岐が必要
+                        } else {
+                            state = V46C;
+                        }
+                        continue;
+                    }
                 }
 
                 connection_attempt_delay_expires_at = connection_attempt_delay_expires_at_ts();
@@ -507,24 +519,22 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "connect(2)";
                 }
 
-                // TODO 01 bind(2)に失敗した場合とconnect(2)に失敗した場合で処理を分ける
-                // bind(2)に失敗した場合、次のaddrinfoはremote_ai->ai_next;
-                // connect(2)に失敗した場合、次のaddrinfoは選択が必要
-                if (status < 0 && errno != EINPROGRESS) { // bind(2)に失敗 or connect(2)に失敗
+                if (status == 0) { // 接続に成功
+                    state = SUCCESS;
+                } else if (errno == EINPROGRESS) { // 接続中
+                    connecting_fds[connecting_fds_size++] = fd;
+                    state = V46W;
+                } else { // connect(2)に失敗
                     last_error = errno;
                     close_fd(fd);
                     arg->fd = fd = -1;
+                    // TODO 01 次のaddrinfoを選択する
                     remote_ai = remote_ai->ai_next;
                     if (remote_ai == NULL) {
                         state = FAILURE; // TODO 02 V46Wとの分岐が必要
                     } else {
                         state = V46C;
                     }
-                } else if (status == 0) { // 接続に成功
-                    state = SUCCESS;
-                } else { // 接続中
-                    connecting_fds[connecting_fds_size++] = fd;
-                    state = V46W;
                 }
                 continue;
             }
