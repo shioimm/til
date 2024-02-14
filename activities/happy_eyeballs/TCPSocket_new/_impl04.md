@@ -119,7 +119,7 @@ set_fds(const int *fds, int fds_size, fd_set *set)
 static void
 close_fd(int fd)
 {
-    if (fcntl(fd, F_GETFL) != -1) close(fd);
+    if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
 }
 
 static int
