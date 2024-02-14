@@ -220,10 +220,37 @@ long usec_to_timeout(struct timespec ends_at)
     return remaining > 0 ? remaining : 0;
 }
 
-struct resolved_addrinfos {
+struct resolved_addrinfos
+{
     struct addrinfo *ip6_ai;
     struct addrinfo *ip4_ai;
 };
+
+struct addrinfo *
+select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
+{
+    int priority_on_v6[2] = { AF_INET6, AF_INET };
+    int priority_on_v4[2] = { AF_INET, AF_INET6 };
+    int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
+    struct addrinfo *tmp_selected_ai = NULL;
+
+    for (int i = 0; i < 2; i++) {
+        if (precedences[i] == AF_INET6) {
+            tmp_selected_ai = addrinfos->ip6_ai;
+            if (tmp_selected_ai) {
+                addrinfos->ip6_ai = tmp_selected_ai->ai_next;
+                break;
+            }
+        } else {
+            tmp_selected_ai = addrinfos->ip4_ai;
+            if (tmp_selected_ai) {
+                addrinfos->ip4_ai = tmp_selected_ai->ai_next;
+                break;
+            }
+        }
+    }
+    return tmp_selected_ai;
+}
 
 static VALUE
 init_inetsock_internal_happy(VALUE v)
@@ -306,9 +333,6 @@ init_inetsock_internal_happy(VALUE v)
     cancel_arg.connecting_fds = connecting_fds;
 
     // TODO 01 connect(二回目以降)時のaddrinfoを選択する
-    int priority_on_v6[2] = { AF_INET6, AF_INET };
-    int priority_on_v4[2] = { AF_INET, AF_INET6 };
-    int *precedences = NULL;
     int last_family = 0;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
     struct addrinfo *tmp_selected_ai;
@@ -446,24 +470,8 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
-                // TODO 01 WIP 関数に切り出したい
-                precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
-                for (int i = 0; i < 2; i++) {
-                    tmp_selected_ai = NULL;
-                    if (precedences[i] == AF_INET6) {
-                        tmp_selected_ai = selectable_addrinfos.ip6_ai;
-                        if (tmp_selected_ai) {
-                            selectable_addrinfos.ip6_ai = tmp_selected_ai->ai_next;
-                            break;
-                        }
-                    } else {
-                        tmp_selected_ai = selectable_addrinfos.ip4_ai;
-                        if (tmp_selected_ai) {
-                            selectable_addrinfos.ip4_ai = tmp_selected_ai->ai_next;
-                            break;
-                        }
-                    }
-                }
+                tmp_selected_ai = select_addrinfo(&selectable_addrinfos, last_family);
+
                 if (tmp_selected_ai) {
                     arg->fd = fd = -1;
                     remote_ai = tmp_selected_ai;
