@@ -4,7 +4,7 @@
 - `free_rb_getaddrinfo_happy`時にMutexのロックを削除するようにした
 
 ```c
-# ext/socket/raddrinfo.c
+// ext/socket/raddrinfo.c
 
 void
 free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry)
@@ -80,12 +80,4 @@ int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg)
 void * do_rb_getaddrinfo_happy(void *ptr);
 void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry);
 // -------------------------
-```
-
-```ruby
-# test/socket/test_addrinfo.rb
-
-def test_rb_getaddrinfo_happy_test
-  assert_equal 12345, Addrinfo.rb_getaddrinfo_happy_main("localhost", 12345, nil, :STREAM).first.ip_port
-end
 ```
