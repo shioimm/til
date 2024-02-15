@@ -1,10 +1,5 @@
-# 2024/2/8-14
+# 2024/2/?
 - (参照先: `getaddrinfo/_impl09`)
-- 接続中のソケットの待機をCRubyの内部APIからselect(2)へ置き換え
-- select(2)を`rb_thread_call_without_gvl2`を利用したselect(2)のラッパ関数の実行に置き換え、UBFを実行できるように変更
-- 名前解決を並列に行うようにする
-- Connection Attempt Delayの追加
-- アドレス選択機能の導入
 
 ```c
 // ext/socket/ipsocket.c
