@@ -94,16 +94,15 @@ socket_nonblock_set(int fd, int nonblock)
 }
 
 static int
-set_fds(const int *fds, int fds_size, fd_set *set)
+set_connecting_fds(const int *fds, int fds_size, fd_set *set)
 {
     int nfds = 0;
     FD_ZERO(set);
 
     for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
-        if (fd > nfds) {
-            nfds = fd;
-        }
+        if (fd < 0) continue;
+        if (fd > nfds) nfds = fd;
         FD_SET(fd, set);
     }
 
@@ -118,7 +117,7 @@ close_fd(int fd)
 }
 
 static int
-find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
+find_connected_socket(int *fds, int fds_size, fd_set *writefds)
 {
     for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
@@ -131,13 +130,14 @@ find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
             if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
                 switch (error) {
                     case 0: // success
+                        fds[i] = -1;
                         return fd;
                     case EINPROGRESS: // operation in progress
                         break;
                     default: // fail
                         errno = error;
                         close_fd(fd);
-                        i--;
+                        fds[i] = -1;
                         break;
                 }
             }
@@ -570,7 +570,7 @@ init_inetsock_internal_happy(VALUE v)
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                nfds = set_fds(connecting_fds, connecting_fds_size, &writefds);
+                nfds = set_connecting_fds(connecting_fds, connecting_fds_size, &writefds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
