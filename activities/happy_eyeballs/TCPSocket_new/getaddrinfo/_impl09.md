@@ -41,9 +41,9 @@ do_rb_getaddrinfo_happy(void *ptr)
         }
         else {
             if (entry->family == AF_INET6) {
-              write(entry->writer, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
+              write(entry->notifying, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
             } else if (entry->family == AF_INET) {
-              write(entry->writer, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
+              write(entry->notifying, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
             }
         }
         if (--entry->refcount == 0) need_free = 1;
@@ -69,7 +69,7 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 struct rb_getaddrinfo_happy_entry
 {
     char *node, *service;
-    int family, err, refcount, writer;
+    int family, err, refcount, notifying;
     int *cancelled;
     rb_nativethread_lock_t lock;
     struct addrinfo hints;

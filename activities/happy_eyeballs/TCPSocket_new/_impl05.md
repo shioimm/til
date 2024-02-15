@@ -1,4 +1,4 @@
-# 2024/2/?
+# 2024/2/15
 - (参照先: `getaddrinfo/_impl09`)
 
 ```c
@@ -64,6 +64,54 @@ static void allocate_rb_getaddrinfo_happy_entry_hints(struct addrinfo *hints, in
     hints->ai_flags |= additional_flags;
 }
 
+struct wait_happy_eyeballs_fds_arg
+{
+    int status;
+    int *nfds;
+    fd_set *readfds, *writefds;
+    struct timeval *delay;
+};
+
+static void *
+wait_happy_eyeballs_fds(void *ptr)
+{
+    struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
+    int status;
+    status = select(*arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
+    arg->status = status;
+    return 0;
+}
+
+static void
+close_fd(int fd)
+{
+    if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
+}
+
+struct cancel_happy_eyeballs_fds_arg
+{
+    int *cancelled, *connecting_fds, connecting_fds_size;
+    rb_nativethread_lock_t *lock;
+};
+
+static void
+cancel_happy_eyeballs_fds(void *ptr)
+{
+    struct cancel_happy_eyeballs_fds_arg *arg = (struct cancel_happy_eyeballs_fds_arg *)ptr;
+
+    rb_nativethread_lock_lock(arg->lock);
+    {
+      *arg->cancelled = 1;
+    }
+    rb_nativethread_lock_unlock(arg->lock);
+
+    for (int i = 0; i < arg->connecting_fds_size; i++) {
+        int fd = arg->connecting_fds[i];
+        close_fd(fd);
+    }
+    free(arg->connecting_fds);
+}
+
 static void
 socket_nonblock_set(int fd, int nonblock)
 {
@@ -91,101 +139,6 @@ socket_nonblock_set(int fd, int nonblock)
     }
 
     return;
-}
-
-static int
-set_fds(const int *fds, int fds_size, fd_set *set)
-{
-    int nfds = 0;
-    FD_ZERO(set);
-
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-        if (fd > nfds) {
-            nfds = fd;
-        }
-        FD_SET(fd, set);
-    }
-
-    nfds++;
-    return nfds;
-}
-
-static void
-close_fd(int fd)
-{
-    if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
-}
-
-static int
-find_connected_socket(const int *fds, int fds_size, fd_set *writefds)
-{
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-
-        if (fd < 0) continue;
-
-        if (FD_ISSET(fd, writefds)) {
-            int error;
-            socklen_t len = sizeof(error);
-            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
-                switch (error) {
-                    case 0: // success
-                        return fd;
-                    case EINPROGRESS: // operation in progress
-                        break;
-                    default: // fail
-                        errno = error;
-                        close_fd(fd);
-                        i--;
-                        break;
-                }
-            }
-        }
-    }
-    return -1;
-}
-
-struct wait_happy_eyeballs_fds_arg
-{
-    int status;
-    int *nfds;
-    fd_set *readfds, *writefds;
-    struct timeval *delay;
-};
-
-static void *
-wait_happy_eyeballs_fds(void *ptr)
-{
-    struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
-    int status;
-    status = select(*arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
-    arg->status = status;
-    return 0;
-}
-
-struct cancel_happy_eyeballs_fds_arg
-{
-    int *cancelled, *connecting_fds, connecting_fds_size;
-    rb_nativethread_lock_t *lock;
-};
-
-static void
-cancel_happy_eyeballs_fds(void *ptr)
-{
-    struct cancel_happy_eyeballs_fds_arg *arg = (struct cancel_happy_eyeballs_fds_arg *)ptr;
-
-    rb_nativethread_lock_lock(arg->lock);
-    {
-      *arg->cancelled = 1;
-    }
-    rb_nativethread_lock_unlock(arg->lock);
-
-    for (int i = 0; i < arg->connecting_fds_size; i++) {
-        int fd = arg->connecting_fds[i];
-        close_fd(fd);
-    }
-    free(arg->connecting_fds);
 }
 
 struct timespec current_clocktime_ts()
@@ -247,6 +200,72 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
     return tmp_selected_ai;
 }
 
+static int
+set_connecting_fds(const int *fds, int fds_size, fd_set *set)
+{
+    int nfds = 0;
+    FD_ZERO(set);
+
+    for (int i = 0; i < fds_size; i++) {
+        int fd = fds[i];
+        if (fd < 0) continue;
+        if (fd > nfds) nfds = fd;
+        FD_SET(fd, set);
+    }
+
+    nfds++;
+    return nfds;
+}
+
+static int
+find_connected_socket(int *fds, int fds_size, fd_set *writefds)
+{
+    for (int i = 0; i < fds_size; i++) {
+        int fd = fds[i];
+
+        if (fd < 0) continue;
+
+        if (FD_ISSET(fd, writefds)) {
+            int error;
+            socklen_t len = sizeof(error);
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+                switch (error) {
+                    case 0: // success
+                        fds[i] = -1;
+                        return fd;
+                    case EINPROGRESS: // operation in progress
+                        break;
+                    default: // fail
+                        errno = error;
+                        close_fd(fd);
+                        fds[i] = -1;
+                        break;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+static int
+is_connecting_fds_empty(const int *fds, int fds_size)
+{
+    for (int i = 0; i < fds_size; i++) {
+        if (fds[i] > 0) return FALSE;
+    }
+    return TRUE;
+}
+
+static int
+is_resolved_hostname_empty() // TODO 02-a 引数
+{
+    if (TRUE) return FALSE; // TODO 02-a pipeが閉じていたらfalse
+    // TODO 02-a
+    // hostname_resolution_waitingを0秒でselectし、FD_ISSETで読み込み可能かを調べる。
+    // 可能ならreadせずにtrueを返す
+    return FALSE;
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -281,8 +300,8 @@ init_inetsock_internal_happy(VALUE v)
 
     int pipefd[2];
     pipe(pipefd);
-    int reader = pipefd[0];
-    int writer = pipefd[1];
+    int hostname_resolution_waiting = pipefd[0];
+    int hostname_resolution_notifying = pipefd[1];
     rb_nativethread_lock_t lock;
     rb_nativethread_lock_initialize(&lock);
     int cancelled = 0;
@@ -355,13 +374,13 @@ init_inetsock_internal_happy(VALUE v)
                     getaddrinfo_entries[i]->family = families[i];
                     getaddrinfo_entries[i]->refcount = 2;
                     getaddrinfo_entries[i]->cancelled = &cancelled;
-                    getaddrinfo_entries[i]->writer = writer;
+                    getaddrinfo_entries[i]->notifying = hostname_resolution_notifying;
                     getaddrinfo_entries[i]->lock = lock;
 
                     if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_entries[i]) != 0) {
                         free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
-                        close_fd(reader);
-                        close_fd(writer);
+                        close_fd(hostname_resolution_waiting);
+                        close_fd(hostname_resolution_notifying);
                         return EAI_AGAIN;
                     }
                     pthread_detach(threads[i]);
@@ -369,8 +388,8 @@ init_inetsock_internal_happy(VALUE v)
 
                 // getaddrinfoの待機
                 FD_ZERO(&readfds);
-                FD_SET(reader, &readfds);
-                nfds = reader + 1;
+                FD_SET(hostname_resolution_waiting, &readfds);
+                nfds = hostname_resolution_waiting + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
@@ -384,7 +403,7 @@ init_inetsock_internal_happy(VALUE v)
                     return Qnil;
                 }
 
-                bytes_read = read(reader, written, sizeof(written) - 1);
+                bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
                 written[bytes_read] = '\0';
 
                 if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
@@ -406,8 +425,8 @@ init_inetsock_internal_happy(VALUE v)
                     rb_nativethread_lock_unlock(&lock);
 
                     if (tmp_need_free) free_rb_getaddrinfo_happy_entry(tmp_getaddrinfo_entry);
-                    close_fd(reader);
-                    close_fd(writer);
+                    close_fd(hostname_resolution_waiting);
+                    close_fd(hostname_resolution_notifying);
                     rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
                 }
 
@@ -444,8 +463,8 @@ init_inetsock_internal_happy(VALUE v)
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
                 FD_ZERO(&readfds);
-                FD_SET(reader, &readfds);
-                nfds = reader + 1;
+                FD_SET(hostname_resolution_waiting, &readfds);
+                nfds = hostname_resolution_waiting + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
@@ -453,7 +472,7 @@ init_inetsock_internal_happy(VALUE v)
                 if (status == 0) {
                     state = V4C;
                 } else { // 名前解決できた
-                    read(reader, written, sizeof(written) - 1);
+                    read(hostname_resolution_waiting, written, sizeof(written) - 1);
                     selectable_addrinfos.ip6_ai = getaddrinfo_entries[0]->ai;
                     state = V46C;
                 }
@@ -469,9 +488,13 @@ init_inetsock_internal_happy(VALUE v)
                 if (tmp_selected_ai) {
                     arg->fd = fd = -1;
                     remote_ai = tmp_selected_ai;
-                } else {
-                    // TODO 02 リソースを確認し、次のステートを決定する
-                    state = FAILURE;
+                } else { // 接続可能なaddrinfoが見つからなかった
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size)) {
+                        // TODO 02-a 条件を追加する。is_resolved_hostname_emptyがTRUEであること。
+                        state = FAILURE;
+                    } else {
+                        state = V46W;
+                    }
                     continue;
                 }
 
@@ -564,20 +587,20 @@ init_inetsock_internal_happy(VALUE v)
             case V46W:
             {
                 FD_ZERO(&readfds);
-                FD_SET(reader, &readfds);
+                FD_SET(hostname_resolution_waiting, &readfds);
 
                 connection_attempt_delay.tv_sec = 0;
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                nfds = set_fds(connecting_fds, connecting_fds_size, &writefds);
+                nfds = set_connecting_fds(connecting_fds, connecting_fds_size, &writefds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status >= 0) {
-                    if (FD_ISSET(reader, &readfds)) { // 名前解決
-                        bytes_read = read(reader, written, sizeof(written) - 1);
+                    if (FD_ISSET(hostname_resolution_waiting, &readfds)) { // 名前解決
+                        bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
                         written[bytes_read] = '\0';
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
@@ -652,8 +675,8 @@ init_inetsock_internal_happy(VALUE v)
     for (int i = 0; i < 2; i++) {
         if (need_frees[i]) free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
     }
-    close_fd(reader);
-    close_fd(writer);
+    close_fd(hostname_resolution_waiting);
+    close_fd(hostname_resolution_notifying);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
@@ -708,7 +731,7 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 struct rb_getaddrinfo_happy_entry
 {
     char *node, *service;
-    int family, err, refcount, writer;
+    int family, err, refcount, notifying;
     int *cancelled;
     rb_nativethread_lock_t lock;
     struct addrinfo hints;
