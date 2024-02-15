@@ -1,4 +1,4 @@
-# 2024/2/?
+# 2024/2/15
 - (参照先: `getaddrinfo/_impl09`)
 
 ```c
@@ -144,6 +144,25 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
         }
     }
     return -1;
+}
+
+static int
+is_connecting_fds_empty(const int *fds, int fds_size)
+{
+    for (int i = 0; i < fds_size; i++) {
+        if (fds[i] > 0) return FALSE;
+    }
+    return TRUE;
+}
+
+static int
+is_resolved_hostname_empty() // TODO 02-a 引数
+{
+    if TRUE return FALSE; // TODO 02-a pipeが閉じていたらfalse
+    // TODO 02-a
+    // readerを0秒でselectし、FD_ISSETで読み込み可能かを調べる。
+    // 可能ならreadせずにtrueを返す
+    return FALSE;
 }
 
 struct wait_happy_eyeballs_fds_arg
@@ -469,9 +488,13 @@ init_inetsock_internal_happy(VALUE v)
                 if (tmp_selected_ai) {
                     arg->fd = fd = -1;
                     remote_ai = tmp_selected_ai;
-                } else {
-                    // TODO 02 リソースを確認し、次のステートを決定する
-                    state = FAILURE;
+                } else { // 接続可能なaddrinfoが見つからなかった
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size)) {
+                        // TODO 02-a 条件を追加する。is_resolved_hostname_emptyがTRUEであること。
+                        state = FAILURE;
+                    } else {
+                        state = V46W;
+                    }
                     continue;
                 }
 
