@@ -256,11 +256,15 @@ is_connecting_fds_empty(const int *fds, int fds_size)
     return TRUE;
 }
 
+// TODO 02-a
+// 解決できてないアドレスファミリがある場合に待ち続けるのか、
+// 今pipeにあるリソースだけで判断するのかによってロジックが変わってくる (関数名も?)
+// ので要検討。
 static int
-is_resolved_hostname_empty() // TODO 02-a 引数
+is_hostname_resolution_waiting() // TODO 02-a 引数
 {
     if (TRUE) return FALSE; // TODO 02-a pipeが閉じていたらfalse
-    // TODO 02-a
+    // TODO 02-a 以下は今pipeにあるリソースだけで判断する場合のロジック
     // hostname_resolution_waitingを0秒でselectし、FD_ISSETで読み込み可能かを調べる。
     // 可能ならreadせずにtrueを返す
     return FALSE;
@@ -489,8 +493,9 @@ init_inetsock_internal_happy(VALUE v)
                     arg->fd = fd = -1;
                     remote_ai = tmp_selected_ai;
                 } else { // 接続可能なaddrinfoが見つからなかった
-                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size)) {
-                        // TODO 02-a 条件を追加する。is_resolved_hostname_emptyがTRUEであること。
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                        !is_hostname_resolution_waiting()) {
+                        // TODO 02-a 条件を追加する。is_hostname_resolution_waitingがFALSEであること。
                         state = FAILURE;
                     } else {
                         state = V46W;
