@@ -276,7 +276,7 @@ class Socket
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: closed
-            # Wait for connection attempt delay timeout in next loop
+            # Try other Addrinfo in next loop
             state = :v46c
           else
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
