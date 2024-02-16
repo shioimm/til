@@ -1,3 +1,4 @@
+# (PATIENTLY_RESOLUTION_DELAY removed version)
 require 'socket'
 
 class Socket
