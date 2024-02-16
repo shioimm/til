@@ -494,8 +494,7 @@ init_inetsock_internal_happy(VALUE v)
                     remote_ai = tmp_selected_ai;
                 } else { // 接続可能なaddrinfoが見つからなかった
                     if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
-                        !is_hostname_resolution_waiting()) {
-                        // TODO 02-a 条件を追加する。is_hostname_resolution_waitingがFALSEであること。
+                        !is_hostname_resolution_waiting()) { // TODO 02-a
                         state = FAILURE;
                     } else {
                         state = V46W;
@@ -506,9 +505,20 @@ init_inetsock_internal_happy(VALUE v)
                 #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
                 if (remote_ai->ai_family == AF_INET6)
                     arg->fd = fd = -1; // これはなに
-                    last_family = AF_INET6; // TODO これで良い?
-                    // TODO 02 リソースを確認し、次のステートを決定する (v46c /v46w / failure)
-                    state = FAILURE;
+
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                        (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                        !is_hostname_resolution_waiting()) { // TODO 02-a
+                            state = FAILURE;
+                    } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                        // Try other addrinfo
+                        last_family = AF_INET6; // TODO これで良い?
+                        state = V46C;
+                    } else {
+                        // Wait for connection to be established or hostname resolution in next loop
+                        // TODO 02-b 待ち時間を0にする
+                        state = V46W;
+                    }
                     continue;
                 #endif
 
@@ -519,8 +529,8 @@ init_inetsock_internal_happy(VALUE v)
                         if (local_ai->ai_family == remote_ai->ai_family)
                             break;
                     }
-                    if (!local_ai) { // TODO 04 PATIENTLY_RESOLUTION_DELAY
-                        if (1) { // TODO 04 selectable_addrinfoが空ではない場合
+                    if (!local_ai) { // TODO 04 PATIENTLY_RESOLUTION_DELAY?
+                        if (1) { // TODO 04-a selectable_addrinfoが空ではない場合
                             state = V46C;
                             continue;
                         } else {
@@ -538,8 +548,19 @@ init_inetsock_internal_happy(VALUE v)
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
                     arg->fd = fd = -1; // これはなに
-                    // TODO 02 リソースを確認し、次のステートを決定する (v46c / v46w / failure)
-                    state = FAILURE;
+
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                        (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                        !is_hostname_resolution_waiting()) { // TODO 02-a
+                            state = FAILURE;
+                    } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                        // Try other addrinfo
+                        state = V46C;
+                    } else {
+                        // Wait for connection to be established or hostname resolution in next loop
+                        // TODO 02-b 待ち時間を0にする
+                        state = V46W;
+                    }
                     continue;
                 }
 
@@ -558,8 +579,19 @@ init_inetsock_internal_happy(VALUE v)
                     if (status < 0) { // bind(2) に失敗
                         last_error = errno;
                         arg->fd = fd = -1; // これはなに
-                        // TODO 02 リソースを確認し、次のステートを決定する (v46c / v46w / failure)
-                        state = FAILURE;
+
+                        if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                            (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                            !is_hostname_resolution_waiting()) { // TODO 02-a
+                                state = FAILURE;
+                        } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                            // Try other addrinfo
+                            state = V46C;
+                        } else {
+                            // Wait for connection to be established or hostname resolution in next loop
+                            // TODO 02-b 待ち時間を0にする
+                            state = V46W;
+                        }
                         continue;
                     }
                 }
@@ -579,12 +611,22 @@ init_inetsock_internal_happy(VALUE v)
                 } else if (errno == EINPROGRESS) { // 接続中
                     connecting_fds[connecting_fds_size++] = fd;
                     state = V46W;
-                } else { // connect(2)に失敗 // TODO 04 PATIENTLY_RESOLUTION_DELAY
+                } else { // connect(2)に失敗 // TODO 04 PATIENTLY_RESOLUTION_DELAY?
                     last_error = errno;
                     close_fd(fd);
                     arg->fd = fd = -1;
-                    // TODO 02 リソースを確認し、次のステートを決定する (v46w / failure)
-                    state = FAILURE;
+
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                        (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                        !is_hostname_resolution_waiting()) { // TODO 02-a
+                            state = FAILURE;
+                    } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                        // Wait for Connection Attempt Delay and try other addrinfo in next loop
+                    } else {
+                        // Wait for connection to be established or hostname resolution in next loop
+                        // TODO 02-b 待ち時間を0にする
+                        state = V46W;
+                    }
                 }
                 continue;
             }
@@ -622,8 +664,19 @@ init_inetsock_internal_happy(VALUE v)
                         } else { // TODO 04 PATIENTLY_RESOLUTION_DELAY
                             last_error = errno;
                             close_fd(fd);
-                            // TODO 02 リソースを確認し、次のステートを決定する
-                            state = FAILURE;
+                            arg->fd = fd = -1;
+
+                            if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                                (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                                !is_hostname_resolution_waiting()) { // TODO 02-a
+                                    state = FAILURE;
+                            } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                                // Wait for Connection Attempt Delay and try other addrinfo in next loop
+                            } else {
+                                // Wait for connection to be established or hostname resolution in next loop
+                                // TODO 02-b 待ち時間を0にする
+                                state = V46W;
+                            }
                         }
                     }
                 } else if (status == 0) {
@@ -633,8 +686,18 @@ init_inetsock_internal_happy(VALUE v)
                     last_error = errno;
                     close_fd(fd);
                     arg->fd = fd = -1;
-                    // TODO 02 リソースを確認し、次のステートを決定する
-                    state = FAILURE;
+
+                    if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                        (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                        !is_hostname_resolution_waiting()) { // TODO 02-a
+                            state = FAILURE;
+                    } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                        // Wait for Connection Attempt Delay and try other addrinfo in next loop
+                    } else {
+                        // Wait for connection to be established or hostname resolution in next loop
+                        // TODO 02-b 待ち時間を0にする
+                        state = V46W;
+                    }
                 }
                 continue;
             }
