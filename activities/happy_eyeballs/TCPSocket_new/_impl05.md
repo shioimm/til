@@ -316,7 +316,7 @@ init_inetsock_internal_happy(VALUE v)
 
     int families[2] = { AF_INET6, AF_INET }; // TODO 要IPアドレス指定対応 / シングルスタック対応
 
-    int tmp_need_free = 0;
+    int *tmp_need_free = NULL;
     int need_frees[2];
     struct rb_getaddrinfo_happy_entry *ipv6_getaddrinfo_entry = NULL;
     struct rb_getaddrinfo_happy_entry *ipv4_getaddrinfo_entry = NULL;
@@ -422,11 +422,11 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                         tmp_getaddrinfo_entry = getaddrinfo_entries[0];
-                        tmp_need_free = need_frees[0];
+                        tmp_need_free = &need_frees[0];
                         selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                     } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                         tmp_getaddrinfo_entry = getaddrinfo_entries[1];
-                        tmp_need_free = need_frees[1];
+                        tmp_need_free = &need_frees[1];
                         selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                     }
 
@@ -436,10 +436,7 @@ init_inetsock_internal_happy(VALUE v)
                         if (hostname_resolution_retry_count == 0) {
                             rb_nativethread_lock_lock(&lock);
                             {
-                                // TODO 06
-                                // 後処理時にメモリを解放できるようにしたい。
-                                // need_freeをポインタで持つようにする
-                                if (--tmp_getaddrinfo_entry->refcount == 0) tmp_need_free = 1;
+                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
                             }
                             rb_nativethread_lock_unlock(&lock);
                             state = FAILURE;
