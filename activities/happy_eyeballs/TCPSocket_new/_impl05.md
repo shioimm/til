@@ -765,6 +765,7 @@ init_inetsock_internal_happy(VALUE v)
     }
     close_fd(hostname_resolution_waiting);
     close_fd(hostname_resolution_notifying);
+    rb_nativethread_lock_destroy(&lock);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
