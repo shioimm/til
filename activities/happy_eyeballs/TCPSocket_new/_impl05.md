@@ -518,7 +518,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
                         (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
                         !is_hostname_resolution_waiting()) { // TODO 02-a
-                            state = FAILURE;
+                        state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                         last_family = AF_INET6; // TODO これで良い?
@@ -567,7 +567,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
                         (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
                         !is_hostname_resolution_waiting()) { // TODO 02-a
-                            state = FAILURE;
+                        state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                     } else {
@@ -597,7 +597,7 @@ init_inetsock_internal_happy(VALUE v)
                         if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
                             (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
                             !is_hostname_resolution_waiting()) { // TODO 02-a
-                                state = FAILURE;
+                            state = FAILURE;
                         } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                             // Try other addrinfo in next loop
                         } else {
@@ -632,7 +632,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
                         (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
                         !is_hostname_resolution_waiting()) { // TODO 02-a
-                            state = FAILURE;
+                        state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                     } else {
@@ -658,7 +658,7 @@ init_inetsock_internal_happy(VALUE v)
                 status = wait_arg.status;
                 syscall = "select(2)";
 
-                if (status >= 0) {
+                if (status > 0) {
                     if (FD_ISSET(hostname_resolution_waiting, &readfds)) { // 名前解決できた
                         bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
                         written[bytes_read] = '\0';
@@ -682,7 +682,7 @@ init_inetsock_internal_happy(VALUE v)
                             if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
                                 (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
                                 !is_hostname_resolution_waiting()) { // TODO 02-a
-                                    state = FAILURE;
+                                state = FAILURE;
                             } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                                 // Wait for connection attempt delay in next loop
                             } else {
