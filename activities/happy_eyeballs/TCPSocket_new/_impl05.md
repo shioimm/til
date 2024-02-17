@@ -281,9 +281,11 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo *local_ai;
     int fd, status = 0, local = 0;
     const char *syscall = 0;
+    VALUE resolv_timeout = arg->resolv_timeout;
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
     struct timeval *tv = NULL;
+    struct timeval resolv_timeout_tv;
     int remote_addrinfo_hints = 0;
 
     if (!NIL_P(connect_timeout)) {
@@ -396,6 +398,11 @@ init_inetsock_internal_happy(VALUE v)
 
                 while (hostname_resolution_retry_count >= 0) {
                     // getaddrinfoの待機
+                    if (!NIL_P(resolv_timeout)) {
+                        resolv_timeout_tv = rb_time_interval(resolv_timeout);
+                        wait_arg.delay = &resolv_timeout_tv;
+                    }
+
                     FD_ZERO(&readfds);
                     FD_SET(hostname_resolution_waiting, &readfds);
                     nfds = hostname_resolution_waiting + 1;
@@ -404,11 +411,10 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "select(2)";
 
                     if (status == 0) { // resolv_timeout
-                        // TODO 03-a state = :timeout
-                        return Qnil;
-                    } else if (status < 0){ // selectの実行失敗。SystemCallError?
-                        // TODO 03-a 考える
-                        rsock_raise_resolution_error("rb_getaddrinfo_happy", EAI_SYSTEM);
+                        state = TIMEOUT;
+                        continue;
+                    } else if (status < 0) { // selectの実行失敗
+                        rb_syserr_fail(errno, "select(2)"); // いったんこれで
                     }
 
                     bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
