@@ -161,6 +161,8 @@ struct timespec connection_attempt_delay_expires_at_ts()
 
 long usec_to_timeout(struct timespec ends_at)
 {
+    if (ends_at.tv_sec == -1 && ends_at.tv_nsec == -1) return 0;
+
     struct timespec starts_at = current_clocktime_ts();
     long sec_diff = ends_at.tv_sec - starts_at.tv_sec;
     long nsec_diff = ends_at.tv_nsec - starts_at.tv_nsec;
@@ -516,7 +518,7 @@ init_inetsock_internal_happy(VALUE v)
                         last_family = AF_INET6; // TODO これで良い?
                     } else {
                         // Wait for connection to be established or hostname resolution in next loop
-                        // TODO 02-b 待ち時間を0にする
+                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
                         state = V46W;
                     }
                     continue;
@@ -557,7 +559,7 @@ init_inetsock_internal_happy(VALUE v)
                         // Try other addrinfo in next loop
                     } else {
                         // Wait for connection to be established or hostname resolution in next loop
-                        // TODO 02-b 待ち時間を0にする
+                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
                         state = V46W;
                     }
                     continue;
@@ -587,7 +589,7 @@ init_inetsock_internal_happy(VALUE v)
                             // Try other addrinfo in next loop
                         } else {
                             // Wait for connection to be established or hostname resolution in next loop
-                            // TODO 02-b 待ち時間を0にする
+                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
                             state = V46W;
                         }
                         continue;
@@ -622,7 +624,7 @@ init_inetsock_internal_happy(VALUE v)
                         // Try other addrinfo in next loop
                     } else {
                         // Wait for connection to be established or hostname resolution in next loop
-                        // TODO 02-b 待ち時間を0にする
+                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
                         state = V46W;
                     }
                 }
@@ -672,7 +674,7 @@ init_inetsock_internal_happy(VALUE v)
                                 // Wait for connection attempt delay in next loop
                             } else {
                                 // Wait for connection to be established or hostname resolution in next loop
-                                // TODO 02-b 待ち時間を0にする
+                                connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
                             }
                         }
                     }
@@ -686,7 +688,7 @@ init_inetsock_internal_happy(VALUE v)
                         state = V46C;
                     } else {
                         // Wait for connection to be established or hostname resolution in next loop
-                        // TODO 02-b 待ち時間を0にする
+                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
                     }
                 } else { // selectに失敗
                     last_error = errno;
