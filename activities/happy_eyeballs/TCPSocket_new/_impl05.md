@@ -532,14 +532,21 @@ init_inetsock_internal_happy(VALUE v)
                             break;
                     }
                     if (!local_ai) { // TODO 04 PATIENTLY_RESOLUTION_DELAY?
-                        if (1) { // TODO 02-d selectable_addrinfoがある場合
-                            // Try other addrinfo in next loop
-                            continue;
-                        } else { // 試せるリモートaddrinfoが存在しないことが確定している
+                        if (is_connecting_fds_empty(connecting_fds, connecting_fds_size) &&
+                            (!selectable_addrinfos.ip6_ai && !selectable_addrinfos.ip4_ai) &&
+                            !is_hostname_resolution_waiting()) { // TODO 02-a
+                            // 試せるリモートaddrinfoが存在しないことが確定している
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
-                            local_ai = arg->local.res->ai;
+                            state = FAILURE; // TODO 05 EAFNOSUPPORT
+                        } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
+                            // Try other addrinfo in next loop
+                        } else {
+                            // Wait for connection to be established or hostname resolution in next loop
+                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                            state = V46W;
                         }
+                        continue;
                     }
                 }
 
