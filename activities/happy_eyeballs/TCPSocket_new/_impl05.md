@@ -362,8 +362,8 @@ init_inetsock_internal_happy(VALUE v)
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
-        {
             case START:
+            {
                 // getaddrinfoの実行
                 for (int i = 0; i < 2; i++) {
                     allocate_rb_getaddrinfo_happy_entry_buffer(&getaddrinfo_entry_bufs[i], portp, &portp_offset);
@@ -393,73 +393,79 @@ init_inetsock_internal_happy(VALUE v)
                 }
 
                 // TODO 03 hostname_resolution_retry_count
-                // getaddrinfoの待機
-                FD_ZERO(&readfds);
-                FD_SET(hostname_resolution_waiting, &readfds);
-                nfds = hostname_resolution_waiting + 1;
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
-                status = wait_arg.status;
-                syscall = "select(2)";
+                int hostname_resolution_retry_count = 1;
 
-                if (status < 0){
-                    // selectの実行失敗。SystemCallError?
-                    rsock_raise_resolution_error("rb_getaddrinfo_happy", EAI_SYSTEM);
-                }
-                else if (status == 0) {
-                    // selectの返り値が0 = 時間切れの場合。いったんこのまま
-                    return Qnil;
-                }
+                while (hostname_resolution_retry_count >= 0) {
+                    hostname_resolution_retry_count--;
+                    // getaddrinfoの待機
+                    FD_ZERO(&readfds);
+                    FD_SET(hostname_resolution_waiting, &readfds);
+                    nfds = hostname_resolution_waiting + 1;
+                    rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
+                    status = wait_arg.status;
+                    syscall = "select(2)";
 
-                bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
-                written[bytes_read] = '\0';
-
-                if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_entry = getaddrinfo_entries[0];
-                    tmp_need_free = need_frees[0];
-                    selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
-                } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                    tmp_getaddrinfo_entry = getaddrinfo_entries[1];
-                    tmp_need_free = need_frees[1];
-                    selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
-                }
-
-                last_error = tmp_getaddrinfo_entry->err;
-                if (last_error != 0) {
-                    rb_nativethread_lock_lock(&lock);
-                    {
-                      if (--tmp_getaddrinfo_entry->refcount == 0) tmp_need_free = 1;
+                    if (status < 0){
+                        // selectの実行失敗。SystemCallError?
+                        rsock_raise_resolution_error("rb_getaddrinfo_happy", EAI_SYSTEM);
                     }
-                    rb_nativethread_lock_unlock(&lock);
+                    else if (status == 0) {
+                        // selectの返り値が0 = 時間切れの場合。いったんこのまま
+                        return Qnil;
+                    }
 
-                    if (tmp_need_free) free_rb_getaddrinfo_happy_entry(tmp_getaddrinfo_entry);
-                    close_fd(hostname_resolution_waiting);
-                    close_fd(hostname_resolution_notifying);
-                    rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
-                }
+                    bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
+                    written[bytes_read] = '\0';
 
-                // 不要かも?
-                // struct rb_addrinfo *getaddrinfo_res = NULL;
-                // getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-                // getaddrinfo_res->allocated_by_malloc = 0;
-                // getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
+                    if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
+                        tmp_getaddrinfo_entry = getaddrinfo_entries[0];
+                        tmp_need_free = need_frees[0];
+                        selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
+                    } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
+                        tmp_getaddrinfo_entry = getaddrinfo_entries[1];
+                        tmp_need_free = need_frees[1];
+                        selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
+                    }
 
-                // arg->remote.res = getaddrinfo_res;
-                // arg->fd = fd = -1; // 初期化?
-                // remote_ai = arg->remote.res->ai;
+                    last_error = tmp_getaddrinfo_entry->err;
+                    if (last_error != 0) {
+                        rb_nativethread_lock_lock(&lock);
+                        {
+                          if (--tmp_getaddrinfo_entry->refcount == 0) tmp_need_free = 1;
+                        }
+                        rb_nativethread_lock_unlock(&lock);
 
-                /*
-                 * Maybe also accept a local address
-                 */
+                        if (tmp_need_free) free_rb_getaddrinfo_happy_entry(tmp_getaddrinfo_entry);
+                        close_fd(hostname_resolution_waiting);
+                        close_fd(hostname_resolution_notifying);
+                        rsock_raise_resolution_error("init_inetsock_internal_happy", last_error);
+                    }
 
-                if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
-                    arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
-                                                    AF_UNSPEC, SOCK_STREAM, 0);
-                }
+                    // 不要かも?
+                    // struct rb_addrinfo *getaddrinfo_res = NULL;
+                    // getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
+                    // getaddrinfo_res->allocated_by_malloc = 0;
+                    // getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
 
-                if (tmp_getaddrinfo_entry->family == AF_INET6) {
-                    state = V6C;
-                } else if (tmp_getaddrinfo_entry->family == AF_INET) {
-                    state = V4W; // TODO 03 v6の名前解決に失敗している場合はv4c
+                    // arg->remote.res = getaddrinfo_res;
+                    // arg->fd = fd = -1; // 初期化?
+                    // remote_ai = arg->remote.res->ai;
+
+                    /*
+                     * Maybe also accept a local address
+                     */
+
+                    if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
+                        arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
+                                                        AF_UNSPEC, SOCK_STREAM, 0);
+                    }
+
+                    if (tmp_getaddrinfo_entry->family == AF_INET6) {
+                        state = V6C;
+                    } else if (tmp_getaddrinfo_entry->family == AF_INET) {
+                        state = V4W; // TODO 03 v6の名前解決に失敗している場合はv4c
+                    }
+                    break;
                 }
                 continue;
             }
