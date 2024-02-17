@@ -9,7 +9,6 @@
 void
 free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry)
 {
-    rb_nativethread_lock_destroy(&entry->lock);
     free(entry);
 }
 
