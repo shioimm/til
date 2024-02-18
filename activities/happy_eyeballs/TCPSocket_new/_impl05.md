@@ -159,6 +159,21 @@ struct timespec connection_attempt_delay_expires_at_ts()
     return ts;
 }
 
+struct timespec add_timeval_to_timespec(struct timeval tv, struct timespec ts)
+{
+    long long nsec_total = ts.tv_nsec + (long long)tv.tv_usec * 1000;
+
+    if (nsec_total >= 1000000000LL) {
+        ts.tv_sec += nsec_total / 1000000000LL;
+        ts.tv_nsec = nsec_total % 1000000000LL;
+    } else {
+        ts.tv_nsec = nsec_total;
+    }
+
+    ts.tv_sec += tv.tv_sec;
+    return ts;
+}
+
 long usec_to_timeout(struct timespec ends_at)
 {
     if (ends_at.tv_sec == -1 && ends_at.tv_nsec == -1) return 0;
@@ -283,14 +298,20 @@ init_inetsock_internal_happy(VALUE v)
     const char *syscall = 0;
     VALUE resolv_timeout = arg->resolv_timeout;
     VALUE connect_timeout = arg->connect_timeout;
-    struct timeval tv_storage;
-    struct timeval *tv = NULL;
-    struct timeval resolv_timeout_tv;
+    struct timeval resolv_timeout_tv_storage;
+    struct timeval *resolv_timeout_tv = NULL;
+    struct timeval connect_timeout_tv_storage;
+    struct timeval *connect_timeout_tv = NULL;
+    struct timespec connect_timeout_ts;
     int remote_addrinfo_hints = 0;
 
+    if (!NIL_P(resolv_timeout)) {
+        resolv_timeout_tv_storage = rb_time_interval(resolv_timeout);
+        resolv_timeout_tv = &resolv_timeout_tv_storage;
+    }
     if (!NIL_P(connect_timeout)) {
-        tv_storage = rb_time_interval(connect_timeout);
-        tv = &tv_storage;
+        connect_timeout_tv_storage = rb_time_interval(connect_timeout);
+        connect_timeout_tv = &connect_timeout_tv_storage;
     }
 
     #ifdef HAVE_CONST_AI_ADDRCONFIG
@@ -342,6 +363,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval resolution_delay;
     struct timeval connection_attempt_delay;
     struct timespec connection_attempt_delay_expires_at;
+    struct timespec connection_attempt_started_at = { -1, -1 };
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     wait_arg.readfds = &readfds;
@@ -398,10 +420,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 while (hostname_resolution_retry_count >= 0) {
                     // getaddrinfoの待機
-                    if (!NIL_P(resolv_timeout)) {
-                        resolv_timeout_tv = rb_time_interval(resolv_timeout);
-                        wait_arg.delay = &resolv_timeout_tv;
-                    }
+                    if (resolv_timeout_tv) wait_arg.delay = resolv_timeout_tv;
 
                     FD_ZERO(&readfds);
                     FD_SET(hostname_resolution_waiting, &readfds);
@@ -504,6 +523,11 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
+                if (connection_attempt_started_at.tv_sec == -1 &&
+                    connection_attempt_started_at.tv_nsec == -1) {
+                    connection_attempt_started_at = current_clocktime_ts();
+                }
+
                 tmp_selected_ai = select_addrinfo(&selectable_addrinfos, last_family);
 
                 if (tmp_selected_ai) {
@@ -654,6 +678,14 @@ init_inetsock_internal_happy(VALUE v)
 
             case V46W:
             {
+                if (connect_timeout_tv) {
+                    connect_timeout_ts = add_timeval_to_timespec(*connect_timeout_tv, connection_attempt_started_at);
+                    if ((int)usec_to_timeout(connect_timeout_ts) == 0) {
+                        state = TIMEOUT;
+                        continue;
+                    }
+                }
+
                 FD_ZERO(&readfds);
                 FD_SET(hostname_resolution_waiting, &readfds);
 
