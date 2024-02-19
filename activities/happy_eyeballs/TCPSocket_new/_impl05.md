@@ -788,6 +788,16 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     // 後処理
+    // TODO 07 inetsock_cleanup_happy に切り出す
+    // inetsock_cleanup + 以下の内容
+    //   追加が必要な引数
+    //     lock
+    //     getaddrinfo_entries
+    //     need_frees
+    //     hostname_resolution_waiting
+    //     hostname_resolution_notifying
+    //     connecting_fds_size
+    //     connecting_fds
     rb_nativethread_lock_lock(&lock);
     {
         for (int i = 0; i < 2; i++) {
@@ -835,7 +845,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
       return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
-                       inetsock_cleanup, (VALUE)&arg);
+                       inetsock_cleanup, (VALUE)&arg); // TODO 07 inetsock_cleanup_happy
     } else {
       return rb_ensure(init_inetsock_internal, (VALUE)&arg,
                        inetsock_cleanup, (VALUE)&arg);
