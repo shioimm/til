@@ -143,6 +143,10 @@ class Socket
             if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
               last_error = SocketError.new 'no appropriate local address'
               state = :failure
+            elsif resolv_timeout && hostname_resolution_queue.opened?
+              # TODO
+              #   resolv_timeoutを過ぎていたらtimeout、過ぎていなかったらexpires_atに期限を設定してv46w
+              #   connection_attempt_delay_expires_atをrenameする
             elsif selectable_addrinfos.any?
               # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: opened
               # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: closed
@@ -192,6 +196,10 @@ class Socket
 
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
             state = :failure
+          elsif resolv_timeout && hostname_resolution_queue.opened?
+            # TODO
+            #   resolv_timeoutを過ぎていたらtimeout、過ぎていなかったらexpires_atに期限を設定してv46w
+            #   connection_attempt_delay_expires_atをrenameする
           elsif selectable_addrinfos.any?
             # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
             # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: empty
@@ -248,6 +256,10 @@ class Socket
 
               if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
                 state = :failure
+              elsif resolv_timeout && hostname_resolution_queue.opened?
+                # TODO
+                #   resolv_timeoutを過ぎていたらtimeout、過ぎていなかったらexpires_atに期限を設定してv46w
+                #   connection_attempt_delay_expires_atをrenameする
               elsif selectable_addrinfos.any?
                 # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: opened
                 # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: closed
@@ -266,7 +278,6 @@ class Socket
         elsif hostname_resolved&.any?
           family_name, res = hostname_resolution_queue.get
           selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
-          state = :v46w
         else # Connection Attempt Delayタイムアウト
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
             state = :failure
@@ -275,7 +286,7 @@ class Socket
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: closed
-            # Wait for connection attempt delay timeout in next loop
+            # Try other Addrinfo in next loop
             state = :v46c
           else
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
