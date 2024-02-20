@@ -335,7 +335,7 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_initialize(&lock);
     int cancelled = 0;
 
-    int families[2] = { AF_INET6, AF_INET }; // TODO 要IPアドレス指定対応 / シングルスタック対応
+    int families[2] = { AF_INET6, AF_INET }; // TODO 09 IPアドレス指定対応
 
     int *tmp_need_free = NULL;
     int need_frees[2];
@@ -477,6 +477,7 @@ init_inetsock_internal_happy(VALUE v)
                          * Maybe also accept a local address
                          */
 
+                        // locat_host / local_portが指定された場合
                         if (!NIL_P(arg->local.host) || !NIL_P(arg->local.serv)) {
                             arg->local.res = rsock_addrinfo(arg->local.host, arg->local.serv,
                                                             AF_UNSPEC, SOCK_STREAM, 0);
@@ -564,7 +565,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 local_ai = NULL;
 
-                if (arg->local.res) { // locat_host / local_portが指定された場合
+                if (arg->local.res) { // local_addrinfos.any?
                     for (local_ai = arg->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
                         if (local_ai->ai_family == remote_ai->ai_family)
                             break;
@@ -576,7 +577,8 @@ init_inetsock_internal_happy(VALUE v)
                             // 試せるリモートaddrinfoが存在しないことが確定している
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
-                            state = FAILURE; // TODO 05 EAFNOSUPPORT
+                            last_error = EAFNOSUPPORT;
+                            state = FAILURE;
                         } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                             // Try other addrinfo in next loop
                         } else {
@@ -766,8 +768,7 @@ init_inetsock_internal_happy(VALUE v)
                 VALUE host, port;
 
                 if (local < 0) {
-                    // ローカルアドレスのbindに失敗した時用。複数試す場合は最後のlocalを保存するようにする必要あり
-                    // TODO 05 ...というダイイングメッセージがあった。EAFNOSUPPORTの送出でもよいか要確認
+                    // locat_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     host = arg->local.host;
                     port = arg->local.serv;
                 } else {
@@ -788,6 +789,16 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     // 後処理
+    // TODO 07 inetsock_cleanup_happy に切り出す
+    // inetsock_cleanup + 以下の内容
+    //   追加が必要な引数
+    //     lock
+    //     getaddrinfo_entries
+    //     need_frees
+    //     hostname_resolution_waiting
+    //     hostname_resolution_notifying
+    //     connecting_fds_size
+    //     connecting_fds
     rb_nativethread_lock_lock(&lock);
     {
         for (int i = 0; i < 2; i++) {
@@ -835,7 +846,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
       return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
-                       inetsock_cleanup, (VALUE)&arg);
+                       inetsock_cleanup, (VALUE)&arg); // TODO 07 inetsock_cleanup_happy
     } else {
       return rb_ensure(init_inetsock_internal, (VALUE)&arg,
                        inetsock_cleanup, (VALUE)&arg);
