@@ -154,14 +154,14 @@ class Socket
                 state = :failure
               end
             elsif selectable_addrinfos.any?
-              # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: any
-              # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: empty
+              # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
+              # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: empty
               # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
               # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: empty
               # Try other Addrinfo in next loop
             else
-              # case Selectable addrinfos: empty && Connecting sockets: any && Hostname resolution queue: any
-              # case Selectable addrinfos: empty && Connecting sockets: any && Hostname resolution queue: empty
+              # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: any
+              # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: empty
               # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: any
               # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: empty
               # Wait for connection to be established or hostname resolution in next loop
@@ -289,22 +289,20 @@ class Socket
           family_name, res = hostname_resolution_queue.get
           selectable_addrinfos.add(family_name, res) unless res.is_a? Exception
           connection_attempt_delay_expires_at = nil if wait_for_hostname_resolution_patiently
-          state = :v46w
         else # Connection Attempt Delayタイムアウト
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.empty?
             state = :failure
           elsif selectable_addrinfos.any?
-            # case Selectable addrinfos: any && Connecting sockets: any && Hostname resolution queue: any
+            # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: any
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: empty
-            # Wait for connection attempt delay timeout in next loop
+            # Try other Addrinfo in next loop
             state = :v46c
           else
-            # case Selectable addrinfos: empty && Connecting sockets: any && Hostname resolution queue: any
+            # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: any
             # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: any
-            # case Selectable addrinfos: empty && Connecting sockets: any && Hostname resolution queue: empty
-            # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: empty
+            # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: empty
             # Wait for connection to be established or hostname resolution in next loop
             connection_attempt_delay_expires_at = nil
           end
