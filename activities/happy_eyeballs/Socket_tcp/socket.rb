@@ -42,6 +42,7 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_queue = nil
     hostname_resolution_waiting = nil
+    hostname_resolution_expires_at = nil
     selectable_addrinfos = SelectableAddrinfos.new
     connecting_sockets = ConnectingSockets.new
     local_addrinfos = []
@@ -86,7 +87,7 @@ class Socket
         )
 
         hostname_resolution_retry_count = resolving_family_names.size - 1
-        hostname_resolution_waiting_expires_at = hostname_resolution_started_at + resolv_timeout if resolv_timeout
+        hostname_resolution_expires_at = hostname_resolution_started_at + resolv_timeout if resolv_timeout
 
         while hostname_resolution_retry_count >= 0
           remaining = resolv_timeout ? second_to_timeout(hostname_resolution_started_at + resolv_timeout) : nil
@@ -151,16 +152,18 @@ class Socket
               # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
               # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: closed
               # Try other Addrinfo in next loop
-            elsif resolv_timeout && hostname_resolution_queue.opened? &&
-                (hostname_resolution_waiting_expires_at >= current_clocktime)
-              state = :timeout
             else
               # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
               # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
               # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
-              # Wait for connection to be established or hostname resolution in next loop
-              connection_attempt_delay_expires_at = nil
-              state = :v46w
+              if resolv_timeout && hostname_resolution_queue.opened? &&
+                  (hostname_resolution_expires_at >= current_clocktime)
+                state = :timeout
+              else
+                # Wait for connection to be established or hostname resolution in next loop
+                connection_attempt_delay_expires_at = nil
+                state = :v46w
+              end
             end
             next
           end
@@ -204,16 +207,18 @@ class Socket
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: any
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: empty
             # Try other Addrinfo in next loop
-          elsif resolv_timeout && hostname_resolution_queue.opened? &&
-              (hostname_resolution_waiting_expires_at >= current_clocktime)
-            state = :timeout
           else
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
             # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
-            # Wait for connection to be established or hostname resolution in next loop
-            connection_attempt_delay_expires_at = nil
-            state = :v46w
+            if resolv_timeout && hostname_resolution_queue.opened? &&
+                (hostname_resolution_expires_at >= current_clocktime)
+              state = :timeout
+            else
+              # Wait for connection to be established or hostname resolution in next loop
+              connection_attempt_delay_expires_at = nil
+              state = :v46w
+            end
           end
         end
 
@@ -264,15 +269,17 @@ class Socket
                 # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
                 # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: closed
                 # Wait for connection attempt delay timeout in next loop
-              elsif resolv_timeout && hostname_resolution_queue.opened? &&
-                  (hostname_resolution_waiting_expires_at >= current_clocktime)
-                state = :timeout
               else
                 # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
                 # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
                 # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
-                # Wait for connection to be established or hostname resolution in next loop
-                connection_attempt_delay_expires_at = nil
+                if resolv_timeout && hostname_resolution_queue.opened? &&
+                    (hostname_resolution_expires_at >= current_clocktime)
+                  state = :timeout
+                else
+                  # Wait for connection to be established or hostname resolution in next loop
+                  connection_attempt_delay_expires_at = nil
+                end
               end
             end
           end
@@ -283,10 +290,6 @@ class Socket
           if selectable_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
             # specified_family_nameがある場合: hostname_resolution_queue.closed?は必ずtrueになる
             state = :failure
-            elsif resolv_timeout && hostname_resolution_queue.opened?
-              # specified_family_nameがある場合: hostname_resolution_queue.closed?は必ずfalseになる
-              # TODO
-              #   resolv_timeoutを過ぎていたらtimeout、過ぎていなかったらexpires_atに期限を設定してv46w
           elsif selectable_addrinfos.any?
             # case Selectable addrinfos: any && Connecting sockets: any   && Hostname resolution queue: opened
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: opened
@@ -294,15 +297,17 @@ class Socket
             # case Selectable addrinfos: any && Connecting sockets: empty && Hostname resolution queue: closed
             # Try other Addrinfo in next loop
             state = :v46c
-          elsif resolv_timeout && hostname_resolution_queue.opened? &&
-              (hostname_resolution_waiting_expires_at >= current_clocktime)
-            state = :timeout
           else
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
             # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
-            # Wait for connection to be established or hostname resolution in next loop
-            connection_attempt_delay_expires_at = nil
+            if resolv_timeout && hostname_resolution_queue.opened? &&
+                (hostname_resolution_expires_at >= current_clocktime)
+              state = :timeout
+            else
+              # Wait for connection to be established or hostname resolution in next loop
+              connection_attempt_delay_expires_at = nil
+            end
           end
         end
 
