@@ -560,8 +560,13 @@ init_inetsock_internal_happy(VALUE v)
                         is_hostname_resolution_finished(hostname_resolution_waiting)) {
                         state = FAILURE;
                     } else {
-                        // TODO 03 resolv_timeoutを考慮
-                        state = V46W;
+                        if (resolv_timeout_tv &&
+                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            is_timeout(hostname_resolution_expires_at_ts)) {
+                            state = TIMEOUT;
+                        } else {
+                            state = V46W;
+                        }
                     }
                     continue;
                 }
@@ -578,10 +583,15 @@ init_inetsock_internal_happy(VALUE v)
                         // Try other addrinfo in next loop
                         last_family = AF_INET6; // TODO これで良い?
                     } else {
-                        // TODO 03 resolve_timeoutを考慮
-                        // Wait for connection to be established or hostname resolution in next loop
-                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
-                        state = V46W;
+                        if (resolv_timeout_tv &&
+                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            is_timeout(hostname_resolution_expires_at_ts)) {
+                            state = TIMEOUT;
+                        } else {
+                            // Wait for connection to be established or hostname resolution in next loop
+                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                            state = V46W;
+                        }
                     }
                     continue;
                 #endif
@@ -605,10 +615,15 @@ init_inetsock_internal_happy(VALUE v)
                         } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                             // Try other addrinfo in next loop
                         } else {
-                            // TODO 03 resolve_timeoutを考慮
-                            // Wait for connection to be established or hostname resolution in next loop
-                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
-                            state = V46W;
+                            if (resolv_timeout_tv &&
+                                !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                                is_timeout(hostname_resolution_expires_at_ts)) {
+                                state = TIMEOUT;
+                            } else {
+                                // Wait for connection to be established or hostname resolution in next loop
+                                connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                                state = V46W;
+                            }
                         }
                         continue;
                     }
@@ -629,10 +644,15 @@ init_inetsock_internal_happy(VALUE v)
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                     } else {
-                        // TODO 03 resolve_timeoutを考慮
-                        // Wait for connection to be established or hostname resolution in next loop
-                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
-                        state = V46W;
+                        if (resolv_timeout_tv &&
+                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            is_timeout(hostname_resolution_expires_at_ts)) {
+                            state = TIMEOUT;
+                        } else {
+                            // Wait for connection to be established or hostname resolution in next loop
+                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                            state = V46W;
+                        }
                     }
                     continue;
                 }
@@ -660,10 +680,15 @@ init_inetsock_internal_happy(VALUE v)
                         } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                             // Try other addrinfo in next loop
                         } else {
-                            // TODO 03 resolve_timeoutを考慮
-                            // Wait for connection to be established or hostname resolution in next loop
-                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
-                            state = V46W;
+                            if (resolv_timeout_tv &&
+                                !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                                is_timeout(hostname_resolution_expires_at_ts)) {
+                                state = TIMEOUT;
+                            } else {
+                                // Wait for connection to be established or hostname resolution in next loop
+                                connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                                state = V46W;
+                            }
                         }
                         continue;
                     }
@@ -696,10 +721,15 @@ init_inetsock_internal_happy(VALUE v)
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                     } else {
-                        // TODO 03 resolve_timeoutを考慮
-                        // Wait for connection to be established or hostname resolution in next loop
-                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
-                        state = V46W;
+                        if (resolv_timeout_tv &&
+                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            is_timeout(hostname_resolution_expires_at_ts)) {
+                            state = TIMEOUT;
+                        } else {
+                            // Wait for connection to be established or hostname resolution in next loop
+                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                            state = V46W;
+                        }
                     }
                 }
                 continue;
@@ -753,9 +783,14 @@ init_inetsock_internal_happy(VALUE v)
                             } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                                 // Wait for connection attempt delay in next loop
                             } else {
-                                // TODO 03 resolve_timeoutを考慮
-                                // Wait for connection to be established or hostname resolution in next loop
-                                connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                                if (resolv_timeout_tv &&
+                                    !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                                    is_timeout(hostname_resolution_expires_at_ts)) {
+                                    state = TIMEOUT;
+                                } else {
+                                    // Wait for connection to be established or hostname resolution in next loop
+                                    connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                                }
                             }
                         }
                     }
@@ -768,9 +803,14 @@ init_inetsock_internal_happy(VALUE v)
                         // Try other Addrinfo in next loop
                         state = V46C;
                     } else {
-                        // TODO 03 resolve_timeoutを考慮
-                        // Wait for connection to be established or hostname resolution in next loop
-                        connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                        if (resolv_timeout_tv &&
+                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            is_timeout(hostname_resolution_expires_at_ts)) {
+                            state = TIMEOUT;
+                        } else {
+                            // Wait for connection to be established or hostname resolution in next loop
+                            connection_attempt_delay_expires_at = (struct timespec){ -1, -1 };
+                        }
                     }
                 } else { // selectに失敗
                     last_error = errno;
@@ -782,8 +822,13 @@ init_inetsock_internal_happy(VALUE v)
                         is_hostname_resolution_finished(hostname_resolution_waiting)) {
                         state = FAILURE;
                     } else {
-                        // TODO 03 resolve_timeoutを考慮
-                        // Wait for Connection Attempt Delay or connection to be established or hostname resolution in next loop
+                        if (resolv_timeout_tv &&
+                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            is_timeout(hostname_resolution_expires_at_ts)) {
+                            state = TIMEOUT;
+                        } else {
+                            // Wait for Connection Attempt Delay or connection to be established or hostname resolution in next loop
+                        }
                     }
                 }
                 continue;
