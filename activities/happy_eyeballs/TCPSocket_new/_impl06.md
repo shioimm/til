@@ -298,10 +298,28 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
     return FALSE;
 }
 
+/ TODO 01
+//   必要なメンバを一つずつ足してみる
+//   init_inetsock_internal_happyの中で定義しているものはrsock_init_inetsockに要お引越し
+struct inetsock_happy_arg
+{
+    struct inetsock_arg *inetsock_resources;
+    //   追加が必要な引数
+    //     rb_nativethread_lock_t *lock; // TODO 現在値で定義しているので呼び出し方を調整する
+    //     getaddrinfo_entries
+    //     need_frees
+    //     hostname_resolution_waiting
+    //     hostname_resolution_notifying
+    //     connecting_fds_size
+    //     connecting_fds
+};
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
-    struct inetsock_arg *arg = (void *)v;
+    struct inetsock_happy_arg *_arg = (void *)v;
+    struct inetsock_arg *arg = _arg->inetsock_resources;
+    // struct inetsock_arg *arg = (void *)v;
     int last_error = 0;
     struct addrinfo *remote_ai = NULL;
     struct addrinfo *local_ai;
@@ -466,7 +484,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
 
                     last_error = tmp_getaddrinfo_entry->err;
-                    // TODO 07 ignoreable_error?
+                    // TODO 06 ignoreable_error?
                     if (last_error != 0) {
                         if (hostname_resolution_retry_count == 0) {
                             rb_nativethread_lock_lock(&lock);
@@ -858,7 +876,7 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     // 後処理
-    // TODO 07 inetsock_cleanup_happy に切り出す
+    // TODO 01 inetsock_cleanup_happy に切り出す
     // inetsock_cleanup + 以下の内容
     //   追加が必要な引数
     //     lock
@@ -895,6 +913,26 @@ init_inetsock_internal_happy(VALUE v)
     return rsock_init_sock(arg->sock, fd);
 }
 
+static VALUE
+inetsock_cleanup_happy(VALUE v)
+{
+    struct inetsock_happy_arg *_arg = (void *)v;
+    struct inetsock_arg *arg = _arg->inetsock_resources;
+
+    if (arg->remote.res) {
+        rb_freeaddrinfo(arg->remote.res);
+        arg->remote.res = 0;
+    }
+    if (arg->local.res) {
+        rb_freeaddrinfo(arg->local.res);
+        arg->local.res = 0;
+    }
+    if (arg->fd >= 0) {
+        close(arg->fd);
+    }
+    return Qnil;
+}
+
 VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
@@ -914,8 +952,12 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.connect_timeout = connect_timeout;
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
-      return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
-                       inetsock_cleanup, (VALUE)&arg); // TODO 07 inetsock_cleanup_happy
+      struct inetsock_happy_arg inetsock_happy_resources;
+      inetsock_happy_resources.inetsock_resources = &arg;
+      // TODO 01: WIP
+
+      return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resources,
+                       inetsock_cleanup_happy, (VALUE)&inetsock_happy_resources);
     } else {
       return rb_ensure(init_inetsock_internal, (VALUE)&arg,
                        inetsock_cleanup, (VALUE)&arg);
