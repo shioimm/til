@@ -335,6 +335,26 @@ class SocketTest < Minitest::Test
     end
   end
 
+  def test_that_raises_ETIMEDOUT_with_resolv_timeout_and_connection_failure
+    p :test_that_raises_ETIMEDOUT_with_resolv_timeout_and_connection_failure
+    server = TCPServer.new("127.0.0.1", 12345)
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        sleep
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    server.close
+
+    assert_raises(Errno::ETIMEDOUT) do
+      Socket.tcp("localhost", port, resolv_timeout: 0.1)
+    end
+  end
+
   def test_that_raises_ETIMEDOUT_with_connection_timeout
     p :test_that_raises_ETIMEDOUT_with_connection_timeout
     server = Socket.new(Socket::AF_INET, :STREAM)

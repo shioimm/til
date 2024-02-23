@@ -157,7 +157,7 @@ class Socket
               # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
               # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
               if resolv_timeout && hostname_resolution_queue.opened? &&
-                  (current_clocktime >= hostname_resolution_expires_at)
+                  (hostname_resolution_expires_at >= current_clocktime)
                 state = :timeout
               else
                 # Wait for connection to be established or hostname resolution in next loop
@@ -212,7 +212,7 @@ class Socket
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
             # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
             if resolv_timeout && hostname_resolution_queue.opened? &&
-                (current_clocktime >= hostname_resolution_expires_at)
+                (hostname_resolution_expires_at >= current_clocktime)
               state = :timeout
             else
               # Wait for connection to be established or hostname resolution in next loop
@@ -274,7 +274,7 @@ class Socket
                 # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: opened
                 # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
                 if resolv_timeout && hostname_resolution_queue.opened? &&
-                    (current_clocktime >= hostname_resolution_expires_at)
+                    (hostname_resolution_expires_at >= current_clocktime)
                   state = :timeout
                 else
                   # Wait for connection to be established or hostname resolution in next loop
@@ -302,7 +302,7 @@ class Socket
             # case Selectable addrinfos: empty && Connecting sockets: empty && Hostname resolution queue: opened
             # case Selectable addrinfos: empty && Connecting sockets: any   && Hostname resolution queue: closed
             if resolv_timeout && hostname_resolution_queue.opened? &&
-                (current_clocktime >= hostname_resolution_expires_at)
+                (hostname_resolution_expires_at >= current_clocktime)
               state = :timeout
             else
               # Wait for connection to be established or hostname resolution in next loop
