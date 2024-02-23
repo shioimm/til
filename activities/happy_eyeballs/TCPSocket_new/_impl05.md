@@ -1,5 +1,10 @@
 # 2024/2/15
 - (参照先: `getaddrinfo/_impl09`)
+- 次のステートへ遷移するための条件を拡充
+  - Connection Attempt Delayが不要な場合は待機時間を0sへ変更
+  - start時点に`hostname_resolution_retry_count`を導入
+- `resolv_timeout`のサポート
+- ` connect_timeout`のサポート
 
 ```c
 // ext/socket/ipsocket.c
