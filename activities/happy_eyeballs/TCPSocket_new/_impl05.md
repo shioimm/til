@@ -153,17 +153,6 @@ struct timespec current_clocktime_ts()
     return ts;
 }
 
-struct timespec connection_attempt_delay_expires_at_ts()
-{
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
-    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        ts.tv_nsec -= 1000000000;
-        ts.tv_sec += 1;
-    }
-    return ts;
-}
-
 struct timespec add_timeval_to_timespec(struct timeval tv, struct timespec ts)
 {
     long long nsec_total = ts.tv_nsec + (long long)tv.tv_usec * 1000;
@@ -176,6 +165,24 @@ struct timespec add_timeval_to_timespec(struct timeval tv, struct timespec ts)
     }
 
     ts.tv_sec += tv.tv_sec;
+    return ts;
+}
+
+struct timespec resolv_timeout_expires_at_ts(struct timeval resolv_timeout)
+{
+    struct timespec ts = current_clocktime_ts();
+    ts = add_timeval_to_timespec(resolv_timeout, ts);
+    return ts;
+}
+
+struct timespec connection_attempt_delay_expires_at_ts()
+{
+    struct timespec ts = current_clocktime_ts();
+    ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
+    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        ts.tv_nsec -= 1000000000;
+        ts.tv_sec += 1;
+    }
     return ts;
 }
 
@@ -300,6 +307,7 @@ init_inetsock_internal_happy(VALUE v)
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval resolv_timeout_tv_storage;
     struct timeval *resolv_timeout_tv = NULL;
+    struct timespec hostname_resolution_expires_at_ts;
     struct timeval connect_timeout_tv_storage;
     struct timeval *connect_timeout_tv = NULL;
     struct timespec connect_timeout_ts;
@@ -420,7 +428,10 @@ init_inetsock_internal_happy(VALUE v)
 
                 while (hostname_resolution_retry_count >= 0) {
                     // getaddrinfoの待機
-                    if (resolv_timeout_tv) wait_arg.delay = resolv_timeout_tv;
+                    if (resolv_timeout_tv) {
+                        wait_arg.delay = resolv_timeout_tv;
+                        hostname_resolution_expires_at_ts = resolv_timeout_expires_at_ts(*resolv_timeout_tv);
+                    }
 
                     FD_ZERO(&readfds);
                     FD_SET(hostname_resolution_waiting, &readfds);
