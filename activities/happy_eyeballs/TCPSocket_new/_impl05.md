@@ -197,6 +197,15 @@ long usec_to_timeout(struct timespec ends_at)
     return remaining > 0 ? remaining : 0;
 }
 
+int is_timeout(struct timespec expires_at) {
+    struct timespec current = current_clocktime_ts();
+
+    if (current.tv_sec > expires_at.tv_sec) return 1;
+    if (current.tv_sec == expires_at.tv_sec && current.tv_nsec > expires_at.tv_nsec) return 1;
+
+    return 0;
+}
+
 struct resolved_addrinfos
 {
     struct addrinfo *ip6_ai;
@@ -371,7 +380,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval resolution_delay;
     struct timeval connection_attempt_delay;
     struct timespec connection_attempt_delay_expires_at;
-    struct timespec connection_attempt_started_at = { -1, -1 };
+    struct timespec connection_attempt_started_at_ts = { -1, -1 };
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     wait_arg.readfds = &readfds;
@@ -391,6 +400,7 @@ init_inetsock_internal_happy(VALUE v)
     int stop = 0;
     int state = START;
 
+    // TODO 05 たまにステートの遷移がおかしい気がするので調査する
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
@@ -535,9 +545,9 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
-                if (connection_attempt_started_at.tv_sec == -1 &&
-                    connection_attempt_started_at.tv_nsec == -1) {
-                    connection_attempt_started_at = current_clocktime_ts();
+                if (connection_attempt_started_at_ts.tv_sec == -1 &&
+                    connection_attempt_started_at_ts.tv_nsec == -1) {
+                    connection_attempt_started_at_ts = current_clocktime_ts();
                 }
 
                 tmp_selected_ai = select_addrinfo(&selectable_addrinfos, last_family);
@@ -698,8 +708,8 @@ init_inetsock_internal_happy(VALUE v)
             case V46W:
             {
                 if (connect_timeout_tv) {
-                    connect_timeout_ts = add_timeval_to_timespec(*connect_timeout_tv, connection_attempt_started_at);
-                    if ((int)usec_to_timeout(connect_timeout_ts) == 0) {
+                    connect_timeout_ts = add_timeval_to_timespec(*connect_timeout_tv, connection_attempt_started_at_ts);
+                    if (is_timeout(connect_timeout_ts) == 0) {
                         state = TIMEOUT;
                         continue;
                     }
