@@ -298,18 +298,17 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
     return FALSE;
 }
 
-/ TODO 01
+// TODO 01
 //   必要なメンバを一つずつ足してみる
 //   init_inetsock_internal_happyの中で定義しているものはrsock_init_inetsockに要お引越し
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resources;
     rb_nativethread_lock_t *lock;
+    int hostname_resolution_waiting, hostname_resolution_notifying;
     //   追加が必要な引数
     //     getaddrinfo_entries
     //     need_frees
-    //     hostname_resolution_waiting
-    //     hostname_resolution_notifying
     //     connecting_fds_size
     //     connecting_fds
 };
@@ -356,10 +355,8 @@ init_inetsock_internal_happy(VALUE v)
     size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_entry);
     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
-    int pipefd[2];
-    pipe(pipefd);
-    int hostname_resolution_waiting = pipefd[0];
-    int hostname_resolution_notifying = pipefd[1];
+    int hostname_resolution_waiting = _arg->hostname_resolution_waiting;
+    int hostname_resolution_notifying = _arg->hostname_resolution_notifying;
     rb_nativethread_lock_t *lock = _arg->lock;
     int cancelled = 0;
 
@@ -952,9 +949,19 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
         struct inetsock_happy_arg inetsock_happy_resources;
         inetsock_happy_resources.inetsock_resources = &arg;
+
         rb_nativethread_lock_t lock;
         rb_nativethread_lock_initialize(&lock);
         inetsock_happy_resources.lock = &lock;
+
+        int hostname_resolution_waiting, hostname_resolution_notifying;
+        int pipefd[2];
+        pipe(pipefd);
+        hostname_resolution_waiting = pipefd[0];
+        hostname_resolution_notifying = pipefd[1];
+        inetsock_happy_resources.hostname_resolution_waiting = hostname_resolution_waiting;
+        inetsock_happy_resources.hostname_resolution_notifying = hostname_resolution_notifying;
+
         // TODO 01: WIP
 
         return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resources,
