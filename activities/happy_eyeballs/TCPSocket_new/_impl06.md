@@ -30,22 +30,24 @@ enum sock_he_state {
     TIMEOUT,              /* 8 Connection timed out */
 };
 
-static void
-allocate_rb_getaddrinfo_happy_entry_buffer(char **buf, const char *portp, size_t *portp_offset)
+static void allocate_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry, const char *portp, size_t *portp_offset)
 {
-    size_t getaddrinfo_entry_bufsize = *portp_offset + (portp ? strlen(portp) + 1 : 0);
-    char *getaddrinfo_entry_buf = malloc(getaddrinfo_entry_bufsize);
+    if (!entry || !portp_offset) return;
 
-    if (!getaddrinfo_entry_buf) {
+    size_t getaddrinfo_entry_bufsize = sizeof(struct rb_getaddrinfo_happy_entry) + (*portp_offset) + (portp ? strlen(portp) + 1 : 0);
+    *entry = (struct rb_getaddrinfo_happy_entry *)malloc(getaddrinfo_entry_bufsize);
+    if (!(*entry)) {
         rb_gc();
-        getaddrinfo_entry_buf = malloc(getaddrinfo_entry_bufsize);
+        *entry = (struct rb_getaddrinfo_happy_entry *)malloc(getaddrinfo_entry_bufsize);
     }
-
-    *buf = getaddrinfo_entry_buf;
+    if (*entry) {
+        memset(*entry, 0, getaddrinfo_entry_bufsize); // 確保したメモリをゼロで初期化
+    }
 }
 
 static void
-allocate_rb_getaddrinfo_happy_entry_endpoint(char **endpoint, const char *source, size_t *offset, char *buf) {
+allocate_rb_getaddrinfo_happy_entry_endpoint(char **endpoint, const char *source, size_t *offset, char *buf)
+{
     if (source) {
         *endpoint = buf + *offset;
         strcpy(*endpoint, source);
@@ -307,6 +309,7 @@ struct inetsock_happy_arg
     rb_nativethread_lock_t *lock;
     int hostname_resolution_waiting, hostname_resolution_notifying;
     int *ipv6_need_free, *ipv4_need_free;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     //   追加が必要な引数
     //     getaddrinfo_entries
     //     connecting_fds_size
@@ -366,12 +369,8 @@ init_inetsock_internal_happy(VALUE v)
     int *need_frees[2];
     need_frees[0] = _arg->ipv6_need_free;
     need_frees[1] = _arg->ipv4_need_free;
-    struct rb_getaddrinfo_happy_entry *ipv6_getaddrinfo_entry = NULL;
-    struct rb_getaddrinfo_happy_entry *ipv4_getaddrinfo_entry = NULL;
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
-    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2] = { ipv6_getaddrinfo_entry, ipv4_getaddrinfo_entry };
     struct addrinfo getaddrinfo_hints[2];
-    char *getaddrinfo_entry_bufs[2];
 
     pthread_t threads[2];
     char written[2];
@@ -418,25 +417,23 @@ init_inetsock_internal_happy(VALUE v)
             {
                 // getaddrinfoの実行
                 for (int i = 0; i < 2; i++) {
-                    allocate_rb_getaddrinfo_happy_entry_buffer(&getaddrinfo_entry_bufs[i], portp, &portp_offset);
+                    allocate_rb_getaddrinfo_happy_entry(&(_arg->getaddrinfo_entries[i]), portp, &portp_offset);
+                    if (!(_arg->getaddrinfo_entries[i])) return EAI_MEMORY;
 
-                    getaddrinfo_entries[i] = (struct rb_getaddrinfo_happy_entry *)getaddrinfo_entry_bufs[i];
-                    if (!getaddrinfo_entries[i]) return EAI_MEMORY;
-
-                    allocate_rb_getaddrinfo_happy_entry_endpoint(&getaddrinfo_entries[i]->node, hostp, &hostp_offset, getaddrinfo_entry_bufs[i]);
-                    allocate_rb_getaddrinfo_happy_entry_endpoint(&getaddrinfo_entries[i]->service, portp, &portp_offset, getaddrinfo_entry_bufs[i]);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(&(_arg->getaddrinfo_entries[i]->node), hostp, &hostp_offset, (char *)_arg->getaddrinfo_entries[i]);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(&(_arg->getaddrinfo_entries[i]->service), portp, &portp_offset, (char *)_arg->getaddrinfo_entries[i]);
                     allocate_rb_getaddrinfo_happy_entry_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
 
-                    getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
-                    getaddrinfo_entries[i]->ai = NULL;
-                    getaddrinfo_entries[i]->family = families[i];
-                    getaddrinfo_entries[i]->refcount = 2;
-                    getaddrinfo_entries[i]->cancelled = &cancelled;
-                    getaddrinfo_entries[i]->notifying = hostname_resolution_notifying;
-                    getaddrinfo_entries[i]->lock = lock;
+                    _arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
+                    _arg->getaddrinfo_entries[i]->ai = NULL;
+                    _arg->getaddrinfo_entries[i]->family = families[i];
+                    _arg->getaddrinfo_entries[i]->refcount = 2;
+                    _arg->getaddrinfo_entries[i]->cancelled = &cancelled;
+                    _arg->getaddrinfo_entries[i]->notifying = hostname_resolution_notifying;
+                    _arg->getaddrinfo_entries[i]->lock = lock;
 
-                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, getaddrinfo_entries[i]) != 0) {
-                        free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
+                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, _arg->getaddrinfo_entries[i]) != 0) {
+                        free_rb_getaddrinfo_happy_entry(_arg->getaddrinfo_entries[i]);
                         close_fd(hostname_resolution_waiting);
                         close_fd(hostname_resolution_notifying);
                         return EAI_AGAIN;
@@ -471,11 +468,11 @@ init_inetsock_internal_happy(VALUE v)
                     written[bytes_read] = '\0';
 
                     if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                        tmp_getaddrinfo_entry = getaddrinfo_entries[0];
+                        tmp_getaddrinfo_entry = _arg->getaddrinfo_entries[0];
                         tmp_need_free = need_frees[0];
                         selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                     } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                        tmp_getaddrinfo_entry = getaddrinfo_entries[1];
+                        tmp_getaddrinfo_entry = _arg->getaddrinfo_entries[1];
                         tmp_need_free = need_frees[1];
                         selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                     }
@@ -517,7 +514,7 @@ init_inetsock_internal_happy(VALUE v)
                         if (tmp_getaddrinfo_entry->family == AF_INET6) {
                             state = V6C;
                         } else if (tmp_getaddrinfo_entry->family == AF_INET) {
-                            if (getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
+                            if (_arg->getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
                                 state = V4C;
                             } else { // v6の名前解決が終わっていない場合
                                 state = V4W;
@@ -545,7 +542,7 @@ init_inetsock_internal_happy(VALUE v)
                     state = V4C;
                 } else { // 名前解決できた
                     read(hostname_resolution_waiting, written, sizeof(written) - 1);
-                    selectable_addrinfos.ip6_ai = getaddrinfo_entries[0]->ai;
+                    selectable_addrinfos.ip6_ai = _arg->getaddrinfo_entries[0]->ai;
                     state = V46C;
                 }
                 continue;
@@ -773,9 +770,9 @@ init_inetsock_internal_happy(VALUE v)
                         written[bytes_read] = '\0';
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                            selectable_addrinfos.ip6_ai = getaddrinfo_entries[0]->ai;
+                            selectable_addrinfos.ip6_ai = _arg->getaddrinfo_entries[0]->ai;
                         } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                            selectable_addrinfos.ip4_ai = getaddrinfo_entries[1]->ai;
+                            selectable_addrinfos.ip4_ai = _arg->getaddrinfo_entries[1]->ai;
                         }
                     } else { // writefdsに書き込み可能ソケットができた
                         arg->fd = fd = find_connected_socket(connecting_fds, connecting_fds_size, &writefds);
@@ -886,13 +883,13 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_lock(lock);
     {
         for (int i = 0; i < 2; i++) {
-            if (--getaddrinfo_entries[i]->refcount == 0) *need_frees[i] = 1;
+            if (--(_arg->getaddrinfo_entries[i]->refcount) == 0) *need_frees[i] = 1;
         }
     }
     rb_nativethread_lock_unlock(lock);
 
     for (int i = 0; i < 2; i++) {
-        if (*need_frees[i]) free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
+        if (*need_frees[i]) free_rb_getaddrinfo_happy_entry(_arg->getaddrinfo_entries[i]);
     }
     close_fd(hostname_resolution_waiting);
     close_fd(hostname_resolution_notifying);
@@ -950,6 +947,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
         struct inetsock_happy_arg inetsock_happy_resources;
+        memset(&inetsock_happy_resources, 0, sizeof(inetsock_happy_resources));
+
         inetsock_happy_resources.inetsock_resources = &arg;
 
         rb_nativethread_lock_t lock;
@@ -968,6 +967,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         int ipv4_need_free = 0;
         inetsock_happy_resources.ipv6_need_free = &ipv6_need_free;
         inetsock_happy_resources.ipv4_need_free = &ipv4_need_free;
+
         // TODO 01: WIP
 
         return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resources,
