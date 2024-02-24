@@ -1,5 +1,5 @@
 # 2023/2/23
-- (参照先: `getaddrinfo/_impl09`)
+- (参照先: `getaddrinfo/_impl10`)
 
 ```c
 // ext/socket/ipsocket.c
@@ -304,8 +304,8 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resources;
+    rb_nativethread_lock_t *lock;
     //   追加が必要な引数
-    //     rb_nativethread_lock_t *lock; // TODO 現在値で定義しているので呼び出し方を調整する
     //     getaddrinfo_entries
     //     need_frees
     //     hostname_resolution_waiting
@@ -319,7 +319,6 @@ init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_happy_arg *_arg = (void *)v;
     struct inetsock_arg *arg = _arg->inetsock_resources;
-    // struct inetsock_arg *arg = (void *)v;
     int last_error = 0;
     struct addrinfo *remote_ai = NULL;
     struct addrinfo *local_ai;
@@ -361,8 +360,7 @@ init_inetsock_internal_happy(VALUE v)
     pipe(pipefd);
     int hostname_resolution_waiting = pipefd[0];
     int hostname_resolution_notifying = pipefd[1];
-    rb_nativethread_lock_t lock;
-    rb_nativethread_lock_initialize(&lock);
+    rb_nativethread_lock_t *lock = _arg->lock;
     int cancelled = 0;
 
     int families[2] = { AF_INET6, AF_INET }; // TODO 09 IPアドレス指定対応
@@ -403,7 +401,7 @@ init_inetsock_internal_happy(VALUE v)
 
     struct cancel_happy_eyeballs_fds_arg cancel_arg;
     cancel_arg.cancelled = &cancelled;
-    cancel_arg.lock = &lock;
+    cancel_arg.lock = lock;
     cancel_arg.connecting_fds = connecting_fds;
 
     int last_family = 0;
@@ -487,11 +485,11 @@ init_inetsock_internal_happy(VALUE v)
                     // TODO 06 ignoreable_error?
                     if (last_error != 0) {
                         if (hostname_resolution_retry_count == 0) {
-                            rb_nativethread_lock_lock(&lock);
+                            rb_nativethread_lock_lock(lock);
                             {
                                 if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
                             }
-                            rb_nativethread_lock_unlock(&lock);
+                            rb_nativethread_lock_unlock(lock);
                             state = FAILURE;
                             break;
                         }
@@ -886,20 +884,20 @@ init_inetsock_internal_happy(VALUE v)
     //     hostname_resolution_notifying
     //     connecting_fds_size
     //     connecting_fds
-    rb_nativethread_lock_lock(&lock);
+    rb_nativethread_lock_lock(lock);
     {
         for (int i = 0; i < 2; i++) {
             if (--getaddrinfo_entries[i]->refcount == 0) need_frees[i] = 1;
         }
     }
-    rb_nativethread_lock_unlock(&lock);
+    rb_nativethread_lock_unlock(lock);
 
     for (int i = 0; i < 2; i++) {
         if (need_frees[i]) free_rb_getaddrinfo_happy_entry(getaddrinfo_entries[i]);
     }
     close_fd(hostname_resolution_waiting);
     close_fd(hostname_resolution_notifying);
-    rb_nativethread_lock_destroy(&lock);
+    rb_nativethread_lock_destroy(lock);
 
     for (int i = 0; i < connecting_fds_size; i++) {
         int connecting_fd = connecting_fds[i];
@@ -952,41 +950,18 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.connect_timeout = connect_timeout;
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
-      struct inetsock_happy_arg inetsock_happy_resources;
-      inetsock_happy_resources.inetsock_resources = &arg;
-      // TODO 01: WIP
+        struct inetsock_happy_arg inetsock_happy_resources;
+        inetsock_happy_resources.inetsock_resources = &arg;
+        rb_nativethread_lock_t lock;
+        rb_nativethread_lock_initialize(&lock);
+        inetsock_happy_resources.lock = &lock;
+        // TODO 01: WIP
 
-      return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resources,
-                       inetsock_cleanup_happy, (VALUE)&inetsock_happy_resources);
+        return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resources,
+                         inetsock_cleanup_happy, (VALUE)&inetsock_happy_resources);
     } else {
-      return rb_ensure(init_inetsock_internal, (VALUE)&arg,
-                       inetsock_cleanup, (VALUE)&arg);
+        return rb_ensure(init_inetsock_internal, (VALUE)&arg,
+                         inetsock_cleanup, (VALUE)&arg);
     }
 }
-```
-
-```c
-// ext/socket/rubysocket.h
-
-// 追加 -------------------
-#define IPV6_HOSTNAME_RESOLVED "1"
-#define IPV4_HOSTNAME_RESOLVED "2"
-
-char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
-char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
-
-struct rb_getaddrinfo_happy_entry
-{
-    char *node, *service;
-    int family, err, refcount, notifying;
-    int *cancelled;
-    rb_nativethread_lock_t lock;
-    struct addrinfo hints;
-    struct addrinfo *ai;
-};
-
-int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
-void * do_rb_getaddrinfo_happy(void *ptr);
-void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry *entry);
-// -------------------------
 ```
