@@ -1,4 +1,4 @@
-# 2023/2/23-24
+# 2023/2/23-25
 - (参照先: `getaddrinfo/_impl10`)
 - 終了処理を適切にする
 
@@ -301,9 +301,6 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
     return FALSE;
 }
 
-// TODO 01
-//   必要なメンバを一つずつ足してみる
-//   init_inetsock_internal_happyの中で定義しているものはrsock_init_inetsockに要お引越し
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resource;
@@ -312,8 +309,8 @@ struct inetsock_happy_arg
     int *ipv6_need_free, *ipv4_need_free;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     int *connecting_fds_size;
-    //   追加が必要な引数
-    //     connecting_fds
+    int *connecting_fds_capacity;
+    int *connecting_fds;
 };
 
 static VALUE
@@ -376,14 +373,16 @@ init_inetsock_internal_happy(VALUE v)
     char written[2];
     ssize_t bytes_read;
 
-    int *connecting_fds;
     int *connecting_fds_size = arg->connecting_fds_size;
-    int capa = 10;
-    connecting_fds = malloc(capa * sizeof(int));  // TODO 動的に増やすための関数を用意する
-    if (!connecting_fds) {
+    int initial_capacity = 10; // TODO 動的に増やすための関数を用意する
+    arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
+    if (!arg->connecting_fds) {
         perror("Failed to allocate memory");
         return -1;
     }
+    *arg->connecting_fds_capacity = initial_capacity;
+    int *connecting_fds = arg->connecting_fds;
+
     fd_set readfds, writefds;
     int nfds;
     struct timeval resolution_delay;
@@ -873,14 +872,6 @@ init_inetsock_internal_happy(VALUE v)
     // 後処理
     // TODO 01 inetsock_cleanup_happy に切り出す
     // inetsock_cleanup + 以下の内容
-    //   追加が必要な引数
-    //     lock
-    //     getaddrinfo_entries
-    //     need_frees
-    //     hostname_resolution_waiting
-    //     hostname_resolution_notifying
-    //     connecting_fds_size
-    //     connecting_fds
     rb_nativethread_lock_lock(lock);
     {
         for (int i = 0; i < 2; i++) {
@@ -908,6 +899,7 @@ init_inetsock_internal_happy(VALUE v)
     return rsock_init_sock(inetsock_resource->sock, fd);
 }
 
+// TODO 01
 static VALUE
 inetsock_cleanup_happy(VALUE v)
 {
@@ -970,9 +962,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         inetsock_happy_resource.ipv4_need_free = &ipv4_need_free;
 
         int connecting_fds_size = 0;
+        int connecting_fds_capacity = 0;
         inetsock_happy_resource.connecting_fds_size = &connecting_fds_size;
-
-        // TODO 01: WIP
+        inetsock_happy_resource.connecting_fds_capacity = &connecting_fds_capacity;
 
         return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
                          inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
