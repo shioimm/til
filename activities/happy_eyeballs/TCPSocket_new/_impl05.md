@@ -4,7 +4,7 @@
   - Connection Attempt Delayが不要な場合は待機時間を0sへ変更
   - start時点に`hostname_resolution_retry_count`を導入
 - `resolv_timeout`のサポート
-- ` connect_timeout`のサポート
+- `connect_timeout`のサポート
 
 ```c
 // ext/socket/ipsocket.c
@@ -919,11 +919,11 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.connect_timeout = connect_timeout;
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
-      return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
-                       inetsock_cleanup, (VALUE)&arg); // TODO 07 inetsock_cleanup_happy
+        return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
+                         inetsock_cleanup, (VALUE)&arg); // TODO 07 inetsock_cleanup_happy
     } else {
-      return rb_ensure(init_inetsock_internal, (VALUE)&arg,
-                       inetsock_cleanup, (VALUE)&arg);
+        return rb_ensure(init_inetsock_internal, (VALUE)&arg,
+                         inetsock_cleanup, (VALUE)&arg);
     }
 }
 ```
