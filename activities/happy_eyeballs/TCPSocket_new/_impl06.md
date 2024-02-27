@@ -303,6 +303,7 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
 
 struct inetsock_happy_arg
 {
+    // TODO 04 inetsock_arg構造体が適切に使われている + メモリが解放されているか調査する
     struct inetsock_arg *inetsock_resource;
     rb_nativethread_lock_t *lock;
     int hostname_resolution_waiting, hostname_resolution_notifying;
@@ -869,46 +870,21 @@ init_inetsock_internal_happy(VALUE v)
         }
     }
 
-    // 後処理
-    // TODO 01 inetsock_cleanup_happy に切り出す
-    // inetsock_cleanup + 以下の内容
     *arg->connected_fd = inetsock_resource->fd;
-
-    rb_nativethread_lock_lock(lock);
-    {
-        for (int i = 0; i < 2; i++) {
-            if (--(arg->getaddrinfo_entries[i]->refcount) == 0) *need_frees[i] = 1;
-        }
-    }
-    rb_nativethread_lock_unlock(lock);
-
-    for (int i = 0; i < 2; i++) {
-        if (*need_frees[i]) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
-    }
-    close_fd(hostname_resolution_waiting);
-    close_fd(hostname_resolution_notifying);
-    rb_nativethread_lock_destroy(lock);
-
-    // inetsock_cleanup_happyへお引越し
-    // for (int i = 0; i < *connecting_fds_size; i++) {
-    //     int connecting_fd = connecting_fds[i];
-    //     if (connecting_fd != fd) close_fd(connecting_fd);
-    // }
-    // free(connecting_fds);
-
     inetsock_resource->fd = -1;
 
     /* create new instance */
     return rsock_init_sock(inetsock_resource->sock, fd);
 }
 
-// TODO 01
 static VALUE
 inetsock_cleanup_happy(VALUE v)
 {
     struct inetsock_happy_arg *arg = (void *)v;
     struct inetsock_arg *inetsock_resource = arg->inetsock_resource;
 
+    // TODO 04 inetsock_arg構造体を使わないほうがいいかも。持て余している気がする。
+    // このあたりrb_freeaddrinfoしそこねているものがありそう
     if (inetsock_resource->remote.res) {
         rb_freeaddrinfo(inetsock_resource->remote.res);
         inetsock_resource->remote.res = 0;
@@ -920,6 +896,20 @@ inetsock_cleanup_happy(VALUE v)
     if (inetsock_resource->fd >= 0) {
         close(inetsock_resource->fd);
     }
+
+    rb_nativethread_lock_lock(arg->lock);
+    {
+        if (--(arg->getaddrinfo_entries[0]->refcount) == 0) *(arg->ipv6_need_free) = 1;
+        if (--(arg->getaddrinfo_entries[1]->refcount) == 0) *(arg->ipv4_need_free) = 1;
+    }
+    rb_nativethread_lock_unlock(arg->lock);
+
+    if (*(arg->ipv6_need_free)) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[0]);
+    if (*(arg->ipv4_need_free)) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[1]);
+
+    close_fd(arg->hostname_resolution_waiting);
+    close_fd(arg->hostname_resolution_notifying);
+    rb_nativethread_lock_destroy(arg->lock);
 
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
