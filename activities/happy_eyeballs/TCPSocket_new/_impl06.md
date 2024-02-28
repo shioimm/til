@@ -303,7 +303,6 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
 
 struct inetsock_happy_arg
 {
-    // TODO 04 inetsock_arg構造体が適切に使われている + メモリが解放されているか調査する
     struct inetsock_arg *inetsock_resource;
     rb_nativethread_lock_t *lock;
     int hostname_resolution_waiting, hostname_resolution_notifying;
@@ -410,7 +409,7 @@ init_inetsock_internal_happy(VALUE v)
     int stop = 0;
     int state = START;
 
-    // TODO 05 たまにステートの遷移がおかしい気がするので調査する
+    // TODO 05 各ステートの分岐条件に取りこぼしがないか確認 (たまにステートの遷移がおかしい気がするので調査する)
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
@@ -421,9 +420,24 @@ init_inetsock_internal_happy(VALUE v)
                     allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
                     if (!(arg->getaddrinfo_entries[i])) return EAI_MEMORY;
 
-                    allocate_rb_getaddrinfo_happy_entry_endpoint(&(arg->getaddrinfo_entries[i]->node), hostp, &hostp_offset, (char *)arg->getaddrinfo_entries[i]);
-                    allocate_rb_getaddrinfo_happy_entry_endpoint(&(arg->getaddrinfo_entries[i]->service), portp, &portp_offset, (char *)arg->getaddrinfo_entries[i]);
-                    allocate_rb_getaddrinfo_happy_entry_hints(&getaddrinfo_hints[i], families[i], remote_addrinfo_hints, additional_flags);
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(
+                        &(arg->getaddrinfo_entries[i]->node),
+                        hostp,
+                        &hostp_offset,
+                        (char *)arg->getaddrinfo_entries[i]
+                    );
+                    allocate_rb_getaddrinfo_happy_entry_endpoint(
+                        &(arg->getaddrinfo_entries[i]->service),
+                        portp,
+                        &portp_offset,
+                        (char *)arg->getaddrinfo_entries[i]
+                    );
+                    allocate_rb_getaddrinfo_happy_entry_hints(
+                        &getaddrinfo_hints[i],
+                        families[i],
+                        remote_addrinfo_hints,
+                        additional_flags
+                    );
 
                     arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
                     arg->getaddrinfo_entries[i]->ai = NULL;
@@ -492,24 +506,19 @@ init_inetsock_internal_happy(VALUE v)
                         }
                         hostname_resolution_retry_count--;
                     } else {
-                        // 不要かも?
-                        // struct rb_addrinfo *getaddrinfo_res = NULL;
-                        // getaddrinfo_res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
-                        // getaddrinfo_res->allocated_by_malloc = 0;
-                        // getaddrinfo_res->ai = tmp_getaddrinfo_entry->ai;
-
-                        // inetsock_resource->remote.res = getaddrinfo_res;
-                        // inetsock_resource->fd = fd = -1; // 初期化?
-                        // remote_ai = inetsock_resource->remote.res->ai;
-
                         /*
                          * Maybe also accept a local address
                          */
 
                         // locat_host / local_portが指定された場合
                         if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
-                            inetsock_resource->local.res = rsock_addrinfo(inetsock_resource->local.host, inetsock_resource->local.serv,
-                                                            AF_UNSPEC, SOCK_STREAM, 0);
+                            inetsock_resource->local.res = rsock_addrinfo(
+                                inetsock_resource->local.host,
+                                inetsock_resource->local.serv,
+                                AF_UNSPEC,
+                                SOCK_STREAM,
+                                0
+                            );
                         }
 
                         if (tmp_getaddrinfo_entry->family == AF_INET6) {
@@ -581,7 +590,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
                 if (remote_ai->ai_family == AF_INET6)
-                    inetsock_resource->fd = fd = -1; // これはなに
+                    inetsock_resource->fd = fd = -1;
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
@@ -643,7 +652,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
-                    inetsock_resource->fd = fd = -1; // これはなに
+                    inetsock_resource->fd = fd = -1;
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
@@ -679,7 +688,7 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (status < 0) { // bind(2) に失敗
                         last_error = errno;
-                        inetsock_resource->fd = fd = -1; // これはなに
+                        inetsock_resource->fd = fd = -1;
 
                         if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                             is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
@@ -883,8 +892,6 @@ inetsock_cleanup_happy(VALUE v)
     struct inetsock_happy_arg *arg = (void *)v;
     struct inetsock_arg *inetsock_resource = arg->inetsock_resource;
 
-    // TODO 04 inetsock_arg構造体を使わないほうがいいかも。持て余している気がする。
-    // このあたりrb_freeaddrinfoしそこねているものがありそう
     if (inetsock_resource->remote.res) {
         rb_freeaddrinfo(inetsock_resource->remote.res);
         inetsock_resource->remote.res = 0;

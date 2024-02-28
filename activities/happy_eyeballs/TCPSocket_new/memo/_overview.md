@@ -34,3 +34,21 @@
 - `defined(HAVE_PTHREAD_DETACH)`
 - `!defined(__MINGW32__)`
 - `!defined(__MINGW64__)`
+
+#### `struct inetsock_arg`のメンバ
+
+```c
+struct inetsock_arg
+{
+    VALUE sock;                  // self
+    struct {
+        VALUE host;              // ホスト名
+        VALUE serv;              // ポート番号
+        struct rb_addrinfo *res; // 名前解決で取得するaddrinfo
+    } remote, local;
+    int type;                    // INET_CLIENT / INET_SERVER / INET_SOCKS
+    int fd;                      // 接続できたfd
+    VALUE resolv_timeout;        // 引数resolv_timeout
+    VALUE connect_timeout;       // 引数connect_timeout
+};
+```
