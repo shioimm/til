@@ -1,6 +1,7 @@
 # 2023/2/23-25
 - (参照先: `getaddrinfo/_impl10`)
 - 終了処理を適切にする
+- 名前解決失敗時のメモリ解放を適切に行う
 
 ```c
 // ext/socket/ipsocket.c
@@ -481,27 +482,28 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                         tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
-                        tmp_need_free = need_frees[0];
+                        tmp_need_free = arg->need_frees[0];
                         selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                     } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                         tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
-                        tmp_need_free = need_frees[1];
+                        tmp_need_free = arg->need_frees[1];
                         selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                     }
 
                     last_error = tmp_getaddrinfo_entry->err;
                     // TODO 06 ignoreable_error?
                     if (last_error != 0) {
+                        rb_nativethread_lock_lock(lock);
+                        {
+                            if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
+                        }
+                        rb_nativethread_lock_unlock(lock);
+                        hostname_resolution_retry_count--;
+
                         if (hostname_resolution_retry_count == 0) {
-                            rb_nativethread_lock_lock(lock);
-                            {
-                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
-                            }
-                            rb_nativethread_lock_unlock(lock);
                             state = FAILURE;
                             break;
                         }
-                        hostname_resolution_retry_count--;
                     } else {
                         /*
                          * Maybe also accept a local address
@@ -778,8 +780,20 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                             selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[0]->ai;
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
+                            tmp_need_free = arg->need_frees[0];
                         } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                             selectable_addrinfos.ip4_ai = arg->getaddrinfo_entries[1]->ai;
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
+                            tmp_need_free = arg->need_frees[1];
+                        }
+
+                        if (tmp_getaddrinfo_entry->err) {
+                            rb_nativethread_lock_lock(lock);
+                            {
+                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
+                            }
+                            rb_nativethread_lock_unlock(lock);
                         }
                     } else { // writefdsに書き込み可能ソケットができた
                         inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, *connecting_fds_size, &writefds);
