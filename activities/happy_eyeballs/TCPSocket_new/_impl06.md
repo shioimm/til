@@ -3,6 +3,7 @@
 - 終了処理を適切にする
 - 名前解決失敗時のメモリ解放を適切に行う
 - start時点での名前解決時に`EAI_ADDRFAMILY`が発生した場合、ユーザに返すエラーとしては保持しない
+- IPアドレス指定
 
 ```c
 // ext/socket/ipsocket.c
@@ -316,6 +317,30 @@ struct inetsock_happy_arg
     int *connected_fd;
 };
 
+struct specified_address_info
+{
+   int family;
+   int next_state;
+};
+
+int specified_family_name_and_next_state(const char *hostname, struct specified_address_info *info)
+{
+    struct in_addr ipv4addr;
+    struct in6_addr ipv6addr;
+
+    if (inet_pton(AF_INET, hostname, &ipv4addr)) {
+        info->family = AF_INET;
+        info->next_state = 2;
+        return TRUE;
+    } else if (inet_pton(AF_INET6, hostname, &ipv6addr)) {
+        info->family = AF_INET6;
+        info->next_state = 1;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -363,7 +388,7 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_t *lock = arg->lock;
     int cancelled = 0;
 
-    int families[2] = { AF_INET6, AF_INET }; // TODO 09 IPアドレス指定対応
+    int families[2] = { AF_INET6, AF_INET };
 
     int *tmp_need_free = NULL;
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
@@ -414,6 +439,13 @@ init_inetsock_internal_happy(VALUE v)
         switch (state) {
             case START:
             {
+                // TODO 09 IPアドレス指定対応
+                struct specified_address_info specified_addrinfo;
+                int result = specified_family_name_and_next_state(hostp, &specified_addrinfo);
+                printf("result %d\n", result);
+                printf("specified_addrinfo.family %d\n", specified_addrinfo.family);
+                printf("specified_addrinfo.next_state %d\n", specified_addrinfo.next_state);
+
                 // getaddrinfoの実行
                 for (int i = 0; i < 2; i++) {
                     allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
