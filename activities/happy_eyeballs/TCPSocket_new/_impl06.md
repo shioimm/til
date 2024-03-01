@@ -304,6 +304,23 @@ is_hostname_resolution_finished(int hostname_resolution_waiting)
     return FALSE;
 }
 
+
+int specified_address_family(const char *hostname, int *specified_family)
+{
+    struct in_addr ipv4addr;
+    struct in6_addr ipv6addr;
+
+    if (inet_pton(AF_INET6, hostname, &ipv6addr)) {
+        *specified_family = AF_INET6;
+        return TRUE;
+    } else if (inet_pton(AF_INET, hostname, &ipv4addr)) {
+        *specified_family = AF_INET;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resource;
@@ -316,30 +333,6 @@ struct inetsock_happy_arg
     int *connecting_fds;
     int *connected_fd;
 };
-
-struct specified_address_info
-{
-   int family;
-   int next_state;
-};
-
-int specified_family_name_and_next_state(const char *hostname, struct specified_address_info *info)
-{
-    struct in_addr ipv4addr;
-    struct in6_addr ipv6addr;
-
-    if (inet_pton(AF_INET, hostname, &ipv4addr)) {
-        info->family = AF_INET;
-        info->next_state = 2;
-        return TRUE;
-    } else if (inet_pton(AF_INET6, hostname, &ipv6addr)) {
-        info->family = AF_INET6;
-        info->next_state = 1;
-        return TRUE;
-    }
-
-    return FALSE;
-}
 
 static VALUE
 init_inetsock_internal_happy(VALUE v)
@@ -439,134 +432,159 @@ init_inetsock_internal_happy(VALUE v)
         switch (state) {
             case START:
             {
-                // TODO 09 IPアドレス指定対応
-                struct specified_address_info specified_addrinfo;
-                int result = specified_family_name_and_next_state(hostp, &specified_addrinfo);
-                printf("result %d\n", result);
-                printf("specified_addrinfo.family %d\n", specified_addrinfo.family);
-                printf("specified_addrinfo.next_state %d\n", specified_addrinfo.next_state);
+                int specified_family;
+                int is_host_specified_address = specified_address_family(hostp, &specified_family);
 
-                // getaddrinfoの実行
-                for (int i = 0; i < 2; i++) {
-                    allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
-                    if (!(arg->getaddrinfo_entries[i])) return EAI_MEMORY;
+                if (is_host_specified_address) {
+                    // WIP: TODO 09 IPアドレス指定対応
+                    struct addrinfo *ai;
+                    struct addrinfo hints; // WIP
 
-                    allocate_rb_getaddrinfo_happy_entry_endpoint(
-                        &(arg->getaddrinfo_entries[i]->node),
-                        hostp,
-                        &hostp_offset,
-                        (char *)arg->getaddrinfo_entries[i]
-                    );
-                    allocate_rb_getaddrinfo_happy_entry_endpoint(
-                        &(arg->getaddrinfo_entries[i]->service),
-                        portp,
-                        &portp_offset,
-                        (char *)arg->getaddrinfo_entries[i]
-                    );
-                    allocate_rb_getaddrinfo_happy_entry_hints(
-                        &getaddrinfo_hints[i],
-                        families[i],
-                        remote_addrinfo_hints,
-                        additional_flags
-                    );
+                    MEMZERO(&hints, struct addrinfo, 1);
+                    hints.ai_family = specified_family;
+                    hints.ai_socktype = SOCK_STREAM;
+                    hints.ai_protocol = IPPROTO_TCP;
+                    hints.ai_flags = remote_addrinfo_hints;
+                    hints.ai_flags |= additional_flags;
 
-                    arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
-                    arg->getaddrinfo_entries[i]->ai = NULL;
-                    arg->getaddrinfo_entries[i]->family = families[i];
-                    arg->getaddrinfo_entries[i]->refcount = 2;
-                    arg->getaddrinfo_entries[i]->cancelled = &cancelled;
-                    arg->getaddrinfo_entries[i]->notifying = hostname_resolution_notifying;
-                    arg->getaddrinfo_entries[i]->lock = lock;
+                    last_error = getaddrinfo(hostp, portp, &hints , &ai);
 
-                    if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
-                        free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
-                        close_fd(hostname_resolution_waiting);
-                        close_fd(hostname_resolution_notifying);
-                        return EAI_AGAIN;
-                    }
-                    pthread_detach(threads[i]);
-                }
-
-                int hostname_resolution_retry_count = 1;
-
-                while (hostname_resolution_retry_count >= 0) {
-                    // getaddrinfoの待機
-                    if (resolv_timeout_tv) {
-                        wait_arg.delay = resolv_timeout_tv;
-                        hostname_resolution_expires_at_ts = resolv_timeout_expires_at_ts(*resolv_timeout_tv);
-                    }
-
-                    FD_ZERO(&readfds);
-                    FD_SET(hostname_resolution_waiting, &readfds);
-                    nfds = hostname_resolution_waiting + 1;
-                    rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
-                    status = wait_arg.status;
-                    syscall = "select(2)";
-
-                    if (status == 0) { // resolv_timeout
-                        state = TIMEOUT;
+                    if (last_error != 0) {
+                        state = FAILURE;
                         continue;
-                    } else if (status < 0) { // selectの実行失敗
-                        rb_syserr_fail(errno, "select(2)"); // いったんこれで
                     }
 
-                    bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
-                    written[bytes_read] = '\0';
+                    if (specified_family == AF_INET6) {
+                        selectable_addrinfos.ip6_ai = ai;
+                        state = V6C;
+                    } else if (specified_family == AF_INET) {
+                        selectable_addrinfos.ip4_ai = ai;
+                        state = V4C;
+                    }
+                } else {
+                    // getaddrinfoの実行
+                    for (int i = 0; i < 2; i++) {
+                        allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
+                        if (!(arg->getaddrinfo_entries[i])) return EAI_MEMORY;
 
-                    if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                        tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
-                        tmp_need_free = arg->need_frees[0];
-                        selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
-                    } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                        tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
-                        tmp_need_free = arg->need_frees[1];
-                        selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
+                        allocate_rb_getaddrinfo_happy_entry_endpoint(
+                            &(arg->getaddrinfo_entries[i]->node),
+                            hostp,
+                            &hostp_offset,
+                            (char *)arg->getaddrinfo_entries[i]
+                        );
+                        allocate_rb_getaddrinfo_happy_entry_endpoint(
+                            &(arg->getaddrinfo_entries[i]->service),
+                            portp,
+                            &portp_offset,
+                            (char *)arg->getaddrinfo_entries[i]
+                        );
+                        allocate_rb_getaddrinfo_happy_entry_hints(
+                            &getaddrinfo_hints[i],
+                            families[i],
+                            remote_addrinfo_hints,
+                            additional_flags
+                        );
+
+                        arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
+                        arg->getaddrinfo_entries[i]->ai = NULL;
+                        arg->getaddrinfo_entries[i]->family = families[i];
+                        arg->getaddrinfo_entries[i]->refcount = 2;
+                        arg->getaddrinfo_entries[i]->cancelled = &cancelled;
+                        arg->getaddrinfo_entries[i]->notifying = hostname_resolution_notifying;
+                        arg->getaddrinfo_entries[i]->lock = lock;
+
+                        if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
+                            free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
+                            close_fd(hostname_resolution_waiting);
+                            close_fd(hostname_resolution_notifying);
+                            return EAI_AGAIN;
+                        }
+                        pthread_detach(threads[i]);
                     }
 
-                    if (tmp_getaddrinfo_entry->err != 0) {
-                        if (tmp_getaddrinfo_entry->err != EAI_ADDRFAMILY) {
-                            last_error = tmp_getaddrinfo_entry->err;
+                    int hostname_resolution_retry_count = 1;
+
+                    while (hostname_resolution_retry_count >= 0) {
+                        // getaddrinfoの待機
+                        if (resolv_timeout_tv) {
+                            wait_arg.delay = resolv_timeout_tv;
+                            hostname_resolution_expires_at_ts = resolv_timeout_expires_at_ts(*resolv_timeout_tv);
                         }
 
-                        rb_nativethread_lock_lock(lock);
-                        {
-                            if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
-                        }
-                        rb_nativethread_lock_unlock(lock);
-                        hostname_resolution_retry_count--;
+                        FD_ZERO(&readfds);
+                        FD_SET(hostname_resolution_waiting, &readfds);
+                        nfds = hostname_resolution_waiting + 1;
+                        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
+                        status = wait_arg.status;
+                        syscall = "select(2)";
 
-                        if (hostname_resolution_retry_count == 0) {
-                            state = FAILURE;
+                        if (status == 0) { // resolv_timeout
+                            state = TIMEOUT;
+                            continue;
+                        } else if (status < 0) { // selectの実行失敗
+                            rb_syserr_fail(errno, "select(2)"); // いったんこれで
+                        }
+
+                        bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
+                        written[bytes_read] = '\0';
+
+                        if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
+                            tmp_need_free = arg->need_frees[0];
+                            selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
+                        } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
+                            tmp_need_free = arg->need_frees[1];
+                            selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
+                        }
+
+                        if (tmp_getaddrinfo_entry->err != 0) {
+                            if (tmp_getaddrinfo_entry->err != EAI_ADDRFAMILY) {
+                                last_error = tmp_getaddrinfo_entry->err;
+                            }
+
+                            rb_nativethread_lock_lock(lock);
+                            {
+                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
+                            }
+                            rb_nativethread_lock_unlock(lock);
+                            hostname_resolution_retry_count--;
+
+                            if (hostname_resolution_retry_count == 0) {
+                                state = FAILURE;
+                                break;
+                            }
+                        } else {
+                            /*
+                             * Maybe also accept a local address
+                             */
+
+                            // locat_host / local_portが指定された場合
+                            if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
+                                inetsock_resource->local.res = rsock_addrinfo(
+                                    inetsock_resource->local.host,
+                                    inetsock_resource->local.serv,
+                                    AF_UNSPEC,
+                                    SOCK_STREAM,
+                                    0
+                                );
+                            }
+
+                            if (tmp_getaddrinfo_entry->family == AF_INET6) {
+                                state = V6C;
+                            } else if (tmp_getaddrinfo_entry->family == AF_INET) {
+                                if (arg->getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
+                                    state = V4C;
+                                } else { // v6の名前解決が終わっていない場合
+                                    state = V4W;
+                                }
+                            }
                             break;
                         }
-                    } else {
-                        /*
-                         * Maybe also accept a local address
-                         */
-
-                        // locat_host / local_portが指定された場合
-                        if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
-                            inetsock_resource->local.res = rsock_addrinfo(
-                                inetsock_resource->local.host,
-                                inetsock_resource->local.serv,
-                                AF_UNSPEC,
-                                SOCK_STREAM,
-                                0
-                            );
-                        }
-
-                        if (tmp_getaddrinfo_entry->family == AF_INET6) {
-                            state = V6C;
-                        } else if (tmp_getaddrinfo_entry->family == AF_INET) {
-                            if (arg->getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
-                                state = V4C;
-                            } else { // v6の名前解決が終わっていない場合
-                                state = V4W;
-                            }
-                        }
-                        break;
                     }
                 }
+
                 continue;
             }
 
