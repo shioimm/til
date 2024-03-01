@@ -1,6 +1,7 @@
 # 2023/2/23-25
 - (参照先: `getaddrinfo/_impl10`)
 - 終了処理を適切にする
+- 名前解決失敗時のメモリ解放を適切に行う
 
 ```c
 // ext/socket/ipsocket.c
@@ -306,7 +307,7 @@ struct inetsock_happy_arg
     struct inetsock_arg *inetsock_resource;
     rb_nativethread_lock_t *lock;
     int hostname_resolution_waiting, hostname_resolution_notifying;
-    int *ipv6_need_free, *ipv4_need_free;
+    int *need_frees[2];
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     int *connecting_fds_size;
     int *connecting_fds_capacity;
@@ -364,9 +365,6 @@ init_inetsock_internal_happy(VALUE v)
     int families[2] = { AF_INET6, AF_INET }; // TODO 09 IPアドレス指定対応
 
     int *tmp_need_free = NULL;
-    int *need_frees[2];
-    need_frees[0] = arg->ipv6_need_free;
-    need_frees[1] = arg->ipv4_need_free;
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct addrinfo getaddrinfo_hints[2];
 
@@ -484,27 +482,28 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                         tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
-                        tmp_need_free = need_frees[0];
+                        tmp_need_free = arg->need_frees[0];
                         selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                     } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                         tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
-                        tmp_need_free = need_frees[1];
+                        tmp_need_free = arg->need_frees[1];
                         selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                     }
 
                     last_error = tmp_getaddrinfo_entry->err;
                     // TODO 06 ignoreable_error?
                     if (last_error != 0) {
+                        rb_nativethread_lock_lock(lock);
+                        {
+                            if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
+                        }
+                        rb_nativethread_lock_unlock(lock);
+                        hostname_resolution_retry_count--;
+
                         if (hostname_resolution_retry_count == 0) {
-                            rb_nativethread_lock_lock(lock);
-                            {
-                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
-                            }
-                            rb_nativethread_lock_unlock(lock);
                             state = FAILURE;
                             break;
                         }
-                        hostname_resolution_retry_count--;
                     } else {
                         /*
                          * Maybe also accept a local address
@@ -781,8 +780,20 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
                             selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[0]->ai;
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
+                            tmp_need_free = arg->need_frees[0];
                         } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
                             selectable_addrinfos.ip4_ai = arg->getaddrinfo_entries[1]->ai;
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
+                            tmp_need_free = arg->need_frees[1];
+                        }
+
+                        if (tmp_getaddrinfo_entry->err) {
+                            rb_nativethread_lock_lock(lock);
+                            {
+                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
+                            }
+                            rb_nativethread_lock_unlock(lock);
                         }
                     } else { // writefdsに書き込み可能ソケットができた
                         inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, *connecting_fds_size, &writefds);
@@ -906,13 +917,15 @@ inetsock_cleanup_happy(VALUE v)
 
     rb_nativethread_lock_lock(arg->lock);
     {
-        if (--(arg->getaddrinfo_entries[0]->refcount) == 0) *(arg->ipv6_need_free) = 1;
-        if (--(arg->getaddrinfo_entries[1]->refcount) == 0) *(arg->ipv4_need_free) = 1;
+        for (int i = 0; i < 2; i++) {
+            if (--(arg->getaddrinfo_entries[0]->refcount) == 0) *(arg->need_frees[i]) = 1;
+        }
     }
     rb_nativethread_lock_unlock(arg->lock);
 
-    if (*(arg->ipv6_need_free)) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[0]);
-    if (*(arg->ipv4_need_free)) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[1]);
+    for (int i = 0; i < 2; i++) {
+        if (arg->need_frees[i]) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
+    }
 
     close_fd(arg->hostname_resolution_waiting);
     close_fd(arg->hostname_resolution_notifying);
@@ -964,10 +977,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         inetsock_happy_resource.hostname_resolution_waiting = hostname_resolution_waiting;
         inetsock_happy_resource.hostname_resolution_notifying = hostname_resolution_notifying;
 
-        int ipv6_need_free = 0;
-        int ipv4_need_free = 0;
-        inetsock_happy_resource.ipv6_need_free = &ipv6_need_free;
-        inetsock_happy_resource.ipv4_need_free = &ipv4_need_free;
+        int ipv6_need_free, ipv4_need_free = 0;
+        inetsock_happy_resource.need_frees[0] = &ipv6_need_free;
+        inetsock_happy_resource.need_frees[1] = &ipv4_need_free;
 
         int connecting_fds_size = 0;
         int connecting_fds_capacity = 0;
