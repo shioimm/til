@@ -953,13 +953,17 @@ inetsock_cleanup_happy(VALUE v)
     rb_nativethread_lock_lock(arg->lock);
     {
         for (int i = 0; i < 2; i++) {
-            if (--(arg->getaddrinfo_entries[0]->refcount) == 0) *(arg->need_frees[i]) = 1;
+            if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
+                *(arg->need_frees[i]) = 1;
+            }
         }
     }
     rb_nativethread_lock_unlock(arg->lock);
 
     for (int i = 0; i < 2; i++) {
-        if (arg->need_frees[i]) free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
+        if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
+            free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
+        }
     }
 
     close_fd(arg->hostname_resolution_waiting);
