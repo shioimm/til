@@ -2,6 +2,7 @@
 - (参照先: `getaddrinfo/_impl10`)
 - 終了処理を適切にする
 - 名前解決失敗時のメモリ解放を適切に行う
+- start時点での名前解決時に`EAI_ADDRFAMILY`が発生した場合、ユーザに返すエラーとしては保持しない
 
 ```c
 // ext/socket/ipsocket.c
@@ -490,9 +491,11 @@ init_inetsock_internal_happy(VALUE v)
                         selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                     }
 
-                    last_error = tmp_getaddrinfo_entry->err;
-                    // TODO 06 ignoreable_error?
-                    if (last_error != 0) {
+                    if (tmp_getaddrinfo_entry->err != 0) {
+                        if (tmp_getaddrinfo_entry->err != EAI_ADDRFAMILY) {
+                            last_error = tmp_getaddrinfo_entry->err;
+                        }
+
                         rb_nativethread_lock_lock(lock);
                         {
                             if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
