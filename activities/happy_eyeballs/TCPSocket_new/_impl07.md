@@ -311,10 +311,10 @@ int specified_address_family(const char *hostname, int *specified_family)
 
 struct inetsock_happy_arg
 {
-    // TODO 03 アドレスファミリを表すインデックス番号を保持したい
     struct inetsock_arg *inetsock_resource;
     int *families;
     int families_size;
+    int ipv6_entry_pos, ipv4_entry_pos;
     int hostname_resolution_waiting, hostname_resolution_notifying;
     int *need_frees[2];
     rb_nativethread_lock_t *lock;
@@ -372,6 +372,8 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_t *lock = arg->lock;
     int cancelled = 0;
 
+    int ipv6_entry_pos = arg->ipv6_entry_pos;
+    int ipv4_entry_pos = arg->ipv4_entry_pos;;
     int families_size = arg->families_size;
 
     int *tmp_need_free = NULL;
@@ -523,12 +525,12 @@ init_inetsock_internal_happy(VALUE v)
                         written[bytes_read] = '\0';
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0]; // TODO 03 インデックスの番号をどこかに保存しておきたい...
-                            tmp_need_free = arg->need_frees[0];
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv6_entry_pos];
+                            tmp_need_free = arg->need_frees[ipv6_entry_pos];
                             selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                         } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
-                            tmp_need_free = arg->need_frees[1];
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv4_entry_pos];
+                            tmp_need_free = arg->need_frees[ipv4_entry_pos];
                             selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                         }
 
@@ -567,7 +569,7 @@ init_inetsock_internal_happy(VALUE v)
                             if (tmp_getaddrinfo_entry->family == AF_INET6) {
                                 state = V6C;
                             } else if (tmp_getaddrinfo_entry->family == AF_INET) {
-                                if (arg->getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
+                                if (arg->getaddrinfo_entries[ipv6_entry_pos]->err) { // v6の名前解決に失敗している場合
                                     FD_CLR(hostname_resolution_waiting, &readfds);
                                     wait_arg.readfds = NULL;
                                     is_hostname_resolution_finished = TRUE;
@@ -600,7 +602,7 @@ init_inetsock_internal_happy(VALUE v)
                     state = V4C;
                 } else { // 名前解決できた
                     read(hostname_resolution_waiting, written, sizeof(written) - 1);
-                    selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[0]->ai;
+                    selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[ipv6_entry_pos]->ai;
                     FD_CLR(hostname_resolution_waiting, &readfds);
                     wait_arg.readfds = NULL;
                     is_hostname_resolution_finished = TRUE;
@@ -834,13 +836,13 @@ init_inetsock_internal_happy(VALUE v)
                         written[bytes_read] = '\0';
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                            selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[0]->ai;
-                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
-                            tmp_need_free = arg->need_frees[0];
+                            selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[ipv6_entry_pos]->ai;
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv6_entry_pos];
+                            tmp_need_free = arg->need_frees[ipv6_entry_pos];
                         } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
-                            selectable_addrinfos.ip4_ai = arg->getaddrinfo_entries[1]->ai;
-                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[1];
-                            tmp_need_free = arg->need_frees[1];
+                            selectable_addrinfos.ip4_ai = arg->getaddrinfo_entries[ipv4_entry_pos]->ai;
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv4_entry_pos];
+                            tmp_need_free = arg->need_frees[ipv4_entry_pos];
                         }
 
                         if (tmp_getaddrinfo_entry->err) {
@@ -1030,18 +1032,22 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         int families[2] = { AF_INET6, AF_INET };
         inetsock_happy_resource.families = families;
         inetsock_happy_resource.families_size = sizeof(families) / sizeof(int);
+        int ipv6_entry_pos = 0;
+        int ipv4_entry_pos = 1;
+        inetsock_happy_resource.ipv6_entry_pos = ipv6_entry_pos;
+        inetsock_happy_resource.ipv4_entry_pos = ipv4_entry_pos;
 
         int hostname_resolution_waiting, hostname_resolution_notifying;
         int pipefd[2];
         pipe(pipefd);
-        hostname_resolution_waiting = pipefd[0];
-        hostname_resolution_notifying = pipefd[1];
+        hostname_resolution_waiting = pipefd[ipv6_entry_pos];
+        hostname_resolution_notifying = pipefd[ipv4_entry_pos];
         inetsock_happy_resource.hostname_resolution_waiting = hostname_resolution_waiting;
         inetsock_happy_resource.hostname_resolution_notifying = hostname_resolution_notifying;
 
         int ipv6_need_free, ipv4_need_free = 0;
-        inetsock_happy_resource.need_frees[0] = &ipv6_need_free;
-        inetsock_happy_resource.need_frees[1] = &ipv4_need_free;
+        inetsock_happy_resource.need_frees[ipv6_entry_pos] = &ipv6_need_free;
+        inetsock_happy_resource.need_frees[ipv4_entry_pos] = &ipv4_need_free;
 
         rb_nativethread_lock_t lock;
         rb_nativethread_lock_initialize(&lock);
