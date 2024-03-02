@@ -2,6 +2,10 @@
 - (参照先: `getaddrinfo/_impl10`)
 - 不具合修正
   - Connction refusedの場合、v46wで名前解決を待機し続ける不具合の修正
+  - socket(2)実行時にclose済みのpipeのFDを取得してしまう不具合の修正
+    - 後始末の際にpipeと誤って接続済みソケットをcloseしてしまっていた
+- リファクタリング
+  - マジックナンバーをなるべく使わないようにする
 
 ```c
 // ext/socket/ipsocket.c
@@ -307,10 +311,13 @@ int specified_address_family(const char *hostname, int *specified_family)
 
 struct inetsock_happy_arg
 {
+    // TODO 03 アドレスファミリを表すインデックス番号を保持したい
     struct inetsock_arg *inetsock_resource;
-    rb_nativethread_lock_t *lock;
+    int *families;
+    int families_size;
     int hostname_resolution_waiting, hostname_resolution_notifying;
     int *need_frees[2];
+    rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     int *connecting_fds_size;
     int *connecting_fds_capacity;
@@ -365,15 +372,14 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_t *lock = arg->lock;
     int cancelled = 0;
 
-    int families[2] = { AF_INET6, AF_INET };
-    int families_size = sizeof(families) / sizeof(int);
+    int families_size = arg->families_size;
 
     int *tmp_need_free = NULL;
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
-    struct addrinfo getaddrinfo_hints[2]; // TODO 02 families_sizeを使う
+    struct addrinfo getaddrinfo_hints[families_size];
 
-    pthread_t threads[2]; // TODO 02 families_sizeを使う
-    char written[2]; // TODO 02 families_sizeを使う
+    pthread_t threads[families_size];
+    char written[families_size];
     ssize_t bytes_read;
 
     int *connecting_fds_size = arg->connecting_fds_size;
@@ -450,7 +456,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else {
                     // getaddrinfoの実行
-                    for (int i = 0; i < 2; i++) { // TODO 02 families_sizeを使う
+                    for (int i = 0; i < families_size; i++) {
                         allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
                         if (!(arg->getaddrinfo_entries[i])) return EAI_MEMORY;
 
@@ -468,14 +474,14 @@ init_inetsock_internal_happy(VALUE v)
                         );
                         allocate_rb_getaddrinfo_happy_entry_hints(
                             &getaddrinfo_hints[i],
-                            families[i],
+                            arg->families[i],
                             remote_addrinfo_hints,
                             additional_flags
                         );
 
                         arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
                         arg->getaddrinfo_entries[i]->ai = NULL;
-                        arg->getaddrinfo_entries[i]->family = families[i];
+                        arg->getaddrinfo_entries[i]->family = arg->families[i];
                         arg->getaddrinfo_entries[i]->refcount = 2;
                         arg->getaddrinfo_entries[i]->cancelled = &cancelled;
                         arg->getaddrinfo_entries[i]->notifying = hostname_resolution_notifying;
@@ -490,7 +496,7 @@ init_inetsock_internal_happy(VALUE v)
                         pthread_detach(threads[i]);
                     }
 
-                    int hostname_resolution_retry_count = 1; // TODO 02
+                    int hostname_resolution_retry_count = families_size - 1;
 
                     while (hostname_resolution_retry_count >= 0) {
                         // getaddrinfoの待機
@@ -969,7 +975,7 @@ inetsock_cleanup_happy(VALUE v)
 
     rb_nativethread_lock_lock(arg->lock);
     {
-        for (int i = 0; i < 2; i++) {  // TODO 02 families_sizeを使いたい
+        for (int i = 0; i < arg->families_size; i++) {
             if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
                 *(arg->need_frees[i]) = 1;
             }
@@ -977,7 +983,7 @@ inetsock_cleanup_happy(VALUE v)
     }
     rb_nativethread_lock_unlock(arg->lock);
 
-    for (int i = 0; i < 2; i++) { // TODO 02 families_sizeを使いたい
+    for (int i = 0; i < arg->families_size; i++) {
         if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
             free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
         }
@@ -1021,22 +1027,25 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
         inetsock_happy_resource.inetsock_resource = &arg;
 
-        rb_nativethread_lock_t lock;
-        rb_nativethread_lock_initialize(&lock);
-        inetsock_happy_resource.lock = &lock;
+        int families[2] = { AF_INET6, AF_INET };
+        inetsock_happy_resource.families = families;
+        inetsock_happy_resource.families_size = sizeof(families) / sizeof(int);
 
         int hostname_resolution_waiting, hostname_resolution_notifying;
         int pipefd[2];
         pipe(pipefd);
         hostname_resolution_waiting = pipefd[0];
         hostname_resolution_notifying = pipefd[1];
-
         inetsock_happy_resource.hostname_resolution_waiting = hostname_resolution_waiting;
         inetsock_happy_resource.hostname_resolution_notifying = hostname_resolution_notifying;
 
         int ipv6_need_free, ipv4_need_free = 0;
         inetsock_happy_resource.need_frees[0] = &ipv6_need_free;
         inetsock_happy_resource.need_frees[1] = &ipv4_need_free;
+
+        rb_nativethread_lock_t lock;
+        rb_nativethread_lock_initialize(&lock);
+        inetsock_happy_resource.lock = &lock;
 
         int connecting_fds_size = 0;
         int connecting_fds_capacity = 0;
