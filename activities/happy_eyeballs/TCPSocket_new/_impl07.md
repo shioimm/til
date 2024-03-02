@@ -1,5 +1,7 @@
 # 2023/3/2
 - (参照先: `getaddrinfo/_impl10`)
+- 不具合修正
+  - Connction refusedの場合、v46wで名前解決を待機し続ける不具合の修正
 
 ```c
 // ext/socket/ipsocket.c
@@ -418,6 +420,7 @@ init_inetsock_internal_happy(VALUE v)
     int last_family = 0;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
     struct addrinfo *tmp_selected_ai;
+    int hostname_resolution_finished = FALSE;
 
     int stop = 0;
     int state = START;
@@ -570,6 +573,10 @@ init_inetsock_internal_happy(VALUE v)
                                 state = V6C;
                             } else if (tmp_getaddrinfo_entry->family == AF_INET) {
                                 if (arg->getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
+                                    FD_CLR(hostname_resolution_waiting, &readfds);
+                                    wait_arg.readfds = NULL;
+                                    close_fd(hostname_resolution_waiting);
+                                    hostname_resolution_finished = TRUE;
                                     state = V4C;
                                 } else { // v6の名前解決が終わっていない場合
                                     state = V4W;
@@ -600,6 +607,10 @@ init_inetsock_internal_happy(VALUE v)
                 } else { // 名前解決できた
                     read(hostname_resolution_waiting, written, sizeof(written) - 1);
                     selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[0]->ai;
+                    FD_CLR(hostname_resolution_waiting, &readfds);
+                    wait_arg.readfds = NULL;
+                    close_fd(hostname_resolution_waiting);
+                    hostname_resolution_finished = TRUE;
                     state = V46C;
                 }
                 continue;
@@ -809,8 +820,10 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
 
-                FD_ZERO(&readfds);
-                FD_SET(hostname_resolution_waiting, &readfds);
+                if (!hostname_resolution_finished) {
+                    FD_ZERO(&readfds);
+                    FD_SET(hostname_resolution_waiting, &readfds);
+                }
 
                 connection_attempt_delay.tv_sec = 0;
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
@@ -822,7 +835,7 @@ init_inetsock_internal_happy(VALUE v)
                 syscall = "select(2)";
 
                 if (status > 0) {
-                    if (FD_ISSET(hostname_resolution_waiting, &readfds)) { // 名前解決できた
+                    if (!hostname_resolution_finished && FD_ISSET(hostname_resolution_waiting, &readfds)) { // 名前解決できた
                         bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
                         written[bytes_read] = '\0';
 
@@ -843,6 +856,11 @@ init_inetsock_internal_happy(VALUE v)
                             }
                             rb_nativethread_lock_unlock(lock);
                         }
+
+                        FD_CLR(hostname_resolution_waiting, &readfds);
+                        wait_arg.readfds = NULL;
+                        close_fd(hostname_resolution_waiting);
+                        hostname_resolution_finished = TRUE;
                     } else { // writefdsに書き込み可能ソケットができた
                         inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, *connecting_fds_size, &writefds);
                         if (fd >= 0) {
@@ -890,7 +908,6 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else { // selectに失敗
                     last_error = errno;
-                    close_fd(fd);
                     inetsock_resource->fd = fd = -1;
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
