@@ -260,24 +260,20 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
     for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
 
-        if (fd < 0) continue;
+        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
 
-        if (FD_ISSET(fd, writefds)) {
-            int error;
-            socklen_t len = sizeof(error);
-            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
-                switch (error) {
-                    case 0: // success
-                        fds[i] = -1;
-                        return fd;
-                    case EINPROGRESS: // operation in progress
-                        break;
-                    default: // fail
-                        errno = error;
-                        close_fd(fd);
-                        fds[i] = -1;
-                        break;
-                }
+        int error;
+        socklen_t len = sizeof(error);
+
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+            if (error == 0) { // success
+                fds[i] = -1;
+                return fd;
+            } else { // fail
+                errno = error;
+                close_fd(fd);
+                fds[i] = -1;
+                break;
             }
         }
     }
