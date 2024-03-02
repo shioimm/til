@@ -1,4 +1,4 @@
-# 2023/2/23-25
+# 2023/2/23-3/1
 - (参照先: `getaddrinfo/_impl10`)
 - 終了処理を適切にする
 - 名前解決失敗時のメモリ解放を適切に行う
@@ -436,7 +436,6 @@ init_inetsock_internal_happy(VALUE v)
                 int is_host_specified_address = specified_address_family(hostp, &specified_family);
 
                 if (is_host_specified_address) {
-                    // WIP: TODO 09 IPアドレス指定対応
                     struct addrinfo *ai;
                     struct addrinfo hints; // WIP
 
