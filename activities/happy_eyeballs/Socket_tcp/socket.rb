@@ -658,7 +658,7 @@ PORT = 9292
 #    print socket.read
 # end
 
-Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+Socket.tcp(HOSTNAME, PORT, fast_fallback: true) do |socket|
   socket.write "GET / HTTP/1.0\r\n\r\n"
   print socket.read
 end
