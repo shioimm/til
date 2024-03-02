@@ -6,6 +6,7 @@
     - 後始末の際にpipeと誤って接続済みソケットをcloseしてしまっていた
 - リファクタリング
   - マジックナンバーをなるべく使わないようにする
+- 解決したIPアドレスが一つしかないケースをサポート
 
 ```c
 // ext/socket/ipsocket.c
@@ -376,6 +377,9 @@ init_inetsock_internal_happy(VALUE v)
     int ipv4_entry_pos = arg->ipv4_entry_pos;;
     int families_size = arg->families_size;
 
+    int specified_family;
+    int is_host_specified_address = specified_address_family(hostp, &specified_family);
+
     int *tmp_need_free = NULL;
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct addrinfo getaddrinfo_hints[families_size];
@@ -426,9 +430,6 @@ init_inetsock_internal_happy(VALUE v)
         switch (state) {
             case START:
             {
-                int specified_family;
-                int is_host_specified_address = specified_address_family(hostp, &specified_family);
-
                 if (is_host_specified_address) {
                     struct addrinfo *ai;
                     struct addrinfo hints; // WIP
@@ -615,7 +616,6 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
-                // TODO 04 解決したIPアドレスが一つしかないケースをサポート
                 if (connection_attempt_started_at_ts.tv_sec == -1 &&
                     connection_attempt_started_at_ts.tv_nsec == -1) {
                     connection_attempt_started_at_ts = current_clocktime_ts();
@@ -765,9 +765,15 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
 
-                connection_attempt_delay_expires_at = connection_attempt_delay_expires_at_ts();
-
-                if (status >= 0) {
+                if (is_host_specified_address &&
+                    !(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip6_ai) &&
+                    is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                    is_hostname_resolution_finished) {
+                    socket_nonblock_set(fd, false);
+                    status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, false, connect_timeout_tv);
+                    syscall = "connect(2)";
+                } else {
+                    connection_attempt_delay_expires_at = connection_attempt_delay_expires_at_ts();
                     socket_nonblock_set(fd, true);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
