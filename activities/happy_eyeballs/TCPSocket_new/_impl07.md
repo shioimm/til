@@ -238,7 +238,7 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
 }
 
 static int
-set_connecting_fds(const int *fds, int fds_size, fd_set *set)
+initialize_fds(const int *fds, int fds_size, fd_set *set)
 {
     int nfds = 0;
     FD_ZERO(set);
@@ -288,16 +288,6 @@ is_connecting_fds_empty(const int *fds, int fds_size)
     }
     return TRUE;
 }
-
-static int
-is_hostname_resolution_finished(int hostname_resolution_waiting)
-{
-    if (fcntl(hostname_resolution_waiting, F_GETFL) == -1 && errno == EBADF) {
-        return TRUE;
-    }
-    return FALSE;
-}
-
 
 int specified_address_family(const char *hostname, int *specified_family)
 {
@@ -376,13 +366,14 @@ init_inetsock_internal_happy(VALUE v)
     int cancelled = 0;
 
     int families[2] = { AF_INET6, AF_INET };
+    int families_size = sizeof(families) / sizeof(int);
 
     int *tmp_need_free = NULL;
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
-    struct addrinfo getaddrinfo_hints[2];
+    struct addrinfo getaddrinfo_hints[2]; // TODO 02 families_sizeを使う
 
-    pthread_t threads[2];
-    char written[2];
+    pthread_t threads[2]; // TODO 02 families_sizeを使う
+    char written[2]; // TODO 02 families_sizeを使う
     ssize_t bytes_read;
 
     int *connecting_fds_size = arg->connecting_fds_size;
@@ -416,7 +407,7 @@ init_inetsock_internal_happy(VALUE v)
     int last_family = 0;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
     struct addrinfo *tmp_selected_ai;
-    int hostname_resolution_finished = FALSE;
+    int is_hostname_resolution_finished = FALSE;
 
     int stop = 0;
     int state = START;
@@ -446,18 +437,20 @@ init_inetsock_internal_happy(VALUE v)
                     if (last_error != 0) {
                         state = FAILURE;
                         continue;
-                    }
+                    } else {
+                        is_hostname_resolution_finished = TRUE;
 
-                    if (specified_family == AF_INET6) {
-                        selectable_addrinfos.ip6_ai = ai;
-                        state = V6C;
-                    } else if (specified_family == AF_INET) {
-                        selectable_addrinfos.ip4_ai = ai;
-                        state = V4C;
+                        if (specified_family == AF_INET6) {
+                            selectable_addrinfos.ip6_ai = ai;
+                            state = V6C;
+                        } else if (specified_family == AF_INET) {
+                            selectable_addrinfos.ip4_ai = ai;
+                            state = V4C;
+                        }
                     }
                 } else {
                     // getaddrinfoの実行
-                    for (int i = 0; i < 2; i++) {
+                    for (int i = 0; i < 2; i++) { // TODO 02 families_sizeを使う
                         allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
                         if (!(arg->getaddrinfo_entries[i])) return EAI_MEMORY;
 
@@ -497,7 +490,7 @@ init_inetsock_internal_happy(VALUE v)
                         pthread_detach(threads[i]);
                     }
 
-                    int hostname_resolution_retry_count = 1;
+                    int hostname_resolution_retry_count = 1; // TODO 02
 
                     while (hostname_resolution_retry_count >= 0) {
                         // getaddrinfoの待機
@@ -524,7 +517,7 @@ init_inetsock_internal_happy(VALUE v)
                         written[bytes_read] = '\0';
 
                         if (strcmp(written, IPV6_HOSTNAME_RESOLVED) == 0) {
-                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0];
+                            tmp_getaddrinfo_entry = arg->getaddrinfo_entries[0]; // TODO 03 インデックスの番号をどこかに保存しておきたい...
                             tmp_need_free = arg->need_frees[0];
                             selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                         } else if (strcmp(written, IPV4_HOSTNAME_RESOLVED) == 0) {
@@ -571,8 +564,7 @@ init_inetsock_internal_happy(VALUE v)
                                 if (arg->getaddrinfo_entries[0]->err) { // v6の名前解決に失敗している場合
                                     FD_CLR(hostname_resolution_waiting, &readfds);
                                     wait_arg.readfds = NULL;
-                                    close_fd(hostname_resolution_waiting);
-                                    hostname_resolution_finished = TRUE;
+                                    is_hostname_resolution_finished = TRUE;
                                     state = V4C;
                                 } else { // v6の名前解決が終わっていない場合
                                     state = V4W;
@@ -605,8 +597,7 @@ init_inetsock_internal_happy(VALUE v)
                     selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[0]->ai;
                     FD_CLR(hostname_resolution_waiting, &readfds);
                     wait_arg.readfds = NULL;
-                    close_fd(hostname_resolution_waiting);
-                    hostname_resolution_finished = TRUE;
+                    is_hostname_resolution_finished = TRUE;
                     state = V46C;
                 }
                 continue;
@@ -616,6 +607,7 @@ init_inetsock_internal_happy(VALUE v)
             case V4C:
             case V46C:
             {
+                // TODO 04 解決したIPアドレスが一つしかないケースをサポート
                 if (connection_attempt_started_at_ts.tv_sec == -1 &&
                     connection_attempt_started_at_ts.tv_nsec == -1) {
                     connection_attempt_started_at_ts = current_clocktime_ts();
@@ -628,11 +620,11 @@ init_inetsock_internal_happy(VALUE v)
                     remote_ai = tmp_selected_ai;
                 } else { // 接続可能なaddrinfoが見つからなかった
                     if (is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                        is_hostname_resolution_finished) {
                         state = FAILURE;
                     } else {
                         if (resolv_timeout_tv &&
-                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            !is_hostname_resolution_finished &&
                             is_timeout(hostname_resolution_expires_at_ts)) {
                             state = TIMEOUT;
                         } else {
@@ -648,14 +640,14 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                        is_hostname_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                         last_family = AF_INET6; // TODO これで良い?
                     } else {
                         if (resolv_timeout_tv &&
-                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            !is_hostname_resolution_finished &&
                             is_timeout(hostname_resolution_expires_at_ts)) {
                             state = TIMEOUT;
                         } else {
@@ -677,7 +669,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (!local_ai) {
                         if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                             is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                            is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                            is_hostname_resolution_finished) {
                             // 試せるリモートaddrinfoが存在しないことが確定している
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
@@ -687,7 +679,7 @@ init_inetsock_internal_happy(VALUE v)
                             // Try other addrinfo in next loop
                         } else {
                             if (resolv_timeout_tv &&
-                                !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                                !is_hostname_resolution_finished &&
                                 is_timeout(hostname_resolution_expires_at_ts)) {
                                 state = TIMEOUT;
                             } else {
@@ -710,13 +702,13 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                        is_hostname_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                     } else {
                         if (resolv_timeout_tv &&
-                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            !hostname_resolution_waiting &&
                             is_timeout(hostname_resolution_expires_at_ts)) {
                             state = TIMEOUT;
                         } else {
@@ -746,13 +738,13 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                             is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                            is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                            is_hostname_resolution_finished) {
                             state = FAILURE;
                         } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                             // Try other addrinfo in next loop
                         } else {
                             if (resolv_timeout_tv &&
-                                !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                                !is_hostname_resolution_finished &&
                                 is_timeout(hostname_resolution_expires_at_ts)) {
                                 state = TIMEOUT;
                             } else {
@@ -787,13 +779,13 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                        is_hostname_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
                     } else {
                         if (resolv_timeout_tv &&
-                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            !is_hostname_resolution_finished &&
                             is_timeout(hostname_resolution_expires_at_ts)) {
                             state = TIMEOUT;
                         } else {
@@ -816,7 +808,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
 
-                if (!hostname_resolution_finished) {
+                if (!is_hostname_resolution_finished) {
                     FD_ZERO(&readfds);
                     FD_SET(hostname_resolution_waiting, &readfds);
                 }
@@ -825,13 +817,13 @@ init_inetsock_internal_happy(VALUE v)
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                nfds = set_connecting_fds(arg->connecting_fds, *connecting_fds_size, &writefds);
+                nfds = initialize_fds(arg->connecting_fds, *connecting_fds_size, &writefds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
                 if (status > 0) {
-                    if (!hostname_resolution_finished && FD_ISSET(hostname_resolution_waiting, &readfds)) { // 名前解決できた
+                    if (!is_hostname_resolution_finished && FD_ISSET(hostname_resolution_waiting, &readfds)) { // 名前解決できた
                         bytes_read = read(hostname_resolution_waiting, written, sizeof(written) - 1);
                         written[bytes_read] = '\0';
 
@@ -855,8 +847,7 @@ init_inetsock_internal_happy(VALUE v)
 
                         FD_CLR(hostname_resolution_waiting, &readfds);
                         wait_arg.readfds = NULL;
-                        close_fd(hostname_resolution_waiting);
-                        hostname_resolution_finished = TRUE;
+                        is_hostname_resolution_finished = TRUE;
                     } else { // writefdsに書き込み可能ソケットができた
                         inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, *connecting_fds_size, &writefds);
                         if (fd >= 0) {
@@ -868,13 +859,13 @@ init_inetsock_internal_happy(VALUE v)
 
                             if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                                 is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                                is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                                is_hostname_resolution_finished) {
                                 state = FAILURE;
                             } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                                 // Wait for connection attempt delay in next loop
                             } else {
                                 if (resolv_timeout_tv &&
-                                    !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                                    !is_hostname_resolution_finished &&
                                     is_timeout(hostname_resolution_expires_at_ts)) {
                                     state = TIMEOUT;
                                 } else {
@@ -887,14 +878,14 @@ init_inetsock_internal_happy(VALUE v)
                 } else if (status == 0) { // Connection Attempt Delay timeout
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                        is_hostname_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other Addrinfo in next loop
                         state = V46C;
                     } else {
                         if (resolv_timeout_tv &&
-                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            !is_hostname_resolution_finished &&
                             is_timeout(hostname_resolution_expires_at_ts)) {
                             state = TIMEOUT;
                         } else {
@@ -908,11 +899,11 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
                         is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_hostname_resolution_finished(hostname_resolution_waiting)) {
+                        is_hostname_resolution_finished) {
                         state = FAILURE;
                     } else {
                         if (resolv_timeout_tv &&
-                            !is_hostname_resolution_finished(hostname_resolution_waiting) &&
+                            !is_hostname_resolution_finished &&
                             is_timeout(hostname_resolution_expires_at_ts)) {
                             state = TIMEOUT;
                         } else {
@@ -978,7 +969,7 @@ inetsock_cleanup_happy(VALUE v)
 
     rb_nativethread_lock_lock(arg->lock);
     {
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 2; i++) {  // TODO 02 families_sizeを使いたい
             if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
                 *(arg->need_frees[i]) = 1;
             }
@@ -986,7 +977,7 @@ inetsock_cleanup_happy(VALUE v)
     }
     rb_nativethread_lock_unlock(arg->lock);
 
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 2; i++) { // TODO 02 families_sizeを使いたい
         if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
             free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
         }
@@ -1039,6 +1030,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         pipe(pipefd);
         hostname_resolution_waiting = pipefd[0];
         hostname_resolution_notifying = pipefd[1];
+
         inetsock_happy_resource.hostname_resolution_waiting = hostname_resolution_waiting;
         inetsock_happy_resource.hostname_resolution_notifying = hostname_resolution_notifying;
 
