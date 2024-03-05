@@ -1,4 +1,6 @@
 # 2023/3/5
+- (参照先: `getaddrinfo/_impl11`)
+- `fast_fallback`オプションをサポート
 
 ```c
 // ext/socket/ipsocket.c
@@ -1004,7 +1006,7 @@ inetsock_cleanup_happy(VALUE v)
 VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
-                    VALUE resolv_timeout, VALUE connect_timeout)
+                    VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback)
 {
     struct inetsock_arg arg;
     arg.sock = sock;
@@ -1018,8 +1020,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.fd = -1;
     arg.resolv_timeout = resolv_timeout;
     arg.connect_timeout = connect_timeout;
+    rb_p(fast_fallback); // TODO 01 fast_fallback
 
-    if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL) {
+    if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
         struct inetsock_happy_arg inetsock_happy_resource;
         memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
 
@@ -1063,5 +1066,58 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         return rb_ensure(init_inetsock_internal, (VALUE)&arg,
                          inetsock_cleanup, (VALUE)&arg);
     }
+}
+```
+
+```c
+// ext/socket/tcpsocket.c
+
+static VALUE
+tcp_init(int argc, VALUE *argv, VALUE sock)
+{
+    // ...
+    static ID keyword_ids[3];    // 変更
+    VALUE kwargs[3];             // 変更
+    // ...
+    VALUE fast_fallback = Qtrue; // 追加
+
+    if (!keyword_ids[0]) {
+        // ...
+        CONST_ID(keyword_ids[2], "fast_fallback"); // 追加
+    }
+
+    // ...
+
+    if (!NIL_P(opt)) {
+        rb_get_kwargs(opt, keyword_ids, 0, 3, kwargs);          // 変更
+        // ...
+        if (kwargs[2] != Qundef) { fast_fallback = kwargs[2]; } // 追加
+    }
+
+    return rsock_init_inetsock(sock, remote_host, remote_serv,
+                               local_host, local_serv, INET_CLIENT,
+                               resolv_timeout, connect_timeout, fast_fallback); // 変更
+}
+```
+
+```c
+// ext/socket/tcpserver.c
+
+static VALUE
+tcp_svr_init(int argc, VALUE *argv, VALUE sock)
+{
+    // ...
+    return rsock_init_inetsock(sock, hostname, port, Qnil, Qnil, INET_SERVER, Qnil, Qnil, Qfalse); // 変更
+}
+```
+
+```c
+// ext/socket/sockssocket.c
+
+static VALUE
+socks_init(VALUE sock, VALUE host, VALUE port)
+{
+    // ...
+    return rsock_init_inetsock(sock, host, port, Qnil, Qnil, INET_SOCKS, Qnil, Qnil, Qfalse);
 }
 ```

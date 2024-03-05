@@ -55,6 +55,20 @@ do_rb_getaddrinfo_happy(void *ptr)
 ```c
 // ext/socket/rubysocket.h
 
+// 変更 -------------------
+VALUE rsock_init_inetsock(
+  VALUE sock,
+  VALUE remote_host,
+  VALUE remote_serv,
+  VALUE local_host,
+  VALUE local_serv,
+  int type,
+  VALUE resolv_timeout,
+  VALUE connect_timeout,
+  VALUE fast_fallback
+);
+// -----------------------
+
 // 追加 -------------------
 #define IPV6_HOSTNAME_RESOLVED "1"
 #define IPV4_HOSTNAME_RESOLVED "2"
