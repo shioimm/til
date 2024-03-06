@@ -1,6 +1,7 @@
 # 2023/3/5
 - (参照先: `getaddrinfo/_impl11`)
 - `fast_fallback`オプションをサポート
+- `connecting_fds`のメモリが枯渇した場合は`realloc(3)`する
 
 ```c
 // ext/socket/ipsocket.c
@@ -373,7 +374,9 @@ init_inetsock_internal_happy(VALUE v)
     ssize_t resolved_type_size;
 
     int *connecting_fds_size = arg->connecting_fds_size;
-    int initial_capacity = 10; // TODO 動的に増やすための関数を用意する
+    int initial_capacity = 10;
+    int current_capacity = initial_capacity;
+    int new_capacity;
     arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
     if (!arg->connecting_fds) {
         perror("Failed to allocate memory");
@@ -412,7 +415,6 @@ init_inetsock_internal_happy(VALUE v)
     int specified_family, is_host_specified_address;
     is_host_specified_address = specified_address_family(hostp, &specified_family);
 
-    // TODO 05 各ステートの分岐条件に取りこぼしがないか確認 (たまにステートの遷移がおかしい気がするので調査する)
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
@@ -634,7 +636,7 @@ init_inetsock_internal_happy(VALUE v)
                     continue;
                 }
 
-                #if !defined(INET6) && defined(AF_INET6) // TODO 必要?
+                #if !defined(INET6) && defined(AF_INET6)
                 if (remote_ai->ai_family == AF_INET6)
                     inetsock_resource->fd = fd = -1;
 
@@ -644,7 +646,7 @@ init_inetsock_internal_happy(VALUE v)
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
                         // Try other addrinfo in next loop
-                        last_family = AF_INET6; // TODO これで良い?
+                        last_family = AF_INET6;
                     } else {
                         if (resolv_timeout_tv &&
                             !is_resolution_finished &&
@@ -776,6 +778,15 @@ init_inetsock_internal_happy(VALUE v)
                 if (status == 0) { // 接続に成功
                     state = SUCCESS;
                 } else if (errno == EINPROGRESS) { // 接続中
+                    if (current_capacity == *connecting_fds_size) {
+                        new_capacity = current_capacity + initial_capacity;
+                        arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
+                        if (arg->connecting_fds == NULL) {
+                            // error // TODO 01 Cレベルでのエラー処理
+                        } else {
+                            current_capacity = new_capacity;
+                        }
+                    }
                     arg->connecting_fds[(*connecting_fds_size)++] = fd;
                     state = V46W;
                 } else { // connect(2)に失敗
@@ -1020,7 +1031,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.fd = -1;
     arg.resolv_timeout = resolv_timeout;
     arg.connect_timeout = connect_timeout;
-    rb_p(fast_fallback); // TODO 01 fast_fallback
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
         struct inetsock_happy_arg inetsock_happy_resource;
