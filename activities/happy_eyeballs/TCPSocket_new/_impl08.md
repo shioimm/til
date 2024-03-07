@@ -1,7 +1,8 @@
-# 2023/3/5
+# 2023/3/5-3/7
 - (参照先: `getaddrinfo/_impl11`)
 - `fast_fallback`オプションをサポート
 - `connecting_fds`のメモリが枯渇した場合は`realloc(3)`する
+- Cレベルのエラーハンドリングを適切に行う
 
 ```c
 // ext/socket/ipsocket.c
@@ -377,11 +378,9 @@ init_inetsock_internal_happy(VALUE v)
     int initial_capacity = 10;
     int current_capacity = initial_capacity;
     int new_capacity;
+
     arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
-    if (!arg->connecting_fds) {
-        perror("Failed to allocate memory");
-        return -1;
-    }
+    if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
     *arg->connecting_fds_capacity = initial_capacity;
 
     fd_set readfds, writefds;
@@ -454,8 +453,16 @@ init_inetsock_internal_happy(VALUE v)
                     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
                     for (int i = 0; i < families_size; i++) {
-                        allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]), portp, &portp_offset);
-                        if (!(arg->getaddrinfo_entries[i])) return EAI_MEMORY;
+                        allocate_rb_getaddrinfo_happy_entry(
+                            &(arg->getaddrinfo_entries[i]),
+                            portp,
+                            &portp_offset
+                        );
+                        if (!(arg->getaddrinfo_entries[i])) {
+                            last_error = EAI_MEMORY;
+                            state = FAILURE;
+                            break;
+                        }
 
                         allocate_rb_getaddrinfo_happy_entry_endpoint(
                             &(arg->getaddrinfo_entries[i]->node),
@@ -488,15 +495,17 @@ init_inetsock_internal_happy(VALUE v)
                             free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
                             close_fd(wait_resolution_pipe);
                             close_fd(notify_resolution_pipe);
-                            return EAI_AGAIN;
+                            last_error = EAI_AGAIN;
+                            state = FAILURE;
+                            break;
                         }
                         pthread_detach(threads[i]);
                     }
 
+                    if (last_error) continue;
                     int resolution_retry_count = families_size - 1;
 
                     while (resolution_retry_count >= 0) {
-                        // getaddrinfoの待機
                         if (resolv_timeout_tv) {
                             wait_arg.delay = resolv_timeout_tv;
                             resolution_expires_at_ts = resolv_timeout_expires_at_ts(*resolv_timeout_tv);
@@ -512,11 +521,16 @@ init_inetsock_internal_happy(VALUE v)
                         if (status == 0) { // resolv_timeout
                             state = TIMEOUT;
                             continue;
-                        } else if (status < 0) { // selectの実行失敗
-                            rb_syserr_fail(errno, "select(2)"); // いったんこれで
+                        } else if (status < 0) {
+                            rb_syserr_fail(errno, "select(2)");
                         }
 
                         resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+                        if (resolved_type_size < 0) {
+                            last_error = errno;
+                            state = FAILURE;
+                            continue;
+                        }
                         resolved_type[resolved_type_size] = '\0';
 
                         if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
@@ -595,14 +609,25 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status == 0) {
                     state = V4C;
-                } else { // 名前解決できた
-                    read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
-                    selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[ipv6_entry_pos]->ai;
-                    FD_CLR(wait_resolution_pipe, &readfds);
-                    wait_arg.readfds = NULL;
-                    is_resolution_finished = TRUE;
-                    state = V46C;
+                    continue;
+                } else if (status < 0) {
+                    rb_syserr_fail(errno, "select(2)");
                 }
+
+                // 名前解決できた
+                resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+
+                if (resolved_type_size < 0) {
+                    last_error = errno;
+                    state = FAILURE;
+                    continue;
+                }
+
+                selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[ipv6_entry_pos]->ai;
+                FD_CLR(wait_resolution_pipe, &readfds);
+                wait_arg.readfds = NULL;
+                is_resolution_finished = TRUE;
+                state = V46C;
                 continue;
             }
 
@@ -781,11 +806,8 @@ init_inetsock_internal_happy(VALUE v)
                     if (current_capacity == *connecting_fds_size) {
                         new_capacity = current_capacity + initial_capacity;
                         arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
-                        if (arg->connecting_fds == NULL) {
-                            // error // TODO 01 Cレベルでのエラー処理
-                        } else {
-                            current_capacity = new_capacity;
-                        }
+                        if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+                        current_capacity = new_capacity;
                     }
                     arg->connecting_fds[(*connecting_fds_size)++] = fd;
                     state = V46W;
@@ -911,22 +933,7 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                 } else { // selectに失敗
-                    last_error = errno;
-                    inetsock_resource->fd = fd = -1;
-
-                    if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                        is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
-                        is_resolution_finished) {
-                        state = FAILURE;
-                    } else {
-                        if (resolv_timeout_tv &&
-                            !is_resolution_finished &&
-                            is_timeout(resolution_expires_at_ts)) {
-                            state = TIMEOUT;
-                        } else {
-                            // Wait for Connection Attempt Delay or connection to be established or hostname resolution in next loop
-                        }
-                    }
+                    rb_syserr_fail(errno, "select(2)");
                 }
                 continue;
             }
