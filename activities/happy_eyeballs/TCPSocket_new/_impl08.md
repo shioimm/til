@@ -3,6 +3,9 @@
 - `fast_fallback`オプションをサポート
 - `connecting_fds`のメモリが枯渇した場合は`realloc(3)`する
 - Cレベルのエラーハンドリングを適切に行う
+- 不具合修正
+  - 引数にIPアドレスを渡された場合にローカルアドレスの名前解決を行なっていなかった問題を修正
+  - 接続に使用できるアドレスが一つしかない場合でもソケットに`O_NONBLOCK`を設定していた問題を修正
 
 ```c
 // ext/socket/ipsocket.c
@@ -118,25 +121,17 @@ cancel_happy_eyeballs_fds(void *ptr)
 }
 
 static void
-socket_nonblock_set(int fd, int nonblock)
+socket_nonblock_set(int fd)
 {
     int flags = fcntl(fd, F_GETFL);
     if (flags == -1) {
         rb_sys_fail(0);
     }
 
-    if (nonblock) {
-        if ((flags & O_NONBLOCK) != 0) {
-            return;
-        } else {
-            flags |= O_NONBLOCK;
-        }
+    if ((flags & O_NONBLOCK) != 0) {
+        return;
     } else {
-        if ((flags & O_NONBLOCK) == 0) {
-            return;
-        } else {
-            flags &= ~O_NONBLOCK;
-        }
+        flags |= O_NONBLOCK;
     }
 
     if (fcntl(fd, F_SETFL, flags) == -1) {
@@ -419,6 +414,20 @@ init_inetsock_internal_happy(VALUE v)
         switch (state) {
             case START:
             {
+                /*
+                 * Maybe also accept a local address
+                 */
+                // local_host / local_portが指定された場合
+                if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
+                    inetsock_resource->local.res = rsock_addrinfo(
+                        inetsock_resource->local.host,
+                        inetsock_resource->local.serv,
+                        AF_UNSPEC,
+                        SOCK_STREAM,
+                        0
+                    );
+                }
+
                 if (is_host_specified_address) {
                     struct addrinfo *ai;
                     struct addrinfo hints; // WIP
@@ -560,21 +569,6 @@ init_inetsock_internal_happy(VALUE v)
                                 break;
                             }
                         } else {
-                            /*
-                             * Maybe also accept a local address
-                             */
-
-                            // local_host / local_portが指定された場合
-                            if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
-                                inetsock_resource->local.res = rsock_addrinfo(
-                                    inetsock_resource->local.host,
-                                    inetsock_resource->local.serv,
-                                    AF_UNSPEC,
-                                    SOCK_STREAM,
-                                    0
-                                );
-                            }
-
                             if (tmp_getaddrinfo_entry->family == AF_INET6) {
                                 state = V6C;
                             } else if (tmp_getaddrinfo_entry->family == AF_INET) {
@@ -788,12 +782,11 @@ init_inetsock_internal_happy(VALUE v)
                     !(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip6_ai) &&
                     is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
                     is_resolution_finished) {
-                    socket_nonblock_set(fd, false);
                     status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, false, connect_timeout_tv);
                     syscall = "connect(2)";
                 } else {
                     connection_attempt_delay_expires_at = connection_attempt_delay_expires_at_ts();
-                    socket_nonblock_set(fd, true);
+                    socket_nonblock_set(fd);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
                 }
