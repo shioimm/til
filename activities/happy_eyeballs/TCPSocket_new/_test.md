@@ -1,36 +1,57 @@
 # `test/socket/test_tcp.rb`
+- start -> v6c -> v46w -> v4c -> v46w -> success
+- `fast_fallback`
 
 ```ruby
 class TestSocket_TCPSocket < Test::Unit::TestCase
   # ...
 
-  def test_tcp_socket_v6_hostname_resolved_earlier
-    opts = %w[-rsocket -W1]
-    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+  def test_initialize_v6_server_is_not_listening
+    ipv4_address = "127.0.0.1"
+    ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
+    ipv4_server.bind(Socket.pack_sockaddr_in(0, ipv4_address))
+    port = ipv4_server.connect_address.ip_port
 
-    begin;
-      begin
-        server = TCPServer.new("::1", 0)
-      rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-        exit
-      end
+    ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+    socket = TCPSocket.new("localhost", port)
+    assert_equal(ipv4_address, socket.remote_address.ip_address)
 
-      server_thread = Thread.new { server.accept }
-      port = server.addr[1]
+    accepted, _ = ipv4_server_thread.value
+    accepted.close
+    ipv4_server.close
+    socket.close if socket && !socket.closed?
+  end
 
-      Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
-        case family
-        when Socket::AF_INET6 then [Addrinfo.tcp("::1", port)]
-        when Socket::AF_INET then sleep(10); [Addrinfo.tcp("127.0.0.1", port)]
-        end
-      end
+  def test_initialize_fast_fallback_is_false
+    server = TCPServer.new("127.0.0.1", 0)
+    _, port, = server.addr
+    server_thread = Thread.new { server.accept }
+    socket = TCPSocket.new("127.0.0.1", port, fast_fallback: false)
 
-      socket = TCPSocket.new("localhost", port)
-      assert_true(socket.remote_address.ipv6?)
-      server_thread.value.close
-      server.close
-      socket.close if socket && !socket.closed?
-    end;
+    assert_true(socket.remote_address.ipv4?)
+    server_thread.value.close
+    server.close
+    socket.close if socket && !socket.closed?
   end
 end if defined?(TCPSocket)
 ```
+
+#### 既存のテスト
+- `TestSocket_TCPSocket#test_inspect` -> OK
+- `TestSocket_TCPSocket#test_initialize_failure` -> OK
+- `TestSocket_TCPSocket#test_initialize_resolv_timeout` -> OK (これは何をテストしているんだろう?)
+- `TestSocket_TCPSocket#test_initialize_connect_timeout` -> OK
+- `TestSocket_TCPSocket#test_recvfrom` -> OK
+- `TestSocket_TCPSocket#test_encoding` -> OK
+- `TestSocket_TCPSocket#test_accept_nonblock` -> OK
+- `TestSocket_TCPSocket#test_accept_multithread` -> OK
+- `TestSocket_TCPSocket#test_ai_addrconfig` -> OK
+
+#### 未実施
+- start -> v6c -> v46w -> success
+- start -> v6c -> v46w -> success (v46w中に名前解決スレッドで例外発生)
+- start -> v4w -> v4c -> v46w -> success
+- start -> v4w -> v6c -> v46w -> success
+- start -> v4w -> v6c -> v46w -> success
+- start -> v4w -> v4c -> v46w -> timeout (v46wで接続に失敗した後名前解決でタイムアウト)
+- start -> failure (最後に名前解決に失敗した際のエラーで例外を送出)
