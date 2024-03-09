@@ -3,6 +3,8 @@
 - `fast_fallback`オプションをサポート
 - `connecting_fds`のメモリが枯渇した場合は`realloc(3)`する
 - Cレベルのエラーハンドリングを適切に行う
+- 不具合修正
+  - 引数にIPアドレスを渡された場合にローカルアドレスの名前解決を行なっていなかった問題を修正
 
 ```c
 // ext/socket/ipsocket.c
@@ -419,6 +421,20 @@ init_inetsock_internal_happy(VALUE v)
         switch (state) {
             case START:
             {
+                /*
+                 * Maybe also accept a local address
+                 */
+                // local_host / local_portが指定された場合
+                if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
+                    inetsock_resource->local.res = rsock_addrinfo(
+                        inetsock_resource->local.host,
+                        inetsock_resource->local.serv,
+                        AF_UNSPEC,
+                        SOCK_STREAM,
+                        0
+                    );
+                }
+
                 if (is_host_specified_address) {
                     struct addrinfo *ai;
                     struct addrinfo hints; // WIP
@@ -560,21 +576,6 @@ init_inetsock_internal_happy(VALUE v)
                                 break;
                             }
                         } else {
-                            /*
-                             * Maybe also accept a local address
-                             */
-
-                            // local_host / local_portが指定された場合
-                            if (!NIL_P(inetsock_resource->local.host) || !NIL_P(inetsock_resource->local.serv)) {
-                                inetsock_resource->local.res = rsock_addrinfo(
-                                    inetsock_resource->local.host,
-                                    inetsock_resource->local.serv,
-                                    AF_UNSPEC,
-                                    SOCK_STREAM,
-                                    0
-                                );
-                            }
-
                             if (tmp_getaddrinfo_entry->family == AF_INET6) {
                                 state = V6C;
                             } else if (tmp_getaddrinfo_entry->family == AF_INET) {
