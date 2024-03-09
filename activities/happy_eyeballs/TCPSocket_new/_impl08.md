@@ -5,6 +5,7 @@
 - Cレベルのエラーハンドリングを適切に行う
 - 不具合修正
   - 引数にIPアドレスを渡された場合にローカルアドレスの名前解決を行なっていなかった問題を修正
+  - 接続に使用できるアドレスが一つしかない場合でもソケットに`O_NONBLOCK`を設定していた問題を修正
 
 ```c
 // ext/socket/ipsocket.c
@@ -120,25 +121,17 @@ cancel_happy_eyeballs_fds(void *ptr)
 }
 
 static void
-socket_nonblock_set(int fd, int nonblock)
+socket_nonblock_set(int fd)
 {
     int flags = fcntl(fd, F_GETFL);
     if (flags == -1) {
         rb_sys_fail(0);
     }
 
-    if (nonblock) {
-        if ((flags & O_NONBLOCK) != 0) {
-            return;
-        } else {
-            flags |= O_NONBLOCK;
-        }
+    if ((flags & O_NONBLOCK) != 0) {
+        return;
     } else {
-        if ((flags & O_NONBLOCK) == 0) {
-            return;
-        } else {
-            flags &= ~O_NONBLOCK;
-        }
+        flags |= O_NONBLOCK;
     }
 
     if (fcntl(fd, F_SETFL, flags) == -1) {
@@ -789,12 +782,11 @@ init_inetsock_internal_happy(VALUE v)
                     !(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip6_ai) &&
                     is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
                     is_resolution_finished) {
-                    socket_nonblock_set(fd, false);
                     status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, false, connect_timeout_tv);
                     syscall = "connect(2)";
                 } else {
                     connection_attempt_delay_expires_at = connection_attempt_delay_expires_at_ts();
-                    socket_nonblock_set(fd, true);
+                    socket_nonblock_set(fd);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
                 }
