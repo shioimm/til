@@ -1,10 +1,54 @@
 # `test/socket/test_tcp.rb`
 - start -> v6c -> v46w -> v4c -> v46w -> success
+- start -> v6c -> v46w -> success
+- start -> v4w -> v4c -> v46w -> success
 - `fast_fallback`
 
 ```ruby
 class TestSocket_TCPSocket < Test::Unit::TestCase
   # ...
+  def test_initialize_v6_hostname_resolved_earlier
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      begin
+        server = TCPServer.new("::1", 0)
+      rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+        exit
+      end
+
+      server_thread = Thread.new { server.accept }
+      port = server.addr[1]
+
+      TCPSocket.instance_variable_set(:@sleep_before_hostname_resolution, { ipv6: 0, ipv4: 1000 })
+
+      socket = TCPSocket.new("localhost", port)
+      assert_true(socket.remote_address.ipv6?)
+      server_thread.value.close
+      server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
+  def test_initialize_v4_hostname_resolved_earlier
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.addr[1]
+
+      TCPSocket.instance_variable_set(:@sleep_before_hostname_resolution, { ipv6: 1000, ipv4: 0 })
+
+      server_thread = Thread.new { server.accept }
+      socket = TCPSocket.new("localhost", port)
+      assert_true(socket.remote_address.ipv4?)
+      server_thread.value.close
+      server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
 
   def test_initialize_v6_server_is_not_listening
     ipv4_address = "127.0.0.1"
@@ -48,9 +92,7 @@ end if defined?(TCPSocket)
 - `TestSocket_TCPSocket#test_ai_addrconfig` -> OK
 
 #### 未実施
-- start -> v6c -> v46w -> success
 - start -> v6c -> v46w -> success (v46w中に名前解決スレッドで例外発生)
-- start -> v4w -> v4c -> v46w -> success
 - start -> v4w -> v6c -> v46w -> success
 - start -> v4w -> v6c -> v46w -> success
 - start -> v4w -> v4c -> v46w -> timeout (v46wで接続に失敗した後名前解決でタイムアウト)

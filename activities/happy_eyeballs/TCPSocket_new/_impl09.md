@@ -1,11 +1,6 @@
-# 2023/3/5-3/9
-- (参照先: `getaddrinfo/_impl11`)
-- `fast_fallback`オプションをサポート
-- `connecting_fds`のメモリが枯渇した場合は`realloc(3)`する
-- Cレベルのエラーハンドリングを適切に行う
-- 不具合修正
-  - 引数にIPアドレスを渡された場合にローカルアドレスの名前解決を行なっていなかった問題を修正
-  - 接続に使用できるアドレスが一つしかない場合でもソケットに`O_NONBLOCK`を設定していた問題を修正
+# 2023/3/10
+- (参照先: `getaddrinfo/_impl12`)
+- テストのために拡張
 
 ```c
 // ext/socket/ipsocket.c
@@ -301,6 +296,24 @@ int specified_address_family(const char *hostname, int *specified_family)
     return FALSE;
 }
 
+void set_sleep_ts(struct timespec *sleep_ts, VALUE sleep_param_value)
+{
+    int ms = FIX2INT(sleep_param_value);
+
+    if (NIL_P(sleep_param_value) || FIX2INT(sleep_param_value) == 0) {
+        sleep_ts->tv_sec = 0;
+        sleep_ts->tv_nsec = 0;
+    } else {
+        sleep_ts->tv_sec = 0;
+        sleep_ts->tv_nsec = ms * 1000000L;
+
+        while (sleep_ts->tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+            sleep_ts->tv_nsec -= 1000000000;
+            sleep_ts->tv_sec += 1;
+        }
+    }
+}
+
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resource;
@@ -409,6 +422,26 @@ init_inetsock_internal_happy(VALUE v)
     int specified_family, is_host_specified_address;
     is_host_specified_address = specified_address_family(hostp, &specified_family);
 
+    ID sleep_param = rb_intern("@sleep_before_hostname_resolution");
+    VALUE klass = rb_path2class("TCPSocket");
+    int sleep_before_hostname_resolution = false;
+    struct timespec sleep_ts[families_size];
+
+    if (rb_ivar_defined(klass, sleep_param)) {
+        VALUE sleep_param_settings = rb_ivar_get(klass, sleep_param);
+
+        if (RB_TYPE_P(sleep_param_settings, T_HASH)) {
+            sleep_before_hostname_resolution = true;
+            VALUE ipv6_param_key = ID2SYM(rb_intern("ipv6"));
+            VALUE ipv4_param_key = ID2SYM(rb_intern("ipv4"));
+            VALUE ipv6_param_value = rb_hash_aref(sleep_param_settings, ipv6_param_key);
+            VALUE ipv4_param_value = rb_hash_aref(sleep_param_settings, ipv4_param_key);
+
+            set_sleep_ts(&sleep_ts[0], ipv6_param_value);
+            set_sleep_ts(&sleep_ts[1], ipv4_param_value);
+        }
+    }
+
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
@@ -439,6 +472,19 @@ init_inetsock_internal_happy(VALUE v)
                     hints.ai_flags = remote_addrinfo_hints;
                     hints.ai_flags |= additional_flags;
 
+                    if (sleep_before_hostname_resolution) {
+                        struct timespec rem;
+                        int findex = 0;
+
+                        for (int i = 0; i < families_size; i++) {
+                            if (arg->families[i] == specified_family) {
+                                findex = i; break;
+                            }
+                        }
+
+                        nanosleep(&sleep_ts[findex], &rem);
+                    }
+
                     last_error = getaddrinfo(hostp, portp, &hints , &ai);
 
                     if (last_error != 0) {
@@ -461,12 +507,13 @@ init_inetsock_internal_happy(VALUE v)
                     size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_entry);
                     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
-                    for (int i = 0; i < families_size; i++) {
+                    for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
                         allocate_rb_getaddrinfo_happy_entry(
                             &(arg->getaddrinfo_entries[i]),
                             portp,
                             &portp_offset
                         );
+
                         if (!(arg->getaddrinfo_entries[i])) {
                             last_error = EAI_MEMORY;
                             state = FAILURE;
@@ -499,6 +546,10 @@ init_inetsock_internal_happy(VALUE v)
                         arg->getaddrinfo_entries[i]->cancelled = &cancelled;
                         arg->getaddrinfo_entries[i]->notify = notify_resolution_pipe;
                         arg->getaddrinfo_entries[i]->lock = lock;
+
+                        if (sleep_before_hostname_resolution) {
+                            arg->getaddrinfo_entries[i]->sleep = &sleep_ts[i];
+                        }
 
                         if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
                             free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
@@ -585,7 +636,6 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                 }
-
                 continue;
             }
 
