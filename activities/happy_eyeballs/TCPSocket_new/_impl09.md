@@ -1,5 +1,6 @@
 # 2023/3/10
 - (参照先: `getaddrinfo/_impl12`)
+- テストのために拡張
 
 ```c
 // ext/socket/ipsocket.c

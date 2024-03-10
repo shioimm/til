@@ -1,4 +1,5 @@
 # 2024/3/10
+- テストのために拡張
 
 ```c
 // ext/socket/raddrinfo.c
