@@ -427,14 +427,18 @@ init_inetsock_internal_happy(VALUE v)
     struct timespec sleep_ts[families_size];
 
     if (rb_ivar_defined(klass, sleep_param)) {
-        sleep_before_hostname_resolution = true;
         VALUE sleep_param_settings = rb_ivar_get(klass, sleep_param);
-        VALUE ipv6_param_key = ID2SYM(rb_intern("ipv6"));
-        VALUE ipv4_param_key = ID2SYM(rb_intern("ipv4"));
-        VALUE ipv6_param_value = rb_hash_aref(sleep_param_settings, ipv6_param_key);
-        VALUE ipv4_param_value = rb_hash_aref(sleep_param_settings, ipv4_param_key);
-        set_sleep_ts(&sleep_ts[0], ipv6_param_value);
-        set_sleep_ts(&sleep_ts[1], ipv4_param_value);
+
+        if (RB_TYPE_P(sleep_param_settings, T_HASH)) {
+            sleep_before_hostname_resolution = true;
+            VALUE ipv6_param_key = ID2SYM(rb_intern("ipv6"));
+            VALUE ipv4_param_key = ID2SYM(rb_intern("ipv4"));
+            VALUE ipv6_param_value = rb_hash_aref(sleep_param_settings, ipv6_param_key);
+            VALUE ipv4_param_value = rb_hash_aref(sleep_param_settings, ipv4_param_key);
+
+            set_sleep_ts(&sleep_ts[0], ipv6_param_value);
+            set_sleep_ts(&sleep_ts[1], ipv4_param_value);
+        }
     }
 
     while (!stop) {
