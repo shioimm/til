@@ -295,6 +295,24 @@ int specified_address_family(const char *hostname, int *specified_family)
     return FALSE;
 }
 
+void set_sleep_ts(struct timespec *sleep_ts, VALUE sleep_param_value)
+{
+    int ms = FIX2INT(sleep_param_value);
+
+    if (NIL_P(sleep_param_value) || FIX2INT(sleep_param_value) == 0) {
+        sleep_ts->tv_sec = 0;
+        sleep_ts->tv_nsec = 0;
+    } else {
+        sleep_ts->tv_sec = 0;
+        sleep_ts->tv_nsec = ms * 1000000L;
+
+        while (sleep_ts->tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+            sleep_ts->tv_nsec -= 1000000000;
+            sleep_ts->tv_sec += 1;
+        }
+    }
+}
+
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resource;
@@ -403,14 +421,20 @@ init_inetsock_internal_happy(VALUE v)
     int specified_family, is_host_specified_address;
     is_host_specified_address = specified_address_family(hostp, &specified_family);
 
-    // TODO
-    int sleep_before_hostname_resolution = true;
-    int sleep_nseconds[families_size];
+    ID sleep_param = rb_intern("@sleep_before_hostname_resolution");
+    VALUE klass = rb_path2class("TCPSocket");
+    int sleep_before_hostname_resolution = false;
+    struct timespec sleep_ts[families_size];
 
-    if (sleep_before_hostname_resolution) {
-        // TODO
-        sleep_nseconds[0] = (0 || 1) * 1000000L; // 1ms = 1,000,000ns
-        sleep_nseconds[1] = (0 || 1) * 1000000L; // 1ms = 1,000,000ns
+    if (rb_ivar_defined(klass, sleep_param)) {
+        sleep_before_hostname_resolution = true;
+        VALUE sleep_param_settings = rb_ivar_get(klass, sleep_param);
+        VALUE ipv6_param_key = ID2SYM(rb_intern("ipv6"));
+        VALUE ipv4_param_key = ID2SYM(rb_intern("ipv4"));
+        VALUE ipv6_param_value = rb_hash_aref(sleep_param_settings, ipv6_param_key);
+        VALUE ipv4_param_value = rb_hash_aref(sleep_param_settings, ipv4_param_key);
+        set_sleep_ts(&sleep_ts[0], ipv6_param_value);
+        set_sleep_ts(&sleep_ts[1], ipv4_param_value);
     }
 
     while (!stop) {
@@ -444,7 +468,7 @@ init_inetsock_internal_happy(VALUE v)
                     hints.ai_flags |= additional_flags;
 
                     if (sleep_before_hostname_resolution) {
-                        struct timespec sleep, rem;
+                        struct timespec rem;
                         int findex = 0;
 
                         for (int i = 0; i < families_size; i++) {
@@ -453,9 +477,7 @@ init_inetsock_internal_happy(VALUE v)
                             }
                         }
 
-                        sleep.tv_sec = 0;
-                        sleep.tv_nsec = sleep_nseconds[findex];
-                        nanosleep(&sleep, &rem);
+                        nanosleep(&sleep_ts[findex], &rem);
                     }
 
                     last_error = getaddrinfo(hostp, portp, &hints , &ai);
@@ -521,10 +543,7 @@ init_inetsock_internal_happy(VALUE v)
                         arg->getaddrinfo_entries[i]->lock = lock;
 
                         if (sleep_before_hostname_resolution) {
-                            struct timespec sleep;
-                            sleep.tv_sec = 0;
-                            sleep.tv_nsec = sleep_nseconds[i];
-                            arg->getaddrinfo_entries[i]->sleep = &sleep;
+                            arg->getaddrinfo_entries[i]->sleep = &sleep_ts[i];
                         }
 
                         if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
@@ -612,7 +631,6 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                 }
-
                 continue;
             }
 
