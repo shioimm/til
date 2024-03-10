@@ -14,9 +14,12 @@ void *
 do_rb_getaddrinfo_happy(void *ptr)
 {
     struct rb_getaddrinfo_happy_entry *entry = (struct rb_getaddrinfo_happy_entry *)ptr;
-
     int err = 0;
+    int need_free = 0;
+    struct timespec rem;
+
     err = numeric_getaddrinfo(entry->node, entry->service, &entry->hints, &entry->ai);
+
     if (err != 0) {
         err = getaddrinfo(entry->node, entry->service, &entry->hints, &entry->ai);
         #ifdef __linux__
@@ -28,14 +31,14 @@ do_rb_getaddrinfo_happy(void *ptr)
         #endif
     }
 
-    int need_free = 0;
     rb_nativethread_lock_lock(entry->lock);
     {
         entry->err = err;
         if (*entry->cancelled) {
             freeaddrinfo(entry->ai);
-        }
-        else {
+        } else {
+            if (entry->sleep) nanosleep(entry->sleep, &rem);
+
             if (entry->family == AF_INET6) {
               write(entry->notify, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
             } else if (entry->family == AF_INET) {
@@ -84,6 +87,7 @@ struct rb_getaddrinfo_happy_entry
     rb_nativethread_lock_t *lock;
     struct addrinfo hints;
     struct addrinfo *ai;
+    struct timespec *sleep;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);

@@ -403,6 +403,16 @@ init_inetsock_internal_happy(VALUE v)
     int specified_family, is_host_specified_address;
     is_host_specified_address = specified_address_family(hostp, &specified_family);
 
+    // TODO
+    int sleep_before_hostname_resolution = true;
+    int sleep_nseconds[families_size];
+
+    if (sleep_before_hostname_resolution) {
+        // TODO
+        sleep_nseconds[0] = (0 || 1) * 1000000L; // 1ms = 1,000,000ns
+        sleep_nseconds[1] = (0 || 1) * 1000000L; // 1ms = 1,000,000ns
+    }
+
     while (!stop) {
         printf("\nstate %d\n", state);
         switch (state) {
@@ -433,6 +443,21 @@ init_inetsock_internal_happy(VALUE v)
                     hints.ai_flags = remote_addrinfo_hints;
                     hints.ai_flags |= additional_flags;
 
+                    if (sleep_before_hostname_resolution) {
+                        struct timespec sleep, rem;
+                        int findex = 0;
+
+                        for (int i = 0; i < families_size; i++) {
+                            if (arg->families[i] == specified_family) {
+                                findex = i; break;
+                            }
+                        }
+
+                        sleep.tv_sec = 0;
+                        sleep.tv_nsec = sleep_nseconds[findex];
+                        nanosleep(&sleep, &rem);
+                    }
+
                     last_error = getaddrinfo(hostp, portp, &hints , &ai);
 
                     if (last_error != 0) {
@@ -455,12 +480,13 @@ init_inetsock_internal_happy(VALUE v)
                     size_t hostp_offset = sizeof(struct rb_getaddrinfo_happy_entry);
                     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
 
-                    for (int i = 0; i < families_size; i++) {
+                    for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
                         allocate_rb_getaddrinfo_happy_entry(
                             &(arg->getaddrinfo_entries[i]),
                             portp,
                             &portp_offset
                         );
+
                         if (!(arg->getaddrinfo_entries[i])) {
                             last_error = EAI_MEMORY;
                             state = FAILURE;
@@ -493,6 +519,13 @@ init_inetsock_internal_happy(VALUE v)
                         arg->getaddrinfo_entries[i]->cancelled = &cancelled;
                         arg->getaddrinfo_entries[i]->notify = notify_resolution_pipe;
                         arg->getaddrinfo_entries[i]->lock = lock;
+
+                        if (sleep_before_hostname_resolution) {
+                            struct timespec sleep;
+                            sleep.tv_sec = 0;
+                            sleep.tv_nsec = sleep_nseconds[i];
+                            arg->getaddrinfo_entries[i]->sleep = &sleep;
+                        }
 
                         if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
                             free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
