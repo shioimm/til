@@ -296,24 +296,6 @@ int specified_address_family(const char *hostname, int *specified_family)
     return FALSE;
 }
 
-void set_sleep_ts(struct timespec *sleep_ts, VALUE sleep_param_value)
-{
-    int ms = FIX2INT(sleep_param_value);
-
-    if (NIL_P(sleep_param_value) || FIX2INT(sleep_param_value) == 0) {
-        sleep_ts->tv_sec = 0;
-        sleep_ts->tv_nsec = 0;
-    } else {
-        sleep_ts->tv_sec = 0;
-        sleep_ts->tv_nsec = ms * 1000000L;
-
-        while (sleep_ts->tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-            sleep_ts->tv_nsec -= 1000000000;
-            sleep_ts->tv_sec += 1;
-        }
-    }
-}
-
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resource;
@@ -379,7 +361,7 @@ init_inetsock_internal_happy(VALUE v)
     int *tmp_need_free = NULL;
 
     pthread_t threads[families_size];
-    char resolved_type[families_size];
+    char resolved_type[2];
     ssize_t resolved_type_size;
 
     int *connecting_fds_size = arg->connecting_fds_size;
@@ -407,8 +389,8 @@ init_inetsock_internal_happy(VALUE v)
     cancel_arg.connecting_fds = arg->connecting_fds;
     cancel_arg.connecting_fds_size = connecting_fds_size;
 
-    int wait_resolution_pipe = arg->wait_resolution_pipe;
     int notify_resolution_pipe = arg->notify_resolution_pipe;
+    int wait_resolution_pipe = arg->wait_resolution_pipe;
 
     struct timeval resolution_delay;
     struct timeval connection_attempt_delay;
@@ -425,7 +407,7 @@ init_inetsock_internal_happy(VALUE v)
     ID sleep_param = rb_intern("@sleep_before_hostname_resolution");
     VALUE klass = rb_path2class("TCPSocket");
     int sleep_before_hostname_resolution = false;
-    struct timespec sleep_ts[families_size];
+    useconds_t sleep_ts[families_size];
 
     if (rb_ivar_defined(klass, sleep_param)) {
         VALUE sleep_param_settings = rb_ivar_get(klass, sleep_param);
@@ -437,8 +419,8 @@ init_inetsock_internal_happy(VALUE v)
             VALUE ipv6_param_value = rb_hash_aref(sleep_param_settings, ipv6_param_key);
             VALUE ipv4_param_value = rb_hash_aref(sleep_param_settings, ipv4_param_key);
 
-            set_sleep_ts(&sleep_ts[0], ipv6_param_value);
-            set_sleep_ts(&sleep_ts[1], ipv4_param_value);
+            sleep_ts[0] = (useconds_t)(FIX2INT(ipv6_param_value) * 1000);
+            sleep_ts[1] = (useconds_t)(FIX2INT(ipv4_param_value) * 1000);
         }
     }
 
@@ -473,7 +455,6 @@ init_inetsock_internal_happy(VALUE v)
                     hints.ai_flags |= additional_flags;
 
                     if (sleep_before_hostname_resolution) {
-                        struct timespec rem;
                         int findex = 0;
 
                         for (int i = 0; i < families_size; i++) {
@@ -482,7 +463,7 @@ init_inetsock_internal_happy(VALUE v)
                             }
                         }
 
-                        nanosleep(&sleep_ts[findex], &rem);
+                        usleep(sleep_ts[findex]);
                     }
 
                     last_error = getaddrinfo(hostp, portp, &hints , &ai);
@@ -548,7 +529,7 @@ init_inetsock_internal_happy(VALUE v)
                         arg->getaddrinfo_entries[i]->lock = lock;
 
                         if (sleep_before_hostname_resolution) {
-                            arg->getaddrinfo_entries[i]->sleep = &sleep_ts[i];
+                            arg->getaddrinfo_entries[i]->sleep = sleep_ts[i];
                         }
 
                         if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
@@ -629,6 +610,8 @@ init_inetsock_internal_happy(VALUE v)
                                     is_resolution_finished = TRUE;
                                     state = V4C;
                                 } else { // v6の名前解決が終わっていない場合
+                                    FD_ZERO(&readfds);
+                                    FD_SET(wait_resolution_pipe, &readfds);
                                     state = V4W;
                                 }
                             }
@@ -636,6 +619,7 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                 }
+                status = wait_arg.status = 0;
                 continue;
             }
 
@@ -644,8 +628,6 @@ init_inetsock_internal_happy(VALUE v)
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
-                FD_ZERO(&readfds);
-                FD_SET(wait_resolution_pipe, &readfds);
                 nfds = wait_resolution_pipe + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
@@ -660,6 +642,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 // 名前解決できた
                 resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+                status = wait_arg.status = 0;
 
                 if (resolved_type_size < 0) {
                     last_error = errno;
@@ -978,6 +961,7 @@ init_inetsock_internal_happy(VALUE v)
                 } else { // selectに失敗
                     rb_syserr_fail(errno, "select(2)");
                 }
+                status = wait_arg.status = 0;
                 continue;
             }
 

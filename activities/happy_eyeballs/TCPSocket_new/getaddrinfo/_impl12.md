@@ -15,22 +15,22 @@ void *
 do_rb_getaddrinfo_happy(void *ptr)
 {
     struct rb_getaddrinfo_happy_entry *entry = (struct rb_getaddrinfo_happy_entry *)ptr;
-    int err = 0;
-    int need_free = 0;
-    struct timespec rem;
+    int err = 0, need_free = 0;
 
     err = numeric_getaddrinfo(entry->node, entry->service, &entry->hints, &entry->ai);
 
     if (err != 0) {
         err = getaddrinfo(entry->node, entry->service, &entry->hints, &entry->ai);
-        #ifdef __linux__
-        /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
-         * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
-         */
-        if (err == EAI_SYSTEM && errno == ENOENT)
-            err = EAI_NONAME;
-        #endif
+       #ifdef __linux__
+       /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
+        * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
+        */
+       if (err == EAI_SYSTEM && errno == ENOENT)
+           err = EAI_NONAME;
+       #endif
     }
+
+    if (entry->sleep) usleep(entry->sleep);
 
     rb_nativethread_lock_lock(entry->lock);
     {
@@ -38,12 +38,10 @@ do_rb_getaddrinfo_happy(void *ptr)
         if (*entry->cancelled) {
             freeaddrinfo(entry->ai);
         } else {
-            if (entry->sleep) nanosleep(entry->sleep, &rem);
-
             if (entry->family == AF_INET6) {
-              write(entry->notify, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
+                write(entry->notify, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
             } else if (entry->family == AF_INET) {
-              write(entry->notify, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
+                write(entry->notify, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
             }
         }
         if (--entry->refcount == 0) need_free = 1;
@@ -83,12 +81,11 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 struct rb_getaddrinfo_happy_entry
 {
     char *node, *service;
-    int family, err, refcount, notify;
+    int family, err, refcount, notify, sleep;
     int *cancelled;
     rb_nativethread_lock_t *lock;
     struct addrinfo hints;
     struct addrinfo *ai;
-    struct timespec *sleep;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
