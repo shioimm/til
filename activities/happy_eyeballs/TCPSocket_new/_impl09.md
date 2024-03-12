@@ -565,7 +565,7 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (status == 0) { // resolv_timeout
                             state = TIMEOUT;
-                            continue;
+                            break;
                         } else if (status < 0) {
                             rb_syserr_fail(errno, "select(2)");
                         }
@@ -574,7 +574,7 @@ init_inetsock_internal_happy(VALUE v)
                         if (resolved_type_size < 0) {
                             last_error = errno;
                             state = FAILURE;
-                            continue;
+                            break;
                         }
                         resolved_type[resolved_type_size] = '\0';
 
