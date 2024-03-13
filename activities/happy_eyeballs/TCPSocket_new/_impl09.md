@@ -1042,6 +1042,12 @@ inetsock_cleanup_happy(VALUE v)
 
     close_fd(arg->wait_resolution_pipe);
     close_fd(arg->notify_resolution_pipe);
+
+    // TODO
+    // メインスレッドで先にrb_nativethread_lock_destroyが呼ばれてしまうと子スレッドでlockが0になってSEGVする問題
+    // メインスレッドと子スレッドで共通のリソース (フラグ) を持つようにし、
+    // フラグが立っていたらlockをdestroyするようにしたい
+    // フラグが立つ = refcountが0になったら+1し、値が2になっていたらフラグが立ったこととする、とか?
     rb_nativethread_lock_destroy(arg->lock);
 
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
