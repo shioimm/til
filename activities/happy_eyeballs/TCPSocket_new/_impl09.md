@@ -229,8 +229,10 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
 }
 
 static int
-initialize_fds(const int *fds, int fds_size, fd_set *set)
+initialize_write_fds(const int *fds, int fds_size, fd_set *set)
 {
+    if (fds_size == 0) return 0;
+
     int nfds = 0;
     FD_ZERO(set);
 
@@ -241,7 +243,7 @@ initialize_fds(const int *fds, int fds_size, fd_set *set)
         FD_SET(fd, set);
     }
 
-    nfds++;
+    if (nfds > 0) nfds++;
     return nfds;
 }
 
@@ -374,6 +376,8 @@ init_inetsock_internal_happy(VALUE v)
     *arg->connecting_fds_capacity = initial_capacity;
 
     fd_set readfds, writefds;
+    FD_ZERO(&readfds);
+    FD_ZERO(&writefds);
     int nfds, cancelled = 0;
     rb_nativethread_lock_t *lock = arg->lock;
 
@@ -389,8 +393,8 @@ init_inetsock_internal_happy(VALUE v)
     cancel_arg.connecting_fds = arg->connecting_fds;
     cancel_arg.connecting_fds_size = connecting_fds_size;
 
-    int notify_resolution_pipe = arg->notify_resolution_pipe;
     int wait_resolution_pipe = arg->wait_resolution_pipe;
+    int notify_resolution_pipe = arg->notify_resolution_pipe;
 
     struct timeval resolution_delay;
     struct timeval connection_attempt_delay;
@@ -561,7 +565,7 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (status == 0) { // resolv_timeout
                             state = TIMEOUT;
-                            continue;
+                            break;
                         } else if (status < 0) {
                             rb_syserr_fail(errno, "select(2)");
                         }
@@ -570,7 +574,7 @@ init_inetsock_internal_happy(VALUE v)
                         if (resolved_type_size < 0) {
                             last_error = errno;
                             state = FAILURE;
-                            continue;
+                            break;
                         }
                         resolved_type[resolved_type_size] = '\0';
 
@@ -605,13 +609,11 @@ init_inetsock_internal_happy(VALUE v)
                                 state = V6C;
                             } else if (tmp_getaddrinfo_entry->family == AF_INET) {
                                 if (arg->getaddrinfo_entries[ipv6_entry_pos]->err) { // v6の名前解決に失敗している場合
-                                    FD_CLR(wait_resolution_pipe, &readfds);
+                                    FD_ZERO(&readfds);
                                     wait_arg.readfds = NULL;
                                     is_resolution_finished = TRUE;
                                     state = V4C;
                                 } else { // v6の名前解決が終わっていない場合
-                                    FD_ZERO(&readfds);
-                                    FD_SET(wait_resolution_pipe, &readfds);
                                     state = V4W;
                                 }
                             }
@@ -628,6 +630,8 @@ init_inetsock_internal_happy(VALUE v)
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
+                FD_ZERO(&readfds);
+                FD_SET(wait_resolution_pipe, &readfds);
                 nfds = wait_resolution_pipe + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
@@ -651,7 +655,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
 
                 selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[ipv6_entry_pos]->ai;
-                FD_CLR(wait_resolution_pipe, &readfds);
+                FD_ZERO(&readfds);
                 wait_arg.readfds = NULL;
                 is_resolution_finished = TRUE;
                 state = V46C;
@@ -873,16 +877,18 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
 
-                if (!is_resolution_finished) {
-                    FD_ZERO(&readfds);
-                    FD_SET(wait_resolution_pipe, &readfds);
-                }
-
                 connection_attempt_delay.tv_sec = 0;
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                nfds = initialize_fds(arg->connecting_fds, *connecting_fds_size, &writefds);
+                nfds = initialize_write_fds(arg->connecting_fds, *connecting_fds_size, &writefds);
+
+                if (!is_resolution_finished) {
+                    FD_ZERO(&readfds);
+                    FD_SET(wait_resolution_pipe, &readfds);
+                    if ((wait_resolution_pipe + 1) > nfds) nfds = wait_resolution_pipe + 1;
+                }
+
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
                 status = wait_arg.status;
                 syscall = "select(2)";
@@ -910,7 +916,7 @@ init_inetsock_internal_happy(VALUE v)
                             rb_nativethread_lock_unlock(lock);
                         }
 
-                        FD_CLR(wait_resolution_pipe, &readfds);
+                        FD_ZERO(&readfds);
                         wait_arg.readfds = NULL;
                         is_resolution_finished = TRUE;
                     } else { // writefdsに書き込み可能ソケットができた
