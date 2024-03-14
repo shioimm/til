@@ -1,6 +1,5 @@
-# 2023/3/10-3/12
-- (参照先: `getaddrinfo/_impl12`)
-- テストのために拡張
+# 2023/3/14
+- (参照先: `getaddrinfo/_impl13`)
 
 ```c
 // ext/socket/ipsocket.c
