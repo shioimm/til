@@ -1027,7 +1027,9 @@ inetsock_cleanup_happy(VALUE v)
         rb_nativethread_lock_lock(getaddrinfo_manager->lock);
         {
             for (int i = 0; i < arg->families_size; i++) {
-                if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
+                if (arg->getaddrinfo_entries[i] &&
+                    *(arg->need_frees[i]) == 0 &&
+                    --(arg->getaddrinfo_entries[i]->refcount) == 0) {
                     *(arg->need_frees[i]) = 1;
                 }
             }
