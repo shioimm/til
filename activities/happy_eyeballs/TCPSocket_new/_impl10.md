@@ -306,7 +306,6 @@ struct inetsock_happy_arg
     int *families;
     int families_size;
     int ipv6_entry_pos, ipv4_entry_pos;
-    int wait_resolution_pipe, notify_resolution_pipe;
     int *need_frees[2];
     rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
@@ -359,14 +358,18 @@ init_inetsock_internal_happy(VALUE v)
     int ipv4_entry_pos = arg->ipv4_entry_pos;;
     int families_size = arg->families_size;
 
-    int wait_resolution_pipe = arg->wait_resolution_pipe;
-    int notify_resolution_pipe = arg->notify_resolution_pipe;
+    int wait_resolution_pipe, notify_resolution_pipe;
+    int pipefd[2];
+    pipe(pipefd);
+    wait_resolution_pipe = pipefd[ipv6_entry_pos];
+    notify_resolution_pipe = pipefd[ipv4_entry_pos];
 
     struct rb_getaddrinfo_happy_manager *getaddrinfo_manager = create_rb_getaddrinfo_happy_manager(hostp, portp);
     if (!getaddrinfo_manager) rb_syserr_fail(EAI_MEMORY, NULL);
     getaddrinfo_manager->lock = arg->lock;
     getaddrinfo_manager->refcount = families_size + 1;
     getaddrinfo_manager->notify = notify_resolution_pipe;
+    getaddrinfo_manager->wait = wait_resolution_pipe;
     int cancelled = 0;
     getaddrinfo_manager->cancelled = &cancelled;
 
@@ -1038,8 +1041,6 @@ inetsock_cleanup_happy(VALUE v)
         if (manager_need_free) free_rb_getaddrinfo_happy_manager(getaddrinfo_manager);
     }
 
-    close_fd(arg->wait_resolution_pipe); // TODO getaddrinfo_entriesを使用しない場合は不要になるはず
-
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
         close_fd(connecting_fd);
@@ -1082,15 +1083,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         int ipv4_entry_pos = 1;
         inetsock_happy_resource.ipv6_entry_pos = ipv6_entry_pos;
         inetsock_happy_resource.ipv4_entry_pos = ipv4_entry_pos;
-
-        // TODO init_inetsock_internal_happyの中で初期化する
-        int wait_resolution_pipe, notify_resolution_pipe;
-        int pipefd[2];
-        pipe(pipefd);
-        wait_resolution_pipe = pipefd[ipv6_entry_pos];
-        notify_resolution_pipe = pipefd[ipv4_entry_pos];
-        inetsock_happy_resource.wait_resolution_pipe = wait_resolution_pipe;
-        inetsock_happy_resource.notify_resolution_pipe = notify_resolution_pipe;
 
         int ipv6_need_free, ipv4_need_free = 0;
         inetsock_happy_resource.need_frees[ipv6_entry_pos] = &ipv6_need_free;
