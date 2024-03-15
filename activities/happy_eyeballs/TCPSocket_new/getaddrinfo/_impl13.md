@@ -52,7 +52,7 @@ do_rb_getaddrinfo_happy(void *ptr)
     rb_nativethread_lock_lock(entry->manager->lock);
     {
         entry->err = err;
-        if (*entry->cancelled) {
+        if (*entry->manager->cancelled) {
             if (entry->ai) {
                 freeaddrinfo(entry->ai);
                 entry->ai = NULL;
@@ -102,15 +102,14 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
 struct rb_getaddrinfo_happy_manager {
     int notify, refcount;
+    int *cancelled;
     char *node, *service;
     rb_nativethread_lock_t *lock;
 };
 
-// TODO cancelled, sleep, errはmanagerに移動できそう
 struct rb_getaddrinfo_happy_entry
 {
     int family, err, refcount, sleep;
-    int *cancelled;
     struct addrinfo hints;
     struct addrinfo *ai;
     struct rb_getaddrinfo_happy_manager *manager;

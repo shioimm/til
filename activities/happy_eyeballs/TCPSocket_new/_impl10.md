@@ -368,6 +368,7 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_manager->refcount = families_size + 1;
     getaddrinfo_manager->notify = notify_resolution_pipe;
     int cancelled = 0;
+    getaddrinfo_manager->cancelled = &cancelled;
 
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
@@ -519,7 +520,6 @@ init_inetsock_internal_happy(VALUE v)
                         arg->getaddrinfo_entries[i]->ai = NULL;
                         arg->getaddrinfo_entries[i]->family = arg->families[i];
                         arg->getaddrinfo_entries[i]->refcount = 2;
-                        arg->getaddrinfo_entries[i]->cancelled = &cancelled;
 
                         if (sleep_before_hostname_resolution) {
                             arg->getaddrinfo_entries[i]->sleep = sleep_ts[i];
