@@ -1,5 +1,8 @@
-# 2023/3/14
+# 2023/3/14-15
 - (参照先: `getaddrinfo/_impl13`)
+- 名前解決時に扱うリソースのうち、共通のものとスレッドごとに必要なものを分割した
+- 条件によって不要なリソースを初期化しないようにした
+- 構造体名などを整えた
 
 ```c
 // ext/socket/ipsocket.c
@@ -30,35 +33,35 @@ enum sock_he_state {
     TIMEOUT,              /* 8 Connection timed out */
 };
 
-static struct rb_getaddrinfo_happy_manager *
-create_rb_getaddrinfo_happy_manager(const char *node, const char *service)
+static struct rb_getaddrinfo_happy_shared_resource *
+create_rb_getaddrinfo_happy_shared_resource(const char *node, const char *service)
 {
-    struct rb_getaddrinfo_happy_manager *manager = (struct rb_getaddrinfo_happy_manager *)malloc(sizeof(struct rb_getaddrinfo_happy_manager));
-    if (!manager) return NULL;
+    struct rb_getaddrinfo_happy_shared_resource *shared = (struct rb_getaddrinfo_happy_shared_resource *)malloc(sizeof(struct rb_getaddrinfo_happy_shared_resource));
+    if (!shared) return NULL;
 
-    memset(manager, 0, sizeof(struct rb_getaddrinfo_happy_manager));
-    manager->node = strdup(node);
-    manager->service = strdup(service);
+    memset(shared, 0, sizeof(struct rb_getaddrinfo_happy_shared_resource));
+    shared->node = strdup(node);
+    shared->service = strdup(service);
 
-    return manager;
+    return shared;
 }
 
 static void
-allocate_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry)
+allocate_rb_getaddrinfo_happy_entry_resource(struct rb_getaddrinfo_happy_entry_resource **entry)
 {
     if (!entry) return;
 
-    *entry = (struct rb_getaddrinfo_happy_entry *)malloc(sizeof(struct rb_getaddrinfo_happy_entry));
+    *entry = (struct rb_getaddrinfo_happy_entry_resource *)malloc(sizeof(struct rb_getaddrinfo_happy_entry_resource));
     if (!(*entry)) {
         rb_gc();
-        *entry = (struct rb_getaddrinfo_happy_entry *)malloc(sizeof(struct rb_getaddrinfo_happy_entry));
+        *entry = (struct rb_getaddrinfo_happy_entry_resource *)malloc(sizeof(struct rb_getaddrinfo_happy_entry_resource));
     }
     if (*entry) {
-        memset(*entry, 0, sizeof(struct rb_getaddrinfo_happy_entry)); // 確保したメモリをゼロで初期化
+        memset(*entry, 0, sizeof(struct rb_getaddrinfo_happy_entry_resource)); // 確保したメモリをゼロで初期化
     }
 }
 
-static void allocate_rb_getaddrinfo_happy_entry_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+static void allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
 {
     MEMZERO(hints, struct addrinfo, 1);
     hints->ai_family = family;
@@ -307,7 +310,7 @@ struct inetsock_happy_arg
     int families_size;
     int ipv6_entry_pos, ipv4_entry_pos;
     int *need_frees[2];
-    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
+    struct rb_getaddrinfo_happy_entry_resource *getaddrinfo_entries[2];
     int *connecting_fds_size;
     int *connecting_fds_capacity;
     int *connecting_fds;
@@ -363,19 +366,19 @@ init_inetsock_internal_happy(VALUE v)
     wait_resolution_pipe = pipefd[ipv6_entry_pos];
     notify_resolution_pipe = pipefd[ipv4_entry_pos];
 
-    struct rb_getaddrinfo_happy_manager *getaddrinfo_manager = create_rb_getaddrinfo_happy_manager(hostp, portp);
-    if (!getaddrinfo_manager) rb_syserr_fail(EAI_MEMORY, NULL);
+    struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared = create_rb_getaddrinfo_happy_shared_resource(hostp, portp);
+    if (!getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
 
     rb_nativethread_lock_t lock;
     rb_nativethread_lock_initialize(&lock);
-    getaddrinfo_manager->lock = &lock;
-    getaddrinfo_manager->refcount = families_size + 1;
-    getaddrinfo_manager->notify = notify_resolution_pipe;
-    getaddrinfo_manager->wait = wait_resolution_pipe;
+    getaddrinfo_shared->lock = &lock;
+    getaddrinfo_shared->refcount = families_size + 1;
+    getaddrinfo_shared->notify = notify_resolution_pipe;
+    getaddrinfo_shared->wait = wait_resolution_pipe;
     int cancelled = 0;
-    getaddrinfo_manager->cancelled = &cancelled;
+    getaddrinfo_shared->cancelled = &cancelled;
 
-    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
+    struct rb_getaddrinfo_happy_entry_resource *tmp_getaddrinfo_entry = NULL;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
     struct addrinfo *tmp_selected_ai;
     int *tmp_need_free = NULL;
@@ -505,16 +508,16 @@ init_inetsock_internal_happy(VALUE v)
                     struct addrinfo getaddrinfo_hints[families_size];
 
                     for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
-                        allocate_rb_getaddrinfo_happy_entry(&(arg->getaddrinfo_entries[i]));
+                        allocate_rb_getaddrinfo_happy_entry_resource(&(arg->getaddrinfo_entries[i]));
 
                         if (!(arg->getaddrinfo_entries[i])) {
                             last_error = EAI_MEMORY;
                             state = FAILURE;
                             break;
                         }
-                        arg->getaddrinfo_entries[i]->manager = getaddrinfo_manager;
+                        arg->getaddrinfo_entries[i]->shared = getaddrinfo_shared;
 
-                        allocate_rb_getaddrinfo_happy_entry_hints(
+                        allocate_rb_getaddrinfo_happy_hints(
                             &getaddrinfo_hints[i],
                             arg->families[i],
                             remote_addrinfo_hints,
@@ -531,8 +534,8 @@ init_inetsock_internal_happy(VALUE v)
                         }
 
                         if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
-                            free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
-                            free_rb_getaddrinfo_happy_manager(arg->getaddrinfo_entries[i]->manager);
+                            free_rb_getaddrinfo_happy_entry_resource(arg->getaddrinfo_entries[i]);
+                            free_rb_getaddrinfo_happy_shared_resource(arg->getaddrinfo_entries[i]->shared);
                             close_fd(wait_resolution_pipe);
                             last_error = EAI_AGAIN;
                             state = FAILURE;
@@ -1021,28 +1024,28 @@ inetsock_cleanup_happy(VALUE v)
     }
 
     if (arg->getaddrinfo_entries[0]) {
-        struct rb_getaddrinfo_happy_manager *getaddrinfo_manager = arg->getaddrinfo_entries[0]->manager;
-        int manager_need_free = 0;
+        struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared = arg->getaddrinfo_entries[0]->shared;
+        int shared_need_free = 0;
 
-        rb_nativethread_lock_lock(getaddrinfo_manager->lock);
+        rb_nativethread_lock_lock(getaddrinfo_shared->lock);
         {
             for (int i = 0; i < arg->families_size; i++) {
                 if (arg->getaddrinfo_entries[i] &&
-                    *(arg->need_frees[i]) == 0 &&
+                    *(arg->need_frees[i])  == 0 &&
                     --(arg->getaddrinfo_entries[i]->refcount) == 0) {
                     *(arg->need_frees[i]) = 1;
                 }
             }
-            if (--(getaddrinfo_manager->refcount) == 0) manager_need_free = 1;
+            if (--(getaddrinfo_shared->refcount) == 0) shared_need_free = 1;
         }
-        rb_nativethread_lock_unlock(getaddrinfo_manager->lock);
+        rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
 
         for (int i = 0; i < arg->families_size; i++) {
             if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
-                free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
+                free_rb_getaddrinfo_happy_entry_resource(arg->getaddrinfo_entries[i]);
             }
         }
-        if (manager_need_free) free_rb_getaddrinfo_happy_manager(getaddrinfo_manager);
+        if (shared_need_free) free_rb_getaddrinfo_happy_shared_resource(getaddrinfo_shared);
     }
 
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
