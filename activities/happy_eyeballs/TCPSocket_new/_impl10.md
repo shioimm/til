@@ -438,7 +438,7 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     while (!stop) {
-        // printf("\nstate %d\n", state);
+        printf("\nstate %d\n", state);
         switch (state) {
             case START:
             {
@@ -1002,8 +1002,6 @@ inetsock_cleanup_happy(VALUE v)
 {
     struct inetsock_happy_arg *arg = (void *)v;
     struct inetsock_arg *inetsock_resource = arg->inetsock_resource;
-    struct rb_getaddrinfo_happy_manager *getaddrinfo_manager = arg->getaddrinfo_entries[0]->manager;
-    int manager_need_free = 0;
 
     if (inetsock_resource->remote.res) {
         rb_freeaddrinfo(inetsock_resource->remote.res);
@@ -1017,25 +1015,30 @@ inetsock_cleanup_happy(VALUE v)
         close(inetsock_resource->fd);
     }
 
-    rb_nativethread_lock_lock(getaddrinfo_manager->lock);
-    {
+    if (arg->getaddrinfo_entries[0]) {
+        struct rb_getaddrinfo_happy_manager *getaddrinfo_manager = arg->getaddrinfo_entries[0]->manager;
+        int manager_need_free = 0;
+
+        rb_nativethread_lock_lock(getaddrinfo_manager->lock);
+        {
+            for (int i = 0; i < arg->families_size; i++) {
+                if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
+                    *(arg->need_frees[i]) = 1;
+                }
+            }
+            if (--(getaddrinfo_manager->refcount) == 0) manager_need_free = 1;
+        }
+        rb_nativethread_lock_unlock(getaddrinfo_manager->lock);
+
         for (int i = 0; i < arg->families_size; i++) {
-            if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
-                *(arg->need_frees[i]) = 1;
+            if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
+                free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
             }
         }
-        if (--(getaddrinfo_manager->refcount) == 0) manager_need_free = 1;
+        if (manager_need_free) free_rb_getaddrinfo_happy_manager(getaddrinfo_manager);
     }
-    rb_nativethread_lock_unlock(getaddrinfo_manager->lock);
 
-    for (int i = 0; i < arg->families_size; i++) {
-        if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
-            free_rb_getaddrinfo_happy_entry(arg->getaddrinfo_entries[i]);
-        }
-    }
-    if (manager_need_free) free_rb_getaddrinfo_happy_manager(getaddrinfo_manager);
-
-    close_fd(arg->wait_resolution_pipe);
+    close_fd(arg->wait_resolution_pipe); // TODO getaddrinfo_entriesを使用しない場合は不要になるはず
 
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
@@ -1080,6 +1083,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         inetsock_happy_resource.ipv6_entry_pos = ipv6_entry_pos;
         inetsock_happy_resource.ipv4_entry_pos = ipv4_entry_pos;
 
+        // TODO init_inetsock_internal_happyの中で初期化する
         int wait_resolution_pipe, notify_resolution_pipe;
         int pipefd[2];
         pipe(pipefd);
@@ -1092,6 +1096,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         inetsock_happy_resource.need_frees[ipv6_entry_pos] = &ipv6_need_free;
         inetsock_happy_resource.need_frees[ipv4_entry_pos] = &ipv4_need_free;
 
+        // TODO init_inetsock_internal_happyの中で初期化する
         rb_nativethread_lock_t lock;
         rb_nativethread_lock_initialize(&lock);
         inetsock_happy_resource.lock = &lock;
