@@ -307,7 +307,6 @@ struct inetsock_happy_arg
     int families_size;
     int ipv6_entry_pos, ipv4_entry_pos;
     int *need_frees[2];
-    rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     int *connecting_fds_size;
     int *connecting_fds_capacity;
@@ -366,7 +365,10 @@ init_inetsock_internal_happy(VALUE v)
 
     struct rb_getaddrinfo_happy_manager *getaddrinfo_manager = create_rb_getaddrinfo_happy_manager(hostp, portp);
     if (!getaddrinfo_manager) rb_syserr_fail(EAI_MEMORY, NULL);
-    getaddrinfo_manager->lock = arg->lock;
+
+    rb_nativethread_lock_t lock;
+    rb_nativethread_lock_initialize(&lock);
+    getaddrinfo_manager->lock = &lock;
     getaddrinfo_manager->refcount = families_size + 1;
     getaddrinfo_manager->notify = notify_resolution_pipe;
     getaddrinfo_manager->wait = wait_resolution_pipe;
@@ -404,7 +406,7 @@ init_inetsock_internal_happy(VALUE v)
 
     struct cancel_happy_eyeballs_fds_arg cancel_arg;
     cancel_arg.cancelled = &cancelled;
-    cancel_arg.lock = arg->lock;
+    cancel_arg.lock = &lock;
     cancel_arg.connecting_fds = arg->connecting_fds;
     cancel_arg.connecting_fds_size = connecting_fds_size;
 
@@ -585,11 +587,11 @@ init_inetsock_internal_happy(VALUE v)
                                 last_error = tmp_getaddrinfo_entry->err;
                             }
 
-                            rb_nativethread_lock_lock(arg->lock);
+                            rb_nativethread_lock_lock(&lock);
                             {
                                 if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
                             }
-                            rb_nativethread_lock_unlock(arg->lock);
+                            rb_nativethread_lock_unlock(&lock);
                             resolution_retry_count--;
 
                             if (resolution_retry_count == 0) {
@@ -903,11 +905,11 @@ init_inetsock_internal_happy(VALUE v)
                         }
 
                         if (tmp_getaddrinfo_entry->err) {
-                            rb_nativethread_lock_lock(arg->lock);
+                            rb_nativethread_lock_lock(&lock);
                             {
                                 if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
                             }
-                            rb_nativethread_lock_unlock(arg->lock);
+                            rb_nativethread_lock_unlock(&lock);
                         }
 
                         FD_ZERO(&readfds);
@@ -1087,11 +1089,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         int ipv6_need_free, ipv4_need_free = 0;
         inetsock_happy_resource.need_frees[ipv6_entry_pos] = &ipv6_need_free;
         inetsock_happy_resource.need_frees[ipv4_entry_pos] = &ipv4_need_free;
-
-        // TODO init_inetsock_internal_happyの中で初期化する
-        rb_nativethread_lock_t lock;
-        rb_nativethread_lock_initialize(&lock);
-        inetsock_happy_resource.lock = &lock;
 
         int connecting_fds_size = 0;
         int connecting_fds_capacity = 0;
