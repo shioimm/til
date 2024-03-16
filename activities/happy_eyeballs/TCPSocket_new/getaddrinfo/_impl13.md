@@ -3,29 +3,31 @@
 ```c
 // ext/socket/raddrinfo.c
 
-void
-free_rb_getaddrinfo_happy_shared_resource(struct rb_getaddrinfo_happy_shared_resource *shared)
+oid
+free_rb_getaddrinfo_happy_shared_resource(struct rb_getaddrinfo_happy_shared_resource **shared)
 {
-    free(shared->node);
-    shared->node = NULL;
-    free(shared->service);
-    shared->service = NULL;
+    free((*shared)->node);
+    (*shared)->node = NULL;
+    free((*shared)->service);
+    (*shared)->service = NULL;
 
-    if (shared->notify >= 0 && fcntl(shared->notify, F_GETFL) != -1) close(shared->notify);
-    if (shared->wait >= 0 && fcntl(shared->wait, F_GETFL) != -1) close(shared->wait);
+    if ((*shared)->notify >= 0 && fcntl((*shared)->notify, F_GETFL) != -1) close((*shared)->notify);
+    if ((*shared)->wait >= 0 && fcntl((*shared)->wait, F_GETFL) != -1) close((*shared)->wait);
 
-    rb_nativethread_lock_destroy(shared->lock);
-    free(shared);
+    rb_nativethread_lock_destroy((*shared)->lock);
+    free(*shared);
+    *shared = NULL;
 }
 
 void
-free_rb_getaddrinfo_happy_entry_resource(struct rb_getaddrinfo_happy_entry_resource *entry)
+free_rb_getaddrinfo_happy_entry_resource(struct rb_getaddrinfo_happy_entry_resource **entry)
 {
-    if (entry->ai) {
-        freeaddrinfo(entry->ai);
-        entry->ai = NULL;
+    if ((*entry)->ai) {
+        freeaddrinfo((*entry)->ai);
+        (*entry)->ai = NULL;
     }
-    free(entry);
+    free(*entry);
+    *entry = NULL;
 }
 
 // GETADDRINFO_IMPL == 1のnogvl_getaddrinfoとrsock_getaddrinfoを参考にしている
@@ -70,8 +72,12 @@ do_rb_getaddrinfo_happy(void *ptr)
     }
     rb_nativethread_lock_unlock(entry->shared->lock);
 
-    if (need_free) free_rb_getaddrinfo_happy_entry_resource(entry);
-    if (shared_need_free) free_rb_getaddrinfo_happy_shared_resource(entry->shared);
+    if (need_free && entry) {
+        free_rb_getaddrinfo_happy_entry_resource(&entry);
+    }
+    if (shared_need_free && entry->shared) {
+        free_rb_getaddrinfo_happy_shared_resource(&entry->shared);
+    }
 
     return 0;
 }
