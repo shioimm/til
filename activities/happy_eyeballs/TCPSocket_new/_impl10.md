@@ -360,23 +360,30 @@ init_inetsock_internal_happy(VALUE v)
     int ipv4_entry_pos = arg->ipv4_entry_pos;;
     int families_size = arg->families_size;
 
-    int wait_resolution_pipe, notify_resolution_pipe;
+    int wait_resolution_pipe = -1, notify_resolution_pipe = -1;
     int pipefd[2];
-    pipe(pipefd);
-    wait_resolution_pipe = pipefd[ipv6_entry_pos];
-    notify_resolution_pipe = pipefd[ipv4_entry_pos];
-
-    struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared = create_rb_getaddrinfo_happy_shared_resource(hostp, portp);
-    if (!getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
-
     rb_nativethread_lock_t lock;
-    rb_nativethread_lock_initialize(&lock);
-    getaddrinfo_shared->lock = &lock;
-    getaddrinfo_shared->refcount = families_size + 1;
-    getaddrinfo_shared->notify = notify_resolution_pipe;
-    getaddrinfo_shared->wait = wait_resolution_pipe;
+    struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared;
     int cancelled = 0;
-    getaddrinfo_shared->cancelled = &cancelled;
+
+    int specified_family, is_host_specified_address;
+    is_host_specified_address = specified_address_family(hostp, &specified_family);
+
+    if (!is_host_specified_address) {
+        pipe(pipefd);
+        wait_resolution_pipe = pipefd[ipv6_entry_pos];
+        notify_resolution_pipe = pipefd[ipv4_entry_pos];
+
+        getaddrinfo_shared = create_rb_getaddrinfo_happy_shared_resource(hostp, portp);
+        if (!getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+
+        rb_nativethread_lock_initialize(&lock);
+        getaddrinfo_shared->lock = &lock;
+        getaddrinfo_shared->refcount = families_size + 1;
+        getaddrinfo_shared->notify = notify_resolution_pipe;
+        getaddrinfo_shared->wait = wait_resolution_pipe;
+        getaddrinfo_shared->cancelled = &cancelled;
+    }
 
     struct rb_getaddrinfo_happy_entry_resource *tmp_getaddrinfo_entry = NULL;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
@@ -420,9 +427,6 @@ init_inetsock_internal_happy(VALUE v)
     int state = START;
     int is_resolution_finished = FALSE;
     int stop = 0, last_family = 0;
-
-    int specified_family, is_host_specified_address;
-    is_host_specified_address = specified_address_family(hostp, &specified_family);
 
     ID sleep_param = rb_intern("@sleep_before_hostname_resolution");
     VALUE klass = rb_path2class("TCPSocket");
@@ -1074,9 +1078,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         inetsock_happy_resource.ipv6_entry_pos = ipv6_entry_pos;
         inetsock_happy_resource.ipv4_entry_pos = ipv4_entry_pos;
 
-        int ipv6_need_free, ipv4_need_free = 0;
-        inetsock_happy_resource.need_frees[ipv6_entry_pos] = &ipv6_need_free;
-        inetsock_happy_resource.need_frees[ipv4_entry_pos] = &ipv4_need_free;
+        for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
+            inetsock_happy_resource.getaddrinfo_entries[i] = NULL;
+        }
 
         int connecting_fds_size = 0;
         int connecting_fds_capacity = 0;

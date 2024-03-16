@@ -65,8 +65,8 @@ do_rb_getaddrinfo_happy(void *ptr)
                 write(entry->shared->notify, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
             }
         }
-        if (--entry->refcount == 0) need_free = 1;
-        if (--entry->shared->refcount == 0) shared_need_free = 1;
+        if (--(entry->refcount) == 0) need_free = 1;
+        if (--(entry->shared->refcount) == 0) shared_need_free = 1;
     }
     rb_nativethread_lock_unlock(entry->shared->lock);
 
