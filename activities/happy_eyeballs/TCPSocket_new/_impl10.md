@@ -296,9 +296,12 @@ int specified_address_family(const char *hostname, int *specified_family)
 struct inetsock_happy_arg
 {
     struct inetsock_arg *inetsock_resource;
+    const char *hostp, *portp;
     int *families;
     int families_size;
     int ipv6_entry_pos, ipv4_entry_pos;
+    int specified_family, is_host_specified_address;
+    int additional_flags;
     rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry_resource *getaddrinfo_entries[2];
     struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared;
@@ -341,15 +344,6 @@ init_inetsock_internal_happy(VALUE v)
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
-    char *hostp, *portp;
-    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
-    int additional_flags = 0;
-    hostp = host_str(inetsock_resource->remote.host, hbuf, sizeof(hbuf), &additional_flags);
-    portp = port_str(inetsock_resource->remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-
-    int specified_family, is_host_specified_address;
-    is_host_specified_address = specified_address_family(hostp, &specified_family);
-
     struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared = arg->getaddrinfo_shared;
     int ipv6_entry_pos = arg->ipv6_entry_pos;
     int ipv4_entry_pos = arg->ipv4_entry_pos;;
@@ -369,14 +363,14 @@ init_inetsock_internal_happy(VALUE v)
     fd_set readfds, writefds;
     int nfds;
 
-    if (!is_host_specified_address) {
+    if (!arg->is_host_specified_address) {
         pipe(pipefd);
         wait_resolution_pipe = pipefd[ipv6_entry_pos];
         notify_resolution_pipe = pipefd[ipv4_entry_pos];
         FD_ZERO(&readfds);
         FD_ZERO(&writefds);
-        getaddrinfo_shared->node = strdup(hostp);
-        getaddrinfo_shared->service = strdup(portp);
+        getaddrinfo_shared->node = strdup(arg->hostp);
+        getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = families_size + 1;
         getaddrinfo_shared->notify = notify_resolution_pipe;
         getaddrinfo_shared->wait = wait_resolution_pipe;
@@ -436,7 +430,7 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     while (!stop) {
-        printf("\nstate %d\n", state);
+        //printf("\nstate %d\n", state);
         switch (state) {
             case START:
             {
@@ -454,22 +448,22 @@ init_inetsock_internal_happy(VALUE v)
                     );
                 }
 
-                if (is_host_specified_address) {
+                if (arg->is_host_specified_address) {
                     struct addrinfo *ai;
                     struct addrinfo hints; // WIP
 
                     MEMZERO(&hints, struct addrinfo, 1);
-                    hints.ai_family = specified_family;
+                    hints.ai_family = arg->specified_family;
                     hints.ai_socktype = SOCK_STREAM;
                     hints.ai_protocol = IPPROTO_TCP;
                     hints.ai_flags = remote_addrinfo_hints;
-                    hints.ai_flags |= additional_flags;
+                    hints.ai_flags |= arg->additional_flags;
 
                     if (sleep_before_hostname_resolution) {
                         int findex = 0;
 
                         for (int i = 0; i < families_size; i++) {
-                            if (arg->families[i] == specified_family) {
+                            if (arg->families[i] == arg->specified_family) {
                                 findex = i; break;
                             }
                         }
@@ -477,7 +471,7 @@ init_inetsock_internal_happy(VALUE v)
                         usleep(sleep_ts[findex]);
                     }
 
-                    last_error = getaddrinfo(hostp, portp, &hints , &ai);
+                    last_error = getaddrinfo(arg->hostp, arg->portp, &hints , &ai);
 
                     if (last_error != 0) {
                         state = FAILURE;
@@ -485,10 +479,10 @@ init_inetsock_internal_happy(VALUE v)
                     } else {
                         is_resolution_finished = TRUE;
 
-                        if (specified_family == AF_INET6) {
+                        if (arg->specified_family == AF_INET6) {
                             selectable_addrinfos.ip6_ai = ai;
                             state = V6C;
-                        } else if (specified_family == AF_INET) {
+                        } else if (arg->specified_family == AF_INET) {
                             selectable_addrinfos.ip4_ai = ai;
                             state = V4C;
                         }
@@ -502,7 +496,7 @@ init_inetsock_internal_happy(VALUE v)
                             &getaddrinfo_hints[i],
                             arg->families[i],
                             remote_addrinfo_hints,
-                            additional_flags
+                            arg->additional_flags
                         );
 
                         arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
@@ -783,7 +777,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
 
-                if (is_host_specified_address &&
+                if (arg->is_host_specified_address &&
                     !(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip6_ai) &&
                     is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
                     is_resolution_finished) {
@@ -985,7 +979,7 @@ inetsock_cleanup_happy(VALUE v)
         close(inetsock_resource->fd);
     }
 
-    if (getaddrinfo_shared->refcount) {
+    if (!arg->is_host_specified_address) {
         int shared_need_free = 0;
         int need_free[2] = { 0, 0 };
         rb_nativethread_lock_lock(getaddrinfo_shared->lock);
@@ -1005,18 +999,8 @@ inetsock_cleanup_happy(VALUE v)
             if (need_free[i]) free_rb_getaddrinfo_happy_entry_resource(&arg->getaddrinfo_entries[i]);
         }
         if (shared_need_free) free_rb_getaddrinfo_happy_shared_resource(&getaddrinfo_shared);
-    } else {
-        rb_nativethread_lock_destroy(getaddrinfo_shared->lock);
-
-        for (int i = 0; i < arg->families_size; i++) {
-            free(arg->getaddrinfo_entries[i]);
-            arg->getaddrinfo_entries[i] = NULL;
-        }
-
-        free(getaddrinfo_shared);
-        getaddrinfo_shared = NULL;
     }
- 
+
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
         close_fd(connecting_fd);
@@ -1060,17 +1044,38 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         inetsock_happy_resource.ipv6_entry_pos = ipv6_entry_pos;
         inetsock_happy_resource.ipv4_entry_pos = ipv4_entry_pos;
 
-        inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared_resource();
-        if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+        char *hostp, *portp;
+        char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+        int additional_flags = 0;
+        hostp = host_str(arg.remote.host, hbuf, sizeof(hbuf), &additional_flags);
+        portp = port_str(arg.remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+        inetsock_happy_resource.hostp = hostp;
+        inetsock_happy_resource.portp = portp;
 
-        inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
-        rb_nativethread_lock_initialize(inetsock_happy_resource.getaddrinfo_shared->lock);
+        int specified_family, is_host_specified_address;
+        is_host_specified_address = specified_address_family(hostp, &specified_family);
+        inetsock_happy_resource.specified_family = specified_family;
+        inetsock_happy_resource.is_host_specified_address = is_host_specified_address;
+        inetsock_happy_resource.additional_flags = additional_flags;
 
-        for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
-            inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry_resource();
-            if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
-            inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
+        if (is_host_specified_address) {
+            inetsock_happy_resource.getaddrinfo_shared = NULL;
+            for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
+                inetsock_happy_resource.getaddrinfo_entries[i] = NULL;
+            }
+        } else {
+            inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared_resource();
+            if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+
+            inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
+            if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
+            rb_nativethread_lock_initialize(inetsock_happy_resource.getaddrinfo_shared->lock);
+
+            for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
+                inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry_resource();
+                if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
+                inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
+            }
         }
 
         int connecting_fds_size = 0;
