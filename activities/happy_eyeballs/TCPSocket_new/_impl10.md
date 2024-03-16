@@ -309,7 +309,6 @@ struct inetsock_happy_arg
     int *families;
     int families_size;
     int ipv6_entry_pos, ipv4_entry_pos;
-    int *need_frees[2];
     struct rb_getaddrinfo_happy_entry_resource *getaddrinfo_entries[2];
     int *connecting_fds_size;
     int *connecting_fds_capacity;
@@ -320,6 +319,7 @@ struct inetsock_happy_arg
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
+    puts("--------");
     struct inetsock_happy_arg *arg = (void *)v;
     struct inetsock_arg *inetsock_resource = arg->inetsock_resource;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
@@ -381,7 +381,6 @@ init_inetsock_internal_happy(VALUE v)
     struct rb_getaddrinfo_happy_entry_resource *tmp_getaddrinfo_entry = NULL;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
     struct addrinfo *tmp_selected_ai;
-    int *tmp_need_free = NULL;
 
     pthread_t threads[families_size];
     char resolved_type[2];
@@ -577,11 +576,9 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
                             tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv6_entry_pos];
-                            tmp_need_free = arg->need_frees[ipv6_entry_pos];
                             selectable_addrinfos.ip6_ai = tmp_getaddrinfo_entry->ai;
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
                             tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv4_entry_pos];
-                            tmp_need_free = arg->need_frees[ipv4_entry_pos];
                             selectable_addrinfos.ip4_ai = tmp_getaddrinfo_entry->ai;
                         }
 
@@ -590,11 +587,6 @@ init_inetsock_internal_happy(VALUE v)
                                 last_error = tmp_getaddrinfo_entry->err;
                             }
 
-                            rb_nativethread_lock_lock(&lock);
-                            {
-                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
-                            }
-                            rb_nativethread_lock_unlock(&lock);
                             resolution_retry_count--;
 
                             if (resolution_retry_count == 0) {
@@ -900,19 +892,9 @@ init_inetsock_internal_happy(VALUE v)
                         if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
                             selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[ipv6_entry_pos]->ai;
                             tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv6_entry_pos];
-                            tmp_need_free = arg->need_frees[ipv6_entry_pos];
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
                             selectable_addrinfos.ip4_ai = arg->getaddrinfo_entries[ipv4_entry_pos]->ai;
                             tmp_getaddrinfo_entry = arg->getaddrinfo_entries[ipv4_entry_pos];
-                            tmp_need_free = arg->need_frees[ipv4_entry_pos];
-                        }
-
-                        if (tmp_getaddrinfo_entry->err) {
-                            rb_nativethread_lock_lock(&lock);
-                            {
-                                if (--tmp_getaddrinfo_entry->refcount == 0) *tmp_need_free = 1;
-                            }
-                            rb_nativethread_lock_unlock(&lock);
                         }
 
                         FD_ZERO(&readfds);
@@ -1023,17 +1005,17 @@ inetsock_cleanup_happy(VALUE v)
         close(inetsock_resource->fd);
     }
 
+    int need_frees[2] = { 0, 0 };
+    int shared_need_free = 0;
     if (arg->getaddrinfo_entries[0]) {
         struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared = arg->getaddrinfo_entries[0]->shared;
-        int shared_need_free = 0;
 
         rb_nativethread_lock_lock(getaddrinfo_shared->lock);
         {
             for (int i = 0; i < arg->families_size; i++) {
                 if (arg->getaddrinfo_entries[i] &&
-                    *(arg->need_frees[i])  == 0 &&
                     --(arg->getaddrinfo_entries[i]->refcount) == 0) {
-                    *(arg->need_frees[i]) = 1;
+                    need_frees[i] = 1;
                 }
             }
             if (--(getaddrinfo_shared->refcount) == 0) shared_need_free = 1;
@@ -1041,13 +1023,14 @@ inetsock_cleanup_happy(VALUE v)
         rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
 
         for (int i = 0; i < arg->families_size; i++) {
-            if (arg->getaddrinfo_entries[i] && arg->need_frees[i]) {
+            if (arg->getaddrinfo_entries[i] && need_frees[i]) {
                 free_rb_getaddrinfo_happy_entry_resource(arg->getaddrinfo_entries[i]);
             }
         }
-        if (shared_need_free) free_rb_getaddrinfo_happy_shared_resource(getaddrinfo_shared);
+        if (shared_need_free) {
+            free_rb_getaddrinfo_happy_shared_resource(getaddrinfo_shared);
+        }
     }
-
     for (int i = 0; i < *arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
         close_fd(connecting_fd);
