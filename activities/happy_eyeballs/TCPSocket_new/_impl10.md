@@ -375,6 +375,7 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->notify = notify_resolution_pipe;
         getaddrinfo_shared->wait = wait_resolution_pipe;
         getaddrinfo_shared->cancelled = &cancelled;
+        rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
 
         wait_arg.readfds = &readfds;
         wait_arg.writefds = &writefds;
@@ -1069,7 +1070,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
             inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
             if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
-            rb_nativethread_lock_initialize(inetsock_happy_resource.getaddrinfo_shared->lock);
 
             for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
                 inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry_resource();
