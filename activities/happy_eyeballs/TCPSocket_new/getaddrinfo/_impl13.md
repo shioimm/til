@@ -102,6 +102,9 @@ VALUE rsock_init_inetsock(
 // -----------------------
 
 // 追加 -------------------
+#define IPV6_HOSTNAME_RESOLVED "1"
+#define IPV4_HOSTNAME_RESOLVED "2"
+
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 

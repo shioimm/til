@@ -1,8 +1,10 @@
-# 2023/3/14-15
+# 2023/3/14-16
 - (参照先: `getaddrinfo/_impl13`)
 - 名前解決時に扱うリソースのうち、共通のものとスレッドごとに必要なものを分割した
 - 条件によって不要なリソースを初期化しないようにした
 - 構造体名などを整えた
+- ロックのメモリ確保を動的に行うことで関数間で引き回すことができるようにした
+- 引数にIPアドレスを指定した場合は不要なリソースを初期化しないようにした
 
 ```c
 // ext/socket/ipsocket.c
@@ -393,7 +395,7 @@ init_inetsock_internal_happy(VALUE v)
     struct addrinfo *tmp_selected_ai;
 
     int *connecting_fds_size = arg->connecting_fds_size;
-    int initial_capacity = 1;
+    int initial_capacity = 10;
     int current_capacity = initial_capacity;
     int new_capacity;
 
