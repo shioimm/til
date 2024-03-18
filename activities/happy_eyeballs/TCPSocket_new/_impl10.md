@@ -38,18 +38,16 @@ enum sock_he_state {
 static struct rb_getaddrinfo_happy_shared_resource *
 create_rb_getaddrinfo_happy_shared_resource()
 {
-    struct rb_getaddrinfo_happy_shared_resource *shared = (struct rb_getaddrinfo_happy_shared_resource *)malloc(sizeof(struct rb_getaddrinfo_happy_shared_resource));
-    if (!shared) return NULL;
-    memset(shared, 0, sizeof(struct rb_getaddrinfo_happy_shared_resource));
+    struct rb_getaddrinfo_happy_shared_resource *shared;
+    shared = (struct rb_getaddrinfo_happy_shared_resource *)calloc(1, sizeof(struct rb_getaddrinfo_happy_shared_resource));
     return shared;
 }
 
 static struct rb_getaddrinfo_happy_entry_resource *
 allocate_rb_getaddrinfo_happy_entry_resource()
 {
-    struct rb_getaddrinfo_happy_entry_resource *entry = (struct rb_getaddrinfo_happy_entry_resource *)malloc(sizeof(struct rb_getaddrinfo_happy_entry_resource));
-    if (!entry) return NULL;
-    memset(entry, 0, sizeof(struct rb_getaddrinfo_happy_entry_resource));
+    struct rb_getaddrinfo_happy_entry_resource *entry;
+    entry = (struct rb_getaddrinfo_happy_entry_resource *)calloc(1, sizeof(struct rb_getaddrinfo_happy_entry_resource));
     return entry;
 }
 
