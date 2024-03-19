@@ -89,7 +89,7 @@ close_fd(int fd)
 
 struct cancel_happy_eyeballs_fds_arg
 {
-    int *cancelled, *connecting_fds, *connecting_fds_size;
+    int *cancelled, *connecting_fds, connecting_fds_size;
     rb_nativethread_lock_t *lock;
 };
 
@@ -104,7 +104,7 @@ cancel_happy_eyeballs_fds(void *ptr)
     }
     rb_nativethread_lock_unlock(arg->lock);
 
-    for (int i = 0; i < *(arg->connecting_fds_size); i++) {
+    for (int i = 0; i < arg->connecting_fds_size; i++) {
         int fd = arg->connecting_fds[i];
         close_fd(fd);
     }
@@ -306,10 +306,8 @@ struct inetsock_happy_arg
     rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry_resource *getaddrinfo_entries[2];
     struct rb_getaddrinfo_happy_shared_resource *getaddrinfo_shared;
-    int *connecting_fds_size;
-    int *connecting_fds_capacity;
+    int connecting_fds_size, connecting_fds_capacity, connected_fd;
     int *connecting_fds;
-    int *connected_fd;
 };
 
 static VALUE
@@ -391,14 +389,14 @@ init_inetsock_internal_happy(VALUE v)
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
     struct addrinfo *tmp_selected_ai;
 
-    int *connecting_fds_size = arg->connecting_fds_size;
+    int connecting_fds_size = arg->connecting_fds_size;
     int initial_capacity = 10;
     int current_capacity = initial_capacity;
     int new_capacity;
 
     arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
     if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
-    *arg->connecting_fds_capacity = initial_capacity;
+    arg->connecting_fds_capacity = initial_capacity;
 
     struct timeval resolution_delay;
     struct timeval connection_attempt_delay;
@@ -639,7 +637,7 @@ init_inetsock_internal_happy(VALUE v)
                     inetsock_resource->fd = fd = -1;
                     remote_ai = tmp_selected_ai;
                 } else { // 接続可能なaddrinfoが見つからなかった
-                    if (is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                    if (is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                         is_resolution_finished) {
                         state = FAILURE;
                     } else {
@@ -659,7 +657,7 @@ init_inetsock_internal_happy(VALUE v)
                     inetsock_resource->fd = fd = -1;
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                        is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                        is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                         is_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
@@ -688,7 +686,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     if (!local_ai) {
                         if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                            is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                            is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                             is_resolution_finished) {
                             // 試せるリモートaddrinfoが存在しないことが確定している
                             /* Use a different family local address if no choice, this
@@ -721,7 +719,7 @@ init_inetsock_internal_happy(VALUE v)
                     inetsock_resource->fd = fd = -1;
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                        is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                        is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                         is_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
@@ -757,7 +755,7 @@ init_inetsock_internal_happy(VALUE v)
                         inetsock_resource->fd = fd = -1;
 
                         if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                            is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                            is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                             is_resolution_finished) {
                             state = FAILURE;
                         } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
@@ -779,7 +777,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (arg->is_host_specified_address &&
                     !(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip6_ai) &&
-                    is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                    is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                     is_resolution_finished) {
                     status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, false, connect_timeout_tv);
                     syscall = "connect(2)";
@@ -795,15 +793,15 @@ init_inetsock_internal_happy(VALUE v)
                 if (status == 0) { // 接続に成功
                     state = SUCCESS;
                 } else if (errno == EINPROGRESS) { // 接続中
-                    if (current_capacity == *connecting_fds_size) {
+                    if (current_capacity == connecting_fds_size) {
                         new_capacity = current_capacity + initial_capacity;
                         arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
                         if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
                         current_capacity = new_capacity;
-                        *arg->connecting_fds_capacity = current_capacity;
+                        arg->connecting_fds_capacity = current_capacity;
                     }
-                    arg->connecting_fds[*connecting_fds_size] = fd;
-                    (*connecting_fds_size)++;
+                    arg->connecting_fds[connecting_fds_size] = fd;
+                    (connecting_fds_size)++;
                     state = V46W;
                 } else { // connect(2)に失敗
                     last_error = errno;
@@ -811,7 +809,7 @@ init_inetsock_internal_happy(VALUE v)
                     inetsock_resource->fd = fd = -1;
 
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                        is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                        is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                         is_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
@@ -845,7 +843,7 @@ init_inetsock_internal_happy(VALUE v)
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                nfds = initialize_write_fds(arg->connecting_fds, *connecting_fds_size, &writefds);
+                nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &writefds);
 
                 if (!is_resolution_finished) {
                     FD_ZERO(&readfds);
@@ -874,7 +872,7 @@ init_inetsock_internal_happy(VALUE v)
                         wait_arg.readfds = NULL;
                         is_resolution_finished = TRUE;
                     } else { // writefdsに書き込み可能ソケットができた
-                        inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, *connecting_fds_size, &writefds);
+                        inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &writefds);
                         if (fd >= 0) {
                             state = SUCCESS;
                         } else {
@@ -883,7 +881,7 @@ init_inetsock_internal_happy(VALUE v)
                             inetsock_resource->fd = fd = -1;
 
                             if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                                is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                                is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                                 is_resolution_finished) {
                                 state = FAILURE;
                             } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
@@ -902,7 +900,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 } else if (status == 0) { // Connection Attempt Delay timeout
                     if (!(selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) &&
-                        is_connecting_fds_empty(arg->connecting_fds, *connecting_fds_size) &&
+                        is_connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                         is_resolution_finished) {
                         state = FAILURE;
                     } else if (selectable_addrinfos.ip6_ai || selectable_addrinfos.ip4_ai) {
@@ -953,7 +951,7 @@ init_inetsock_internal_happy(VALUE v)
         }
     }
 
-    *arg->connected_fd = inetsock_resource->fd;
+    arg->connected_fd = inetsock_resource->fd;
     inetsock_resource->fd = -1;
 
     /* create new instance */
@@ -1001,7 +999,7 @@ inetsock_cleanup_happy(VALUE v)
         if (shared_need_free) free_rb_getaddrinfo_happy_shared_resource(&getaddrinfo_shared);
     }
 
-    for (int i = 0; i < *arg->connecting_fds_size; i++) {
+    for (int i = 0; i < arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
         close_fd(connecting_fd);
     }
@@ -1073,13 +1071,10 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             }
         }
 
-        int connecting_fds_size = 0;
-        int connecting_fds_capacity = 0;
-        inetsock_happy_resource.connecting_fds_size = &connecting_fds_size;
-        inetsock_happy_resource.connecting_fds_capacity = &connecting_fds_capacity;
+        inetsock_happy_resource.connecting_fds_size = 0;
+        inetsock_happy_resource.connecting_fds_capacity = 0;
 
-        int connected_fd = -1;
-        inetsock_happy_resource.connected_fd = &connected_fd;
+        inetsock_happy_resource.connected_fd = -1;
 
         return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
                          inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
