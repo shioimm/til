@@ -87,16 +87,10 @@ close_fd(int fd)
     if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
 }
 
-struct cancel_happy_eyeballs_fds_arg
-{
-    int *cancelled, *connecting_fds, connecting_fds_size;
-    rb_nativethread_lock_t *lock;
-};
-
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
-    struct cancel_happy_eyeballs_fds_arg *arg = (struct cancel_happy_eyeballs_fds_arg *)ptr;
+    struct rb_getaddrinfo_happy_shared_resource *arg = (struct rb_getaddrinfo_happy_shared_resource *)ptr;
 
     rb_nativethread_lock_lock(arg->lock);
     {
@@ -342,7 +336,6 @@ init_inetsock_internal_happy(VALUE v)
     int pipefd[2];
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
-    struct cancel_happy_eyeballs_fds_arg cancel_arg;
     int cancelled = 0;
 
     pthread_t threads[families_size];
@@ -364,16 +357,13 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_shared->wait = wait_resolution_pipe;
     getaddrinfo_shared->cancelled = &cancelled;
     rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
+    getaddrinfo_shared->connecting_fds = arg->connecting_fds;
+    getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
 
     wait_arg.readfds = &readfds;
     wait_arg.writefds = &writefds;
     wait_arg.nfds = &nfds;
     wait_arg.delay = NULL;
-
-    cancel_arg.cancelled = &cancelled;
-    cancel_arg.lock = getaddrinfo_shared->lock;
-    cancel_arg.connecting_fds = arg->connecting_fds;
-    cancel_arg.connecting_fds_size = arg->connecting_fds_size;
 
     struct rb_getaddrinfo_happy_entry_resource *tmp_getaddrinfo_entry = NULL;
     struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
@@ -476,7 +466,7 @@ init_inetsock_internal_happy(VALUE v)
                     FD_ZERO(&readfds);
                     FD_SET(wait_resolution_pipe, &readfds);
                     nfds = wait_resolution_pipe + 1;
-                    rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
+                    rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                     status = wait_arg.status;
                     syscall = "select(2)";
 
@@ -542,7 +532,7 @@ init_inetsock_internal_happy(VALUE v)
                 FD_ZERO(&readfds);
                 FD_SET(wait_resolution_pipe, &readfds);
                 nfds = wait_resolution_pipe + 1;
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -792,7 +782,7 @@ init_inetsock_internal_happy(VALUE v)
                     if ((wait_resolution_pipe + 1) > nfds) nfds = wait_resolution_pipe + 1;
                 }
 
-                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &cancel_arg);
+                rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -955,7 +945,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback)
 {
     // TODO struct rb_getaddrinfo_happy_shared_resourceのint *cancelledをbool chancelledにする
-    // TODO free_rb_getaddrinfo_happy_shared_resourceとwait_happy_eyeballs_fds_argとcancel_happy_eyeballs_fds_argは1つの構造体に統合
     // TODO init_inetsock_internal_happyのint cancelled = 0はrsock_init_inetsockから渡す
     struct inetsock_arg arg;
     arg.sock = sock;
