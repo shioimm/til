@@ -268,9 +268,9 @@ static int
 is_connecting_fds_empty(const int *fds, int fds_size)
 {
     for (int i = 0; i < fds_size; i++) {
-        if (fds[i] > 0) return FALSE;
+        if (fds[i] > 0) return false;
     }
-    return TRUE;
+    return true;
 }
 
 int is_specified_ip_address(const char *hostname)
@@ -382,7 +382,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timespec connection_attempt_started_at_ts = { -1, -1 };
 
     int state = START;
-    int is_resolution_finished = FALSE;
+    int is_resolution_finished = false;
     int stop = 0, last_family = 0;
 
     ID sleep_param = rb_intern("@sleep_before_hostname_resolution");
@@ -509,7 +509,7 @@ init_inetsock_internal_happy(VALUE v)
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) { // v6の名前解決に失敗している場合
                                 FD_ZERO(&readfds);
                                 wait_arg.readfds = NULL;
-                                is_resolution_finished = TRUE;
+                                is_resolution_finished = true;
                                 state = V4C;
                             } else { // v6の名前解決が終わっていない場合
                                 state = V4W;
@@ -554,7 +554,7 @@ init_inetsock_internal_happy(VALUE v)
                 selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                 FD_ZERO(&readfds);
                 wait_arg.readfds = NULL;
-                is_resolution_finished = TRUE;
+                is_resolution_finished = true;
                 state = V46C;
                 continue;
             }
@@ -799,7 +799,7 @@ init_inetsock_internal_happy(VALUE v)
 
                         FD_ZERO(&readfds);
                         wait_arg.readfds = NULL;
-                        is_resolution_finished = TRUE;
+                        is_resolution_finished = true;
                     } else { // writefdsに書き込み可能ソケットができた
                         inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &writefds);
                         if (fd >= 0) {
