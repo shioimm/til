@@ -65,9 +65,8 @@ static void allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int fami
 
 struct wait_happy_eyeballs_fds_arg
 {
-    int status;
-    int *nfds;
-    fd_set *readfds, *writefds;
+    int status, nfds;
+    fd_set readfds, writefds;
     struct timeval *delay;
 };
 
@@ -76,7 +75,8 @@ wait_happy_eyeballs_fds(void *ptr)
 {
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
-    status = select(*arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
+    // TODO このあたりにsleepをいれてキャンセル時の動作確認をする
+    status = select(arg->nfds, &arg->readfds, &arg->writefds, NULL, arg->delay);
     arg->status = status;
     return 0;
 }
@@ -341,14 +341,10 @@ init_inetsock_internal_happy(VALUE v)
     char resolved_type[2];
     ssize_t resolved_type_size;
 
-    fd_set readfds, writefds;
-    int nfds;
-
     pipe(pipefd);
     wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
     notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
-    FD_ZERO(&readfds);
-    FD_ZERO(&writefds);
+
     getaddrinfo_shared->node = strdup(arg->hostp);
     getaddrinfo_shared->service = strdup(arg->portp);
     getaddrinfo_shared->refcount = families_size + 1;
@@ -358,9 +354,12 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_shared->connecting_fds = arg->connecting_fds;
     getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
 
-    wait_arg.readfds = &readfds;
-    wait_arg.writefds = &writefds;
-    wait_arg.nfds = &nfds;
+    fd_set readfds, writefds;
+    FD_ZERO(&readfds);
+    FD_ZERO(&writefds);
+    wait_arg.readfds = readfds;
+    wait_arg.writefds = writefds;
+    wait_arg.nfds = 0;
     wait_arg.delay = NULL;
 
     struct rb_getaddrinfo_happy_entry_resource *tmp_getaddrinfo_entry = NULL;
@@ -461,9 +460,9 @@ init_inetsock_internal_happy(VALUE v)
                         resolution_expires_at_ts = resolv_timeout_expires_at_ts(*resolv_timeout_tv);
                     }
 
-                    FD_ZERO(&readfds);
-                    FD_SET(wait_resolution_pipe, &readfds);
-                    nfds = wait_resolution_pipe + 1;
+                    FD_ZERO(&wait_arg.readfds);
+                    FD_SET(wait_resolution_pipe, &wait_arg.readfds);
+                    wait_arg.nfds = wait_resolution_pipe + 1;
                     rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                     status = wait_arg.status;
                     syscall = "select(2)";
@@ -507,8 +506,7 @@ init_inetsock_internal_happy(VALUE v)
                             state = V6C;
                         } else if (tmp_getaddrinfo_entry->family == AF_INET) {
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) { // v6の名前解決に失敗している場合
-                                FD_ZERO(&readfds);
-                                wait_arg.readfds = NULL;
+                                FD_ZERO(&wait_arg.readfds);
                                 is_resolution_finished = true;
                                 state = V4C;
                             } else { // v6の名前解決が終わっていない場合
@@ -527,9 +525,9 @@ init_inetsock_internal_happy(VALUE v)
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
-                FD_ZERO(&readfds);
-                FD_SET(wait_resolution_pipe, &readfds);
-                nfds = wait_resolution_pipe + 1;
+                FD_ZERO(&wait_arg.readfds);
+                FD_SET(wait_resolution_pipe, &wait_arg.readfds);
+                wait_arg.nfds = wait_resolution_pipe + 1;
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                 status = wait_arg.status;
                 syscall = "select(2)";
@@ -552,8 +550,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
 
                 selectable_addrinfos.ip6_ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
-                FD_ZERO(&readfds);
-                wait_arg.readfds = NULL;
+                FD_ZERO(&wait_arg.readfds);
                 is_resolution_finished = true;
                 state = V46C;
                 continue;
@@ -772,12 +769,12 @@ init_inetsock_internal_happy(VALUE v)
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &writefds);
+                wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
 
                 if (!is_resolution_finished) {
-                    FD_ZERO(&readfds);
-                    FD_SET(wait_resolution_pipe, &readfds);
-                    if ((wait_resolution_pipe + 1) > nfds) nfds = wait_resolution_pipe + 1;
+                    FD_ZERO(&wait_arg.readfds);
+                    FD_SET(wait_resolution_pipe, &wait_arg.readfds);
+                    if ((wait_resolution_pipe + 1) > wait_arg.nfds) wait_arg.nfds = wait_resolution_pipe + 1;
                 }
 
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
@@ -797,11 +794,10 @@ init_inetsock_internal_happy(VALUE v)
                             tmp_getaddrinfo_entry = arg->getaddrinfo_entries[IPV4_ENTRY_POS];
                         }
 
-                        FD_ZERO(&readfds);
-                        wait_arg.readfds = NULL;
+                        FD_ZERO(&wait_arg.readfds);
                         is_resolution_finished = true;
                     } else { // writefdsに書き込み可能ソケットができた
-                        inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &writefds);
+                        inetsock_resource->fd = fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
                         if (fd >= 0) {
                             state = SUCCESS;
                         } else {
