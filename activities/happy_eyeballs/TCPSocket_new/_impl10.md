@@ -94,7 +94,7 @@ cancel_happy_eyeballs_fds(void *ptr)
 
     rb_nativethread_lock_lock(arg->lock);
     {
-      *arg->cancelled = 1;
+      arg->cancelled = true;
     }
     rb_nativethread_lock_unlock(arg->lock);
 
@@ -336,7 +336,6 @@ init_inetsock_internal_happy(VALUE v)
     int pipefd[2];
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
-    int cancelled = 0;
 
     pthread_t threads[families_size];
     char resolved_type[2];
@@ -355,7 +354,6 @@ init_inetsock_internal_happy(VALUE v)
     getaddrinfo_shared->refcount = families_size + 1;
     getaddrinfo_shared->notify = notify_resolution_pipe;
     getaddrinfo_shared->wait = wait_resolution_pipe;
-    getaddrinfo_shared->cancelled = &cancelled;
     rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
     getaddrinfo_shared->connecting_fds = arg->connecting_fds;
     getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
@@ -944,8 +942,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
                     VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback)
 {
-    // TODO struct rb_getaddrinfo_happy_shared_resourceのint *cancelledをbool chancelledにする
-    // TODO init_inetsock_internal_happyのint cancelled = 0はrsock_init_inetsockから渡す
     struct inetsock_arg arg;
     arg.sock = sock;
     arg.remote.host = remote_host;
@@ -991,6 +987,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                 if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
                 inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
             }
+
+            inetsock_happy_resource.getaddrinfo_shared->cancelled = false;
 
             return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
                              inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
