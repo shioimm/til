@@ -56,7 +56,7 @@ do_rb_getaddrinfo_happy(void *ptr)
     rb_nativethread_lock_lock(shared->lock);
     {
         entry->err = err;
-        if (*shared->cancelled) {
+        if (shared->cancelled) {
             if (entry->ai) {
                 freeaddrinfo(entry->ai);
                 entry->ai = NULL;
@@ -110,7 +110,8 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
 struct rb_getaddrinfo_happy_shared_resource {
     int wait, notify, refcount, connecting_fds_size;
-    int *cancelled, *connecting_fds;
+    int *connecting_fds;
+    bool cancelled;
     char *node, *service;
     rb_nativethread_lock_t *lock;
 };
