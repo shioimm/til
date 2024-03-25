@@ -31,10 +31,9 @@ class Socket
       # 二周目のループで、この時点ですでに接続確立していても以下の処理を行なっている
       mutex.synchronize do
         cond.wait(mutex) if addrinfos.empty?
+        addrinfo = addrinfos.shift
       end
 
-      # 二周目のループで、この時点ですでに接続確立していても以下の処理を行なっている
-      addrinfo = addrinfos.shift
       socket = Socket.new(addrinfo.afamily, addrinfo.socktype, addrinfo.protocol)
 
       socket.connect_nonblock(addrinfo, exception: false)
