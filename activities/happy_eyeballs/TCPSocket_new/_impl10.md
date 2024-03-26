@@ -782,7 +782,7 @@ init_inetsock_internal_happy(VALUE v)
                 syscall = "select(2)";
 
                 if (status > 0) {
-                    if (!is_resolution_finished && FD_ISSET(wait_resolution_pipe, &readfds)) { // 名前解決できた
+                    if (!is_resolution_finished && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
                         resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
                         resolved_type[resolved_type_size] = '\0';
 
