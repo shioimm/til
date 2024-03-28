@@ -220,11 +220,20 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
 }
 
 static int
-initialize_fdset(int initial_nfds, const int *fds, int fds_size, fd_set *set)
+initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
 {
-    if (fds_size == 0 || 0 > initial_nfds) return 0;
+    FD_ZERO(set);
+    FD_SET(fd, set);
 
-    int nfds = initial_nfds;
+    return (fd + 1) > initial_nfds ? fd + 1 : initial_nfds;
+}
+
+static int
+initialize_write_fds(const int *fds, int fds_size, fd_set *set)
+{
+    if (fds_size == 0) return 0;
+
+    int nfds = 0;
     FD_ZERO(set);
 
     for (int i = 0; i < fds_size; i++) {
@@ -234,9 +243,8 @@ initialize_fdset(int initial_nfds, const int *fds, int fds_size, fd_set *set)
         FD_SET(fd, set);
     }
 
-    if (nfds > 0 && nfds >= initial_nfds) {
-        return nfds++;
-    }
+    if (nfds > 0) nfds++;
+
     return nfds;
 }
 
@@ -462,9 +470,7 @@ init_inetsock_internal_happy(VALUE v)
                         resolution_expires_at_ts = resolv_timeout_expires_at_ts(*resolv_timeout_tv);
                     }
 
-                    FD_ZERO(&wait_arg.readfds);
-                    FD_SET(wait_resolution_pipe, &wait_arg.readfds);
-                    wait_arg.nfds = wait_resolution_pipe + 1;
+                    wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
                     rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                     status = wait_arg.status;
                     syscall = "select(2)";
@@ -527,9 +533,7 @@ init_inetsock_internal_happy(VALUE v)
                 resolution_delay.tv_sec = 0;
                 resolution_delay.tv_usec = RESOLUTION_DELAY_USEC;
                 wait_arg.delay = &resolution_delay;
-                FD_ZERO(&wait_arg.readfds);
-                FD_SET(wait_resolution_pipe, &wait_arg.readfds);
-                wait_arg.nfds = wait_resolution_pipe + 1;
+                wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
                 status = wait_arg.status;
                 syscall = "select(2)";
@@ -771,10 +775,10 @@ init_inetsock_internal_happy(VALUE v)
                 connection_attempt_delay.tv_usec = (int)usec_to_timeout(connection_attempt_delay_expires_at);
                 wait_arg.delay = &connection_attempt_delay;
 
-                wait_arg.nfds = initialize_fdset(0, arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+                wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
 
                 if (!is_resolution_finished) {
-                    wait_arg.nfds = initialize_fdset(wait_arg.nfds, &wait_resolution_pipe, 1, &wait_arg.readfds);
+                    wait_arg.nfds = initialize_read_fds(wait_arg.nfds, wait_resolution_pipe, &wait_arg.readfds);
                 }
 
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
