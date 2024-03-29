@@ -110,20 +110,13 @@ static void
 socket_nonblock_set(int fd)
 {
     int flags = fcntl(fd, F_GETFL);
-    if (flags == -1) {
-        rb_sys_fail(0);
-    }
 
-    if ((flags & O_NONBLOCK) != 0) {
-        return;
-    } else {
-        flags |= O_NONBLOCK;
-    }
+    if (flags == -1) rb_sys_fail(0);
+    if ((flags & O_NONBLOCK) != 0) return;
 
-    if (fcntl(fd, F_SETFL, flags) == -1) {
-        rb_sys_fail(0);
-    }
+    flags |= O_NONBLOCK;
 
+    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
     return;
 }
 
@@ -160,6 +153,7 @@ struct timespec connection_attempt_delay_expires_at_ts()
 {
     struct timespec ts = current_clocktime_ts();
     ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
+
     while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
         ts.tv_nsec -= 1000000000;
         ts.tv_sec += 1;
@@ -175,6 +169,7 @@ long usec_to_timeout(struct timespec ends_at)
     long sec_diff = ends_at.tv_sec - starts_at.tv_sec;
     long nsec_diff = ends_at.tv_nsec - starts_at.tv_nsec;
     long remaining = sec_diff * 1000000L + nsec_diff / 1000;
+
     return remaining > 0 ? remaining : 0;
 }
 
@@ -183,7 +178,6 @@ int is_timeout(struct timespec expires_at) {
 
     if (current.tv_sec > expires_at.tv_sec) return 1;
     if (current.tv_sec == expires_at.tv_sec && current.tv_nsec > expires_at.tv_nsec) return 1;
-
     return 0;
 }
 
@@ -199,12 +193,12 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
     int priority_on_v6[2] = { AF_INET6, AF_INET };
     int priority_on_v4[2] = { AF_INET, AF_INET6 };
     int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
-    struct addrinfo *tmp_selected_ai = NULL;
+    struct addrinfo *selected_ai = NULL;
 
     for (int i = 0; i < 2; i++) {
         if (precedences[i] == AF_INET6) {
-            tmp_selected_ai = addrinfos->ip6_ai;
-            if (tmp_selected_ai) {
+            selected_ai = addrinfos->ip6_ai;
+            if (selected_ai) {
                 addrinfos->ip6_ai = tmp_selected_ai->ai_next;
                 break;
             }
@@ -216,7 +210,7 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
             }
         }
     }
-    return tmp_selected_ai;
+    return selected_ai;
 }
 
 static int
@@ -224,7 +218,6 @@ initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
 {
     FD_ZERO(set);
     FD_SET(fd, set);
-
     return (fd + 1) > initial_nfds ? fd + 1 : initial_nfds;
 }
 
@@ -244,7 +237,6 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
     }
 
     if (nfds > 0) nfds++;
-
     return nfds;
 }
 
@@ -379,7 +371,6 @@ init_inetsock_internal_happy(VALUE v)
     int connecting_fds_size = arg->connecting_fds_size;
     int initial_capacity = 10;
     int current_capacity = initial_capacity;
-    int new_capacity;
 
     arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
     if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
@@ -726,7 +717,7 @@ init_inetsock_internal_happy(VALUE v)
                     state = SUCCESS;
                 } else if (errno == EINPROGRESS) { // 接続中
                     if (current_capacity == connecting_fds_size) {
-                        new_capacity = current_capacity + initial_capacity;
+                        int new_capacity = current_capacity + initial_capacity;
                         arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
                         if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
                         current_capacity = new_capacity;
