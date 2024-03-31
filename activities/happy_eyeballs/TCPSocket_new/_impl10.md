@@ -75,7 +75,6 @@ wait_happy_eyeballs_fds(void *ptr)
 {
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
-    // TODO このあたりにsleepをいれてキャンセル時の動作確認をする
     status = select(arg->nfds, &arg->readfds, &arg->writefds, NULL, arg->delay);
     arg->status = status;
     return 0;
@@ -94,16 +93,10 @@ cancel_happy_eyeballs_fds(void *ptr)
 
     rb_nativethread_lock_lock(arg->lock);
     {
-      arg->cancelled = true;
+        arg->cancelled = true;
+        write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED));
     }
     rb_nativethread_lock_unlock(arg->lock);
-
-    for (int i = 0; i < arg->connecting_fds_size; i++) {
-        int fd = arg->connecting_fds[i];
-        close_fd(fd);
-    }
-    free(arg->connecting_fds);
-    arg->connecting_fds = NULL;
 }
 
 static void
@@ -384,6 +377,7 @@ init_inetsock_internal_happy(VALUE v)
     int state = START;
     int is_resolution_finished = false;
     int stop = 0, last_family = 0;
+    bool cancelled;
 
     ID sleep_param = rb_intern("@sleep_before_hostname_resolution");
     VALUE klass = rb_path2class("TCPSocket");
@@ -463,6 +457,12 @@ init_inetsock_internal_happy(VALUE v)
 
                     wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
                     rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+                    rb_nativethread_lock_lock(getaddrinfo_shared->lock);
+                    cancelled = getaddrinfo_shared->cancelled;
+                    rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
+                    if (cancelled) rb_raise(rb_eInterrupt, "Operation was interrupted");
+
                     status = wait_arg.status;
                     syscall = "select(2)";
 
@@ -526,6 +526,12 @@ init_inetsock_internal_happy(VALUE v)
                 wait_arg.delay = &resolution_delay;
                 wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+                rb_nativethread_lock_lock(getaddrinfo_shared->lock);
+                cancelled = getaddrinfo_shared->cancelled;
+                rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
+                if (cancelled) rb_raise(rb_eInterrupt, "Operation was interrupted");
+
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -773,6 +779,12 @@ init_inetsock_internal_happy(VALUE v)
                 }
 
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+                rb_nativethread_lock_lock(getaddrinfo_shared->lock);
+                cancelled = getaddrinfo_shared->cancelled;
+                rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
+                if (cancelled) rb_raise(rb_eInterrupt, "Operation was interrupted");
+
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -924,6 +936,7 @@ inetsock_cleanup_happy(VALUE v)
 
     free(arg->connecting_fds);
     arg->connecting_fds = NULL;
+    rb_thread_check_ints();
 
     return Qnil;
 }
