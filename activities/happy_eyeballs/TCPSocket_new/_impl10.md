@@ -199,13 +199,13 @@ select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
         if (precedences[i] == AF_INET6) {
             selected_ai = addrinfos->ip6_ai;
             if (selected_ai) {
-                addrinfos->ip6_ai = tmp_selected_ai->ai_next;
+                addrinfos->ip6_ai = selected_ai->ai_next;
                 break;
             }
         } else {
-            tmp_selected_ai = addrinfos->ip4_ai;
-            if (tmp_selected_ai) {
-                addrinfos->ip4_ai = tmp_selected_ai->ai_next;
+            selected_ai = addrinfos->ip4_ai;
+            if (selected_ai) {
+                addrinfos->ip4_ai = selected_ai->ai_next;
                 break;
             }
         }
