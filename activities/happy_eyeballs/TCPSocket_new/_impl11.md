@@ -1,5 +1,6 @@
-# 2023/3/31
+# 2023/3/31-4/1
 - (参照先: `getaddrinfo/_impl13`)
+- `rb_thread_call_without_gvl2`から戻った際に割り込みを確認し、割り込みがある場合は例外を発生させるようにした
 
 ```c
 // ext/socket/ipsocket.c
@@ -70,7 +71,6 @@ wait_happy_eyeballs_fds(void *ptr)
 {
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
-    // TODO このあたりにsleepをいれてキャンセル時の動作確認をする
     status = select(arg->nfds, &arg->readfds, &arg->writefds, NULL, arg->delay);
     arg->status = status;
     return 0;
@@ -90,15 +90,9 @@ cancel_happy_eyeballs_fds(void *ptr)
     rb_nativethread_lock_lock(arg->lock);
     {
         arg->cancelled = true;
+        write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED));
     }
     rb_nativethread_lock_unlock(arg->lock);
-
-    for (int i = 0; i < arg->connecting_fds_size; i++) {
-        int fd = arg->connecting_fds[i];
-        close_fd(fd);
-    }
-    free(arg->connecting_fds);
-    arg->connecting_fds = NULL;
 }
 
 static void
@@ -458,6 +452,11 @@ init_inetsock_internal_happy(VALUE v)
 
                     wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
                     rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+                    if (errno == EINTR) getaddrinfo_shared->cancelled = 1;
+                    // TODO タイマースレッドによって割り込みされた場合はretryが必要
+                    rb_thread_check_ints();
+
                     status = wait_arg.status;
                     syscall = "select(2)";
 
@@ -521,6 +520,11 @@ init_inetsock_internal_happy(VALUE v)
                 wait_arg.delay = &resolution_delay;
                 wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+                if (errno == EINTR) getaddrinfo_shared->cancelled = 1;
+                // TODO タイマースレッドによって割り込みされた場合はretryが必要
+                rb_thread_check_ints();
+
                 status = wait_arg.status;
                 syscall = "select(2)";
 
@@ -768,6 +772,11 @@ init_inetsock_internal_happy(VALUE v)
                 }
 
                 rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+                if (errno == EINTR) getaddrinfo_shared->cancelled = 1;
+                // TODO タイマースレッドによって割り込みされた場合はretryが必要
+                rb_thread_check_ints();
+
                 status = wait_arg.status;
                 syscall = "select(2)";
 
