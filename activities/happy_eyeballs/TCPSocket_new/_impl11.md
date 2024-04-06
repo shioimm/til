@@ -2,6 +2,10 @@
 - (参照先: `getaddrinfo/_impl13`)
 - `rb_thread_call_without_gvl2`から戻った際に割り込みを確認し、割り込みがある場合は例外を発生させるようにした
 
+## TODO
+- `TestSocket_TCPSocket#test_initialize_v6_hostname_resolved_earlier_and_v6_server_is_not_listening`
+- `TestSocket_TCPSocket#test_initialize_v6_hostname_resolved_in_resolution_delay `
+
 ```c
 // ext/socket/ipsocket.c
 
