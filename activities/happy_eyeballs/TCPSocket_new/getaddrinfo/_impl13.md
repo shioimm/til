@@ -1,10 +1,10 @@
-# 2024/3/14-15
+# 2024/3/14-15, 4/6
 
 ```c
 // ext/socket/raddrinfo.c
 
 void
-free_rb_getaddrinfo_happy_shared_resource(struct rb_getaddrinfo_happy_shared_resource **shared)
+free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared)
 {
     free((*shared)->node);
     (*shared)->node = NULL;
@@ -20,7 +20,7 @@ free_rb_getaddrinfo_happy_shared_resource(struct rb_getaddrinfo_happy_shared_res
 }
 
 void
-free_rb_getaddrinfo_happy_entry_resource(struct rb_getaddrinfo_happy_entry_resource **entry)
+free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry)
 {
     if ((*entry)->ai) {
         freeaddrinfo((*entry)->ai);
@@ -34,8 +34,8 @@ free_rb_getaddrinfo_happy_entry_resource(struct rb_getaddrinfo_happy_entry_resou
 void *
 do_rb_getaddrinfo_happy(void *ptr)
 {
-    struct rb_getaddrinfo_happy_entry_resource *entry = (struct rb_getaddrinfo_happy_entry_resource *)ptr;
-    struct rb_getaddrinfo_happy_shared_resource *shared = entry->shared;
+    struct rb_getaddrinfo_happy_entry *entry = (struct rb_getaddrinfo_happy_entry *)ptr;
+    struct rb_getaddrinfo_happy_shared *shared = entry->shared;
     int err = 0, need_free = 0, shared_need_free = 0;
 
     err = numeric_getaddrinfo(shared->node, entry->shared->service, &entry->hints, &entry->ai);
@@ -74,10 +74,10 @@ do_rb_getaddrinfo_happy(void *ptr)
     rb_nativethread_lock_unlock(shared->lock);
 
     if (need_free && entry) {
-        free_rb_getaddrinfo_happy_entry_resource(&entry);
+        free_rb_getaddrinfo_happy_entry(&entry);
     }
     if (shared_need_free && shared) {
-        free_rb_getaddrinfo_happy_shared_resource(&shared);
+        free_rb_getaddrinfo_happy_shared(&shared);
     }
 
     return 0;
@@ -108,7 +108,7 @@ VALUE rsock_init_inetsock(
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
-struct rb_getaddrinfo_happy_shared_resource {
+struct rb_getaddrinfo_happy_shared {
     int wait, notify, refcount, connecting_fds_size;
     int *connecting_fds;
     bool cancelled;
@@ -116,17 +116,17 @@ struct rb_getaddrinfo_happy_shared_resource {
     rb_nativethread_lock_t *lock;
 };
 
-struct rb_getaddrinfo_happy_entry_resource
+struct rb_getaddrinfo_happy_entry
 {
     int family, err, refcount, sleep;
     struct addrinfo hints;
     struct addrinfo *ai;
-    struct rb_getaddrinfo_happy_shared_resource *shared;
+    struct rb_getaddrinfo_happy_shared *shared;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
-void free_rb_getaddrinfo_happy_entry_resource(struct rb_getaddrinfo_happy_entry_resource **entry);
-void free_rb_getaddrinfo_happy_shared_resource(struct rb_getaddrinfo_happy_shared_resource **shared);
+void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry);
+void free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared);
 // -------------------------
 ```
