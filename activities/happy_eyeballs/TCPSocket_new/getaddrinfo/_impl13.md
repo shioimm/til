@@ -1,7 +1,13 @@
-# 2024/3/14-15, 4/6
+# 2024/3/14-15, 4/6-7
 
 ```c
 // ext/socket/raddrinfo.c
+
+void
+close_fd(int fd)
+{
+    if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
+}
 
 void
 free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared)
@@ -10,10 +16,8 @@ free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared)
     (*shared)->node = NULL;
     free((*shared)->service);
     (*shared)->service = NULL;
-
-    if ((*shared)->notify >= 0 && fcntl((*shared)->notify, F_GETFL) != -1) close((*shared)->notify);
-    if ((*shared)->wait >= 0 && fcntl((*shared)->wait, F_GETFL) != -1) close((*shared)->wait);
-
+    close_fd((*shared)->notify);
+    close_fd((*shared)->wait);
     rb_nativethread_lock_destroy((*shared)->lock);
     free(*shared);
     *shared = NULL;
@@ -124,6 +128,7 @@ struct rb_getaddrinfo_happy_entry
     struct rb_getaddrinfo_happy_shared *shared;
 };
 
+void close_fd(int fd);
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
 void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry);

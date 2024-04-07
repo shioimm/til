@@ -81,12 +81,6 @@ wait_happy_eyeballs_fds(void *ptr)
 }
 
 static void
-close_fd(int fd)
-{
-    if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
-}
-
-static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
     struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
