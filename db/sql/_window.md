@@ -18,6 +18,21 @@ from
     customers;
 ```
 
+```sql
+select
+    category
+    , name
+    , price
+    , row_number() over(partition by category order by price asc) as rank
+from
+    products
+where
+    rank = 1
+;
+
+-- categoryごとにpriceが高いproductを取得
+```
+
 #### 使用できる集約関数
 - 通常の集約関数
 - `rank` / `dense_rank`
