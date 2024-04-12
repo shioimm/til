@@ -41,6 +41,15 @@ ActiveRecord::Base.connection.select_one(sql)
 
 #### SQL文を実行
 
+- `ActiveRecord::Base.sanitize_sql` / `ActiveRecord::Base.sanitize_sql_for_conditions`
+- `ActiveRecord::Base.sanitize_sql_array`
+
+```ruby
+sql = "role in (:roles)"
+query = ActiveRecord::Base.sanitize_sql_for_conditions([sql, roles: [:admin, :seller]])
+User.where(query)
+```
+
 ```ruby
 query     = "update books set title = ? where title = ?"
 title     = "The Pragmatic Programmer"
