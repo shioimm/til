@@ -17,11 +17,13 @@ class Server
   end
 
   def accept_loop
+    puts "#{@version.capitalize} server started"
     sleep if @version == :ipv6
     @socket.listen(5)
 
     loop do
       connection, addrinfo = @socket.accept
+      puts "Received #{@version.capitalize} request"
       connection.readpartial(128)
       connection.write("Connection OK: #{addrinfo.ip_address}\n")
       connection.close
