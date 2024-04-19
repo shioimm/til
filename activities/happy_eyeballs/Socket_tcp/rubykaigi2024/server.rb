@@ -25,7 +25,7 @@ class Server
       connection, addrinfo = @socket.accept
       puts "Received #{@version} request"
       connection.readpartial(128)
-      connection.write("Connection OK: #{addrinfo.ip_address}\n")
+      connection.write("Connection OK: #{addrinfo.ip_address} (#{@version})\n")
       connection.close
     rescue EOFError => e
       puts "EOFError #{connection}: #{e}"
