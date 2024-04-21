@@ -1,4 +1,4 @@
-require 'socket'
+require "socket"
 
 HOSTNAME = "localhost"
 PORT = 4567
