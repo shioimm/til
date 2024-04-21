@@ -1,4 +1,4 @@
-require 'socket'
+require "socket"
 
 class Server
   ADDRESS_FAMILIES = {
@@ -11,14 +11,15 @@ class Server
     family, address = ADDRESS_FAMILIES[version]
     @socket  = Socket.new(family, :STREAM)
     sockaddr = Socket.pack_sockaddr_in(4567, address)
+    @socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, true)
     @socket.bind(sockaddr)
-    @socket.setsockopt(:SOCKET, :REUSEADDR, true)
-    trap(:INT) { @socket.close; exit }
   end
 
   def accept_loop
     puts "#{@version} server started"
-    sleep 5 if @version == :ipv6
+
+    sleep if @version == :IPv4
+
     @socket.listen(5)
 
     loop do
