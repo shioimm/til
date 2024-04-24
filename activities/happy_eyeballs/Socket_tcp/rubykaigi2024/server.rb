@@ -1,4 +1,5 @@
 require "socket"
+require "optparse"
 
 class Server
   ADDRESS_FAMILIES = {
@@ -18,7 +19,8 @@ class Server
   def accept_loop
     puts "#{@version} server started"
 
-    sleep if @version == :IPv4
+    target_family = ARGV.getopts("", "sleep:")["sleep"]&.to_sym
+    sleep if target_family == @version
 
     @socket.listen(5)
 
