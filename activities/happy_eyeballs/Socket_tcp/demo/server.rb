@@ -17,10 +17,14 @@ class Server
   end
 
   def accept_loop
-    puts "#{@version} server started"
-
     target_family = ARGV.getopts("", "sleep:")["sleep"]&.to_sym
-    sleep if target_family == @version
+
+    if target_family == @version
+      puts "#{@version} server started but it's starting to sleep"
+      sleep
+    else
+      puts "#{@version} server started"
+    end
 
     @socket.listen(5)
 
