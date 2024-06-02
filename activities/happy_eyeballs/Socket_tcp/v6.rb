@@ -36,6 +36,8 @@ class Socket
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
     selectable_addrinfos = SelectableAddrinfos.new
     connecting_sockets = ConnectingSockets.new
+    connected_socket = nil
+    is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     if local_host && local_port
       # TODO
@@ -55,9 +57,11 @@ class Socket
     timeout = nil # TODO
 
     ret = loop do
+      break connected_socket if connected_socket
+
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
-        nil, # TODO
+        connecting_sockets.all,
         nil,
         timeout
       )
@@ -78,7 +82,7 @@ class Socket
           hostname_resolution_waiting
       end
 
-      connection_attempt_startable = true # TODO
+      connection_attempt_startable = selectable_addrinfos.any? # TODO Delay系を考慮する
       if connection_attempt_startable
         addrinfo = selectable_addrinfos.get
 
@@ -98,7 +102,29 @@ class Socket
         end
       end
 
-      # TODO
+      if writable_sockets&.any?
+        while (writable_socket = writable_sockets.pop)
+          is_connected =
+            if is_windows_environment
+              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
+              sockopt.unpack('i').first >= 0
+            else
+              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+              sockopt.int.zero?
+            end
+
+          if is_connected
+            connected_socket = writable_socket
+            connecting_sockets.delete connected_socket
+            writable_sockets.each do |other_writable_socket|
+              other_writable_socket.close unless other_writable_socket.closed?
+            end
+            break
+          else
+            # TODO
+          end
+        end
+      end
     end
 
     if block_given?
@@ -374,15 +400,15 @@ PORT = 9292
 #    print socket.read
 # end
 #
-Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-end
-
-Socket.tcp("127.0.0.1", PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-end
+# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
+#
+# Socket.tcp("127.0.0.1", PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
 
 Socket.tcp(HOSTNAME, PORT) do |socket|
   socket.write "GET / HTTP/1.0\r\n\r\n"
