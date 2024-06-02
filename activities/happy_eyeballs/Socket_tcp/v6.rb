@@ -7,6 +7,15 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
+  ADDRESS_FAMILIES = {
+    ipv6: Socket::AF_INET6,
+    ipv4: Socket::AF_INET
+  }.freeze
+  private_constant :ADDRESS_FAMILIES
+
+  HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
+  private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
+
   IPV6_ADRESS_FORMAT = /(?i)(?:(?:[0-9A-F]{1,4}:){7}(?:[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){6}(?:[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){5}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,4}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){4}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,3}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){3}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,2}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){2}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:)[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){1}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|::(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|::(?:[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,6}[0-9A-F]{1,4}|:))(?:%.+)?/
   private_constant :IPV6_ADRESS_FORMAT
 
@@ -21,11 +30,40 @@ class Socket
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
+    resolving_family_names = ADDRESS_FAMILIES.keys
+    hostname_resolution_threads = []
+    hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
+
     if local_host && local_port
       # TODO
     end
 
+    hostname_resolution_args = [host, port, hostname_resolution_queue]
+
+    hostname_resolution_threads.concat(
+      resolving_family_names.map { |family|
+        thread_args = [family, *hostname_resolution_args]
+        thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+        Thread.pass
+        thread
+      }
+    )
+
+    timeout = nil # TODO
+
     ret = loop do
+      hostname_resolved, writable_sockets, = IO.select(
+        hostname_resolution_waiting,
+        nil, # TODO
+        nil,
+        timeout
+      )
+
+      if hostname_resolved&.any?
+        # TODO
+      end
+
       # TODO
     end
 
@@ -43,11 +81,6 @@ class Socket
       # TODO
     end
   end
-
-  def self.connecting_to_ip_address?(hostname)
-    hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
-  end
-  private_class_method :connecting_to_ip_address?
 
   def self.tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     last_error = nil
@@ -94,6 +127,79 @@ class Socket
     end
   end
   private_class_method :tcp_without_fast_fallback
+
+  def self.connecting_to_ip_address?(hostname)
+    hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
+  end
+  private_class_method :connecting_to_ip_address?
+
+  def self.hostname_resolution(family, host, port, hostname_resolution_queue)
+    begin
+      resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
+      hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
+    rescue => e
+      hostname_resolution_queue.add_error(family, e)
+    end
+  end
+  private_class_method :hostname_resolution
+
+  class HostnameResolutionQueue
+    def initialize(size)
+      @size = size
+      @taken_count = 0
+      @rpipe, @wpipe = IO.pipe
+      @queue = Queue.new
+      @mutex = Mutex.new
+    end
+
+    def waiting_pipe
+      [@rpipe]
+    end
+
+    def add_resolved(family, resolved_addrinfos)
+      @mutex.synchronize do
+        @queue.push [family, resolved_addrinfos]
+        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      end
+    end
+
+    def add_error(family, error)
+      @mutex.synchronize do
+        @queue.push [family, error]
+        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+      end
+    end
+
+    def get
+      return nil if @queue.empty?
+
+      res = nil
+
+      @mutex.synchronize do
+        @rpipe.getbyte
+        res = @queue.pop
+      end
+
+      @taken_count += 1
+      close_all if @taken_count == @size
+      res
+    end
+
+    def closed?
+      @rpipe.closed?
+    end
+
+    def opened?
+      !closed?
+    end
+
+    def close_all
+      @queue.close unless @queue.closed?
+      @rpipe.close unless @rpipe.closed?
+      @wpipe.close unless @wpipe.closed?
+    end
+  end
+  private_constant :HostnameResolutionQueue
 end
 
 HOSTNAME = "localhost"
@@ -171,7 +277,7 @@ Socket.tcp("127.0.0.1", PORT) do |socket|
   print socket.read
 end
 
-# Socket.tcp(HOSTNAME, PORT) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
+Socket.tcp(HOSTNAME, PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
