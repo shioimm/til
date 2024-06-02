@@ -7,6 +7,9 @@ class Socket
   CONNECTION_ATTEMPT_DELAY = 0.25
   private_constant :CONNECTION_ATTEMPT_DELAY
 
+  IPV6_ADRESS_FORMAT = /(?i)(?:(?:[0-9A-F]{1,4}:){7}(?:[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){6}(?:[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){5}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,4}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){4}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,3}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){3}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,2}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){2}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:)[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){1}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|::(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|::(?:[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,6}[0-9A-F]{1,4}|:))(?:%.+)?/
+  private_constant :IPV6_ADRESS_FORMAT
+
   @tcp_fast_fallback = true
 
   class << self
@@ -14,10 +17,37 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    unless fast_fallback
+    if (!fast_fallback) || (host && connecting_to_ip_address?(host))
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
+
+    if local_host && local_port
+      # TODO
+    end
+
+    ret = loop do
+      # TODO
+    end
+
+    if block_given?
+      begin
+        yield ret
+      ensure
+        ret.close
+      end
+    else
+      ret
+    end
+  ensure
+    if fast_fallback
+      # TODO
+    end
   end
+
+  def self.connecting_to_ip_address?(hostname)
+    hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
+  end
+  private_class_method :connecting_to_ip_address?
 
   def self.tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     last_error = nil
@@ -131,12 +161,17 @@ PORT = 9292
 #    print socket.read
 # end
 #
-# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
-
-Socket.tcp(HOSTNAME, PORT) do |socket|
+Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
   socket.write "GET / HTTP/1.0\r\n\r\n"
   print socket.read
 end
+
+Socket.tcp("127.0.0.1", PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
+
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
