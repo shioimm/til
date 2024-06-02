@@ -34,6 +34,8 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
+    selectable_addrinfos = SelectableAddrinfos.new
+    connecting_sockets = ConnectingSockets.new
 
     if local_host && local_port
       # TODO
@@ -61,7 +63,39 @@ class Socket
       )
 
       if hostname_resolved&.any?
-        # TODO
+        family_name, res = hostname_resolution_queue.get
+
+        if res.is_a? Exception
+          # TODO
+        else
+          selectable_addrinfos.add(family_name, res)
+          # TODO IPv4だった場合の処理を考える
+        end
+
+        # TODO Queueでよいかどうかも含めてちょっと考える
+        hostname_resolution_waiting = hostname_resolution_waiting && hostname_resolution_queue.closed? ?
+          nil :
+          hostname_resolution_waiting
+      end
+
+      connection_attempt_startable = true # TODO
+      if connection_attempt_startable
+        addrinfo = selectable_addrinfos.get
+
+        begin
+          socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+          # TODO socket.bind(local_addrinfo) if local_addrinfo
+          result = socket.connect_nonblock(addrinfo, exception: false)
+
+          case result
+          when 0
+            break socket
+          when :wait_writable # 接続試行中
+            connecting_sockets.add(socket, addrinfo)
+          end
+        rescue SystemCallError => e
+          # TODO
+        end
       end
 
       # TODO
@@ -200,6 +234,79 @@ class Socket
     end
   end
   private_constant :HostnameResolutionQueue
+
+  class SelectableAddrinfos
+    PRIORITY_ON_V6 = [:ipv6, :ipv4]
+    PRIORITY_ON_V4 = [:ipv4, :ipv6]
+
+    def initialize
+      @addrinfo_dict = {}
+      @last_family = nil
+    end
+
+    def add(family_name, addrinfos)
+      @addrinfo_dict[family_name] = addrinfos
+    end
+
+    def get
+      return nil if empty?
+
+      if @addrinfo_dict.size == 1
+        @addrinfo_dict.each { |_, addrinfos| return addrinfos.shift }
+      end
+
+      precedences = case @last_family
+                    when :ipv4, nil then PRIORITY_ON_V6
+                    when :ipv6      then PRIORITY_ON_V4
+                    end
+
+      precedences.each do |family_name|
+        addrinfo = @addrinfo_dict[family_name]&.shift
+        next unless addrinfo
+
+        @last_family = family_name
+        return addrinfo
+      end
+    end
+
+    def empty?
+      @addrinfo_dict.all? { |_, addrinfos| addrinfos.empty? }
+    end
+
+    def any?
+      !empty?
+    end
+  end
+  private_constant :SelectableAddrinfos
+
+  class ConnectingSockets
+    def initialize
+      @socket_dict = {}
+    end
+
+    def all
+      @socket_dict.keys
+    end
+
+    def add(socket, addrinfo)
+      @socket_dict[socket] = addrinfo
+    end
+
+    def delete(socket)
+      @socket_dict.delete socket
+    end
+
+    def empty?
+      @socket_dict.empty?
+    end
+
+    def each
+      @socket_dict.keys.each do |socket|
+        yield socket
+      end
+    end
+  end
+  private_constant :ConnectingSockets
 end
 
 HOSTNAME = "localhost"
