@@ -73,7 +73,7 @@ class Socket
           # TODO
         else
           selectable_addrinfos.add(family_name, res)
-          # TODO IPv4だった場合の処理を考える
+          # TODO IPv4だった場合 Resolution Delay
         end
 
         # TODO Queueでよいかどうかも含めてちょっと考える
@@ -84,6 +84,8 @@ class Socket
 
       connection_attempt_startable = selectable_addrinfos.any? # TODO Delay系を考慮する
       if connection_attempt_startable
+        # TODO local_host / local_portがある場合
+
         addrinfo = selectable_addrinfos.get
 
         begin
@@ -98,7 +100,7 @@ class Socket
             connecting_sockets.add(socket, addrinfo)
           end
         rescue SystemCallError => e
-          # TODO
+          # TODO 再試行
         end
       end
 
@@ -121,7 +123,7 @@ class Socket
             end
             break
           else
-            # TODO
+            # TODO 接続失敗時
           end
         end
       end
@@ -138,7 +140,7 @@ class Socket
     end
   ensure
     if fast_fallback
-      # TODO
+      # TODO あとしまつ
     end
   end
 
