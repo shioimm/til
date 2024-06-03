@@ -155,7 +155,15 @@ class Socket
     end
   ensure
     if fast_fallback
-      # TODO あとしまつ
+      hostname_resolution_threads.each do |thread|
+        thread&.exit
+      end
+
+      hostname_resolution_queue&.close_all
+
+      connecting_sockets.each do |connecting_socket|
+        connecting_socket.close unless connecting_socket.closed?
+      end
     end
   end
 
