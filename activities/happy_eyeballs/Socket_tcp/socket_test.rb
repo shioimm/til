@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
-require_relative "./socket"
+require_relative "./v6"
 
 class SocketTest < Minitest::Test
   def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
@@ -127,6 +127,7 @@ class SocketTest < Minitest::Test
     socket.close if socket && !socket.closed?
   end
 
+  # start -> v4w -> v46c (IPv6) -> v46w -> v46c (IPv4) -> v46w -> success (IPv4)
   def test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
     p :test_that_returns_IPv4_connected_socket_when_IPv6_address_name_resolution_takes_time_and_IPv6_address_connecting_takes_more_time
     begin
