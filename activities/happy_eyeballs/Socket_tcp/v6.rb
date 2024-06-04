@@ -55,26 +55,27 @@ class Socket
     )
 
     ends_at = nil
-    timeout = nil
     count = 0 # for debugging
 
     ret = loop do
-      count += 1 # for debugging↲
+      count += 1 # for debugging
 
       break connected_socket if connected_socket
 
-      p "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{timeout})"
+      puts "[DEBUG] #{count}: ** Start to wait **"
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(ends_at)})"
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        timeout
+        second_to_timeout(ends_at),
       )
 
-      p "[DEBUG] #{count}: hostname_resolved -> #{hostname_resolved}"
+      puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
       if hostname_resolved&.any?
         family_name, res = hostname_resolution_queue.get
-        p "[DEBUG] #{count}: family_name, res -> #{[family_name, res]}"
+        puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
 
         if res.is_a? Exception
           # TODO
@@ -83,7 +84,6 @@ class Socket
 
           if family_name.eql?(:ipv4) && hostname_resolution_queue.opened?
             ends_at = now + RESOLUTION_DELAY
-            timeout = second_to_timeout(ends_at)
           end
         end
 
@@ -93,17 +93,20 @@ class Socket
           hostname_resolution_waiting
       end
 
-      p "[DEBUG] #{count}: selectable_addrinfos -> #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
-      p "[DEBUG] #{count}: second_to_timeout(timeout) #{second_to_timeout(timeout)}"
-      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any? # TODO Connection Attempt Delayを考慮する
+      puts "[DEBUG] #{count}: ** Start to connect **"
+      puts "[DEBUG] #{count}: selectable_addrinfos #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
+      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any?
         # TODO local_host / local_portがある場合
 
         addrinfo = selectable_addrinfos.get
+        puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
         begin
           socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
           # TODO socket.bind(local_addrinfo) if local_addrinfo
           result = socket.connect_nonblock(addrinfo, exception: false)
+          ends_at = now + CONNECTION_ATTEMPT_DELAY # 待った方がIO.selectの呼び出しを抑制できる...
+          # ends_at = selectable_addrinfos.any? ? now + CONNECTION_ATTEMPT_DELAY : nil
 
           case result
           when 0
@@ -116,11 +119,13 @@ class Socket
         end
       end
 
-      p "[DEBUG] #{count}: connecting_sockets -> #{connecting_sockets.all}"
-      p "[DEBUG] #{count}: writable_sockets -> #{writable_sockets}"
+      puts "[DEBUG] #{count}: ** Check for writable_sockets **"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
+          puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is now writable"
           is_connected =
             if is_windows_environment
               sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
@@ -142,8 +147,10 @@ class Socket
           end
         end
       end
+      puts "------------------------"
     end
 
+    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}"
     if block_given?
       begin
         yield ret
