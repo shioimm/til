@@ -54,11 +54,16 @@ class Socket
       }
     )
 
-    timeout = nil # TODO
+    ends_at = nil
+    timeout = nil
+    count = 0 # for debugging
 
     ret = loop do
+      count += 1 # for debugging↲
+
       break connected_socket if connected_socket
 
+      p "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{timeout})"
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
@@ -66,14 +71,20 @@ class Socket
         timeout
       )
 
+      p "[DEBUG] #{count}: hostname_resolved -> #{hostname_resolved}"
       if hostname_resolved&.any?
         family_name, res = hostname_resolution_queue.get
+        p "[DEBUG] #{count}: family_name, res -> #{[family_name, res]}"
 
         if res.is_a? Exception
           # TODO
         else
           selectable_addrinfos.add(family_name, res)
-          # TODO IPv4だった場合 Resolution Delay
+
+          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened?
+            ends_at = now + RESOLUTION_DELAY
+            timeout = second_to_timeout(ends_at)
+          end
         end
 
         # TODO Queueでよいかどうかも含めてちょっと考える
@@ -82,8 +93,9 @@ class Socket
           hostname_resolution_waiting
       end
 
-      connection_attempt_startable = selectable_addrinfos.any? # TODO Delay系を考慮する
-      if connection_attempt_startable
+      p "[DEBUG] #{count}: selectable_addrinfos -> #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
+      p "[DEBUG] #{count}: second_to_timeout(timeout) #{second_to_timeout(timeout)}"
+      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any? # TODO Connection Attempt Delayを考慮する
         # TODO local_host / local_portがある場合
 
         addrinfo = selectable_addrinfos.get
@@ -104,6 +116,9 @@ class Socket
         end
       end
 
+      p "[DEBUG] #{count}: connecting_sockets -> #{connecting_sockets.all}"
+      p "[DEBUG] #{count}: writable_sockets -> #{writable_sockets}"
+
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
           is_connected =
@@ -121,7 +136,7 @@ class Socket
             writable_sockets.each do |other_writable_socket|
               other_writable_socket.close unless other_writable_socket.closed?
             end
-            break
+            next
           else
             # TODO 接続失敗時
           end
@@ -140,7 +155,15 @@ class Socket
     end
   ensure
     if fast_fallback
-      # TODO あとしまつ
+      hostname_resolution_threads.each do |thread|
+        thread&.exit
+      end
+
+      hostname_resolution_queue&.close_all
+
+      connecting_sockets.each do |connecting_socket|
+        connecting_socket.close unless connecting_socket.closed?
+      end
     end
   end
 
@@ -204,6 +227,19 @@ class Socket
     end
   end
   private_class_method :hostname_resolution
+
+  def self.now
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+  private_class_method :now
+
+  def self.second_to_timeout(ends_at)
+    return 0 unless ends_at
+
+    remaining = (ends_at - now)
+    remaining.negative? ? 0 : remaining
+  end
+  private_class_method :second_to_timeout
 
   class HostnameResolutionQueue
     def initialize(size)
@@ -412,7 +448,7 @@ PORT = 9292
 #   print socket.read
 # end
 
-Socket.tcp(HOSTNAME, PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-end
+# Socket.tcp(HOSTNAME, PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
