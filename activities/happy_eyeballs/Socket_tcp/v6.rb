@@ -70,6 +70,36 @@ class Socket
         nil,
         second_to_timeout(ends_at),
       )
+      ends_at = nil
+
+      puts "[DEBUG] #{count}: ** Check for writable_sockets **"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
+
+      if writable_sockets&.any?
+        while (writable_socket = writable_sockets.pop)
+          puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is now writable"
+          is_connected =
+            if is_windows_environment
+              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
+              sockopt.unpack('i').first >= 0
+            else
+              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+              sockopt.int.zero?
+            end
+
+          if is_connected
+            connected_socket = writable_socket
+            connecting_sockets.delete connected_socket
+            writable_sockets.each do |other_writable_socket|
+              other_writable_socket.close unless other_writable_socket.closed?
+            end
+            next
+          else
+            # TODO 接続失敗時
+          end
+        end
+      end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
@@ -82,7 +112,7 @@ class Socket
         else
           selectable_addrinfos.add(family_name, res)
 
-          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened?
+          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened? && !ends_at
             ends_at = now + RESOLUTION_DELAY
           end
         end
@@ -116,35 +146,6 @@ class Socket
           end
         rescue SystemCallError => e
           # TODO 再試行
-        end
-      end
-
-      puts "[DEBUG] #{count}: ** Check for writable_sockets **"
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
-
-      if writable_sockets&.any?
-        while (writable_socket = writable_sockets.pop)
-          puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is now writable"
-          is_connected =
-            if is_windows_environment
-              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
-              sockopt.unpack('i').first >= 0
-            else
-              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
-              sockopt.int.zero?
-            end
-
-          if is_connected
-            connected_socket = writable_socket
-            connecting_sockets.delete connected_socket
-            writable_sockets.each do |other_writable_socket|
-              other_writable_socket.close unless other_writable_socket.closed?
-            end
-            next
-          else
-            # TODO 接続失敗時
-          end
         end
       end
       puts "------------------------"
