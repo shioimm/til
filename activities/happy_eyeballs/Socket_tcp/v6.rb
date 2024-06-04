@@ -108,7 +108,11 @@ class Socket
         puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
 
         if res.is_a? Exception
-          # TODO
+          unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
+            (res.is_a?(Socket::ResolutionError)) &&
+            (res.error_code == Socket::EAI_ADDRFAMILY)
+            last_error = res
+          end
         else
           selectable_addrinfos.add(family_name, res)
 
@@ -148,6 +152,8 @@ class Socket
           # TODO 再試行
         end
       end
+
+      raise last_error if hostname_resolution_queue.closed? && connecting_sockets.empty?
       puts "------------------------"
     end
 
