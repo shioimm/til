@@ -60,8 +60,6 @@ class Socket
     ret = loop do
       count += 1 # for debugging
 
-      break connected_socket if connected_socket
-
       puts "[DEBUG] #{count}: ** Start to wait **"
       puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(ends_at)})"
       hostname_resolved, writable_sockets, = IO.select(
@@ -78,7 +76,6 @@ class Socket
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
-          puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is now writable"
           is_connected =
             if is_windows_environment
               sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
@@ -89,17 +86,23 @@ class Socket
             end
 
           if is_connected
+            puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected"
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
             writable_sockets.each do |other_writable_socket|
               other_writable_socket.close unless other_writable_socket.closed?
             end
-            next
+            break
           else
-            # TODO 接続失敗時
+            failed_ai = connecting_sockets.delete writable_socket
+            inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+            last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
+            writable_socket.close unless writable_socket.closed?
           end
         end
       end
+
+      break connected_socket if connected_socket
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
