@@ -55,69 +55,24 @@ class Socket
     )
 
     ends_at = nil
-    timeout = nil
     count = 0 # for debugging
 
     ret = loop do
-      count += 1 # for debugging↲
+      count += 1 # for debugging
 
-      break connected_socket if connected_socket
-
-      p "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{timeout})"
+      puts "[DEBUG] #{count}: ** Start to wait **"
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(ends_at)})"
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        timeout
+        second_to_timeout(ends_at),
       )
+      ends_at = nil
 
-      p "[DEBUG] #{count}: hostname_resolved -> #{hostname_resolved}"
-      if hostname_resolved&.any?
-        family_name, res = hostname_resolution_queue.get
-        p "[DEBUG] #{count}: family_name, res -> #{[family_name, res]}"
-
-        if res.is_a? Exception
-          # TODO
-        else
-          selectable_addrinfos.add(family_name, res)
-
-          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened?
-            ends_at = now + RESOLUTION_DELAY
-            timeout = second_to_timeout(ends_at)
-          end
-        end
-
-        # TODO Queueでよいかどうかも含めてちょっと考える
-        hostname_resolution_waiting = hostname_resolution_waiting && hostname_resolution_queue.closed? ?
-          nil :
-          hostname_resolution_waiting
-      end
-
-      p "[DEBUG] #{count}: selectable_addrinfos -> #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
-      p "[DEBUG] #{count}: second_to_timeout(timeout) #{second_to_timeout(timeout)}"
-      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any? # TODO Connection Attempt Delayを考慮する
-        # TODO local_host / local_portがある場合
-
-        addrinfo = selectable_addrinfos.get
-
-        begin
-          socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-          # TODO socket.bind(local_addrinfo) if local_addrinfo
-          result = socket.connect_nonblock(addrinfo, exception: false)
-
-          case result
-          when 0
-            break socket
-          when :wait_writable # 接続試行中
-            connecting_sockets.add(socket, addrinfo)
-          end
-        rescue SystemCallError => e
-          # TODO 再試行
-        end
-      end
-
-      p "[DEBUG] #{count}: connecting_sockets -> #{connecting_sockets.all}"
-      p "[DEBUG] #{count}: writable_sockets -> #{writable_sockets}"
+      puts "[DEBUG] #{count}: ** Check for writable_sockets **"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
@@ -131,19 +86,81 @@ class Socket
             end
 
           if is_connected
+            puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected"
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
             writable_sockets.each do |other_writable_socket|
               other_writable_socket.close unless other_writable_socket.closed?
             end
-            next
+            break
           else
-            # TODO 接続失敗時
+            failed_ai = connecting_sockets.delete writable_socket
+            inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+            last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
+            writable_socket.close unless writable_socket.closed?
           end
         end
       end
+
+      break connected_socket if connected_socket
+
+      puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
+      if hostname_resolved&.any?
+        family_name, res = hostname_resolution_queue.get
+        puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
+
+        if res.is_a? Exception
+          unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
+            (res.is_a?(Socket::ResolutionError)) &&
+            (res.error_code == Socket::EAI_ADDRFAMILY)
+            last_error = res
+          end
+        else
+          selectable_addrinfos.add(family_name, res)
+
+          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened? && !ends_at
+            ends_at = now + RESOLUTION_DELAY
+          end
+        end
+
+        # TODO Queueでよいかどうかも含めてちょっと考える
+        hostname_resolution_waiting = hostname_resolution_waiting && hostname_resolution_queue.closed? ?
+          nil :
+          hostname_resolution_waiting
+      end
+
+      puts "[DEBUG] #{count}: ** Start to connect **"
+      puts "[DEBUG] #{count}: selectable_addrinfos #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
+      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any?
+        # TODO local_host / local_portがある場合
+
+        addrinfo = selectable_addrinfos.get
+        puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
+
+        begin
+          socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+          # TODO socket.bind(local_addrinfo) if local_addrinfo
+          result = socket.connect_nonblock(addrinfo, exception: false)
+          ends_at = now + CONNECTION_ATTEMPT_DELAY # 待った方がIO.selectの呼び出しを抑制できる...
+          # ends_at = selectable_addrinfos.any? ? now + CONNECTION_ATTEMPT_DELAY : nil
+
+          case result
+          when 0
+            break socket
+          when :wait_writable # 接続試行中
+            connecting_sockets.add(socket, addrinfo)
+          end
+        rescue SystemCallError => e
+          # TODO 再試行
+        end
+      end
+
+      raise last_error if hostname_resolution_queue.closed? && connecting_sockets.empty?
+      puts "------------------------"
     end
 
+    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}"
     if block_given?
       begin
         yield ret
