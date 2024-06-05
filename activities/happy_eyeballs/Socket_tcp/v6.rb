@@ -57,6 +57,7 @@ class Socket
     )
 
     ends_at = nil
+    hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
     count = 0 # for debugging
 
     ret = loop do
@@ -69,8 +70,21 @@ class Socket
         connecting_sockets.all,
         nil,
         ends_at ? second_to_timeout(ends_at) : nil,
+        # TODO 渡す値を考える
+        # 初回はresolv_timeoutがない場合はnilを渡したい
+        # 初回でresolv_timeoutがある場合以外は second_to_timeout(hostname_resolution_expires_at) を渡したい
+        # Resolution Delay中は second_to_timeout(now + RESOLUTION_DELAY) を渡したい
+        # 接続試行中は second_to_timeout(now + CONNECTION_ATTEMPT_DELAY) を渡したい
+        # 上書き式でいいのかな...
       )
       ends_at = nil
+
+      if hostname_resolution_expires_at &&
+          !hostname_resolved &&
+          resolved_addrinfos.resolved_none? &&
+          hostname_resolution_expires_at <= now
+        raise Errno::ETIMEDOUT, 'user specified timeout'
+      end
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
