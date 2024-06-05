@@ -36,7 +36,7 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
-    selectable_addrinfos = SelectableAddrinfos.new
+    resolved_addrinfos = ResolvedAddrinfos.new
     connecting_sockets = ConnectingSockets.new
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
@@ -119,10 +119,9 @@ class Socket
             last_error = res
           end
         else
-          selectable_addrinfos.add(family_name, res)
+          resolved_addrinfos.add(family_name, res)
 
-          # NOTE Connection Attempt DelayとResolution Delayがコンフリクトした場合は前者を優先
-          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened? && !ends_at
+          if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
             ends_at = now + RESOLUTION_DELAY
           end
         end
@@ -133,12 +132,12 @@ class Socket
           hostname_resolution_waiting
       end
 
-      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any?
+      if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **"
-        puts "[DEBUG] #{count}: selectable_addrinfos #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
+        puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
         # TODO local_host / local_portがある場合
 
-        while (addrinfo = selectable_addrinfos.get)
+        while (addrinfo = resolved_addrinfos.get)
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
           begin
@@ -164,7 +163,7 @@ class Socket
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if !connected_socket &&
-          selectable_addrinfos.empty? &&
+          resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
         raise last_error
@@ -328,7 +327,7 @@ class Socket
   end
   private_constant :HostnameResolutionQueue
 
-  class SelectableAddrinfos
+  class ResolvedAddrinfos
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
     PRIORITY_ON_V4 = [:ipv4, :ipv6]
 
@@ -369,8 +368,12 @@ class Socket
     def any?
       !empty?
     end
+
+    def resolved?(family)
+      @addrinfo_dict.keys.include? family
+    end
   end
-  private_constant :SelectableAddrinfos
+  private_constant :ResolvedAddrinfos
 
   class ConnectingSockets
     def initialize
