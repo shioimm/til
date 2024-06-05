@@ -58,6 +58,7 @@ class Socket
 
     ends_at = nil
     hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
+    connection_attempt_expires_at = nil
     count = 0 # for debugging
 
     ret = loop do
@@ -120,6 +121,10 @@ class Socket
 
       break connected_socket if connected_socket
 
+      if connection_attempt_expires_at && connection_attempt_expires_at <= now
+        raise Errno::ETIMEDOUT, 'user specified timeout'
+      end
+
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
       if hostname_resolved&.any?
@@ -159,6 +164,10 @@ class Socket
             # TODO socket.bind(local_addrinfo) if local_addrinfo
             result = socket.connect_nonblock(addrinfo, exception: false)
             ends_at = now + CONNECTION_ATTEMPT_DELAY
+
+            if connect_timeout && !connection_attempt_expires_at
+              connection_attempt_expires_at = now + connect_timeout
+            end
 
             case result
             when 0
