@@ -68,7 +68,7 @@ class Socket
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        second_to_timeout(ends_at),
+        ends_at ? second_to_timeout(ends_at) : nil,
       )
       ends_at = nil
 
@@ -121,6 +121,7 @@ class Socket
         else
           selectable_addrinfos.add(family_name, res)
 
+          # NOTE Connection Attempt DelayとResolution Delayがコンフリクトした場合は前者を優先
           if family_name.eql?(:ipv4) && hostname_resolution_queue.opened? && !ends_at
             ends_at = now + RESOLUTION_DELAY
           end
