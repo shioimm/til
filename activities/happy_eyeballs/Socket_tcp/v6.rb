@@ -130,33 +130,42 @@ class Socket
           hostname_resolution_waiting
       end
 
-      puts "[DEBUG] #{count}: ** Start to connect **"
-      puts "[DEBUG] #{count}: selectable_addrinfos #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
       if second_to_timeout(ends_at).zero? && selectable_addrinfos.any?
+        puts "[DEBUG] #{count}: ** Start to connect **"
+        puts "[DEBUG] #{count}: selectable_addrinfos #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
         # TODO local_host / local_portがある場合
 
-        addrinfo = selectable_addrinfos.get
-        puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
+        while (addrinfo = selectable_addrinfos.get)
+          puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
-        begin
-          socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-          # TODO socket.bind(local_addrinfo) if local_addrinfo
-          result = socket.connect_nonblock(addrinfo, exception: false)
-          ends_at = now + CONNECTION_ATTEMPT_DELAY # 待った方がIO.selectの呼び出しを抑制できる...
-          # ends_at = selectable_addrinfos.any? ? now + CONNECTION_ATTEMPT_DELAY : nil
+          begin
+            socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+            # TODO socket.bind(local_addrinfo) if local_addrinfo
+            result = socket.connect_nonblock(addrinfo, exception: false)
+            ends_at = now + CONNECTION_ATTEMPT_DELAY
 
-          case result
-          when 0
-            break socket
-          when :wait_writable # 接続試行中
-            connecting_sockets.add(socket, addrinfo)
+            case result
+            when 0
+              connected_socket = socket
+              break
+            when :wait_writable # 接続試行中
+              connecting_sockets.add(socket, addrinfo)
+              break
+            end
+          rescue SystemCallError => e
+            last_error = $!
+            next
           end
-        rescue SystemCallError => e
-          # TODO 再試行
         end
       end
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
-      raise last_error if hostname_resolution_queue.closed? && connecting_sockets.empty?
+      if !connected_socket &&
+          selectable_addrinfos.empty? &&
+          connecting_sockets.empty? &&
+          hostname_resolution_queue.closed?
+        raise last_error
+      end
       puts "------------------------"
     end
 
