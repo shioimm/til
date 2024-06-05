@@ -286,8 +286,8 @@ class SocketTest < Minitest::Test
     connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
-  def test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
-    p :test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
+  def test_that_returns_IPv4_connected_socket_when_IPv4_address_passed
+    p :test_that_returns_IPv4_connected_socket_when_IPv4_address_passed
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
 

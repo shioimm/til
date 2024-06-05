@@ -26,7 +26,9 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    if (!fast_fallback) || (host && connecting_to_ip_address?(host))
+   use_hev2 = fast_fallback && !(host && connecting_to_ip_address?(host))
+
+    if !use_hev2
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
@@ -180,7 +182,7 @@ class Socket
       ret
     end
   ensure
-    if fast_fallback
+    if use_hev2
       hostname_resolution_threads.each do |thread|
         thread&.exit
       end
