@@ -36,10 +36,13 @@ class Socket
     end
 
     if local_host && local_port
-      # TODO
+      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
+      resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
+    else
+      local_addrinfos = []
+      resolving_family_names = ADDRESS_FAMILIES.keys
     end
 
-    resolving_family_names = ADDRESS_FAMILIES.keys
     hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
@@ -150,14 +153,35 @@ class Socket
       if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **"
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
-        # TODO local_host / local_portがある場合
 
         while (addrinfo = resolved_addrinfos.get)
+          puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address"
+
+          if local_addrinfos.any?
+            puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}"
+            local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
+
+            if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
+              if resolved_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
+                raise SocketError.new 'no appropriate local address'
+              elsif resolved_addrinfos.any?
+                # Try other Addrinfo in next loop
+                next
+              elsif resolv_timeout && hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at
+                break
+              else
+                # Wait for connection to be established or hostname resolution in next loop
+                break
+              end
+            end
+          end
+
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
           begin
             socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-            # TODO socket.bind(local_addrinfo) if local_addrinfo
+            socket.bind(local_addrinfo) if local_addrinfo
             result = socket.connect_nonblock(addrinfo, exception: false)
             ends_at = now + CONNECTION_ATTEMPT_DELAY
 
@@ -176,6 +200,10 @@ class Socket
           rescue SystemCallError => e
             last_error = $!
             next
+            # TODO リソースの状況に応じて処理を変えるべきか考える
+            # - resolved_addrinfos any / empty
+            # - connecting_sockets any / empty
+            # - hostname_resolution_queue open / close
           end
         end
       end
@@ -482,9 +510,9 @@ class Addrinfo
   end
 end
 
-local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
+# local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
 
-Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
+Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
    socket.write "GET / HTTP/1.0\r\n\r\n"
    print socket.read
 end
