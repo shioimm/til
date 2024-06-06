@@ -199,11 +199,13 @@ class Socket
             end
           rescue SystemCallError => e
             last_error = $!
-            next
-            # TODO リソースの状況に応じて処理を変えるべきか考える
-            # - resolved_addrinfos any / empty
-            # - connecting_sockets any / empty
-            # - hostname_resolution_queue open / close
+
+            if resolved_addrinfos.any?
+              # Try other Addrinfo in next loop↲
+              next
+            elsif resolv_timeout && hostname_resolution_queue.opened?
+              ends_at = hostname_resolution_expires_at
+            end
           end
         end
       end
