@@ -286,8 +286,8 @@ class SocketTest < Minitest::Test
     connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
-  def test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
-    p :test_that_returns_IPv6_connected_socket_when_IPv4_address_passed
+  def test_that_returns_IPv4_connected_socket_when_IPv4_address_passed
+    p :test_that_returns_IPv4_connected_socket_when_IPv4_address_passed
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
 
@@ -376,6 +376,44 @@ class SocketTest < Minitest::Test
     end
 
     server.close
+  end
+
+  def test_that_retry_connection_attempt_when_connection_attempt_is_failed # NOTE Added
+    p :test_that_retry_connection_attempt_when_connection_attempt_is_failed
+    server = TCPServer.new("127.0.0.1", 12345)
+    _, port, = server.addr
+
+    Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+      if family == Socket::AF_INET6
+        sleep 0.01
+        [Addrinfo.tcp("::1", port)]
+      else
+        [Addrinfo.tcp("127.0.0.1", port)]
+      end
+    end
+
+    # NOTE 同じループの中で再試行できているかどうかを検証できていないので注意
+    Socket.define_method(:connect_nonblock) do |sockaddr, **_kwargs|
+      if sockaddr.ipv6?
+        raise SystemCallError, 'error'
+      else
+        require 'fcntl'
+        self.fcntl(Fcntl::F_SETFL, Fcntl::O_NONBLOCK)
+        self.connect(sockaddr)
+      end
+    end
+
+    server_thread = Thread.new { server.accept }
+    connected_socket = Socket.tcp("localhost", port)
+
+    assert_equal(
+      connected_socket.remote_address.ipv4?,
+      true
+    )
+  ensure
+    server_thread.value.close
+    server.close
+    connected_socket.close if connected_socket && !connected_socket.closed?
   end
 
   def test_that_raises_ECONNREFUSED_with_connection_failure

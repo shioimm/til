@@ -26,7 +26,9 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    if (!fast_fallback) || (host && connecting_to_ip_address?(host))
+   use_hev2 = fast_fallback && !(host && connecting_to_ip_address?(host))
+
+    if !use_hev2
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
@@ -34,7 +36,7 @@ class Socket
     hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
-    selectable_addrinfos = SelectableAddrinfos.new
+    resolved_addrinfos = ResolvedAddrinfos.new
     connecting_sockets = ConnectingSockets.new
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
@@ -55,6 +57,8 @@ class Socket
     )
 
     ends_at = nil
+    hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
+    connection_attempt_expires_at = nil
     count = 0 # for debugging
 
     ret = loop do
@@ -66,9 +70,22 @@ class Socket
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        second_to_timeout(ends_at),
+        ends_at ? second_to_timeout(ends_at) : nil,
+        # TODO 渡す値を考える
+        # 初回はresolv_timeoutがない場合はnilを渡したい
+        # 初回でresolv_timeoutがある場合以外は second_to_timeout(hostname_resolution_expires_at) を渡したい
+        # Resolution Delay中は second_to_timeout(now + RESOLUTION_DELAY) を渡したい
+        # 接続試行中は second_to_timeout(now + CONNECTION_ATTEMPT_DELAY) を渡したい
+        # 上書き式でいいのかな...
       )
       ends_at = nil
+
+      if hostname_resolution_expires_at &&
+          !hostname_resolved &&
+          resolved_addrinfos.resolved_none? &&
+          hostname_resolution_expires_at <= now
+        raise Errno::ETIMEDOUT, 'user specified timeout'
+      end
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
@@ -104,6 +121,10 @@ class Socket
 
       break connected_socket if connected_socket
 
+      if connection_attempt_expires_at && connection_attempt_expires_at <= now
+        raise Errno::ETIMEDOUT, 'user specified timeout'
+      end
+
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
       if hostname_resolved&.any?
@@ -117,9 +138,9 @@ class Socket
             last_error = res
           end
         else
-          selectable_addrinfos.add(family_name, res)
+          resolved_addrinfos.add(family_name, res)
 
-          if family_name.eql?(:ipv4) && hostname_resolution_queue.opened? && !ends_at
+          if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
             ends_at = now + RESOLUTION_DELAY
           end
         end
@@ -130,33 +151,46 @@ class Socket
           hostname_resolution_waiting
       end
 
-      puts "[DEBUG] #{count}: ** Start to connect **"
-      puts "[DEBUG] #{count}: selectable_addrinfos #{selectable_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
-      if second_to_timeout(ends_at).zero? && selectable_addrinfos.any?
+      if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
+        puts "[DEBUG] #{count}: ** Start to connect **"
+        puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
         # TODO local_host / local_portがある場合
 
-        addrinfo = selectable_addrinfos.get
-        puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
+        while (addrinfo = resolved_addrinfos.get)
+          puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
-        begin
-          socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-          # TODO socket.bind(local_addrinfo) if local_addrinfo
-          result = socket.connect_nonblock(addrinfo, exception: false)
-          ends_at = now + CONNECTION_ATTEMPT_DELAY # 待った方がIO.selectの呼び出しを抑制できる...
-          # ends_at = selectable_addrinfos.any? ? now + CONNECTION_ATTEMPT_DELAY : nil
+          begin
+            socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+            # TODO socket.bind(local_addrinfo) if local_addrinfo
+            result = socket.connect_nonblock(addrinfo, exception: false)
+            ends_at = now + CONNECTION_ATTEMPT_DELAY
 
-          case result
-          when 0
-            break socket
-          when :wait_writable # 接続試行中
-            connecting_sockets.add(socket, addrinfo)
+            if connect_timeout && !connection_attempt_expires_at
+              connection_attempt_expires_at = now + connect_timeout
+            end
+
+            case result
+            when 0
+              connected_socket = socket
+              break
+            when :wait_writable # 接続試行中
+              connecting_sockets.add(socket, addrinfo)
+              break
+            end
+          rescue SystemCallError => e
+            last_error = $!
+            next
           end
-        rescue SystemCallError => e
-          # TODO 再試行
         end
       end
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
-      raise last_error if hostname_resolution_queue.closed? && connecting_sockets.empty?
+      if !connected_socket &&
+          resolved_addrinfos.empty? &&
+          connecting_sockets.empty? &&
+          hostname_resolution_queue.closed?
+        raise last_error
+      end
       puts "------------------------"
     end
 
@@ -171,7 +205,7 @@ class Socket
       ret
     end
   ensure
-    if fast_fallback
+    if use_hev2
       hostname_resolution_threads.each do |thread|
         thread&.exit
       end
@@ -316,7 +350,7 @@ class Socket
   end
   private_constant :HostnameResolutionQueue
 
-  class SelectableAddrinfos
+  class ResolvedAddrinfos
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
     PRIORITY_ON_V4 = [:ipv4, :ipv6]
 
@@ -357,8 +391,12 @@ class Socket
     def any?
       !empty?
     end
+
+    def resolved?(family)
+      @addrinfo_dict.keys.include? family
+    end
   end
-  private_constant :SelectableAddrinfos
+  private_constant :ResolvedAddrinfos
 
   class ConnectingSockets
     def initialize
