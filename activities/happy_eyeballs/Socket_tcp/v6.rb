@@ -26,10 +26,17 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-   use_hev2 = fast_fallback && !(host && connecting_to_ip_address?(host))
+   disable_hev2 =
+     !fast_fallback ||
+     (host && ip_address?(host)) ||
+     (local_host && local_port && ip_address?(local_host))
 
-    if !use_hev2
+    if disable_hev2
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    end
+
+    if local_host && local_port
+      # TODO
     end
 
     resolving_family_names = ADDRESS_FAMILIES.keys
@@ -40,10 +47,6 @@ class Socket
     connecting_sockets = ConnectingSockets.new
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
-
-    if local_host && local_port
-      # TODO
-    end
 
     hostname_resolution_args = [host, port, hostname_resolution_queue]
 
@@ -198,7 +201,7 @@ class Socket
       ret
     end
   ensure
-    if use_hev2
+    unless disable_hev2
       hostname_resolution_threads.each do |thread|
         thread&.exit
       end
@@ -257,10 +260,10 @@ class Socket
   end
   private_class_method :tcp_without_fast_fallback
 
-  def self.connecting_to_ip_address?(hostname)
+  def self.ip_address?(hostname)
     hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
   end
-  private_class_method :connecting_to_ip_address?
+  private_class_method :ip_address?
 
   def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
@@ -460,31 +463,31 @@ PORT = 9292
 #   end
 # end
 
-# # local_host / local_port を指定する場合
-# class Addrinfo
-#   class << self
-#     alias _getaddrinfo getaddrinfo
-#
-#     def getaddrinfo(nodename, service, family, *_)
-#       if service == 9292
-#         if family == Socket::AF_INET6
-#           [Addrinfo.tcp("::1", 9292)]
-#         else
-#           [Addrinfo.tcp("127.0.0.1", 9292)]
-#         end
-#       else
-#         _getaddrinfo(nodename, service, family)
-#       end
-#     end
-#   end
-# end
-#
-# local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
-#
-# Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
-#    socket.write "GET / HTTP/1.0\r\n\r\n"
-#    print socket.read
-# end
+# local_host / local_port を指定する場合
+class Addrinfo
+  class << self
+    alias _getaddrinfo getaddrinfo
+
+    def getaddrinfo(nodename, service, family, *_)
+      if service == 9292
+        if family == Socket::AF_INET6
+          [Addrinfo.tcp("::1", 9292)]
+        else
+          [Addrinfo.tcp("127.0.0.1", 9292)]
+        end
+      else
+        _getaddrinfo(nodename, service, family)
+      end
+    end
+  end
+end
+
+local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
+
+Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
+   socket.write "GET / HTTP/1.0\r\n\r\n"
+   print socket.read
+end
 #
 # Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
