@@ -356,6 +356,25 @@ class SocketTest < Minitest::Test
     end
   end
 
+  # def test_that_continues_to_wait_hostname_resolution_with_opened_queue_and_connection_failure # NOTE Added
+  #   p :test_that_continues_to_wait_hostname_resolution_with_opened_queue_and_connection_failure
+  #   server = TCPServer.new("127.0.0.1", 12345)
+  #   _, port, = server.addr
+
+  #   Addrinfo.define_singleton_method(:getaddrinfo) do |_, _, family, *_|
+  #     if family == Socket::AF_INET6
+  #       sleep
+  #     else
+  #       [Addrinfo.tcp("127.0.0.1", port)]
+  #     end
+  #   end
+
+  #   server.close
+
+  #   # 待機状態が続くこと
+  #   Socket.tcp("localhost", port)
+  # end
+
   def test_that_raises_ETIMEDOUT_with_connection_timeout
     p :test_that_raises_ETIMEDOUT_with_connection_timeout
     server = Socket.new(Socket::AF_INET, :STREAM)

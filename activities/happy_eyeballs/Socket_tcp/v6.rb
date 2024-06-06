@@ -56,8 +56,8 @@ class Socket
       }
     )
 
-    ends_at = nil
     hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
+    ends_at = hostname_resolution_expires_at
     connection_attempt_expires_at = nil
     count = 0 # for debugging
 
@@ -71,24 +71,11 @@ class Socket
         connecting_sockets.all,
         nil,
         ends_at ? second_to_timeout(ends_at) : nil,
-        # TODO 渡す値を考える
-        # 初回はresolv_timeoutがない場合はnilを渡したい
-        # 初回でresolv_timeoutがある場合以外は second_to_timeout(hostname_resolution_expires_at) を渡したい
-        # Resolution Delay中は second_to_timeout(now + RESOLUTION_DELAY) を渡したい
-        # 接続試行中は second_to_timeout(now + CONNECTION_ATTEMPT_DELAY) を渡したい
-        # 上書き式でいいのかな...
       )
-      ends_at = nil
-
-      if hostname_resolution_expires_at &&
-          !hostname_resolved &&
-          resolved_addrinfos.resolved_none? &&
-          hostname_resolution_expires_at <= now
-        raise Errno::ETIMEDOUT, 'user specified timeout'
-      end
+      ends_at = 0
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || nil}"
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if writable_sockets&.any?
@@ -121,12 +108,18 @@ class Socket
 
       break connected_socket if connected_socket
 
-      if connection_attempt_expires_at && connection_attempt_expires_at <= now
+      if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
+          (hostname_resolution_expires_at &&
+           now >= hostname_resolution_expires_at &&
+           hostname_resolution_queue.opened? &&
+           connecting_sockets.empty? &&
+           resolved_addrinfos.empty? &&
+           !hostname_resolved)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
-      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || nil}"
       if hostname_resolved&.any?
         family_name, res = hostname_resolution_queue.get
         puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
