@@ -26,13 +26,23 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-   use_hev2 = fast_fallback && !(host && connecting_to_ip_address?(host))
+   disable_hev2 =
+     !fast_fallback ||
+     (host && ip_address?(host)) ||
+     (local_host && local_port && ip_address?(local_host))
 
-    if !use_hev2
+    if disable_hev2
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
-    resolving_family_names = ADDRESS_FAMILIES.keys
+    if local_host && local_port
+      local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
+      resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
+    else
+      local_addrinfos = []
+      resolving_family_names = ADDRESS_FAMILIES.keys
+    end
+
     hostname_resolution_threads = []
     hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
@@ -40,10 +50,6 @@ class Socket
     connecting_sockets = ConnectingSockets.new
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
-
-    if local_host && local_port
-      # TODO
-    end
 
     hostname_resolution_args = [host, port, hostname_resolution_queue]
 
@@ -56,8 +62,8 @@ class Socket
       }
     )
 
-    ends_at = nil
     hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
+    ends_at = hostname_resolution_expires_at
     connection_attempt_expires_at = nil
     count = 0 # for debugging
 
@@ -71,24 +77,11 @@ class Socket
         connecting_sockets.all,
         nil,
         ends_at ? second_to_timeout(ends_at) : nil,
-        # TODO 渡す値を考える
-        # 初回はresolv_timeoutがない場合はnilを渡したい
-        # 初回でresolv_timeoutがある場合以外は second_to_timeout(hostname_resolution_expires_at) を渡したい
-        # Resolution Delay中は second_to_timeout(now + RESOLUTION_DELAY) を渡したい
-        # 接続試行中は second_to_timeout(now + CONNECTION_ATTEMPT_DELAY) を渡したい
-        # 上書き式でいいのかな...
       )
-      ends_at = nil
-
-      if hostname_resolution_expires_at &&
-          !hostname_resolved &&
-          resolved_addrinfos.resolved_none? &&
-          hostname_resolution_expires_at <= now
-        raise Errno::ETIMEDOUT, 'user specified timeout'
-      end
+      ends_at = 0
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets}"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || nil}"
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if writable_sockets&.any?
@@ -121,12 +114,18 @@ class Socket
 
       break connected_socket if connected_socket
 
-      if connection_attempt_expires_at && connection_attempt_expires_at <= now
+      if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
+          (hostname_resolution_expires_at &&
+           now >= hostname_resolution_expires_at &&
+           hostname_resolution_queue.opened? &&
+           connecting_sockets.empty? &&
+           resolved_addrinfos.empty? &&
+           !hostname_resolved)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
-      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}"
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || nil}"
       if hostname_resolved&.any?
         family_name, res = hostname_resolution_queue.get
         puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
@@ -154,14 +153,35 @@ class Socket
       if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **"
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
-        # TODO local_host / local_portがある場合
 
         while (addrinfo = resolved_addrinfos.get)
+          puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address"
+
+          if local_addrinfos.any?
+            puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}"
+            local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
+
+            if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
+              if resolved_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
+                raise SocketError.new 'no appropriate local address'
+              elsif resolved_addrinfos.any?
+                # Try other Addrinfo in next loop
+                next
+              elsif resolv_timeout && hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at
+                break
+              else
+                # Wait for connection to be established or hostname resolution in next loop
+                break
+              end
+            end
+          end
+
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
           begin
             socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-            # TODO socket.bind(local_addrinfo) if local_addrinfo
+            socket.bind(local_addrinfo) if local_addrinfo
             result = socket.connect_nonblock(addrinfo, exception: false)
             ends_at = now + CONNECTION_ATTEMPT_DELAY
 
@@ -179,7 +199,13 @@ class Socket
             end
           rescue SystemCallError => e
             last_error = $!
-            next
+
+            if resolved_addrinfos.any?
+              # Try other Addrinfo in next loop↲
+              next
+            elsif resolv_timeout && hostname_resolution_queue.opened?
+              ends_at = hostname_resolution_expires_at
+            end
           end
         end
       end
@@ -205,7 +231,7 @@ class Socket
       ret
     end
   ensure
-    if use_hev2
+    unless disable_hev2
       hostname_resolution_threads.each do |thread|
         thread&.exit
       end
@@ -264,10 +290,10 @@ class Socket
   end
   private_class_method :tcp_without_fast_fallback
 
-  def self.connecting_to_ip_address?(hostname)
+  def self.ip_address?(hostname)
     hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
   end
-  private_class_method :connecting_to_ip_address?
+  private_class_method :ip_address?
 
   def self.hostname_resolution(family, host, port, hostname_resolution_queue)
     begin
@@ -467,31 +493,31 @@ PORT = 9292
 #   end
 # end
 
-# # local_host / local_port を指定する場合
-# class Addrinfo
-#   class << self
-#     alias _getaddrinfo getaddrinfo
-#
-#     def getaddrinfo(nodename, service, family, *_)
-#       if service == 9292
-#         if family == Socket::AF_INET6
-#           [Addrinfo.tcp("::1", 9292)]
-#         else
-#           [Addrinfo.tcp("127.0.0.1", 9292)]
-#         end
-#       else
-#         _getaddrinfo(nodename, service, family)
-#       end
-#     end
-#   end
-# end
-#
+# local_host / local_port を指定する場合
+class Addrinfo
+  class << self
+    alias _getaddrinfo getaddrinfo
+
+    def getaddrinfo(nodename, service, family, *_)
+      if service == 9292
+        if family == Socket::AF_INET6
+          [Addrinfo.tcp("::1", 9292)]
+        else
+          [Addrinfo.tcp("127.0.0.1", 9292)]
+        end
+      else
+        _getaddrinfo(nodename, service, family)
+      end
+    end
+  end
+end
+
 # local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
-#
-# Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
-#    socket.write "GET / HTTP/1.0\r\n\r\n"
-#    print socket.read
-# end
+
+Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
+   socket.write "GET / HTTP/1.0\r\n\r\n"
+   print socket.read
+end
 #
 # Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
