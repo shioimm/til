@@ -108,6 +108,14 @@ class Socket
             inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
             writable_socket.close unless writable_socket.closed?
+
+            if resolv_timeout &&
+                !hostname_resolved &&
+                resolved_addrinfos.empty? &&
+                connecting_sockets.empty? &&
+                hostname_resolution_queue.opened?
+              ends_at = hostname_resolution_expires_at
+            end
           end
         end
       end
