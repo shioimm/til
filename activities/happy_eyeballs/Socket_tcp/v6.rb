@@ -109,18 +109,14 @@ class Socket
             last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
             writable_socket.close unless writable_socket.closed?
 
-            if resolv_timeout &&
-                !hostname_resolved &&
-                resolved_addrinfos.empty? &&
-                connecting_sockets.empty? &&
-                hostname_resolution_queue.opened?
-              ends_at = hostname_resolution_expires_at
-            end
+            if resolved_addrinfos.empty? && connecting_sockets.empty?
+              if hostname_resolution_queue.closed?
+                raise last_error
+              end
 
-            if resolved_addrinfos.empty? &&
-                connecting_sockets.empty? &&
-                hostname_resolution_queue.closed?
-              raise last_error
+              if resolv_timeout && !hostname_resolved && hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at
+              end
             end
           end
         end
