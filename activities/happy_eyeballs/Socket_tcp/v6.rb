@@ -116,6 +116,12 @@ class Socket
                 hostname_resolution_queue.opened?
               ends_at = hostname_resolution_expires_at
             end
+
+            if resolved_addrinfos.empty? &&
+                connecting_sockets.empty? &&
+                hostname_resolution_queue.closed?
+              raise last_error
+            end
           end
         end
       end
@@ -223,7 +229,7 @@ class Socket
           resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
-        raise last_error
+        raise last_error # TODO このraiseは最終的に不要になる
       end
       puts "------------------------"
     end
