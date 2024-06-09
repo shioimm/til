@@ -173,7 +173,7 @@ class Socket
         puts "[DEBUG] #{count}: ** Start to connect **"
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
 
-        while (addrinfo = resolved_addrinfos.get)
+        while (addrinfo = resolved_addrinfos.get) # FIXME 候補が複数ある場合連続して接続してしまっているのを修正する
           puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address"
 
           if local_addrinfos.any?
