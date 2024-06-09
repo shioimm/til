@@ -81,7 +81,7 @@ class Socket
       ends_at = 0
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || nil}"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}"
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if writable_sockets&.any?
@@ -135,7 +135,7 @@ class Socket
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
-      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || nil}"
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}"
       if hostname_resolved&.any?
         family_name, res = hostname_resolution_queue.get
         puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
@@ -225,13 +225,14 @@ class Socket
           end
         end
       end
+
+      break connected_socket if connected_socket
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
-      if !connected_socket &&
-          resolved_addrinfos.empty? &&
+      if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
-        raise last_error # TODO このraiseは最終的に不要になる
+        raise last_error
       end
       puts "------------------------"
     end
@@ -510,30 +511,30 @@ PORT = 9292
 # end
 
 # local_host / local_port を指定する場合
-class Addrinfo
-  class << self
-    alias _getaddrinfo getaddrinfo
-
-    def getaddrinfo(nodename, service, family, *_)
-      if service == 9292
-        if family == Socket::AF_INET6
-          [Addrinfo.tcp("::1", 9292)]
-        else
-          [Addrinfo.tcp("127.0.0.1", 9292)]
-        end
-      else
-        _getaddrinfo(nodename, service, family)
-      end
-    end
-  end
-end
+# class Addrinfo
+#   class << self
+#     alias _getaddrinfo getaddrinfo
+#
+#     def getaddrinfo(nodename, service, family, *_)
+#       if service == 9292
+#         if family == Socket::AF_INET6
+#           [Addrinfo.tcp("::1", 9292)]
+#         else
+#           [Addrinfo.tcp("127.0.0.1", 9292)]
+#         end
+#       else
+#         _getaddrinfo(nodename, service, family)
+#       end
+#     end
+#   end
+# end
 
 # local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
 
-Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
-   socket.write "GET / HTTP/1.0\r\n\r\n"
-   print socket.read
-end
+# Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
+#    socket.write "GET / HTTP/1.0\r\n\r\n"
+#    print socket.read
+# end
 #
 # Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
