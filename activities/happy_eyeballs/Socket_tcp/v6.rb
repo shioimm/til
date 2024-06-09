@@ -122,6 +122,8 @@ class Socket
         end
       end
 
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}"
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
       break connected_socket if connected_socket
 
       if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
@@ -141,6 +143,8 @@ class Socket
         puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
 
         if res.is_a? Exception
+          resolved_addrinfos.add(family_name, [])
+
           unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
             (res.is_a?(Socket::ResolutionError)) &&
             (res.error_code == Socket::EAI_ADDRFAMILY)
@@ -160,6 +164,11 @@ class Socket
           hostname_resolution_waiting
       end
 
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
+
+      puts "[DEBUG] #{count}: ** Check for readying to connect **"
+      puts "[DEBUG] #{count}: second_to_timeout(ends_at) #{second_to_timeout(ends_at)}"
+      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
       if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **"
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
@@ -226,8 +235,10 @@ class Socket
         end
       end
 
-      break connected_socket if connected_socket
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}"
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
+      break connected_socket if connected_socket
 
       if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
