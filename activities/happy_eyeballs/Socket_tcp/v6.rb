@@ -211,10 +211,16 @@ class Socket
             last_error = $!
 
             if resolved_addrinfos.any?
-              # Try other Addrinfo in next loop↲
+              # Try other Addrinfo in next while
               next
-            elsif resolv_timeout && hostname_resolution_queue.opened?
-              ends_at = hostname_resolution_expires_at
+            elsif connecting_sockets.empty?
+              if resolv_timeout && hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at
+              elsif hostname_resolution_queue.closed?
+                raise last_error
+              end
+            else
+              # Wait for hostname resolution or connection establishment in next loop
             end
           end
         end
