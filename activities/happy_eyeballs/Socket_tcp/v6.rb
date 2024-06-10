@@ -139,24 +139,26 @@ class Socket
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}"
       if hostname_resolved&.any?
-        family_name, res = hostname_resolution_queue.get
-        puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
+        while (hostname_resolution_result = hostname_resolution_queue.get)
+          family_name, result = hostname_resolution_result
+          puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}"
 
-        if res.is_a? Exception
-          resolved_addrinfos.add(family_name, [])
+          if result.is_a? Exception
+            resolved_addrinfos.add(family_name, [])
 
-          unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
-            (res.is_a?(Socket::ResolutionError)) &&
-            (res.error_code == Socket::EAI_ADDRFAMILY)
-            last_error = res
-          end
-        else
-          resolved_addrinfos.add(family_name, res)
+            unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
+              (result.is_a?(Socket::ResolutionError)) &&
+              (result.error_code == Socket::EAI_ADDRFAMILY)
+              last_error = result
+            end
+          else
+            resolved_addrinfos.add(family_name, result)
 
-          if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
-            puts "[DEBUG] #{count}: Resolution Delay is started"
-            ends_at = now + RESOLUTION_DELAY
-            puts "[DEBUG] #{count}: ends_at #{ends_at}"
+            if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
+              puts "[DEBUG] #{count}: Resolution Delay is started"
+              ends_at = now + RESOLUTION_DELAY
+              puts "[DEBUG] #{count}: ends_at #{ends_at}"
+            end
           end
         end
 
