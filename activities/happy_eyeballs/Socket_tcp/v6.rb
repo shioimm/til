@@ -81,7 +81,7 @@ class Socket
       ends_at = 0
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || nil}"
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}"
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
       if writable_sockets&.any?
@@ -108,10 +108,22 @@ class Socket
             inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
             writable_socket.close unless writable_socket.closed?
+
+            if resolved_addrinfos.empty? && connecting_sockets.empty?
+              if hostname_resolution_queue.closed?
+                raise last_error
+              end
+
+              if resolv_timeout && !hostname_resolved && hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at
+              end
+            end
           end
         end
       end
 
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}"
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
       break connected_socket if connected_socket
 
       if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
@@ -125,12 +137,14 @@ class Socket
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
-      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || nil}"
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}"
       if hostname_resolved&.any?
         family_name, res = hostname_resolution_queue.get
         puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
 
         if res.is_a? Exception
+          resolved_addrinfos.add(family_name, [])
+
           unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
             (res.is_a?(Socket::ResolutionError)) &&
             (res.error_code == Socket::EAI_ADDRFAMILY)
@@ -150,11 +164,16 @@ class Socket
           hostname_resolution_waiting
       end
 
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
+
+      puts "[DEBUG] #{count}: ** Check for readying to connect **"
+      puts "[DEBUG] #{count}: second_to_timeout(ends_at) #{second_to_timeout(ends_at)}"
+      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
       if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **"
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
 
-        while (addrinfo = resolved_addrinfos.get)
+        while (addrinfo = resolved_addrinfos.get) # FIXME 候補が複数ある場合連続して接続してしまっているのを修正する
           puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address"
 
           if local_addrinfos.any?
@@ -201,18 +220,27 @@ class Socket
             last_error = $!
 
             if resolved_addrinfos.any?
-              # Try other Addrinfo in next loop↲
+              # Try other Addrinfo in next while
               next
-            elsif resolv_timeout && hostname_resolution_queue.opened?
-              ends_at = hostname_resolution_expires_at
+            elsif connecting_sockets.empty?
+              if resolv_timeout && hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at
+              elsif hostname_resolution_queue.closed?
+                raise last_error
+              end
+            else
+              # Wait for hostname resolution or connection establishment in next loop
             end
           end
         end
       end
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
 
-      if !connected_socket &&
-          resolved_addrinfos.empty? &&
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}"
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
+      break connected_socket if connected_socket
+
+      if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
         raise last_error
@@ -494,30 +522,30 @@ PORT = 9292
 # end
 
 # local_host / local_port を指定する場合
-class Addrinfo
-  class << self
-    alias _getaddrinfo getaddrinfo
-
-    def getaddrinfo(nodename, service, family, *_)
-      if service == 9292
-        if family == Socket::AF_INET6
-          [Addrinfo.tcp("::1", 9292)]
-        else
-          [Addrinfo.tcp("127.0.0.1", 9292)]
-        end
-      else
-        _getaddrinfo(nodename, service, family)
-      end
-    end
-  end
-end
+# class Addrinfo
+#   class << self
+#     alias _getaddrinfo getaddrinfo
+#
+#     def getaddrinfo(nodename, service, family, *_)
+#       if service == 9292
+#         if family == Socket::AF_INET6
+#           [Addrinfo.tcp("::1", 9292)]
+#         else
+#           [Addrinfo.tcp("127.0.0.1", 9292)]
+#         end
+#       else
+#         _getaddrinfo(nodename, service, family)
+#       end
+#     end
+#   end
+# end
 
 # local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
 
-Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
-   socket.write "GET / HTTP/1.0\r\n\r\n"
-   print socket.read
-end
+# Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
+#    socket.write "GET / HTTP/1.0\r\n\r\n"
+#    print socket.read
+# end
 #
 # Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
