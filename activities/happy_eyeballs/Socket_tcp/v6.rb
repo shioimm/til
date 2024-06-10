@@ -65,7 +65,6 @@ class Socket
     hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
     ends_at = hostname_resolution_expires_at
     connection_attempt_expires_at = nil
-    in_connection_attempt_delay = false
     count = 0 # for debugging
 
     ret = loop do
@@ -79,8 +78,7 @@ class Socket
         nil,
         ends_at ? second_to_timeout(ends_at) : nil,
       )
-      in_connection_attempt_delay = in_connection_attempt_delay && (writable_sockets || hostname_resolved)
-      ends_at = in_connection_attempt_delay ? ends_at : 0
+      ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}"
@@ -207,7 +205,6 @@ class Socket
             socket.bind(local_addrinfo) if local_addrinfo
             result = socket.connect_nonblock(addrinfo, exception: false)
             ends_at = now + CONNECTION_ATTEMPT_DELAY
-            in_connection_attempt_delay = true
 
             if connect_timeout && !connection_attempt_expires_at
               connection_attempt_expires_at = now + connect_timeout
@@ -476,6 +473,10 @@ class Socket
 
     def empty?
       @socket_dict.empty?
+    end
+
+    def any?
+      !empty?
     end
 
     def each
