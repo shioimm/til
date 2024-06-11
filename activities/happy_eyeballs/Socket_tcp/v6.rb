@@ -78,7 +78,7 @@ class Socket
         nil,
         ends_at ? second_to_timeout(ends_at) : nil,
       )
-      ends_at = 0
+      ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **"
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}"
@@ -139,22 +139,26 @@ class Socket
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}"
       if hostname_resolved&.any?
-        family_name, res = hostname_resolution_queue.get
-        puts "[DEBUG] #{count}: family_name, res #{[family_name, res]}"
+        while (hostname_resolution_result = hostname_resolution_queue.get)
+          family_name, result = hostname_resolution_result
+          puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}"
 
-        if res.is_a? Exception
-          resolved_addrinfos.add(family_name, [])
+          if result.is_a? Exception
+            resolved_addrinfos.add(family_name, [])
 
-          unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
-            (res.is_a?(Socket::ResolutionError)) &&
-            (res.error_code == Socket::EAI_ADDRFAMILY)
-            last_error = res
-          end
-        else
-          resolved_addrinfos.add(family_name, res)
+            unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
+              (result.is_a?(Socket::ResolutionError)) &&
+              (result.error_code == Socket::EAI_ADDRFAMILY)
+              last_error = result
+            end
+          else
+            resolved_addrinfos.add(family_name, result)
 
-          if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
-            ends_at = now + RESOLUTION_DELAY
+            if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
+              puts "[DEBUG] #{count}: Resolution Delay is started"
+              ends_at = now + RESOLUTION_DELAY
+              puts "[DEBUG] #{count}: ends_at #{ends_at}"
+            end
           end
         end
 
@@ -173,7 +177,7 @@ class Socket
         puts "[DEBUG] #{count}: ** Start to connect **"
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
 
-        while (addrinfo = resolved_addrinfos.get) # FIXME 候補が複数ある場合連続して接続してしまっているのを修正する
+        while (addrinfo = resolved_addrinfos.get)
           puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address"
 
           if local_addrinfos.any?
@@ -471,6 +475,10 @@ class Socket
 
     def empty?
       @socket_dict.empty?
+    end
+
+    def any?
+      !empty?
     end
 
     def each
