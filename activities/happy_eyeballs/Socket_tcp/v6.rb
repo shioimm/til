@@ -153,19 +153,19 @@ class Socket
             end
           else
             resolved_addrinfos.add(family_name, result)
-
-            if family_name.eql?(:ipv4) && !resolved_addrinfos.resolved?(:ipv6)
-              puts "[DEBUG] #{count}: Resolution Delay is started"
-              ends_at = now + RESOLUTION_DELAY
-              puts "[DEBUG] #{count}: ends_at #{ends_at}"
-            end
           end
         end
 
-        # TODO Queueでよいかどうかも含めてちょっと考える
-        hostname_resolution_waiting = hostname_resolution_waiting && hostname_resolution_queue.closed? ?
-          nil :
-          hostname_resolution_waiting
+        if resolved_addrinfos.resolved?(:ipv4)
+          if resolved_addrinfos.resolved?(:ipv6)
+            puts "[DEBUG] #{count}: All hostname resolution is finished"
+            hostname_resolution_waiting = nil
+          else
+            puts "[DEBUG] #{count}: Resolution Delay is ready"
+            ends_at = now + RESOLUTION_DELAY
+            puts "[DEBUG] #{count}: ends_at #{ends_at}"
+          end
+        end
       end
 
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
