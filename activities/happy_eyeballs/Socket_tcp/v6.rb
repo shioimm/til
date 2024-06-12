@@ -62,9 +62,10 @@ class Socket
       }
     )
 
-    hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
+    started_at = now
+    connection_attempt_expires_at = connect_timeout ? started_at + connect_timeout : nil
+    hostname_resolution_expires_at = resolv_timeout ? started_at + resolv_timeout : nil
     ends_at = hostname_resolution_expires_at
-    connection_attempt_expires_at = nil
     count = 0 # for debugging
 
     ret = loop do
