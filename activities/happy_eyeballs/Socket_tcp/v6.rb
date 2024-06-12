@@ -206,17 +206,23 @@ class Socket
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
 
           begin
-            socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-            socket.bind(local_addrinfo) if local_addrinfo
-            result = socket.connect_nonblock(addrinfo, exception: false)
-            ends_at = now + CONNECTION_ATTEMPT_DELAY
+            if resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
+              socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+              socket.bind(local_addrinfo) if local_addrinfo
+              result = socket.connect_nonblock(addrinfo, exception: false)
+              ends_at = now + CONNECTION_ATTEMPT_DELAY
 
-            if connect_timeout && !connection_attempt_expires_at
-              connection_attempt_expires_at = now + connect_timeout
+              if connect_timeout && !connection_attempt_expires_at
+                connection_attempt_expires_at = now + connect_timeout
+              end
+            else
+              result = socket = local_addrinfo ?
+                addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                addrinfo.connect(timeout: connect_timeout)
             end
 
             case result
-            when 0
+            when 0, Socket
               connected_socket = socket
               break
             when :wait_writable # 接続試行中
