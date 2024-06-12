@@ -593,8 +593,8 @@ class Socket
   end
 end
 
-HOSTNAME = "localhost"
-PORT = 9292
+# HOSTNAME = "localhost"
+# PORT = 9292
 
 # HOSTNAME = "www.ruby-lang.org"
 # PORT = 80
@@ -658,10 +658,10 @@ PORT = 9292
 #    print socket.read
 # end
 
-Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
-end
+# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"

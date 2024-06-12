@@ -1,6 +1,8 @@
 require 'socket'
 
 class Socket
+  DEBUG = false
+
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
 
@@ -66,13 +68,13 @@ class Socket
     connection_attempt_expires_at = connect_timeout ? started_at + connect_timeout : nil
     hostname_resolution_expires_at = resolv_timeout ? started_at + resolv_timeout : nil
     ends_at = hostname_resolution_expires_at
-    count = 0 # for debugging
+    count = 0 if DEBUG # for DEBUGging
 
     ret = loop do
-      count += 1 # for debugging
+      count += 1 if DEBUG # for DEBUGging
 
-      puts "[DEBUG] #{count}: ** Start to wait **"
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(ends_at)})"
+      puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
@@ -81,9 +83,9 @@ class Socket
       )
       ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
 
-      puts "[DEBUG] #{count}: ** Check for writable_sockets **"
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}"
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
+      puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
@@ -97,7 +99,7 @@ class Socket
             end
 
           if is_connected
-            puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected"
+            puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
             writable_sockets.each do |other_writable_socket|
@@ -124,8 +126,8 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}"
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
       if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
@@ -138,12 +140,12 @@ class Socket
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
-      puts "[DEBUG] #{count}: ** Check for hostname resolution finish **"
-      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}"
+      puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
       if hostname_resolved&.any?
         while (hostname_resolution_result = hostname_resolution_queue.get)
           family_name, result = hostname_resolution_result
-          puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}"
+          puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}" if DEBUG
 
           if result.is_a? Exception
             resolved_addrinfos.add(family_name, [])
@@ -160,30 +162,28 @@ class Socket
 
         if resolved_addrinfos.resolved?(:ipv4)
           if resolved_addrinfos.resolved?(:ipv6)
-            puts "[DEBUG] #{count}: All hostname resolution is finished"
+            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             hostname_resolution_waiting = nil
           else
-            puts "[DEBUG] #{count}: Resolution Delay is ready"
+            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             ends_at = now + RESOLUTION_DELAY
-            puts "[DEBUG] #{count}: ends_at #{ends_at}"
+            puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
       end
 
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
-
-      puts "[DEBUG] #{count}: ** Check for readying to connect **"
-      puts "[DEBUG] #{count}: second_to_timeout(ends_at) #{second_to_timeout(ends_at)}"
-      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
+      puts "[DEBUG] #{count}: second_to_timeout(ends_at) #{second_to_timeout(ends_at)}" if DEBUG
+      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
       if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
-        puts "[DEBUG] #{count}: ** Start to connect **"
-        puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"
-
+        puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
+        puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
         while (addrinfo = resolved_addrinfos.get)
-          puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address"
+          puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address" if DEBUG
 
           if local_addrinfos.any?
-            puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}"
+            puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}" if DEBUG
             local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
             if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
@@ -203,7 +203,7 @@ class Socket
             end
           end
 
-          puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}"
+          puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}" if DEBUG
 
           begin
             if resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
@@ -247,9 +247,9 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}"
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}"
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}"
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
       if resolved_addrinfos.empty? &&
@@ -257,10 +257,10 @@ class Socket
           hostname_resolution_queue.closed?
         raise last_error
       end
-      puts "------------------------"
+      puts "------------------------" if DEBUG
     end
 
-    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}"
+    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}" if DEBUG
     if block_given?
       begin
         yield ret
@@ -498,8 +498,8 @@ class Socket
   private_constant :ConnectingSockets
 end
 
-HOSTNAME = "localhost"
-PORT = 9292
+# HOSTNAME = "localhost"
+# PORT = 9292
 
 # HOSTNAME = "www.ruby-lang.org"
 # PORT = 80
