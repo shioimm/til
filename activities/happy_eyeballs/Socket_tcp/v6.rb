@@ -106,18 +106,19 @@ class Socket
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
-            inspected_ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
-            last_error = SystemCallError.new("connect(2) for #{inspected_ip_address}:#{failed_ai.ip_port}", sockopt.int)
             writable_socket.close unless writable_socket.closed?
 
-            if resolved_addrinfos.empty? && connecting_sockets.empty?
-              if hostname_resolution_queue.closed?
-                raise last_error
-              end
-
-              if resolv_timeout && !hostname_resolved && hostname_resolution_queue.opened?
-                ends_at = hostname_resolution_expires_at
-              end
+            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any?
+              # Try other writable socket in next "while"
+              # Or exit this "while" and try other connection attempt
+              # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
+            elsif hostname_resolution_queue.opened?
+              ends_at = hostname_resolution_expires_at if (resolv_timeout && !hostname_resolved)
+              # Exit this "while" and wait for hostname resolution in next loop
+            else
+              ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+              last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
+              raise last_error
             end
           end
         end
@@ -186,17 +187,18 @@ class Socket
             local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
             if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
-              if resolved_addrinfos.empty? && connecting_sockets.empty? && hostname_resolution_queue.closed?
-                raise SocketError.new 'no appropriate local address'
-              elsif resolved_addrinfos.any?
-                # Try other Addrinfo in next loop
+              if resolved_addrinfos.any?
+                # Try other Addrinfo in next "while"
                 next
-              elsif resolv_timeout && hostname_resolution_queue.opened?
-                ends_at = hostname_resolution_expires_at
+              elsif connecting_sockets.any?
+                # Exit this "while" and wait for connections to be established or hostname resolution in next loop
+                break
+              elsif hostname_resolution_queue.opened?
+                ends_at = hostname_resolution_expires_at if resolv_timeout
+                # Exit this "while" and wait for hostname resolution in next loop
                 break
               else
-                # Wait for connection to be established or hostname resolution in next loop
-                break
+                raise SocketError.new 'no appropriate local address'
               end
             end
           end
@@ -225,16 +227,15 @@ class Socket
             last_error = $!
 
             if resolved_addrinfos.any?
-              # Try other Addrinfo in next while
+              # Try other Addrinfo in next "while"
               next
-            elsif connecting_sockets.empty?
-              if resolv_timeout && hostname_resolution_queue.opened?
-                ends_at = hostname_resolution_expires_at
-              elsif hostname_resolution_queue.closed?
-                raise last_error
-              end
+            elsif connecting_sockets.any?
+              # Exit this "while" and wait for connections to be established or hostname resolution in next loop
+            elsif hostname_resolution_queue.opened?
+              ends_at = hostname_resolution_expires_at if resolv_timeout
+              # Exit this "while" and wait for hostname resolution in next loop
             else
-              # Wait for hostname resolution or connection establishment in next loop
+              raise last_error
             end
           end
         end
