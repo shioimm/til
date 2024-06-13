@@ -227,6 +227,7 @@ class Socket
               break
             end
           rescue SystemCallError => e
+            socket.close unless socket.closed?↲
             last_error = $!
 
             if resolved_addrinfos.any?
