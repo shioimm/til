@@ -1,3 +1,22 @@
+require 'benchmark'
+
+HOSTNAME = "localhost"
+PORT = 9292
+
+Benchmark.bmbm do |x|
+  x.report("v5") do
+    require_relative "../v5"
+    100.times { Socket.tcp(HOSTNAME, PORT).close }
+  end
+
+  x.report("v6") do
+    require_relative "../v6"
+    100.times { Socket.tcp(HOSTNAME, PORT).close }
+  end
+end
+
+
+__END__
 require 'socket'
 require 'benchmark'
 
