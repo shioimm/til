@@ -28,9 +28,7 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-   disable_hev2 = !fast_fallback || (host && ip_address?(host))
-
-    if disable_hev2
+    if !fast_fallback || (host && ip_address?(host))
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
@@ -56,11 +54,9 @@ class Socket
       connecting_sockets: connecting_sockets,
     }
 
-    hostname_resolution_args = [host, port, hostname_resolution_queue]
-
     hostname_resolution_threads.concat(
       resolving_family_names.map { |family|
-        thread_args = [family, *hostname_resolution_args]
+        thread_args = [family, host, port, hostname_resolution_queue]
         thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
         Thread.pass
         thread
