@@ -28,10 +28,7 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-   disable_hev2 =
-     !fast_fallback ||
-     (host && ip_address?(host)) ||
-     (local_host && local_port && ip_address?(local_host))
+   disable_hev2 = !fast_fallback || (host && ip_address?(host))
 
     if disable_hev2
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
@@ -230,6 +227,7 @@ class Socket
               break
             end
           rescue SystemCallError => e
+            socket.close unless socket.closed?↲
             last_error = $!
 
             if resolved_addrinfos.any?
@@ -271,6 +269,7 @@ class Socket
       ret
     end
   ensure
+    # TODO 成功/失敗確定時に即座に実行できるようにする
     unless disable_hev2
       hostname_resolution_threads.each do |thread|
         thread&.exit
