@@ -357,7 +357,7 @@ class Socket
   private_class_method :now
 
   def self.second_to_timeout(started_at, ends_at)
-    return 0 unless ends_at
+    return 0 if ends_at.nil? || ends_at.zero?
 
     remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
