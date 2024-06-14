@@ -50,6 +50,12 @@ class Socket
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
+    resources = {
+      hostname_resolution_threads: hostname_resolution_threads,
+      hostname_resolution_queue: hostname_resolution_queue,
+      connecting_sockets: connecting_sockets,
+    }
+
     hostname_resolution_args = [host, port, hostname_resolution_queue]
 
     hostname_resolution_threads.concat(
@@ -99,9 +105,7 @@ class Socket
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
-            writable_sockets.each do |other_writable_socket|
-              other_writable_socket.close unless other_writable_socket.closed?
-            end
+            cleanup_resources(**resources)
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
@@ -117,6 +121,7 @@ class Socket
             else
               ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
               last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
+              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -134,6 +139,7 @@ class Socket
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
            !hostname_resolved)
+        cleanup_resources(**resources)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
@@ -195,6 +201,7 @@ class Socket
                 # Exit this "while" and wait for hostname resolution in next loop
                 break
               else
+                cleanup_resources(**resources)
                 raise SocketError.new 'no appropriate local address'
               end
             end
@@ -221,13 +228,14 @@ class Socket
             case result
             when 0, Socket
               connected_socket = socket
+              cleanup_resources(**resources)
               break
             when :wait_writable # 接続試行中
               connecting_sockets.add(socket, addrinfo)
               break
             end
           rescue SystemCallError => e
-            socket.close unless socket.closed?↲
+            socket&.close unless socket&.closed?
             last_error = $!
 
             if resolved_addrinfos.any?
@@ -239,6 +247,7 @@ class Socket
               ends_at = hostname_resolution_expires_at if resolv_timeout
               # Exit this "while" and wait for hostname resolution in next loop
             else
+              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -253,6 +262,7 @@ class Socket
       if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
+        cleanup_resources(**resources)
         raise last_error
       end
       puts "------------------------" if DEBUG
@@ -267,19 +277,6 @@ class Socket
       end
     else
       ret
-    end
-  ensure
-    # TODO 成功/失敗確定時に即座に実行できるようにする
-    unless disable_hev2
-      hostname_resolution_threads.each do |thread|
-        thread&.exit
-      end
-
-      hostname_resolution_queue&.close_all
-
-      connecting_sockets.each do |connecting_socket|
-        connecting_socket.close unless connecting_socket.closed?
-      end
     end
   end
 
@@ -328,6 +325,19 @@ class Socket
     end
   end
   private_class_method :tcp_without_fast_fallback
+
+  def self.cleanup_resources(hostname_resolution_threads:, hostname_resolution_queue:, connecting_sockets:)
+    hostname_resolution_threads.each do |thread|
+      thread&.exit
+    end
+
+    hostname_resolution_queue&.close_all
+
+    connecting_sockets.each do |connecting_socket|
+      connecting_socket.close unless connecting_socket.closed?
+    end
+  end
+  private_class_method :cleanup_resources
 
   def self.ip_address?(hostname)
     hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
