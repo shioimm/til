@@ -28,10 +28,24 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    if !fast_fallback || (host && ip_address?(host))
-      return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    ret = if fast_fallback && !(host && ip_address?(host))
+      tcp_with_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    else
+      tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
+    if block_given?
+      begin
+        yield ret
+      ensure
+        ret.close
+      end
+    else
+      ret
+    end
+  end
+
+  def self.tcp_with_fast_fallback(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil)
     if local_host && local_port
       local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
       resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
@@ -63,25 +77,25 @@ class Socket
       }
     )
 
-    started_at = now
-    connection_attempt_expires_at = connect_timeout ? started_at + connect_timeout : nil
-    hostname_resolution_expires_at = resolv_timeout ? started_at + resolv_timeout : nil
+    now = current_clock_time
+    connection_attempt_expires_at = connect_timeout ? now + connect_timeout : nil
+    hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
     ends_at = hostname_resolution_expires_at
     count = 0 if DEBUG # for DEBUGging
 
     ret = loop do
-      current_loop_started_at = now
       count += 1 if DEBUG # for DEBUGging
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(current_loop_started_at, ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        ends_at ? second_to_timeout(current_loop_started_at, ends_at) : nil,
+        ends_at ? second_to_timeout(now, ends_at) : nil,
       )
       ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
+      now = current_clock_time
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -102,7 +116,6 @@ class Socket
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
-            cleanup_resources(**resources)
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
@@ -129,9 +142,9 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if (connection_attempt_expires_at && current_loop_started_at >= connection_attempt_expires_at) ||
+      if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
           (hostname_resolution_expires_at &&
-           current_loop_started_at >= hostname_resolution_expires_at &&
+           now >= hostname_resolution_expires_at &&
            hostname_resolution_queue.opened? &&
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
@@ -166,7 +179,7 @@ class Socket
             hostname_resolution_waiting = nil
           else
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            ends_at = current_loop_started_at + RESOLUTION_DELAY
+            ends_at = now + RESOLUTION_DELAY
             puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
@@ -174,9 +187,9 @@ class Socket
 
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: second_to_timeout(current_loop_started_at, ends_at) #{second_to_timeout(current_loop_started_at, ends_at)}" if DEBUG
+      puts "[DEBUG] #{count}: second_to_timeout(now, ends_at) #{second_to_timeout(now, ends_at)}" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      if second_to_timeout(current_loop_started_at, ends_at).zero? && resolved_addrinfos.any?
+      if second_to_timeout(now, ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
         while (addrinfo = resolved_addrinfos.get)
@@ -211,10 +224,10 @@ class Socket
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
-              ends_at = current_loop_started_at + CONNECTION_ATTEMPT_DELAY
+              ends_at = now + CONNECTION_ATTEMPT_DELAY
 
               if connect_timeout && !connection_attempt_expires_at
-                connection_attempt_expires_at = current_loop_started_at + connect_timeout
+                connection_attempt_expires_at = now + connect_timeout
               end
             else
               result = socket = local_addrinfo ?
@@ -225,7 +238,6 @@ class Socket
             case result
             when 0, Socket
               connected_socket = socket
-              cleanup_resources(**resources)
               break
             when :wait_writable # 接続試行中
               connecting_sockets.add(socket, addrinfo)
@@ -264,17 +276,10 @@ class Socket
       end
       puts "------------------------" if DEBUG
     end
-
     puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}" if DEBUG
-    if block_given?
-      begin
-        yield ret
-      ensure
-        ret.close
-      end
-    else
-      ret
-    end
+
+    cleanup_resources(**resources)
+    ret
   end
 
   def self.tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
@@ -311,15 +316,8 @@ class Socket
         raise SocketError, "no appropriate local address"
       end
     end
-    if block_given?
-      begin
-        yield ret
-      ensure
-        ret.close
-      end
-    else
-      ret
-    end
+
+    ret
   end
   private_class_method :tcp_without_fast_fallback
 
@@ -351,10 +349,10 @@ class Socket
   end
   private_class_method :hostname_resolution
 
-  def self.now
+  def self.current_clock_time
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
-  private_class_method :now
+  private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
     return 0 if ends_at.nil? || ends_at.zero?
@@ -504,8 +502,8 @@ class Socket
   private_constant :ConnectingSockets
 end
 
-# HOSTNAME = "localhost"
-# PORT = 9292
+HOSTNAME = "localhost"
+PORT = 9292
 
 # HOSTNAME = "www.ruby-lang.org"
 # PORT = 80
@@ -569,15 +567,15 @@ end
 #    print socket.read
 # end
 #
-# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
-#
-# Socket.tcp("127.0.0.1", PORT) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
+Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
+
+Socket.tcp("127.0.0.1", PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
