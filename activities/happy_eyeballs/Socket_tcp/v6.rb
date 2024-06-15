@@ -28,10 +28,24 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    if !fast_fallback || (host && ip_address?(host))
-      return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    ret = if fast_fallback && !(host && ip_address?(host))
+      tcp_with_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
+    else
+      tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
+    if block_given?
+      begin
+        yield ret
+      ensure
+        ret.close
+      end
+    else
+      ret
+    end
+  end
+
+  def self.tcp_with_fast_fallback(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil)
     if local_host && local_port
       local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
       resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
@@ -264,19 +278,10 @@ class Socket
       end
       puts "------------------------" if DEBUG
     end
+    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}" if DEBUG
 
     # TODO ここでまとめて後処理
-    # TODO 以下tcp_without_fast_fallbackと共通化する
-    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}" if DEBUG
-    if block_given?
-      begin
-        yield ret
-      ensure
-        ret.close
-      end
-    else
-      ret
-    end
+    ret
   end
 
   def self.tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
@@ -313,15 +318,8 @@ class Socket
         raise SocketError, "no appropriate local address"
       end
     end
-    if block_given?
-      begin
-        yield ret
-      ensure
-        ret.close
-      end
-    else
-      ret
-    end
+
+    ret
   end
   private_class_method :tcp_without_fast_fallback
 
