@@ -28,9 +28,7 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-   disable_hev2 = !fast_fallback || (host && ip_address?(host))
-
-    if disable_hev2
+    if !fast_fallback || (host && ip_address?(host))
       return tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     end
 
@@ -50,11 +48,15 @@ class Socket
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-    hostname_resolution_args = [host, port, hostname_resolution_queue]
+    resources = {
+      hostname_resolution_threads: hostname_resolution_threads,
+      hostname_resolution_queue: hostname_resolution_queue,
+      connecting_sockets: connecting_sockets,
+    }
 
     hostname_resolution_threads.concat(
       resolving_family_names.map { |family|
-        thread_args = [family, *hostname_resolution_args]
+        thread_args = [family, host, port, hostname_resolution_queue]
         thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
         Thread.pass
         thread
@@ -68,15 +70,16 @@ class Socket
     count = 0 if DEBUG # for DEBUGging
 
     ret = loop do
+      current_loop_started_at = now
       count += 1 if DEBUG # for DEBUGging
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(current_loop_started_at, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        ends_at ? second_to_timeout(ends_at) : nil,
+        ends_at ? second_to_timeout(current_loop_started_at, ends_at) : nil,
       )
       ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
 
@@ -99,9 +102,7 @@ class Socket
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
-            writable_sockets.each do |other_writable_socket|
-              other_writable_socket.close unless other_writable_socket.closed?
-            end
+            cleanup_resources(**resources)
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
@@ -117,6 +118,7 @@ class Socket
             else
               ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
               last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
+              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -127,13 +129,14 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
+      if (connection_attempt_expires_at && current_loop_started_at >= connection_attempt_expires_at) ||
           (hostname_resolution_expires_at &&
-           now >= hostname_resolution_expires_at &&
+           current_loop_started_at >= hostname_resolution_expires_at &&
            hostname_resolution_queue.opened? &&
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
            !hostname_resolved)
+        cleanup_resources(**resources)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
@@ -163,7 +166,7 @@ class Socket
             hostname_resolution_waiting = nil
           else
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            ends_at = now + RESOLUTION_DELAY
+            ends_at = current_loop_started_at + RESOLUTION_DELAY
             puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
@@ -171,9 +174,9 @@ class Socket
 
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: second_to_timeout(ends_at) #{second_to_timeout(ends_at)}" if DEBUG
+      puts "[DEBUG] #{count}: second_to_timeout(current_loop_started_at, ends_at) #{second_to_timeout(current_loop_started_at, ends_at)}" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      if second_to_timeout(ends_at).zero? && resolved_addrinfos.any?
+      if second_to_timeout(current_loop_started_at, ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
         while (addrinfo = resolved_addrinfos.get)
@@ -195,6 +198,7 @@ class Socket
                 # Exit this "while" and wait for hostname resolution in next loop
                 break
               else
+                cleanup_resources(**resources)
                 raise SocketError.new 'no appropriate local address'
               end
             end
@@ -207,10 +211,10 @@ class Socket
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
-              ends_at = now + CONNECTION_ATTEMPT_DELAY
+              ends_at = current_loop_started_at + CONNECTION_ATTEMPT_DELAY
 
               if connect_timeout && !connection_attempt_expires_at
-                connection_attempt_expires_at = now + connect_timeout
+                connection_attempt_expires_at = current_loop_started_at + connect_timeout
               end
             else
               result = socket = local_addrinfo ?
@@ -221,13 +225,14 @@ class Socket
             case result
             when 0, Socket
               connected_socket = socket
+              cleanup_resources(**resources)
               break
             when :wait_writable # 接続試行中
               connecting_sockets.add(socket, addrinfo)
               break
             end
           rescue SystemCallError => e
-            socket.close unless socket.closed?↲
+            socket&.close unless socket&.closed?
             last_error = $!
 
             if resolved_addrinfos.any?
@@ -239,6 +244,7 @@ class Socket
               ends_at = hostname_resolution_expires_at if resolv_timeout
               # Exit this "while" and wait for hostname resolution in next loop
             else
+              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -253,6 +259,7 @@ class Socket
       if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
+        cleanup_resources(**resources)
         raise last_error
       end
       puts "------------------------" if DEBUG
@@ -267,19 +274,6 @@ class Socket
       end
     else
       ret
-    end
-  ensure
-    # TODO 成功/失敗確定時に即座に実行できるようにする
-    unless disable_hev2
-      hostname_resolution_threads.each do |thread|
-        thread&.exit
-      end
-
-      hostname_resolution_queue&.close_all
-
-      connecting_sockets.each do |connecting_socket|
-        connecting_socket.close unless connecting_socket.closed?
-      end
     end
   end
 
@@ -329,6 +323,19 @@ class Socket
   end
   private_class_method :tcp_without_fast_fallback
 
+  def self.cleanup_resources(hostname_resolution_threads:, hostname_resolution_queue:, connecting_sockets:)
+    hostname_resolution_threads.each do |thread|
+      thread&.exit
+    end
+
+    hostname_resolution_queue&.close_all
+
+    connecting_sockets.each do |connecting_socket|
+      connecting_socket.close unless connecting_socket.closed?
+    end
+  end
+  private_class_method :cleanup_resources
+
   def self.ip_address?(hostname)
     hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
   end
@@ -349,10 +356,10 @@ class Socket
   end
   private_class_method :now
 
-  def self.second_to_timeout(ends_at)
-    return 0 unless ends_at
+  def self.second_to_timeout(started_at, ends_at)
+    return 0 if ends_at.nil? || ends_at.zero?
 
-    remaining = (ends_at - now)
+    remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
   end
   private_class_method :second_to_timeout
