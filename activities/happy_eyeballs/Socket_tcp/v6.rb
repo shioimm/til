@@ -63,25 +63,25 @@ class Socket
       }
     )
 
-    started_at = now
-    connection_attempt_expires_at = connect_timeout ? started_at + connect_timeout : nil
-    hostname_resolution_expires_at = resolv_timeout ? started_at + resolv_timeout : nil
+    now = current_clock_time
+    connection_attempt_expires_at = connect_timeout ? now + connect_timeout : nil
+    hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
     ends_at = hostname_resolution_expires_at
     count = 0 if DEBUG # for DEBUGging
 
     ret = loop do
-      current_loop_started_at = now
       count += 1 if DEBUG # for DEBUGging
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(current_loop_started_at, ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        ends_at ? second_to_timeout(current_loop_started_at, ends_at) : nil,
+        ends_at ? second_to_timeout(now, ends_at) : nil,
       )
       ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
+      now = current_clock_time
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -129,9 +129,9 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if (connection_attempt_expires_at && current_loop_started_at >= connection_attempt_expires_at) ||
+      if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
           (hostname_resolution_expires_at &&
-           current_loop_started_at >= hostname_resolution_expires_at &&
+           now >= hostname_resolution_expires_at &&
            hostname_resolution_queue.opened? &&
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
@@ -166,7 +166,7 @@ class Socket
             hostname_resolution_waiting = nil
           else
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            ends_at = current_loop_started_at + RESOLUTION_DELAY
+            ends_at = now + RESOLUTION_DELAY
             puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
@@ -174,9 +174,9 @@ class Socket
 
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: second_to_timeout(current_loop_started_at, ends_at) #{second_to_timeout(current_loop_started_at, ends_at)}" if DEBUG
+      puts "[DEBUG] #{count}: second_to_timeout(now, ends_at) #{second_to_timeout(now, ends_at)}" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      if second_to_timeout(current_loop_started_at, ends_at).zero? && resolved_addrinfos.any?
+      if second_to_timeout(now, ends_at).zero? && resolved_addrinfos.any?
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
         while (addrinfo = resolved_addrinfos.get)
@@ -211,10 +211,10 @@ class Socket
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
-              ends_at = current_loop_started_at + CONNECTION_ATTEMPT_DELAY
+              ends_at = now + CONNECTION_ATTEMPT_DELAY
 
               if connect_timeout && !connection_attempt_expires_at
-                connection_attempt_expires_at = current_loop_started_at + connect_timeout
+                connection_attempt_expires_at = now + connect_timeout
               end
             else
               result = socket = local_addrinfo ?
@@ -351,10 +351,10 @@ class Socket
   end
   private_class_method :hostname_resolution
 
-  def self.now
+  def self.current_clock_time
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
-  private_class_method :now
+  private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
     return 0 if ends_at.nil? || ends_at.zero?
