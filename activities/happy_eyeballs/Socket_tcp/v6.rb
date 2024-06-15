@@ -62,7 +62,7 @@ class Socket
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-    resources = { # TODO 不要になる予定
+    resources = {
       hostname_resolution_threads: hostname_resolution_threads,
       hostname_resolution_queue: hostname_resolution_queue,
       connecting_sockets: connecting_sockets,
@@ -116,7 +116,6 @@ class Socket
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
             connected_socket = writable_socket
             connecting_sockets.delete connected_socket
-            cleanup_resources(**resources) # TODO 不要になる予定
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
@@ -132,7 +131,7 @@ class Socket
             else
               ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
               last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
-              cleanup_resources(**resources) # TODO 不要になる予定
+              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -150,7 +149,7 @@ class Socket
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
            !hostname_resolved)
-        cleanup_resources(**resources) # TODO 不要になる予定
+        cleanup_resources(**resources)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
@@ -212,7 +211,7 @@ class Socket
                 # Exit this "while" and wait for hostname resolution in next loop
                 break
               else
-                cleanup_resources(**resources) # TODO 不要になる予定
+                cleanup_resources(**resources)
                 raise SocketError.new 'no appropriate local address'
               end
             end
@@ -239,7 +238,6 @@ class Socket
             case result
             when 0, Socket
               connected_socket = socket
-              cleanup_resources(**resources) # TODO 不要になる予定
               break
             when :wait_writable # 接続試行中
               connecting_sockets.add(socket, addrinfo)
@@ -258,7 +256,7 @@ class Socket
               ends_at = hostname_resolution_expires_at if resolv_timeout
               # Exit this "while" and wait for hostname resolution in next loop
             else
-              cleanup_resources(**resources) # TODO 不要になる予定
+              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -273,14 +271,14 @@ class Socket
       if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
-        cleanup_resources(**resources) # TODO 不要になる予定
+        cleanup_resources(**resources)
         raise last_error
       end
       puts "------------------------" if DEBUG
     end
     puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}" if DEBUG
 
-    # TODO ここでまとめて後処理
+    cleanup_resources(**resources)
     ret
   end
 
@@ -504,8 +502,8 @@ class Socket
   private_constant :ConnectingSockets
 end
 
-# HOSTNAME = "localhost"
-# PORT = 9292
+HOSTNAME = "localhost"
+PORT = 9292
 
 # HOSTNAME = "www.ruby-lang.org"
 # PORT = 80
@@ -569,15 +567,15 @@ end
 #    print socket.read
 # end
 #
-# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
-#
-# Socket.tcp("127.0.0.1", PORT) do |socket|
-#   socket.write "GET / HTTP/1.0\r\n\r\n"
-#   print socket.read
-# end
+Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
+
+Socket.tcp("127.0.0.1", PORT) do |socket|
+  socket.write "GET / HTTP/1.0\r\n\r\n"
+  print socket.read
+end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
