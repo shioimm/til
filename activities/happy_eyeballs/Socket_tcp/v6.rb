@@ -1,7 +1,7 @@
 require 'socket'
 
 class Socket
-  DEBUG = false
+  DEBUG = true
 
   RESOLUTION_DELAY = 0.05
   private_constant :RESOLUTION_DELAY
@@ -78,6 +78,8 @@ class Socket
     )
 
     now = current_clock_time
+    resolution_delay_expires_at = nil
+    connection_attempt_delay_expires_at = nil
     connection_attempt_expires_at = connect_timeout ? now + connect_timeout : nil
     hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
     ends_at = hostname_resolution_expires_at
@@ -94,7 +96,6 @@ class Socket
         nil,
         ends_at ? second_to_timeout(now, ends_at) : nil,
       )
-      ends_at = (connecting_sockets.any? && (writable_sockets || hostname_resolved)) ? ends_at : 0
       now = current_clock_time
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
@@ -142,9 +143,8 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if (connection_attempt_expires_at && now >= connection_attempt_expires_at) ||
-          (hostname_resolution_expires_at &&
-           now >= hostname_resolution_expires_at &&
+      if expired?(now, connection_attempt_expires_at) ||
+          (expired?(now, hostname_resolution_expires_at) &&
            hostname_resolution_queue.opened? &&
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
@@ -177,9 +177,10 @@ class Socket
           if resolved_addrinfos.resolved?(:ipv6)
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             hostname_resolution_waiting = nil
+            resolution_delay_expires_at = nil
           else
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            ends_at = now + RESOLUTION_DELAY
+            resolution_delay_expires_at = ends_at = now + RESOLUTION_DELAY
             puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
@@ -187,9 +188,14 @@ class Socket
 
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: second_to_timeout(now, ends_at) #{second_to_timeout(now, ends_at)}" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      if second_to_timeout(now, ends_at).zero? && resolved_addrinfos.any?
+      puts "[DEBUG] #{count}: expired?(now, connection_attempt_expires_at) #{expired?(now, connection_attempt_expires_at)}" if DEBUG
+      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv6) #{resolved_addrinfos.resolved?(:ipv6)}" if DEBUG
+      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
+      puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
+      if resolved_addrinfos.any? &&
+          (expired?(now, connection_attempt_expires_at) ||
+           (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
         while (addrinfo = resolved_addrinfos.get)
@@ -224,7 +230,7 @@ class Socket
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
-              ends_at = now + CONNECTION_ATTEMPT_DELAY
+              ends_at = connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
 
               if connect_timeout && !connection_attempt_expires_at
                 connection_attempt_expires_at = now + connect_timeout
@@ -361,6 +367,13 @@ class Socket
     remaining.negative? ? 0 : remaining
   end
   private_class_method :second_to_timeout
+
+  def self.expired?(started_at, ends_at)
+    return false if ends_at.nil?
+
+    second_to_timeout(started_at, ends_at).zero?
+  end
+  private_class_method :expired?
 
   class HostnameResolutionQueue
     def initialize(size)
