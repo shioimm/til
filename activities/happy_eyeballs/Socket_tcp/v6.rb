@@ -80,9 +80,9 @@ class Socket
     now = current_clock_time
     resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
-    connection_attempt_expires_at = connect_timeout ? now + connect_timeout : nil
-    hostname_resolution_expires_at = resolv_timeout ? now + resolv_timeout : nil
-    ends_at = hostname_resolution_expires_at
+    user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : nil
+    user_specified_resolv_timout_at = resolv_timeout ? now + resolv_timeout : nil
+    ends_at = user_specified_resolv_timout_at
     count = 0 if DEBUG # for DEBUGging
 
     ret = loop do
@@ -127,7 +127,7 @@ class Socket
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
             elsif hostname_resolution_queue.opened?
-              ends_at = hostname_resolution_expires_at if (resolv_timeout && !hostname_resolved)
+              ends_at = user_specified_resolv_timout_at if (resolv_timeout && !hostname_resolved)
               # Exit this "while" and wait for hostname resolution in next loop
             else
               ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
@@ -143,8 +143,8 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if expired?(now, connection_attempt_expires_at) ||
-          (expired?(now, hostname_resolution_expires_at) &&
+      if expired?(now, user_specified_connect_timeout_at) ||
+          (expired?(now, user_specified_resolv_timout_at) &&
            hostname_resolution_queue.opened? &&
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
@@ -189,12 +189,12 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, connection_attempt_expires_at) #{expired?(now, connection_attempt_expires_at)}" if DEBUG
+      puts "[DEBUG] #{count}: expired?(now, user_specified_connect_timeout_at) #{expired?(now, user_specified_connect_timeout_at)}" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv6) #{resolved_addrinfos.resolved?(:ipv6)}" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
       puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
       if resolved_addrinfos.any? &&
-          (expired?(now, connection_attempt_expires_at) ||
+          (expired?(now, user_specified_connect_timeout_at) ||
            (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
@@ -213,7 +213,7 @@ class Socket
                 # Exit this "while" and wait for connections to be established or hostname resolution in next loop
                 break
               elsif hostname_resolution_queue.opened?
-                ends_at = hostname_resolution_expires_at if resolv_timeout
+                ends_at = user_specified_resolv_timout_at if resolv_timeout
                 # Exit this "while" and wait for hostname resolution in next loop
                 break
               else
@@ -232,8 +232,8 @@ class Socket
               result = socket.connect_nonblock(addrinfo, exception: false)
               ends_at = connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
 
-              if connect_timeout && !connection_attempt_expires_at
-                connection_attempt_expires_at = now + connect_timeout
+              if connect_timeout && !user_specified_connect_timeout_at
+                user_specified_connect_timeout_at = now + connect_timeout
               end
             else
               result = socket = local_addrinfo ?
@@ -259,7 +259,7 @@ class Socket
             elsif connecting_sockets.any?
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
             elsif hostname_resolution_queue.opened?
-              ends_at = hostname_resolution_expires_at if resolv_timeout
+              ends_at = user_specified_resolv_timout_at if resolv_timeout
               # Exit this "while" and wait for hostname resolution in next loop
             else
               cleanup_resources(**resources)
