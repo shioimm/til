@@ -194,7 +194,7 @@ class Socket
       puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
       puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
       if resolved_addrinfos.any? &&
-          (expired?(now, user_specified_connect_timeout_at) ||
+          (expired?(now, connection_attempt_delay_expires_at) ||
            (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
