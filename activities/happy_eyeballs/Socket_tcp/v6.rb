@@ -28,7 +28,7 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    ret = if fast_fallback && !(host && ip_address?(host))
+    sock = if fast_fallback && !(host && ip_address?(host))
       tcp_with_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     else
       tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
@@ -36,12 +36,12 @@ class Socket
 
     if block_given?
       begin
-        yield ret
+        yield sock
       ensure
-        ret.close
+        sock.close
       end
     else
-      ret
+      sock
     end
   end
 
