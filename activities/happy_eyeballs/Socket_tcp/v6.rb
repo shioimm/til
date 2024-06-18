@@ -80,8 +80,8 @@ class Socket
     now = current_clock_time
     resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
-    user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : nil
     user_specified_resolv_timout_at = resolv_timeout ? now + resolv_timeout : nil
+    user_specified_connect_timeout_at = nil
     ends_at = user_specified_resolv_timout_at
     count = 0 if DEBUG # for DEBUGging
 
@@ -228,10 +228,7 @@ class Socket
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
               ends_at = connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-
-              if connect_timeout && !user_specified_connect_timeout_at
-                user_specified_connect_timeout_at = now + connect_timeout
-              end
+              user_specified_connect_timeout_at = now + connect_timeout if connect_timeout
             else
               result = socket = local_addrinfo ?
                 addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
