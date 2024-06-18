@@ -28,7 +28,7 @@ class Socket
   end
 
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback, &block) # :yield: socket
-    ret = if fast_fallback && !(host && ip_address?(host))
+    sock = if fast_fallback && !(host && ip_address?(host))
       tcp_with_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
     else
       tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
@@ -36,12 +36,12 @@ class Socket
 
     if block_given?
       begin
-        yield ret
+        yield sock
       ensure
-        ret.close
+        sock.close
       end
     else
-      ret
+      sock
     end
   end
 
@@ -80,12 +80,12 @@ class Socket
     now = current_clock_time
     resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
-    user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : nil
     user_specified_resolv_timout_at = resolv_timeout ? now + resolv_timeout : nil
+    user_specified_connect_timeout_at = nil
     ends_at = user_specified_resolv_timout_at
     count = 0 if DEBUG # for DEBUGging
 
-    ret = loop do
+    loop do
       count += 1 if DEBUG # for DEBUGging
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
@@ -120,7 +120,7 @@ class Socket
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
-            writable_socket.close unless writable_socket.closed?
+            writable_socket.close
 
             if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any?
               # Try other writable socket in next "while"
@@ -132,7 +132,6 @@ class Socket
             else
               ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
               last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
-              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -149,7 +148,6 @@ class Socket
            connecting_sockets.empty? &&
            resolved_addrinfos.empty? &&
            !hostname_resolved)
-        cleanup_resources(**resources)
         raise Errno::ETIMEDOUT, 'user specified timeout'
       end
 
@@ -194,7 +192,7 @@ class Socket
       puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
       puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
       if resolved_addrinfos.any? &&
-          (expired?(now, user_specified_connect_timeout_at) ||
+          (expired?(now, connection_attempt_delay_expires_at) ||
            (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
@@ -217,7 +215,6 @@ class Socket
                 # Exit this "while" and wait for hostname resolution in next loop
                 break
               else
-                cleanup_resources(**resources)
                 raise SocketError.new 'no appropriate local address'
               end
             end
@@ -231,10 +228,7 @@ class Socket
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
               ends_at = connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-
-              if connect_timeout && !user_specified_connect_timeout_at
-                user_specified_connect_timeout_at = now + connect_timeout
-              end
+              user_specified_connect_timeout_at = now + connect_timeout if connect_timeout
             else
               result = socket = local_addrinfo ?
                 addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
@@ -262,7 +256,6 @@ class Socket
               ends_at = user_specified_resolv_timout_at if resolv_timeout
               # Exit this "while" and wait for hostname resolution in next loop
             else
-              cleanup_resources(**resources)
               raise last_error
             end
           end
@@ -277,15 +270,20 @@ class Socket
       if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
           hostname_resolution_queue.closed?
-        cleanup_resources(**resources)
         raise last_error
       end
       puts "------------------------" if DEBUG
     end
-    puts "[DEBUG] ret.remote_address #{ret.remote_address.ip_address}" if DEBUG
+  ensure
+    hostname_resolution_threads.each do |thread|
+      thread&.exit
+    end
 
-    cleanup_resources(**resources)
-    ret
+    hostname_resolution_queue&.close_all
+
+    connecting_sockets.each do |connecting_socket|
+      connecting_socket.close unless connecting_socket.closed?
+    end
   end
 
   def self.tcp_without_fast_fallback(host, port, local_host, local_port, connect_timeout:, resolv_timeout:, &block)
@@ -326,19 +324,6 @@ class Socket
     ret
   end
   private_class_method :tcp_without_fast_fallback
-
-  def self.cleanup_resources(hostname_resolution_threads:, hostname_resolution_queue:, connecting_sockets:)
-    hostname_resolution_threads.each do |thread|
-      thread&.exit
-    end
-
-    hostname_resolution_queue&.close_all
-
-    connecting_sockets.each do |connecting_socket|
-      connecting_socket.close unless connecting_socket.closed?
-    end
-  end
-  private_class_method :cleanup_resources
 
   def self.ip_address?(hostname)
     hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
