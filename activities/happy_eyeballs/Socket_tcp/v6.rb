@@ -120,7 +120,7 @@ class Socket
             break
           else
             failed_ai = connecting_sockets.delete writable_socket
-            writable_socket.close unless writable_socket.closed?
+            writable_socket.close
 
             if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any?
               # Try other writable socket in next "while"
