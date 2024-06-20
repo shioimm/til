@@ -55,27 +55,37 @@ class Socket
     end
 
     hostname_resolution_threads = []
-    hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
-    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
     resolved_addrinfos = ResolvedAddrinfos.new
     connecting_sockets = ConnectingSockets.new
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-    hostname_resolution_threads.concat(
-      resolving_family_names.map { |family|
-        thread_args = [family, host, port, hostname_resolution_queue]
-        thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
-        Thread.pass
-        thread
-      }
-    )
-
     now = current_clock_time
     resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
-    user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
     user_specified_connect_timeout_at = nil
+
+    if (is_single_family = resolving_family_names.size.eql?(1))
+      family_name = resolving_family_names.first
+      addrinfos = Addrinfo.getaddrinfo(host, port, resolving_family_names.first, :STREAM, timeout: resolv_timeout)
+      resolved_addrinfos.add(family_name, addrinfos)
+      hostname_resolution_queue = NoHostnameResolutionQueue.new
+      user_specified_resolv_timeout_at = nil
+    else
+      hostname_resolution_threads.concat(
+        resolving_family_names.map { |family|
+          thread_args = [family, host, port, hostname_resolution_queue]
+          thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+          Thread.pass
+          thread
+        }
+      )
+
+      hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
+    end
+
+    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
     ends_at = user_specified_resolv_timeout_at
     count = 0 if DEBUG # for DEBUGging
 
@@ -91,7 +101,9 @@ class Socket
 
       if resolved_addrinfos.any? &&
           (expired?(now, connection_attempt_delay_expires_at) ||
-           (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
+           (resolved_addrinfos.resolved?(:ipv6) ||
+            expired?(now, resolution_delay_expires_at) ||
+            (connection_attempt_delay_expires_at.nil? && is_single_family)))
 
         resolution_delay_expires_at = nil if resolution_delay_expires_at
 
@@ -420,6 +432,37 @@ class Socket
   end
   private_constant :HostnameResolutionQueue
 
+  class NoHostnameResolutionQueue
+    def waiting_pipe
+      nil
+    end
+
+    def add_resolved(_, _)
+      raise StandardError, "This #{self.class} cannot respond to:"
+    end
+
+    def add_error(_, _)
+      raise StandardError, "This #{self.class} cannot respond to:"
+    end
+
+    def get
+      nil
+    end
+
+    def opened?
+      false
+    end
+
+    def closed?
+      true
+    end
+
+    def close_all
+      # Do nothing
+    end
+  end
+  private_constant :NoHostnameResolutionQueue
+
   class ResolvedAddrinfos
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
     PRIORITY_ON_V4 = [:ipv4, :ipv6]
@@ -541,41 +584,41 @@ PORT = 9292
 #   end
 # end
 
-# local_host / local_port を指定する場合
-# class Addrinfo
-#   class << self
-#     alias _getaddrinfo getaddrinfo
-#
-#     def getaddrinfo(nodename, service, family, *_)
-#       if service == 9292
-#         if family == Socket::AF_INET6
-#           [Addrinfo.tcp("::1", 9292)]
-#         else
-#           [Addrinfo.tcp("127.0.0.1", 9292)]
-#         end
-#       else
-#         _getaddrinfo(nodename, service, family)
-#       end
-#     end
-#   end
-# end
+# # local_host / local_port を指定する場合
+class Addrinfo
+  class << self
+    alias _getaddrinfo getaddrinfo
 
-# local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
-
-# Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
-#    socket.write "GET / HTTP/1.0\r\n\r\n"
-#    print socket.read
-# end
-#
-Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
+    def getaddrinfo(nodename, service, family, *_)
+      if service == 9292
+        if family == Socket::AF_INET6
+          [Addrinfo.tcp("::1", 9292)]
+        else
+          [Addrinfo.tcp("127.0.0.1", 9292)]
+        end
+      else
+        _getaddrinfo(nodename, service, family)
+      end
+    end
+  end
 end
 
-Socket.tcp("127.0.0.1", PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
+local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
+
+Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
+   socket.write "GET / HTTP/1.0\r\n\r\n"
+   print socket.read
 end
+
+# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
+
+# Socket.tcp("127.0.0.1", PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
