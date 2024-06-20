@@ -82,98 +82,6 @@ class Socket
     loop do
       count += 1 if DEBUG # for DEBUGging
 
-      puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
-      hostname_resolved, writable_sockets, = IO.select(
-        hostname_resolution_waiting,
-        connecting_sockets.all,
-        nil,
-        ends_at ? second_to_timeout(now, ends_at) : nil,
-      )
-      now = current_clock_time
-
-      puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
-
-      if writable_sockets&.any?
-        while (writable_socket = writable_sockets.pop)
-          is_connected =
-            if is_windows_environment
-              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
-              sockopt.unpack('i').first >= 0
-            else
-              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
-              sockopt.int.zero?
-            end
-
-          if is_connected
-            puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
-            connected_socket = writable_socket
-            connecting_sockets.delete connected_socket
-            break
-          else
-            failed_ai = connecting_sockets.delete writable_socket
-            writable_socket.close
-
-            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
-              user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
-              # Try other writable socket in next "while"
-              # Or exit this "while" and try other connection attempt
-              # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
-              # Or exit this "while" and wait for hostname resolution in next loop
-            else
-              ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
-              last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
-              raise last_error
-            end
-          end
-        end
-      end
-
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      break connected_socket if connected_socket
-
-      puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
-      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
-      if hostname_resolved&.any?
-        while (hostname_resolution_result = hostname_resolution_queue.get)
-          family_name, result = hostname_resolution_result
-          puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}" if DEBUG
-
-          if result.is_a? Exception
-            resolved_addrinfos.add(family_name, [])
-
-            unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
-              (result.is_a?(Socket::ResolutionError)) &&
-              (result.error_code == Socket::EAI_ADDRFAMILY)
-              last_error = result
-            end
-          else
-            resolved_addrinfos.add(family_name, result)
-          end
-        end
-
-        if resolved_addrinfos.resolved?(:ipv4)
-          if resolved_addrinfos.resolved?(:ipv6)
-            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
-            hostname_resolution_waiting = nil
-            user_specified_resolv_timeout_at = nil
-            user_specified_connect_timeout_at = nil
-          else
-            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            resolution_delay_expires_at = now + RESOLUTION_DELAY
-            puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
-          end
-        end
-      else
-        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
-          raise Errno::ETIMEDOUT, 'user specified timeout'
-        end
-      end
-
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
       puts "[DEBUG] #{count}: expired?(now, user_specified_connect_timeout_at) #{expired?(now, user_specified_connect_timeout_at)}" if DEBUG
@@ -273,6 +181,99 @@ class Socket
       puts "[DEBUG] #{count}: user_specified_resolv_timeout_at #{user_specified_resolv_timeout_at || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: user_specified_connect_timeout_at #{user_specified_connect_timeout_at || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
+
+      puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
+      hostname_resolved, writable_sockets, = IO.select(
+        hostname_resolution_waiting,
+        connecting_sockets.all,
+        nil,
+        ends_at ? second_to_timeout(now, ends_at) : nil,
+      )
+      now = current_clock_time
+
+      puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
+      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
+
+      if writable_sockets&.any?
+        while (writable_socket = writable_sockets.pop)
+          is_connected =
+            if is_windows_environment
+              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
+              sockopt.unpack('i').first >= 0
+            else
+              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+              sockopt.int.zero?
+            end
+
+          if is_connected
+            puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
+            connected_socket = writable_socket
+            connecting_sockets.delete connected_socket
+            break
+          else
+            failed_ai = connecting_sockets.delete writable_socket
+            writable_socket.close
+
+            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
+              user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
+              # Try other writable socket in next "while"
+              # Or exit this "while" and try other connection attempt
+              # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
+              # Or exit this "while" and wait for hostname resolution in next loop
+            else
+              ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+              last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
+              raise last_error
+            end
+          end
+        end
+      end
+
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
+      break connected_socket if connected_socket
+
+      puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
+      if hostname_resolved&.any?
+        while (hostname_resolution_result = hostname_resolution_queue.get)
+          family_name, result = hostname_resolution_result
+          puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}" if DEBUG
+
+          if result.is_a? Exception
+            resolved_addrinfos.add(family_name, [])
+
+            unless (Socket.const_defined?(:EAI_ADDRFAMILY)) &&
+              (result.is_a?(Socket::ResolutionError)) &&
+              (result.error_code == Socket::EAI_ADDRFAMILY)
+              last_error = result
+            end
+          else
+            resolved_addrinfos.add(family_name, result)
+          end
+        end
+
+        if resolved_addrinfos.resolved?(:ipv4)
+          if resolved_addrinfos.resolved?(:ipv6)
+            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
+            hostname_resolution_waiting = nil
+            user_specified_resolv_timeout_at = nil
+            user_specified_connect_timeout_at = nil
+          else
+            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
+            resolution_delay_expires_at = now + RESOLUTION_DELAY
+            puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
+          end
+        end
+      else
+        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
+          raise Errno::ETIMEDOUT, 'user specified timeout'
+        end
+      end
+
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       puts "------------------------" if DEBUG
     end
   ensure
