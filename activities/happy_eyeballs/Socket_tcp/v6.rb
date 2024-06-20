@@ -62,12 +62,6 @@ class Socket
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-    resources = {
-      hostname_resolution_threads: hostname_resolution_threads,
-      hostname_resolution_queue: hostname_resolution_queue,
-      connecting_sockets: connecting_sockets,
-    }
-
     hostname_resolution_threads.concat(
       resolving_family_names.map { |family|
         thread_args = [family, host, port, hostname_resolution_queue]
