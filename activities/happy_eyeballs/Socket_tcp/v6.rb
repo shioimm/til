@@ -141,11 +141,6 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if !hostname_resolved &&
-          (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
-        raise Errno::ETIMEDOUT, 'user specified timeout'
-      end
-
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
       if hostname_resolved&.any?
@@ -177,6 +172,10 @@ class Socket
             resolution_delay_expires_at = now + RESOLUTION_DELAY
             puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
+        end
+      else
+        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
+          raise Errno::ETIMEDOUT, 'user specified timeout'
         end
       end
 
