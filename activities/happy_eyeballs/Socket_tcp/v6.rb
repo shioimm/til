@@ -72,6 +72,8 @@ class Socket
       hostname_resolution_queue = NoHostnameResolutionQueue.new
       user_specified_resolv_timeout_at = nil
     else
+      hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+
       hostname_resolution_threads.concat(
         resolving_family_names.map { |family|
           thread_args = [family, host, port, hostname_resolution_queue]
@@ -81,12 +83,10 @@ class Socket
         }
       )
 
-      hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
       user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
     end
 
     hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
-    ends_at = user_specified_resolv_timeout_at
     count = 0 if DEBUG # for DEBUGging
 
     loop do
