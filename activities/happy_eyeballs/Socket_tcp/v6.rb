@@ -153,7 +153,7 @@ class Socket
               break
             end
           rescue SystemCallError => e
-            socket&.close unless socket&.closed?
+            socket&.close
             last_error = $!
 
             if resolved_addrinfos.any?
@@ -298,7 +298,7 @@ class Socket
     hostname_resolution_queue&.close_all
 
     connecting_sockets.each do |connecting_socket|
-      connecting_socket.close unless connecting_socket.closed?
+      connecting_socket.close
     end
   end
 
