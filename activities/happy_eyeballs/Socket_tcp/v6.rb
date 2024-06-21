@@ -264,19 +264,21 @@ class Socket
             end
           else
             resolved_addrinfos.add(family_name, result)
-          end
-        end
 
-        if resolved_addrinfos.resolved?(:ipv4)
-          if resolved_addrinfos.resolved?(:ipv6)
-            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
-            hostname_resolution_waiting = nil
-            user_specified_resolv_timeout_at = nil
-            user_specified_connect_timeout_at = nil
-          else
-            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            resolution_delay_expires_at = now + RESOLUTION_DELAY
-            puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
+            if hostname_resolution_queue.empty?
+              if resolved_addrinfos.resolved?(:ipv4)
+                if resolved_addrinfos.resolved?(:ipv6)
+                  puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
+                  hostname_resolution_waiting = nil
+                  user_specified_resolv_timeout_at = nil
+                  user_specified_connect_timeout_at = nil
+                else
+                  puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
+                  resolution_delay_expires_at = now + RESOLUTION_DELAY
+                  puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
+                end
+              end
+            end
           end
         end
       else
@@ -429,6 +431,10 @@ class Socket
       @rpipe.close unless @rpipe.closed?
       @wpipe.close unless @wpipe.closed?
     end
+
+    def empty?
+      @queue.empty?
+    end
   end
   private_constant :HostnameResolutionQueue
 
@@ -459,6 +465,10 @@ class Socket
 
     def close_all
       # Do nothing
+    end
+
+    def empty?
+      true
     end
   end
   private_constant :NoHostnameResolutionQueue
