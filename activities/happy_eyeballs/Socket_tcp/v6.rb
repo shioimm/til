@@ -55,38 +55,144 @@ class Socket
     end
 
     hostname_resolution_threads = []
-    hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
-    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
     resolved_addrinfos = ResolvedAddrinfos.new
     connecting_sockets = ConnectingSockets.new
     connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
-    resources = {
-      hostname_resolution_threads: hostname_resolution_threads,
-      hostname_resolution_queue: hostname_resolution_queue,
-      connecting_sockets: connecting_sockets,
-    }
-
-    hostname_resolution_threads.concat(
-      resolving_family_names.map { |family|
-        thread_args = [family, host, port, hostname_resolution_queue]
-        thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
-        Thread.pass
-        thread
-      }
-    )
-
     now = current_clock_time
     resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
-    user_specified_resolv_timout_at = resolv_timeout ? now + resolv_timeout : nil
     user_specified_connect_timeout_at = nil
-    ends_at = user_specified_resolv_timout_at
+
+    if (is_single_family = resolving_family_names.size.eql?(1))
+      family_name = resolving_family_names.first
+      addrinfos = Addrinfo.getaddrinfo(host, port, resolving_family_names.first, :STREAM, timeout: resolv_timeout)
+      resolved_addrinfos.add(family_name, addrinfos)
+      hostname_resolution_queue = NoHostnameResolutionQueue.new
+      user_specified_resolv_timeout_at = nil
+    else
+      hostname_resolution_threads.concat(
+        resolving_family_names.map { |family|
+          thread_args = [family, host, port, hostname_resolution_queue]
+          thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+          Thread.pass
+          thread
+        }
+      )
+
+      hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
+    end
+
+    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
+    ends_at = user_specified_resolv_timeout_at
     count = 0 if DEBUG # for DEBUGging
 
     loop do
       count += 1 if DEBUG # for DEBUGging
+
+      puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
+      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
+      puts "[DEBUG] #{count}: expired?(now, user_specified_connect_timeout_at) #{expired?(now, user_specified_connect_timeout_at)}" if DEBUG
+      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv6) #{resolved_addrinfos.resolved?(:ipv6)}" if DEBUG
+      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
+      puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
+
+      if resolved_addrinfos.any? &&
+          (expired?(now, connection_attempt_delay_expires_at) ||
+           (resolved_addrinfos.resolved?(:ipv6) ||
+            expired?(now, resolution_delay_expires_at) ||
+            (connection_attempt_delay_expires_at.nil? && is_single_family)))
+
+        resolution_delay_expires_at = nil if resolution_delay_expires_at
+
+        puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
+        puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
+        while (addrinfo = resolved_addrinfos.get)
+          puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address" if DEBUG
+
+          if local_addrinfos.any?
+            puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}" if DEBUG
+            local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
+
+            if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
+              if resolved_addrinfos.any?
+                # Try other Addrinfo in next "while"
+                next
+              elsif connecting_sockets.any? || hostname_resolution_queue.opened?
+                # Exit this "while" and wait for connections to be established or hostname resolution in next loop
+                # Or exit this "while" and wait for hostname resolution in next loop
+                break
+              else
+                raise SocketError.new 'no appropriate local address'
+              end
+            end
+          end
+
+          puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}" if DEBUG
+
+          begin
+            if resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
+              socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
+              socket.bind(local_addrinfo) if local_addrinfo
+              result = socket.connect_nonblock(addrinfo, exception: false)
+              connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+            else
+              result = socket = local_addrinfo ?
+                addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                addrinfo.connect(timeout: connect_timeout)
+            end
+
+            case result
+            when 0, Socket
+              connected_socket = socket
+              break
+            when :wait_writable # 接続試行中
+              connecting_sockets.add(socket, addrinfo)
+              break
+            end
+          rescue SystemCallError => e
+            socket&.close unless socket&.closed?
+            last_error = $!
+
+            if resolved_addrinfos.any?
+              # Try other Addrinfo in next "while"
+              next
+            elsif connecting_sockets.any? || hostname_resolution_queue.opened?
+              # Exit this "while" and wait for connections to be established or hostname resolution in next loop
+              # Or exit this "while" and wait for hostname resolution in next loop
+            else
+              raise last_error
+            end
+          end
+
+          if resolved_addrinfos.empty? && connecting_sockets.any?
+            connection_attempt_delay_expires_at = nil
+            user_specified_connect_timeout_at = now + connect_timeout if connect_timeout
+          end
+        end
+      end
+
+      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
+      break connected_socket if connected_socket
+
+      if resolved_addrinfos.empty? &&
+          connecting_sockets.empty? &&
+          hostname_resolution_queue.closed?
+        raise last_error
+      end
+
+      ends_at =
+        [resolution_delay_expires_at, connection_attempt_delay_expires_at].compact.min ||
+        [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+      puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{connection_attempt_delay_expires_at || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: user_specified_resolv_timeout_at #{user_specified_resolv_timeout_at || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: user_specified_connect_timeout_at #{user_specified_connect_timeout_at || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
       puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
@@ -122,13 +228,12 @@ class Socket
             failed_ai = connecting_sockets.delete writable_socket
             writable_socket.close
 
-            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any?
+            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
+              user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
-            elsif hostname_resolution_queue.opened?
-              ends_at = user_specified_resolv_timout_at if (resolv_timeout && !hostname_resolved)
-              # Exit this "while" and wait for hostname resolution in next loop
+              # Or exit this "while" and wait for hostname resolution in next loop
             else
               ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
               last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
@@ -141,15 +246,6 @@ class Socket
       puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
-
-      if expired?(now, user_specified_connect_timeout_at) ||
-          (expired?(now, user_specified_resolv_timout_at) &&
-           hostname_resolution_queue.opened? &&
-           connecting_sockets.empty? &&
-           resolved_addrinfos.empty? &&
-           !hostname_resolved)
-        raise Errno::ETIMEDOUT, 'user specified timeout'
-      end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
@@ -175,103 +271,21 @@ class Socket
           if resolved_addrinfos.resolved?(:ipv6)
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             hostname_resolution_waiting = nil
-            resolution_delay_expires_at = nil
+            user_specified_resolv_timeout_at = nil
+            user_specified_connect_timeout_at = nil
           else
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-            resolution_delay_expires_at = ends_at = now + RESOLUTION_DELAY
+            resolution_delay_expires_at = now + RESOLUTION_DELAY
             puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
-      end
-
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, user_specified_connect_timeout_at) #{expired?(now, user_specified_connect_timeout_at)}" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv6) #{resolved_addrinfos.resolved?(:ipv6)}" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
-      if resolved_addrinfos.any? &&
-          (expired?(now, connection_attempt_delay_expires_at) ||
-           (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
-        puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
-        puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
-        while (addrinfo = resolved_addrinfos.get)
-          puts "[DEBUG] #{count}: Get #{addrinfo.ip_address} as a destination address" if DEBUG
-
-          if local_addrinfos.any?
-            puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}" if DEBUG
-            local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
-
-            if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
-              if resolved_addrinfos.any?
-                # Try other Addrinfo in next "while"
-                next
-              elsif connecting_sockets.any?
-                # Exit this "while" and wait for connections to be established or hostname resolution in next loop
-                break
-              elsif hostname_resolution_queue.opened?
-                ends_at = user_specified_resolv_timout_at if resolv_timeout
-                # Exit this "while" and wait for hostname resolution in next loop
-                break
-              else
-                raise SocketError.new 'no appropriate local address'
-              end
-            end
-          end
-
-          puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}" if DEBUG
-
-          begin
-            if resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
-              socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
-              socket.bind(local_addrinfo) if local_addrinfo
-              result = socket.connect_nonblock(addrinfo, exception: false)
-              ends_at = connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-              user_specified_connect_timeout_at = now + connect_timeout if connect_timeout
-            else
-              result = socket = local_addrinfo ?
-                addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
-                addrinfo.connect(timeout: connect_timeout)
-            end
-
-            case result
-            when 0, Socket
-              connected_socket = socket
-              break
-            when :wait_writable # 接続試行中
-              connecting_sockets.add(socket, addrinfo)
-              break
-            end
-          rescue SystemCallError => e
-            socket&.close unless socket&.closed?
-            last_error = $!
-
-            if resolved_addrinfos.any?
-              # Try other Addrinfo in next "while"
-              next
-            elsif connecting_sockets.any?
-              # Exit this "while" and wait for connections to be established or hostname resolution in next loop
-            elsif hostname_resolution_queue.opened?
-              ends_at = user_specified_resolv_timout_at if resolv_timeout
-              # Exit this "while" and wait for hostname resolution in next loop
-            else
-              raise last_error
-            end
-          end
+      else
+        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
+          raise Errno::ETIMEDOUT, 'user specified timeout'
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      break connected_socket if connected_socket
-
-      if resolved_addrinfos.empty? &&
-          connecting_sockets.empty? &&
-          hostname_resolution_queue.closed?
-        raise last_error
-      end
       puts "------------------------" if DEBUG
     end
   ensure
@@ -418,6 +432,37 @@ class Socket
   end
   private_constant :HostnameResolutionQueue
 
+  class NoHostnameResolutionQueue
+    def waiting_pipe
+      nil
+    end
+
+    def add_resolved(_, _)
+      raise StandardError, "This #{self.class} cannot respond to:"
+    end
+
+    def add_error(_, _)
+      raise StandardError, "This #{self.class} cannot respond to:"
+    end
+
+    def get
+      nil
+    end
+
+    def opened?
+      false
+    end
+
+    def closed?
+      true
+    end
+
+    def close_all
+      # Do nothing
+    end
+  end
+  private_constant :NoHostnameResolutionQueue
+
   class ResolvedAddrinfos
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
     PRIORITY_ON_V4 = [:ipv4, :ipv6]
@@ -539,41 +584,41 @@ PORT = 9292
 #   end
 # end
 
-# local_host / local_port を指定する場合
-# class Addrinfo
-#   class << self
-#     alias _getaddrinfo getaddrinfo
-#
-#     def getaddrinfo(nodename, service, family, *_)
-#       if service == 9292
-#         if family == Socket::AF_INET6
-#           [Addrinfo.tcp("::1", 9292)]
-#         else
-#           [Addrinfo.tcp("127.0.0.1", 9292)]
-#         end
-#       else
-#         _getaddrinfo(nodename, service, family)
-#       end
-#     end
-#   end
-# end
+# # local_host / local_port を指定する場合
+class Addrinfo
+  class << self
+    alias _getaddrinfo getaddrinfo
 
-# local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
-
-# Socket.tcp(HOSTNAME, PORT, HOSTNAME, 0) do |socket|
-#    socket.write "GET / HTTP/1.0\r\n\r\n"
-#    print socket.read
-# end
-#
-Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
+    def getaddrinfo(nodename, service, family, *_)
+      if service == 9292
+        if family == Socket::AF_INET6
+          [Addrinfo.tcp("::1", 9292)]
+        else
+          [Addrinfo.tcp("127.0.0.1", 9292)]
+        end
+      else
+        _getaddrinfo(nodename, service, family)
+      end
+    end
+  end
 end
 
-Socket.tcp("127.0.0.1", PORT) do |socket|
-  socket.write "GET / HTTP/1.0\r\n\r\n"
-  print socket.read
+local_ip = Socket.ip_address_list.detect { |addr| addr.ipv4? && !addr.ipv4_loopback? }.ip_address
+
+Socket.tcp(HOSTNAME, PORT, local_ip, 0) do |socket|
+   socket.write "GET / HTTP/1.0\r\n\r\n"
+   print socket.read
 end
+
+# Socket.tcp(HOSTNAME, PORT, fast_fallback: false) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
+
+# Socket.tcp("127.0.0.1", PORT) do |socket|
+#   socket.write "GET / HTTP/1.0\r\n\r\n"
+#   print socket.read
+# end
 
 # Socket.tcp(HOSTNAME, PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
