@@ -121,7 +121,7 @@ class Socket
               if resolved_addrinfos.any?
                 # Try other Addrinfo in next "while"
                 next
-              elsif connecting_sockets.any? || hostname_resolution_queue.opened?
+              elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
                 # Exit this "while" and wait for connections to be established or hostname resolution in next loop
                 # Or exit this "while" and wait for hostname resolution in next loop
                 break
@@ -134,7 +134,7 @@ class Socket
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}" if DEBUG
 
           begin
-            if resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
+            if resolved_addrinfos.any? || connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
@@ -160,7 +160,7 @@ class Socket
             if resolved_addrinfos.any?
               # Try other Addrinfo in next "while"
               next
-            elsif connecting_sockets.any? || hostname_resolution_queue.opened?
+            elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
             else
@@ -223,7 +223,7 @@ class Socket
             failed_ai = connecting_sockets.delete writable_socket
             writable_socket.close
 
-            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || hostname_resolution_queue.opened?
+            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
               user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
@@ -518,6 +518,10 @@ class Socket
 
     def resolved?(family)
       @addrinfo_dict.keys.include? family
+    end
+
+    def resolved_all?(families)
+      (families - @addrinfo_dict.keys).empty?
     end
   end
   private_constant :ResolvedAddrinfos
