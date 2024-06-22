@@ -64,6 +64,7 @@ class Socket
     resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
     user_specified_connect_timeout_at = nil
+    last_error = nil
 
     if (is_single_family = resolving_family_names.size.eql?(1))
       family_name = resolving_family_names.first
@@ -179,12 +180,6 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
       break connected_socket if connected_socket
 
-      if resolved_addrinfos.empty? &&
-          connecting_sockets.empty? &&
-          hostname_resolution_queue.closed?
-        raise last_error
-      end
-
       ends_at =
         [resolution_delay_expires_at, connection_attempt_delay_expires_at].compact.min ||
         [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
@@ -288,6 +283,12 @@ class Socket
       end
 
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
+
+      if resolved_addrinfos.empty? &&
+          connecting_sockets.empty? &&
+          hostname_resolution_queue.closed?
+        raise last_error
+      end
       puts "------------------------" if DEBUG
     end
   ensure
