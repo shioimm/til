@@ -70,10 +70,12 @@ class Socket
       family_name = resolving_family_names.first
       addrinfos = Addrinfo.getaddrinfo(host, port, resolving_family_names.first, :STREAM, timeout: resolv_timeout)
       resolved_addrinfos.add(family_name, addrinfos)
-      hostname_resolution_queue = NoHostnameResolutionQueue.new
+      hostname_resolution_queue = nil
+      hostname_resolution_waiting = nil
       user_specified_resolv_timeout_at = nil
     else
       hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
+      hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
 
       hostname_resolution_threads.concat(
         resolving_family_names.map { |family|
@@ -87,7 +89,6 @@ class Socket
       user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
     end
 
-    hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
     count = 0 if DEBUG # for DEBUGging
 
     loop do
@@ -286,7 +287,7 @@ class Socket
 
       if resolved_addrinfos.empty? &&
           connecting_sockets.empty? &&
-          hostname_resolution_queue.closed?
+          resolved_addrinfos.resolved_all?(resolving_family_names)
         raise last_error
       end
       puts "------------------------" if DEBUG
@@ -419,14 +420,6 @@ class Socket
       res
     end
 
-    def closed?
-      @rpipe.closed?
-    end
-
-    def opened?
-      !closed?
-    end
-
     def close_all
       @queue.close unless @queue.closed?
       @rpipe.close unless @rpipe.closed?
@@ -438,41 +431,6 @@ class Socket
     end
   end
   private_constant :HostnameResolutionQueue
-
-  class NoHostnameResolutionQueue
-    def waiting_pipe
-      nil
-    end
-
-    def add_resolved(_, _)
-      raise StandardError, "This #{self.class} cannot respond to:"
-    end
-
-    def add_error(_, _)
-      raise StandardError, "This #{self.class} cannot respond to:"
-    end
-
-    def get
-      nil
-    end
-
-    def opened?
-      false
-    end
-
-    def closed?
-      true
-    end
-
-    def close_all
-      # Do nothing
-    end
-
-    def empty?
-      true
-    end
-  end
-  private_constant :NoHostnameResolutionQueue
 
   class ResolvedAddrinfos
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
