@@ -269,18 +269,21 @@ class Socket
             end
           end
         end
-      else
+      end
+
+      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
+      puts "[DEBUG] #{count}: user_specified_resolv_timeout_at #{user_specified_resolv_timeout_at|| 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: user_specified_connect_timeout_at #{user_specified_connect_timeout_at|| 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
+
+      if resolved_addrinfos.empty?
         if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
-      end
 
-      puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-
-      if resolved_addrinfos.empty? &&
-          connecting_sockets.empty? &&
-          resolved_addrinfos.resolved_all?(resolving_family_names)
-        raise last_error
+        if connecting_sockets.empty? && resolved_addrinfos.resolved_all?(resolving_family_names)
+          raise last_error
+        end
       end
       puts "------------------------" if DEBUG
     end
