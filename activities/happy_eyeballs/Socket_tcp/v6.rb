@@ -65,12 +65,13 @@ class Socket
     user_specified_connect_timeout_at = nil
     last_error = nil
 
-    if (is_single_family = resolving_family_names.size.eql?(1))
+    if resolving_family_names.size.eql? 1
       family_name = resolving_family_names.first
       addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
       resolved_addrinfos.add(family_name, addrinfos)
       hostname_resolution_queue = nil
       hostname_resolution_waiting = nil
+      resolution_delay_expires_at = now if family_name.eql? :ipv4
       user_specified_resolv_timeout_at = nil
     else
       hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
@@ -102,9 +103,7 @@ class Socket
 
       if resolved_addrinfos.any? &&
           (expired?(now, connection_attempt_delay_expires_at) ||
-           (resolved_addrinfos.resolved?(:ipv6) ||
-            expired?(now, resolution_delay_expires_at) ||
-            (connection_attempt_delay_expires_at.nil? && is_single_family)))
+           (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
 
         resolution_delay_expires_at = nil if resolution_delay_expires_at
 
