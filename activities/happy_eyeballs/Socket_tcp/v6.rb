@@ -129,7 +129,9 @@ class Socket
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}" if DEBUG
 
           begin
-            if resolved_addrinfos.any? || connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+            if resolved_addrinfos.any? ||
+                connecting_sockets.any? ||
+                !resolved_addrinfos.resolved_all?(resolving_family_names)
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
@@ -225,7 +227,10 @@ class Socket
             failed_ai = connecting_sockets.delete writable_socket
             writable_socket.close
 
-            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+            if writable_sockets.any? ||
+                resolved_addrinfos.any? ||
+                connecting_sockets.any? ||
+                !resolved_addrinfos.resolved_all?(resolving_family_names)
               user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
