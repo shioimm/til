@@ -68,7 +68,7 @@ class Socket
 
     if (is_single_family = resolving_family_names.size.eql?(1))
       family_name = resolving_family_names.first
-      addrinfos = Addrinfo.getaddrinfo(host, port, resolving_family_names.first, :STREAM, timeout: resolv_timeout)
+      addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
       resolved_addrinfos.add(family_name, addrinfos)
       hostname_resolution_queue = nil
       hostname_resolution_waiting = nil
