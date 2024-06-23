@@ -60,7 +60,6 @@ class Socket
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     now = current_clock_time
-    resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
     user_specified_connect_timeout_at = nil
     last_error = nil
@@ -86,6 +85,7 @@ class Socket
         }
       )
 
+      resolution_delay_expires_at = nil
       user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
     end
 
@@ -96,16 +96,12 @@ class Socket
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, user_specified_connect_timeout_at) #{expired?(now, user_specified_connect_timeout_at)}" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv6) #{resolved_addrinfos.resolved?(:ipv6)}" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
+      puts "[DEBUG] #{count}: user_specified_connect_timeout_at #{user_specified_connect_timeout_at}" if DEBUG
+      puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at}" if DEBUG
 
       if resolved_addrinfos.any? &&
-          (expired?(now, connection_attempt_delay_expires_at) ||
-           (resolved_addrinfos.resolved?(:ipv6) || expired?(now, resolution_delay_expires_at)))
-
-        resolution_delay_expires_at = nil if resolution_delay_expires_at
+          !resolution_delay_expires_at &&
+          !connection_attempt_delay_expires_at
 
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
@@ -166,9 +162,8 @@ class Socket
             end
           end
 
-          if resolved_addrinfos.empty? && connecting_sockets.any?
-            connection_attempt_delay_expires_at = nil
-            user_specified_connect_timeout_at = now + connect_timeout if connect_timeout
+          if connect_timeout && resolved_addrinfos.empty? && connecting_sockets.any?
+            user_specified_connect_timeout_at = now + connect_timeout
           end
         end
       end
@@ -177,8 +172,12 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       ends_at =
-        [resolution_delay_expires_at, connection_attempt_delay_expires_at].compact.min ||
-        [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+        if resolved_addrinfos.any?
+          resolution_delay_expires_at || connection_attempt_delay_expires_at
+        else
+          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+        end
+
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{connection_attempt_delay_expires_at || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: user_specified_resolv_timeout_at #{user_specified_resolv_timeout_at || 'nil'}" if DEBUG
@@ -194,6 +193,14 @@ class Socket
         ends_at ? second_to_timeout(now, ends_at) : nil,
       )
       now = current_clock_time
+
+      if resolution_delay_expires_at && expired?(now, resolution_delay_expires_at)
+        resolution_delay_expires_at = nil
+      end
+
+      if connection_attempt_delay_expires_at && expired?(now, connection_attempt_delay_expires_at)
+        connection_attempt_delay_expires_at = nil
+      end
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
