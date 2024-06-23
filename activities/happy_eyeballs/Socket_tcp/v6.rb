@@ -252,21 +252,19 @@ class Socket
             end
           else
             resolved_addrinfos.add(family_name, result)
+          end
+        end
 
-            if hostname_resolution_queue.empty?
-              if resolved_addrinfos.resolved?(:ipv4)
-                if resolved_addrinfos.resolved?(:ipv6)
-                  puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
-                  hostname_resolution_waiting = nil
-                  user_specified_resolv_timeout_at = nil
-                  user_specified_connect_timeout_at = nil
-                else
-                  puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-                  resolution_delay_expires_at = now + RESOLUTION_DELAY
-                  puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
-                end
-              end
-            end
+        if resolved_addrinfos.resolved?(:ipv4)
+          if resolved_addrinfos.resolved?(:ipv6)
+            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
+            hostname_resolution_waiting = nil
+            user_specified_resolv_timeout_at = nil
+            user_specified_connect_timeout_at = nil
+          elsif resolved_addrinfos.resolved_successfully?(:ipv4)
+            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
+            resolution_delay_expires_at = now + RESOLUTION_DELAY
+            puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
           end
         end
       end
@@ -471,6 +469,10 @@ class Socket
 
     def resolved?(family)
       @addrinfo_dict.keys.include? family
+    end
+
+    def resolved_successfully?(family)
+      !!@addrinfo_dict[family]&.is_a?(Array)
     end
 
     def resolved_all?(families)
