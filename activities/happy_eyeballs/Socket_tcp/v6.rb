@@ -57,7 +57,6 @@ class Socket
     hostname_resolution_threads = []
     resolved_addrinfos = ResolvedAddrinfos.new
     connecting_sockets = ConnectingSockets.new
-    connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     now = current_clock_time
@@ -148,8 +147,7 @@ class Socket
 
             case result
             when 0, Socket
-              connected_socket = socket
-              break
+              return socket
             when :wait_writable # 接続試行中
               connecting_sockets.add(socket, addrinfo)
               break
@@ -176,10 +174,8 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      break connected_socket if connected_socket
 
       ends_at =
         [resolution_delay_expires_at, connection_attempt_delay_expires_at].compact.min ||
@@ -217,9 +213,8 @@ class Socket
 
           if is_connected
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
-            connected_socket = writable_socket
-            connecting_sockets.delete connected_socket
-            break
+            connecting_sockets.delete writable_socket
+            return writable_socket
           else
             failed_ai = connecting_sockets.delete writable_socket
             writable_socket.close
@@ -239,9 +234,7 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      break connected_socket if connected_socket
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
@@ -294,7 +287,7 @@ class Socket
     end
   ensure
     hostname_resolution_threads.each do |thread|
-      thread&.exit
+      thread.exit
     end
 
     hostname_resolution_queue&.close_all
