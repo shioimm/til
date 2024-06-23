@@ -60,6 +60,7 @@ class Socket
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     now = current_clock_time
+    resolution_delay_expires_at = nil
     connection_attempt_delay_expires_at = nil
     user_specified_connect_timeout_at = nil
     last_error = nil
@@ -70,7 +71,6 @@ class Socket
       resolved_addrinfos.add(family_name, addrinfos)
       hostname_resolution_queue = nil
       hostname_resolution_waiting = nil
-      resolution_delay_expires_at = now if family_name.eql? :ipv4
       user_specified_resolv_timeout_at = nil
     else
       hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
@@ -85,7 +85,6 @@ class Socket
         }
       )
 
-      resolution_delay_expires_at = nil
       user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
     end
 
