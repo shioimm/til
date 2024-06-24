@@ -270,6 +270,7 @@ class Socket
           if resolved_addrinfos.resolved?(:ipv6)
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             hostname_resolution_waiting = nil
+            resolution_delay_expires_at = nil
             user_specified_resolv_timeout_at = nil
             user_specified_connect_timeout_at = nil
           elsif resolved_addrinfos.resolved_successfully?(:ipv4)
