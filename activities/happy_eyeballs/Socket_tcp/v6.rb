@@ -141,12 +141,11 @@ class Socket
                 addrinfo.connect(timeout: connect_timeout)
             end
 
-            case result
-            when 0, Socket
-              return socket
-            when :wait_writable # 接続試行中
+            if result == :wait_writable
               connecting_sockets.add(socket, addrinfo)
               break
+            else
+              return socket # connection established
             end
           rescue SystemCallError => e
             socket&.close
