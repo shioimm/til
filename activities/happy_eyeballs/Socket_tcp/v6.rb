@@ -176,7 +176,7 @@ class Socket
         if resolved_addrinfos.any?
           resolution_delay_expires_at || connection_attempt_delay_expires_at
         else
-          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.min
         end
 
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
