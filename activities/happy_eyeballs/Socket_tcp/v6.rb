@@ -57,7 +57,6 @@ class Socket
     hostname_resolution_threads = []
     resolved_addrinfos = ResolvedAddrinfos.new
     connecting_sockets = ConnectingSockets.new
-    connected_socket = nil
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     now = current_clock_time
@@ -66,9 +65,9 @@ class Socket
     user_specified_connect_timeout_at = nil
     last_error = nil
 
-    if (is_single_family = resolving_family_names.size.eql?(1))
+    if resolving_family_names.size.eql? 1
       family_name = resolving_family_names.first
-      addrinfos = Addrinfo.getaddrinfo(host, port, resolving_family_names.first, :STREAM, timeout: resolv_timeout)
+      addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
       resolved_addrinfos.add(family_name, addrinfos)
       hostname_resolution_queue = nil
       hostname_resolution_waiting = nil
@@ -96,18 +95,12 @@ class Socket
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, user_specified_connect_timeout_at) #{expired?(now, user_specified_connect_timeout_at)}" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv6) #{resolved_addrinfos.resolved?(:ipv6)}" if DEBUG
-      puts "[DEBUG] #{count}: resolved_addrinfos.resolved?(:ipv4) #{resolved_addrinfos.resolved?(:ipv4)}" if DEBUG
-      puts "[DEBUG] #{count}: expired?(now, resolution_delay_expires_at) #{expired?(now, resolution_delay_expires_at)}" if DEBUG
+      puts "[DEBUG] #{count}: user_specified_connect_timeout_at #{user_specified_connect_timeout_at}" if DEBUG
+      puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at}" if DEBUG
 
       if resolved_addrinfos.any? &&
-          (expired?(now, connection_attempt_delay_expires_at) ||
-           (resolved_addrinfos.resolved?(:ipv6) ||
-            expired?(now, resolution_delay_expires_at) ||
-            (connection_attempt_delay_expires_at.nil? && is_single_family)))
-
-        resolution_delay_expires_at = nil if resolution_delay_expires_at
+          !resolution_delay_expires_at &&
+          !connection_attempt_delay_expires_at
 
         puts "[DEBUG] #{count}: ** Start to connect **" if DEBUG
         puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
@@ -135,7 +128,9 @@ class Socket
           puts "[DEBUG] #{count}: Start to connect to #{addrinfo.ip_address}" if DEBUG
 
           begin
-            if resolved_addrinfos.any? || connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+            if resolved_addrinfos.any? ||
+                connecting_sockets.any? ||
+                !resolved_addrinfos.resolved_all?(resolving_family_names)
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
@@ -148,8 +143,7 @@ class Socket
 
             case result
             when 0, Socket
-              connected_socket = socket
-              break
+              return socket
             when :wait_writable # 接続試行中
               connecting_sockets.add(socket, addrinfo)
               break
@@ -169,21 +163,22 @@ class Socket
             end
           end
 
-          if resolved_addrinfos.empty? && connecting_sockets.any?
-            connection_attempt_delay_expires_at = nil
-            user_specified_connect_timeout_at = now + connect_timeout if connect_timeout
+          if connect_timeout && resolved_addrinfos.empty? && connecting_sockets.any?
+            user_specified_connect_timeout_at = now + connect_timeout
           end
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      break connected_socket if connected_socket
 
       ends_at =
-        [resolution_delay_expires_at, connection_attempt_delay_expires_at].compact.min ||
-        [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+        if resolved_addrinfos.any?
+          resolution_delay_expires_at || connection_attempt_delay_expires_at
+        else
+          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+        end
+
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{connection_attempt_delay_expires_at || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: user_specified_resolv_timeout_at #{user_specified_resolv_timeout_at || 'nil'}" if DEBUG
@@ -199,6 +194,14 @@ class Socket
         ends_at ? second_to_timeout(now, ends_at) : nil,
       )
       now = current_clock_time
+
+      if resolution_delay_expires_at && expired?(now, resolution_delay_expires_at)
+        resolution_delay_expires_at = nil
+      end
+
+      if connection_attempt_delay_expires_at && expired?(now, connection_attempt_delay_expires_at)
+        connection_attempt_delay_expires_at = nil
+      end
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -217,14 +220,16 @@ class Socket
 
           if is_connected
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
-            connected_socket = writable_socket
-            connecting_sockets.delete connected_socket
-            break
+            connecting_sockets.delete writable_socket
+            return writable_socket
           else
             failed_ai = connecting_sockets.delete writable_socket
             writable_socket.close
 
-            if writable_sockets.any? || resolved_addrinfos.any? || connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+            if writable_sockets.any? ||
+                resolved_addrinfos.any? ||
+                connecting_sockets.any? ||
+                !resolved_addrinfos.resolved_all?(resolving_family_names)
               user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
@@ -239,9 +244,7 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connected_socket #{connected_socket || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
-      break connected_socket if connected_socket
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
@@ -260,41 +263,42 @@ class Socket
             end
           else
             resolved_addrinfos.add(family_name, result)
-
-            if hostname_resolution_queue.empty?
-              if resolved_addrinfos.resolved?(:ipv4)
-                if resolved_addrinfos.resolved?(:ipv6)
-                  puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
-                  hostname_resolution_waiting = nil
-                  user_specified_resolv_timeout_at = nil
-                  user_specified_connect_timeout_at = nil
-                else
-                  puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
-                  resolution_delay_expires_at = now + RESOLUTION_DELAY
-                  puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
-                end
-              end
-            end
           end
         end
-      else
-        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
-          raise Errno::ETIMEDOUT, 'user specified timeout'
+
+        if resolved_addrinfos.resolved?(:ipv4)
+          if resolved_addrinfos.resolved?(:ipv6)
+            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
+            hostname_resolution_waiting = nil
+            user_specified_resolv_timeout_at = nil
+            user_specified_connect_timeout_at = nil
+          elsif resolved_addrinfos.resolved_successfully?(:ipv4)
+            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
+            resolution_delay_expires_at = now + RESOLUTION_DELAY
+            puts "[DEBUG] #{count}: ends_at #{ends_at}" if DEBUG
+          end
         end
       end
 
+      puts "[DEBUG] #{count}: resolved_addrinfos #{resolved_addrinfos.instance_variable_get(:"@addrinfo_dict")}"  if DEBUG
+      puts "[DEBUG] #{count}: user_specified_resolv_timeout_at #{user_specified_resolv_timeout_at|| 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: user_specified_connect_timeout_at #{user_specified_connect_timeout_at|| 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
-      if resolved_addrinfos.empty? &&
-          connecting_sockets.empty? &&
-          resolved_addrinfos.resolved_all?(resolving_family_names)
-        raise last_error
+      if resolved_addrinfos.empty?
+        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
+          raise Errno::ETIMEDOUT, 'user specified timeout'
+        end
+
+        if connecting_sockets.empty? && resolved_addrinfos.resolved_all?(resolving_family_names)
+          raise last_error
+        end
       end
       puts "------------------------" if DEBUG
     end
   ensure
     hostname_resolution_threads.each do |thread|
-      thread&.exit
+      thread.exit
     end
 
     hostname_resolution_queue&.close_all
@@ -476,6 +480,10 @@ class Socket
 
     def resolved?(family)
       @addrinfo_dict.keys.include? family
+    end
+
+    def resolved_successfully?(family)
+      !!@addrinfo_dict[family]&.is_a?(Array)
     end
 
     def resolved_all?(families)
