@@ -161,6 +161,7 @@ class Socket
             elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
+              break
             else
               raise last_error
             end
