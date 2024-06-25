@@ -129,24 +129,27 @@ class Socket
 
           begin
             if resolved_addrinfos.any? ||
-                connecting_sockets.any? ||
-                !resolved_addrinfos.resolved_all?(resolving_family_names)
+               connecting_sockets.any? ||
+               !resolved_addrinfos.resolved_all?(resolving_family_names)
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
               connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+
+              if connect_timeout && resolved_addrinfos.empty? && connecting_sockets.any?
+                user_specified_connect_timeout_at = now + connect_timeout
+              end
             else
               result = socket = local_addrinfo ?
                 addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
                 addrinfo.connect(timeout: connect_timeout)
             end
 
-            case result
-            when 0, Socket
-              return socket
-            when :wait_writable # 接続試行中
+            if result == :wait_writable
               connecting_sockets.add(socket, addrinfo)
               break
+            else
+              return socket # connection established
             end
           rescue SystemCallError => e
             socket&.close
@@ -162,10 +165,6 @@ class Socket
               raise last_error
             end
           end
-
-          if connect_timeout && resolved_addrinfos.empty? && connecting_sockets.any?
-            user_specified_connect_timeout_at = now + connect_timeout
-          end
         end
       end
 
@@ -176,7 +175,7 @@ class Socket
         if resolved_addrinfos.any?
           resolution_delay_expires_at || connection_attempt_delay_expires_at
         else
-          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.min
         end
 
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
@@ -227,9 +226,9 @@ class Socket
             writable_socket.close
 
             if writable_sockets.any? ||
-                resolved_addrinfos.any? ||
-                connecting_sockets.any? ||
-                !resolved_addrinfos.resolved_all?(resolving_family_names)
+               resolved_addrinfos.any? ||
+               connecting_sockets.any? ||
+               !resolved_addrinfos.resolved_all?(resolving_family_names)
               user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
@@ -270,6 +269,7 @@ class Socket
           if resolved_addrinfos.resolved?(:ipv6)
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             hostname_resolution_waiting = nil
+            resolution_delay_expires_at = nil
             user_specified_resolv_timeout_at = nil
             user_specified_connect_timeout_at = nil
           elsif resolved_addrinfos.resolved_successfully?(:ipv4)
