@@ -186,12 +186,12 @@ class Socket
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        ends_at ? second_to_timeout(now, ends_at) : nil,
+        ends_at ? second_to_timeout(current_clock_time, ends_at) : nil,
       )
       now = current_clock_time
       resolution_delay_expires_at = nil if expired?(now, resolution_delay_expires_at)
