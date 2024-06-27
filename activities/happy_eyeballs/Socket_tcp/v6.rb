@@ -134,11 +134,6 @@ class Socket
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
-              connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-
-              if connect_timeout && resolved_addrinfos.empty? && connecting_sockets.any?
-                user_specified_connect_timeout_at = now + connect_timeout
-              end
             else
               result = socket = local_addrinfo ?
                 addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
@@ -146,6 +141,11 @@ class Socket
             end
 
             if result == :wait_writable
+              connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+              if connect_timeout && resolved_addrinfos.empty?
+                user_specified_connect_timeout_at = now + connect_timeout
+              end
+
               connecting_sockets.add(socket, addrinfo)
               break
             else
