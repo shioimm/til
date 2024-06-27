@@ -191,7 +191,7 @@ class Socket
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        ends_at ? second_to_timeout(current_clock_time, ends_at) : nil,
+        second_to_timeout(current_clock_time, ends_at),
       )
       now = current_clock_time
       resolution_delay_expires_at = nil if expired?(now, resolution_delay_expires_at)
@@ -363,7 +363,7 @@ class Socket
   private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
-    return 0 if ends_at.nil? || ends_at.zero?
+    return nil if ends_at.nil?
 
     remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
@@ -371,9 +371,7 @@ class Socket
   private_class_method :second_to_timeout
 
   def self.expired?(started_at, ends_at)
-    return false if ends_at.nil?
-
-    second_to_timeout(started_at, ends_at).zero?
+    second_to_timeout(started_at, ends_at)&.zero?
   end
   private_class_method :expired?
 
