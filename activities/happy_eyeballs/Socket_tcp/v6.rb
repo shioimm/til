@@ -474,7 +474,7 @@ class Socket
     end
 
     def resolved?(family)
-      @addrinfo_dict.keys.include? family
+      @addrinfo_dict.has_key? family
     end
 
     def resolved_successfully?(family)
@@ -513,7 +513,7 @@ class Socket
     end
 
     def each
-      @socket_dict.keys.each do |socket|
+      @socket_dict.each_key do |socket|
         yield socket
       end
     end
