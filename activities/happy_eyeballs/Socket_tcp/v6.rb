@@ -18,7 +18,7 @@ class Socket
   HOSTNAME_RESOLUTION_QUEUE_UPDATED = 0
   private_constant :HOSTNAME_RESOLUTION_QUEUE_UPDATED
 
-  IPV6_ADRESS_FORMAT = /(?i)(?:(?:[0-9A-F]{1,4}:){7}(?:[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){6}(?:[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){5}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,4}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){4}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,3}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){3}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,2}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){2}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:)[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){1}(?::[0-9A-F]{1,4}::[0-9A-F]{1,4}|::(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|::(?:[0-9A-F]{1,4}::[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,6}[0-9A-F]{1,4}|:))(?:%.+)?/
+  IPV6_ADRESS_FORMAT = /\A(?i:(?:(?:[0-9A-F]{1,4}:){7}(?:[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){6}(?:[0-9A-F]{1,4}|:(?:[0-9A-F]{1,4}:){1,5}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){5}(?:(?::[0-9A-F]{1,4}){1,2}|:(?:[0-9A-F]{1,4}:){1,4}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){4}(?:(?::[0-9A-F]{1,4}){1,3}|:(?:[0-9A-F]{1,4}:){1,3}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){3}(?:(?::[0-9A-F]{1,4}){1,4}|:(?:[0-9A-F]{1,4}:){1,2}[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){2}(?:(?::[0-9A-F]{1,4}){1,5}|:(?:[0-9A-F]{1,4}:)[0-9A-F]{1,4}|:)|(?:[0-9A-F]{1,4}:){1}(?:(?::[0-9A-F]{1,4}){1,6}|:(?:[0-9A-F]{1,4}:){0,5}[0-9A-F]{1,4}|:)|(?:::(?:[0-9A-F]{1,4}:){0,7}[0-9A-F]{1,4}|::)))(?:%.+)?\z/
   private_constant :IPV6_ADRESS_FORMAT
 
   @tcp_fast_fallback = true
@@ -194,14 +194,8 @@ class Socket
         ends_at ? second_to_timeout(now, ends_at) : nil,
       )
       now = current_clock_time
-
-      if resolution_delay_expires_at && expired?(now, resolution_delay_expires_at)
-        resolution_delay_expires_at = nil
-      end
-
-      if connection_attempt_delay_expires_at && expired?(now, connection_attempt_delay_expires_at)
-        connection_attempt_delay_expires_at = nil
-      end
+      resolution_delay_expires_at = nil if expired?(now, resolution_delay_expires_at)
+      connection_attempt_delay_expires_at = nil if expired?(now, connection_attempt_delay_expires_at)
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -349,7 +343,7 @@ class Socket
   private_class_method :tcp_without_fast_fallback
 
   def self.ip_address?(hostname)
-    hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/^([0-9]{1,3}\.){3}[0-9]{1,3}$/)
+    hostname.match?(IPV6_ADRESS_FORMAT) || hostname.match?(/\A([0-9]{1,3}\.){3}[0-9]{1,3}\z/)
   end
   private_class_method :ip_address?
 
@@ -480,7 +474,7 @@ class Socket
     end
 
     def resolved?(family)
-      @addrinfo_dict.keys.include? family
+      @addrinfo_dict.has_key? family
     end
 
     def resolved_successfully?(family)
@@ -519,7 +513,7 @@ class Socket
     end
 
     def each
-      @socket_dict.keys.each do |socket|
+      @socket_dict.each_key do |socket|
         yield socket
       end
     end
@@ -597,7 +591,7 @@ end
 #   print socket.read
 # end
 
-# Socket.tcp("127.0.0.1", PORT) do |socket|
+# Socket.tcp("::1", PORT) do |socket|
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
 #   print socket.read
 # end
