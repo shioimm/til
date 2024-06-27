@@ -194,14 +194,8 @@ class Socket
         ends_at ? second_to_timeout(now, ends_at) : nil,
       )
       now = current_clock_time
-
-      if resolution_delay_expires_at && expired?(now, resolution_delay_expires_at)
-        resolution_delay_expires_at = nil
-      end
-
-      if connection_attempt_delay_expires_at && expired?(now, connection_attempt_delay_expires_at)
-        connection_attempt_delay_expires_at = nil
-      end
+      resolution_delay_expires_at = nil if expired?(now, resolution_delay_expires_at)
+      connection_attempt_delay_expires_at = nil if expired?(now, connection_attempt_delay_expires_at)
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
