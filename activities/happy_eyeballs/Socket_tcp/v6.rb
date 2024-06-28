@@ -443,16 +443,11 @@ class Socket
     end
 
     def get
-      return nil if empty?
-
-      if @addrinfo_dict.size == 1
-        @addrinfo_dict.each { |_, addrinfos| return addrinfos.shift }
-      end
-
-      precedences = case @last_family
-                    when :ipv4, nil then PRIORITY_ON_V6
-                    when :ipv6      then PRIORITY_ON_V4
-                    end
+      precedences =
+        case @last_family
+        when :ipv4, nil then PRIORITY_ON_V6
+        when :ipv6      then PRIORITY_ON_V4
+        end
 
       precedences.each do |family_name|
         addrinfo = @addrinfo_dict[family_name]&.shift
@@ -461,6 +456,8 @@ class Socket
         @last_family = family_name
         return addrinfo
       end
+
+      nil
     end
 
     def empty?
