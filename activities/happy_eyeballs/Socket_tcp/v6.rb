@@ -56,7 +56,7 @@ class Socket
 
     hostname_resolution_threads = []
     resolved_addrinfos = ResolvedAddrinfos.new
-    connecting_sockets = ConnectingSockets.new
+    connecting_sockets = {}
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
     now = current_clock_time
@@ -115,7 +115,7 @@ class Socket
               if resolved_addrinfos.any?
                 # Try other Addrinfo in next "while"
                 next
-              elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+              elsif connecting_sockets.keys.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
                 # Exit this "while" and wait for connections to be established or hostname resolution in next loop
                 # Or exit this "while" and wait for hostname resolution in next loop
                 break
@@ -129,7 +129,7 @@ class Socket
 
           begin
             if resolved_addrinfos.any? ||
-               connecting_sockets.any? ||
+               connecting_sockets.keys.any? ||
                !resolved_addrinfos.resolved_all?(resolving_family_names)
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
@@ -146,7 +146,7 @@ class Socket
                 user_specified_connect_timeout_at = now + connect_timeout
               end
 
-              connecting_sockets.add(socket, addrinfo)
+              connecting_sockets[socket] = addrinfo
               break
             else
               return socket # connection established
@@ -158,7 +158,7 @@ class Socket
             if resolved_addrinfos.any?
               # Try other Addrinfo in next "while"
               next
-            elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+            elsif connecting_sockets.keys.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
               break
@@ -169,7 +169,7 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.keys}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       ends_at =
@@ -186,10 +186,10 @@ class Socket
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.keys}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
-        connecting_sockets.all,
+        connecting_sockets.keys,
         nil,
         second_to_timeout(current_clock_time, ends_at),
       )
@@ -199,7 +199,7 @@ class Socket
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.all}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.keys}" if DEBUG
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
@@ -222,9 +222,9 @@ class Socket
 
             if writable_sockets.any? ||
                resolved_addrinfos.any? ||
-               connecting_sockets.any? ||
+               (sockets = connecting_sockets.keys).any? ||
                !resolved_addrinfos.resolved_all?(resolving_family_names)
-              user_specified_connect_timeout_at = nil if connect_timeout && connecting_sockets.empty?
+              user_specified_connect_timeout_at = nil if connect_timeout && sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
@@ -285,7 +285,7 @@ class Socket
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
 
-        if connecting_sockets.empty? && resolved_addrinfos.resolved_all?(resolving_family_names)
+        if connecting_sockets.keys.empty? && resolved_addrinfos.resolved_all?(resolving_family_names)
           raise last_error
         end
       end
@@ -298,7 +298,7 @@ class Socket
 
     hostname_resolution_queue&.close_all
 
-    connecting_sockets.each do |connecting_socket|
+    connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
     end
   end
