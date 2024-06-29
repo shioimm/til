@@ -46,7 +46,7 @@ class Socket
   end
 
   def self.tcp_with_fast_fallback(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil)
-    if local_host && local_port
+    if local_host || local_port
       local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
       resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
     else
@@ -134,11 +134,6 @@ class Socket
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
-              connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-
-              if connect_timeout && resolved_addrinfos.empty? && connecting_sockets.any?
-                user_specified_connect_timeout_at = now + connect_timeout
-              end
             else
               result = socket = local_addrinfo ?
                 addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
@@ -146,6 +141,11 @@ class Socket
             end
 
             if result == :wait_writable
+              connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+              if connect_timeout && resolved_addrinfos.empty?
+                user_specified_connect_timeout_at = now + connect_timeout
+              end
+
               connecting_sockets.add(socket, addrinfo)
               break
             else
@@ -186,12 +186,12 @@ class Socket
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(now, ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.all}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
         hostname_resolution_waiting,
         connecting_sockets.all,
         nil,
-        ends_at ? second_to_timeout(now, ends_at) : nil,
+        second_to_timeout(current_clock_time, ends_at),
       )
       now = current_clock_time
       resolution_delay_expires_at = nil if expired?(now, resolution_delay_expires_at)
@@ -363,7 +363,7 @@ class Socket
   private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
-    return 0 if ends_at.nil? || ends_at.zero?
+    return nil if ends_at.nil?
 
     remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
@@ -371,9 +371,7 @@ class Socket
   private_class_method :second_to_timeout
 
   def self.expired?(started_at, ends_at)
-    return false if ends_at.nil?
-
-    second_to_timeout(started_at, ends_at).zero?
+    second_to_timeout(started_at, ends_at)&.zero?
   end
   private_class_method :expired?
 
@@ -445,16 +443,11 @@ class Socket
     end
 
     def get
-      return nil if empty?
-
-      if @addrinfo_dict.size == 1
-        @addrinfo_dict.each { |_, addrinfos| return addrinfos.shift }
-      end
-
-      precedences = case @last_family
-                    when :ipv4, nil then PRIORITY_ON_V6
-                    when :ipv6      then PRIORITY_ON_V4
-                    end
+      precedences =
+        case @last_family
+        when :ipv4, nil then PRIORITY_ON_V6
+        when :ipv6      then PRIORITY_ON_V4
+        end
 
       precedences.each do |family_name|
         addrinfo = @addrinfo_dict[family_name]&.shift
@@ -463,6 +456,8 @@ class Socket
         @last_family = family_name
         return addrinfo
       end
+
+      nil
     end
 
     def empty?
