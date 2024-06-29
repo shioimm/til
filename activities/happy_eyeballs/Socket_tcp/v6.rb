@@ -481,39 +481,6 @@ class Socket
     end
   end
   private_constant :ResolvedAddrinfos
-
-  class ConnectingSockets
-    def initialize
-      @socket_dict = {}
-    end
-
-    def all
-      @socket_dict.keys
-    end
-
-    def add(socket, addrinfo)
-      @socket_dict[socket] = addrinfo
-    end
-
-    def delete(socket)
-      @socket_dict.delete socket
-    end
-
-    def empty?
-      @socket_dict.empty?
-    end
-
-    def any?
-      !empty?
-    end
-
-    def each
-      @socket_dict.each_key do |socket|
-        yield socket
-      end
-    end
-  end
-  private_constant :ConnectingSockets
 end
 
 HOSTNAME = "localhost"
