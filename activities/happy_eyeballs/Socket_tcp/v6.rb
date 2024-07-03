@@ -281,12 +281,15 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       if resolved_addrinfos.empty?
-        if (expired?(now, user_specified_connect_timeout_at) || expired?(now, user_specified_resolv_timeout_at))
-          raise Errno::ETIMEDOUT, 'user specified timeout'
-        end
-
         if connecting_sockets.keys.empty? && resolved_addrinfos.resolved_all?(resolving_family_names)
           raise last_error
+        end
+
+        if (expired?(now, user_specified_connect_timeout_at) &&
+            resolved_addrinfos.resolved_all?(resolving_family_names)) ||
+           (expired?(now, user_specified_resolv_timeout_at) &&
+            connecting_sockets.keys.empty?)
+          raise Errno::ETIMEDOUT, 'user specified timeout'
         end
       end
       puts "------------------------" if DEBUG
