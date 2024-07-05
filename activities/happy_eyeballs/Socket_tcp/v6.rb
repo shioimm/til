@@ -285,10 +285,8 @@ class Socket
           raise last_error
         end
 
-        if (expired?(now, user_specified_connect_timeout_at) &&
-            resolved_addrinfos.resolved_all?(resolving_family_names)) ||
-           (expired?(now, user_specified_resolv_timeout_at) &&
-            connecting_sockets.keys.empty?)
+        if (expired?(now, user_specified_resolv_timeout_at) || resolved_addrinfos.resolved_all?(resolving_family_names)) &&
+           (expired?(now, user_specified_connect_timeout_at) || connecting_sockets.keys.empty?)
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
       end
