@@ -176,7 +176,19 @@ class Socket
         if resolved_addrinfos.any?
           resolution_delay_expires_at || connection_attempt_delay_expires_at
         else
-          [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.min
+          timeout = [
+            [user_specified_resolv_timeout_at,
+             (resolved_addrinfos.resolved_all?(resolving_family_names) ? -Float::INFINITY : Float::INFINITY)].compact.min,
+            [user_specified_connect_timeout_at,
+             (connecting_sockets.keys.empty? ? -Float::INFINITY : Float::INFINITY)].compact.min,
+          ].max
+
+          case timeout
+          when Float::INFINITY then nil
+          when -Float::INFINITY then raise last_error
+          else
+            timeout
+          end
         end
 
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
