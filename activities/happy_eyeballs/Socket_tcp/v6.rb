@@ -115,7 +115,7 @@ class Socket
               if resolved_addrinfos.any?
                 # Try other Addrinfo in next "while"
                 next
-              elsif connecting_sockets.keys.any? || !resolved_addrinfos.resolved_all?(family_names)
+              elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(family_names)
                 # Exit this "while" and wait for connections to be established or hostname resolution in next loop
                 # Or exit this "while" and wait for hostname resolution in next loop
                 break
@@ -129,7 +129,7 @@ class Socket
 
           begin
             if resolved_addrinfos.any? ||
-               connecting_sockets.keys.any? ||
+               connecting_sockets.any? ||
                !resolved_addrinfos.resolved_all?(family_names)
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
@@ -158,7 +158,7 @@ class Socket
             if resolved_addrinfos.any?
               # Try other Addrinfo in next "while"
               next
-            elsif connecting_sockets.keys.any? || !resolved_addrinfos.resolved_all?(family_names)
+            elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?(family_names)
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
               break
@@ -169,7 +169,7 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.keys}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       ends_at =
@@ -200,7 +200,7 @@ class Socket
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.keys}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets}" if DEBUG
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
@@ -223,9 +223,9 @@ class Socket
 
             if writable_sockets.any? ||
                resolved_addrinfos.any? ||
-               connecting_sockets.keys.any? ||
+               connecting_sockets.any? ||
                !resolved_addrinfos.resolved_all?(family_names)
-              user_specified_connect_timeout_at = nil if connecting_sockets.keys.empty?
+              user_specified_connect_timeout_at = nil if connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
@@ -282,12 +282,12 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       if resolved_addrinfos.empty?
-        if connecting_sockets.keys.empty? && resolved_addrinfos.resolved_all?(family_names)
+        if connecting_sockets.empty? && resolved_addrinfos.resolved_all?(family_names)
           raise last_error
         end
 
         if (expired?(now, user_specified_resolv_timeout_at) || resolved_addrinfos.resolved_all?(family_names)) &&
-           (expired?(now, user_specified_connect_timeout_at) || connecting_sockets.keys.empty?)
+           (expired?(now, user_specified_connect_timeout_at) || connecting_sockets.empty?)
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
       end
