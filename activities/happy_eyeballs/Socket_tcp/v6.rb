@@ -365,7 +365,7 @@ class Socket
   private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
-    return nil if ends_at.nil?
+    return nil if ends_at == Float::INFINITY || ends_at.nil?
 
     remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
