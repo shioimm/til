@@ -153,7 +153,7 @@ class Socket
             end
           rescue SystemCallError => e
             socket&.close
-            last_error = $!
+            last_error = e
 
             if resolved_addrinfos.any?
               # Try other Addrinfo in next "while"
