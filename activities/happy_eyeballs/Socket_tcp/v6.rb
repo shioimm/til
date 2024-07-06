@@ -71,7 +71,7 @@ class Socket
       resolved_addrinfos.add(family_name, addrinfos)
       hostname_resolution_queue = nil
       hostname_resolution_waiting = nil
-      user_specified_resolv_timeout_at = Float::INFINITY
+      user_specified_resolv_timeout_at = nil
     else
       hostname_resolution_queue = HostnameResolutionQueue.new(family_names.size)
       hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
