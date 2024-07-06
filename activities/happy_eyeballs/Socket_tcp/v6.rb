@@ -71,7 +71,7 @@ class Socket
       resolved_addrinfos.add(family_name, addrinfos)
       hostname_resolution_queue = nil
       hostname_resolution_waiting = nil
-      user_specified_resolv_timeout_at = nil
+      user_specified_resolv_timeout_at = Float::INFINITY
     else
       hostname_resolution_queue = HostnameResolutionQueue.new(family_names.size)
       hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
@@ -85,7 +85,7 @@ class Socket
         }
       )
 
-      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
+      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
     end
 
     count = 0 if DEBUG # for DEBUGging
@@ -142,8 +142,8 @@ class Socket
 
             if result == :wait_writable
               connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-              if connect_timeout && resolved_addrinfos.empty?
-                user_specified_connect_timeout_at = now + connect_timeout
+              if resolved_addrinfos.empty?
+                user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
               end
 
               connecting_sockets[socket] = addrinfo
@@ -176,19 +176,8 @@ class Socket
         if resolved_addrinfos.any?
           resolution_delay_expires_at || connection_attempt_delay_expires_at
         else
-          timeout = [
-            [user_specified_resolv_timeout_at,
-             (resolved_addrinfos.resolved_all?(family_names) ? -Float::INFINITY : Float::INFINITY)].compact.min,
-            [user_specified_connect_timeout_at,
-             (connecting_sockets.keys.empty? ? -Float::INFINITY : Float::INFINITY)].compact.min,
-          ].max
-
-          case timeout
-          when Float::INFINITY then nil
-          when -Float::INFINITY then raise last_error
-          else
-            timeout
-          end
+          timeout_at = [user_specified_resolv_timeout_at,user_specified_connect_timeout_at].compact.max
+          timeout_at == Float::INFINITY ? nil : timeout_at
         end
 
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
@@ -234,9 +223,9 @@ class Socket
 
             if writable_sockets.any? ||
                resolved_addrinfos.any? ||
-               (sockets = connecting_sockets.keys).any? ||
+               connecting_sockets.keys.any? ||
                !resolved_addrinfos.resolved_all?(family_names)
-              user_specified_connect_timeout_at = nil if connect_timeout && sockets.empty?
+              user_specified_connect_timeout_at = nil if connecting_sockets.keys.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
