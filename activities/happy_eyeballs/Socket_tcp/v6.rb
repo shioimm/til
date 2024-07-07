@@ -266,7 +266,6 @@ class Socket
             hostname_resolution_waiting = nil
             resolution_delay_expires_at = nil
             user_specified_resolv_timeout_at = nil
-            user_specified_connect_timeout_at = nil
           elsif resolved_addrinfos.resolved_successfully?(:ipv4)
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             resolution_delay_expires_at = now + RESOLUTION_DELAY
