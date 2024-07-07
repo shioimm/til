@@ -55,7 +55,7 @@ class Socket
     end
 
     hostname_resolution_threads = []
-    resolved_addrinfos = ResolvedAddrinfos.new
+    resolved_addrinfos = ResolvedAddrinfos.new(resolving_family_names)
     connecting_sockets = {}
     is_windows_environment ||= (RUBY_PLATFORM =~ /mswin|mingw|cygwin/)
 
@@ -85,7 +85,7 @@ class Socket
         }
       )
 
-      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : nil
+      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
     end
 
     count = 0 if DEBUG # for DEBUGging
@@ -115,7 +115,7 @@ class Socket
               if resolved_addrinfos.any?
                 # Try other Addrinfo in next "while"
                 next
-              elsif connecting_sockets.keys.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+              elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?
                 # Exit this "while" and wait for connections to be established or hostname resolution in next loop
                 # Or exit this "while" and wait for hostname resolution in next loop
                 break
@@ -129,8 +129,8 @@ class Socket
 
           begin
             if resolved_addrinfos.any? ||
-               connecting_sockets.keys.any? ||
-               !resolved_addrinfos.resolved_all?(resolving_family_names)
+               connecting_sockets.any? ||
+               !resolved_addrinfos.resolved_all?
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
@@ -142,8 +142,8 @@ class Socket
 
             if result == :wait_writable
               connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-              if connect_timeout && resolved_addrinfos.empty?
-                user_specified_connect_timeout_at = now + connect_timeout
+              if resolved_addrinfos.empty?
+                user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
               end
 
               connecting_sockets[socket] = addrinfo
@@ -153,12 +153,12 @@ class Socket
             end
           rescue SystemCallError => e
             socket&.close
-            last_error = $!
+            last_error = e
 
             if resolved_addrinfos.any?
               # Try other Addrinfo in next "while"
               next
-            elsif connecting_sockets.keys.any? || !resolved_addrinfos.resolved_all?(resolving_family_names)
+            elsif connecting_sockets.any? || !resolved_addrinfos.resolved_all?
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
               break
@@ -169,26 +169,14 @@ class Socket
         end
       end
 
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.keys}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets}" if DEBUG
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       ends_at =
         if resolved_addrinfos.any?
           resolution_delay_expires_at || connection_attempt_delay_expires_at
         else
-          timeout = [
-            [user_specified_resolv_timeout_at,
-             (resolved_addrinfos.resolved_all?(resolving_family_names) ? -Float::INFINITY : Float::INFINITY)].compact.min,
-            [user_specified_connect_timeout_at,
-             (connecting_sockets.keys.empty? ? -Float::INFINITY : Float::INFINITY)].compact.min,
-          ].max
-
-          case timeout
-          when Float::INFINITY then nil
-          when -Float::INFINITY then raise last_error
-          else
-            timeout
-          end
+          [user_specified_resolv_timeout_at,user_specified_connect_timeout_at].compact.max
         end
 
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{resolution_delay_expires_at || 'nil'}" if DEBUG
@@ -211,7 +199,7 @@ class Socket
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets.keys}" if DEBUG
+      puts "[DEBUG] #{count}: connecting_sockets #{connecting_sockets}" if DEBUG
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
@@ -234,9 +222,9 @@ class Socket
 
             if writable_sockets.any? ||
                resolved_addrinfos.any? ||
-               (sockets = connecting_sockets.keys).any? ||
-               !resolved_addrinfos.resolved_all?(resolving_family_names)
-              user_specified_connect_timeout_at = nil if connect_timeout && sockets.empty?
+               connecting_sockets.any? ||
+               !resolved_addrinfos.resolved_all?
+              user_specified_connect_timeout_at = nil if connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
@@ -293,12 +281,12 @@ class Socket
       puts "[DEBUG] #{count}: last error #{last_error&.message|| 'nil'}" if DEBUG
 
       if resolved_addrinfos.empty?
-        if connecting_sockets.keys.empty? && resolved_addrinfos.resolved_all?(resolving_family_names)
+        if connecting_sockets.empty? && resolved_addrinfos.resolved_all?
           raise last_error
         end
 
-        if (expired?(now, user_specified_resolv_timeout_at) || resolved_addrinfos.resolved_all?(resolving_family_names)) &&
-           (expired?(now, user_specified_connect_timeout_at) || connecting_sockets.keys.empty?)
+        if (expired?(now, user_specified_resolv_timeout_at) || resolved_addrinfos.resolved_all?) &&
+           (expired?(now, user_specified_connect_timeout_at) || connecting_sockets.empty?)
           raise Errno::ETIMEDOUT, 'user specified timeout'
         end
       end
@@ -376,7 +364,7 @@ class Socket
   private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
-    return nil if ends_at.nil?
+    return nil if ends_at == Float::INFINITY || ends_at.nil?
 
     remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
@@ -446,7 +434,8 @@ class Socket
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
     PRIORITY_ON_V4 = [:ipv4, :ipv6]
 
-    def initialize
+    def initialize(family_names)
+      @family_names = family_names
       @addrinfo_dict = {}
       @last_family = nil
     end
@@ -489,8 +478,8 @@ class Socket
       !!@addrinfo_dict[family]&.is_a?(Array)
     end
 
-    def resolved_all?(families)
-      (families - @addrinfo_dict.keys).empty?
+    def resolved_all?
+      (@family_names - @addrinfo_dict.keys).empty?
     end
   end
   private_constant :ResolvedAddrinfos
