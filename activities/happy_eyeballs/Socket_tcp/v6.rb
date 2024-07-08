@@ -115,7 +115,7 @@ class Socket
               if resolution_store.any_addrinfos?
                 # Try other Addrinfo in next "while"
                 next
-              elsif connecting_sockets.any? || !resolution_store.resolved_all_families?
+              elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
                 # Exit this "while" and wait for connections to be established or hostname resolution in next loop
                 # Or exit this "while" and wait for hostname resolution in next loop
                 break
@@ -130,7 +130,7 @@ class Socket
           begin
             if resolution_store.any_addrinfos? ||
                connecting_sockets.any? ||
-               !resolution_store.resolved_all_families?
+               resolution_store.any_unresolved_family?
               socket = Socket.new(addrinfo.pfamily, addrinfo.socktype, addrinfo.protocol)
               socket.bind(local_addrinfo) if local_addrinfo
               result = socket.connect_nonblock(addrinfo, exception: false)
@@ -158,7 +158,7 @@ class Socket
             if resolution_store.any_addrinfos?
               # Try other Addrinfo in next "while"
               next
-            elsif connecting_sockets.any? || !resolution_store.resolved_all_families?
+            elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
               # Exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
               break
@@ -223,7 +223,7 @@ class Socket
             if writable_sockets.any? ||
                resolution_store.any_addrinfos? ||
                connecting_sockets.any? ||
-               !resolution_store.resolved_all_families?
+               resolution_store.any_unresolved_family?
               user_specified_connect_timeout_at = nil if connecting_sockets.empty?
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
@@ -485,6 +485,10 @@ class Socket
 
     def resolved_all_families?
       (@family_names - @addrinfo_dict.keys).empty?
+    end
+
+    def any_unresolved_family?
+      !resolved_all_families?
     end
   end
   private_constant :HostnameResolutionStore
