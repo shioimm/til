@@ -419,8 +419,8 @@ class Socket
 
     def close_all
       @queue.close unless @queue.closed?
-      @rpipe.close unless @rpipe.closed?
-      @wpipe.close unless @wpipe.closed?
+      @rpipe.close
+      @wpipe.close
     end
 
     def empty?
