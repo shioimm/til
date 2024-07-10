@@ -380,7 +380,7 @@ class Socket
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
-      @queue = Queue.new
+      @results = []
       @mutex = Mutex.new
     end
 
@@ -390,26 +390,26 @@ class Socket
 
     def add_resolved(family, resolved_addrinfos)
       @mutex.synchronize do
-        @queue.push [family, resolved_addrinfos]
+        @results.push [family, resolved_addrinfos]
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
 
     def add_error(family, error)
       @mutex.synchronize do
-        @queue.push [family, error]
+        @results.push [family, error]
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
 
     def get
-      return nil if @queue.empty?
+      return nil if @results.empty?
 
       res = nil
 
       @mutex.synchronize do
         @rpipe.getbyte
-        res = @queue.pop
+        res = @results.shift
       end
 
       @taken_count += 1
@@ -418,13 +418,12 @@ class Socket
     end
 
     def term
-      @queue.close unless @queue.closed?
       @rpipe.close
       @wpipe.close
     end
 
     def empty?
-      @queue.empty?
+      @results.empty?
     end
   end
   private_constant :HostnameResolutionResult
