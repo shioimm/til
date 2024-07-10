@@ -170,44 +170,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.connect_timeout = connect_timeout;
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
-        // TODO 一旦コメントアウト
-        // char *hostp, *portp;
-        // char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
-        // int additional_flags = 0;
-        // hostp = host_str(arg.remote.host, hbuf, sizeof(hbuf), &additional_flags);
-        // portp = port_str(arg.remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-
-        // if (!is_specified_ip_address(hostp)) {
-        //     struct inetsock_happy_arg inetsock_happy_resource;
-        //     memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
-
-        //     inetsock_happy_resource.inetsock_resource = &arg;
-        //     inetsock_happy_resource.hostp = hostp;
-        //     inetsock_happy_resource.portp = portp;
-        //     inetsock_happy_resource.additional_flags = additional_flags;
-        //     inetsock_happy_resource.connected_fd = -1;
-
-        //     int families[2] = { AF_INET6, AF_INET };
-        //     inetsock_happy_resource.families = families;
-        //     inetsock_happy_resource.families_size = sizeof(families) / sizeof(int);
-
-        //     inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
-        //     if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
-
-        //     inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        //     if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
-
-        //     for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
-        //         inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
-        //         if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
-        //         inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
-        //     }
-
-        //     inetsock_happy_resource.getaddrinfo_shared->cancelled = false;
-
-        //     return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
-        //                      inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
-        // }
         return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
                          inetsock_cleanup, (VALUE)&arg);
     }
