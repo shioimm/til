@@ -480,7 +480,7 @@ class Socket
     end
 
     def resolved_successfully?(family)
-      !!@error_dict[family]
+      resolved?(family) && !!@error_dict[family]
     end
 
     def resolved_all_families?
