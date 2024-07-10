@@ -23,6 +23,7 @@
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
+    // 元々あった変数定義
     struct inetsock_arg *arg = (void *)v;
     int error = 0;
     int type = arg->type;
@@ -33,6 +34,42 @@ init_inetsock_internal_happy(VALUE v)
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
     struct timeval *tv = NULL;
+
+    // debug
+    int debug = true;
+    int count = 0;
+
+    // TODO 名前解決開始
+    while (true) {
+        count++;
+        if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
+        // TODO if 接続開始条件を満たしている
+
+        if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
+        // TODO 接続開始
+
+        // TODO タイムアウト値の設定
+
+        if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
+        // TODO 待機開始
+
+        if (debug) printf("[DEBUG] %d: ** Check for writable_sockets **\n", count);
+        // TODO 接続状態の確認
+        if (count == 2) { // TODO if 接続確立している
+            puts("connection established");
+            break;
+        }
+
+        if (debug) printf("[DEBUG] %d: ** Check for hostname resolution finish **\n", count);
+        // TODO 解決したaddrinfoの保存
+
+        if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
+        // TODO if 次のループに進むことができる
+
+        if (debug) puts("------------");
+    }
+    // TODO
+    // return rsock_init_sock(arg->sock, fd);
 
     if (!NIL_P(connect_timeout)) {
         tv_storage = rb_time_interval(connect_timeout);
