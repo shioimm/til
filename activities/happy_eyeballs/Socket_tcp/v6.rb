@@ -421,10 +421,6 @@ class Socket
       @rpipe.close
       @wpipe.close
     end
-
-    def empty?
-      @results.empty?
-    end
   end
   private_constant :HostnameResolutionResult
 
