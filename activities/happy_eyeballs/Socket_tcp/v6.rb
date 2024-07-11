@@ -296,7 +296,7 @@ class Socket
       thread.exit
     end
 
-    hostname_resolution_result&.term
+    hostname_resolution_result&.close
 
     connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
@@ -413,11 +413,11 @@ class Socket
       end
 
       @taken_count += 1
-      term if @taken_count == @size
+      close if @taken_count == @size
       res
     end
 
-    def term
+    def close
       @rpipe.close
       @wpipe.close
     end
