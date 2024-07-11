@@ -23,6 +23,7 @@
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
+    // 元々あった変数定義
     struct inetsock_arg *arg = (void *)v;
     int error = 0;
     int type = arg->type;
@@ -33,6 +34,42 @@ init_inetsock_internal_happy(VALUE v)
     VALUE connect_timeout = arg->connect_timeout;
     struct timeval tv_storage;
     struct timeval *tv = NULL;
+
+    // debug
+    int debug = true;
+    int count = 0;
+
+    // TODO 名前解決開始
+    while (true) {
+        count++;
+        if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
+        // TODO if 接続開始条件を満たしている
+
+        if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
+        // TODO 接続開始
+
+        // TODO タイムアウト値の設定
+
+        if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
+        // TODO 待機開始
+
+        if (debug) printf("[DEBUG] %d: ** Check for writable_sockets **\n", count);
+        // TODO 接続状態の確認
+        if (count == 2) { // TODO if 接続確立している
+            puts("connection established");
+            break;
+        }
+
+        if (debug) printf("[DEBUG] %d: ** Check for hostname resolution finish **\n", count);
+        // TODO 解決したaddrinfoの保存
+
+        if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
+        // TODO if 次のループに進むことができる
+
+        if (debug) puts("------------");
+    }
+    // TODO
+    // return rsock_init_sock(arg->sock, fd);
 
     if (!NIL_P(connect_timeout)) {
         tv_storage = rb_time_interval(connect_timeout);
@@ -170,44 +207,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.connect_timeout = connect_timeout;
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
-        // TODO 一旦コメントアウト
-        // char *hostp, *portp;
-        // char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
-        // int additional_flags = 0;
-        // hostp = host_str(arg.remote.host, hbuf, sizeof(hbuf), &additional_flags);
-        // portp = port_str(arg.remote.serv, pbuf, sizeof(pbuf), &additional_flags);
-
-        // if (!is_specified_ip_address(hostp)) {
-        //     struct inetsock_happy_arg inetsock_happy_resource;
-        //     memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
-
-        //     inetsock_happy_resource.inetsock_resource = &arg;
-        //     inetsock_happy_resource.hostp = hostp;
-        //     inetsock_happy_resource.portp = portp;
-        //     inetsock_happy_resource.additional_flags = additional_flags;
-        //     inetsock_happy_resource.connected_fd = -1;
-
-        //     int families[2] = { AF_INET6, AF_INET };
-        //     inetsock_happy_resource.families = families;
-        //     inetsock_happy_resource.families_size = sizeof(families) / sizeof(int);
-
-        //     inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
-        //     if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
-
-        //     inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        //     if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
-
-        //     for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
-        //         inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
-        //         if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
-        //         inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
-        //     }
-
-        //     inetsock_happy_resource.getaddrinfo_shared->cancelled = false;
-
-        //     return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
-        //                      inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
-        // }
         return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
                          inetsock_cleanup, (VALUE)&arg);
     }

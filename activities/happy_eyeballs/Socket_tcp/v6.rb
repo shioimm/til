@@ -69,17 +69,17 @@ class Socket
       family_name = resolving_family_names.first
       addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
       resolution_store.add_resolved(family_name, addrinfos)
-      hostname_resolution_queue = nil
-      hostname_resolution_waiting = nil
+      hostname_resolution_result = nil
+      hostname_resolution_notifier = nil
       user_specified_resolv_timeout_at = nil
     else
-      hostname_resolution_queue = HostnameResolutionQueue.new(resolving_family_names.size)
-      hostname_resolution_waiting = hostname_resolution_queue.waiting_pipe
+      hostname_resolution_result = HostnameResolutionResult.new(resolving_family_names.size)
+      hostname_resolution_notifier = hostname_resolution_result.notifier
 
       hostname_resolution_threads.concat(
         resolving_family_names.map { |family|
-          thread_args = [family, host, port, hostname_resolution_queue]
-          thread = Thread.new(*thread_args) { |*thread_args| hostname_resolution(*thread_args) }
+          thread_args = [family, host, port, hostname_resolution_result]
+          thread = Thread.new(*thread_args) { |*thread_args| resolve_hostname(*thread_args) }
           Thread.pass
           thread
         }
@@ -186,9 +186,9 @@ class Socket
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_waiting}, #{connecting_sockets.keys}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_notifier}, #{connecting_sockets.keys}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
       hostname_resolved, writable_sockets, = IO.select(
-        hostname_resolution_waiting,
+        hostname_resolution_notifier,
         connecting_sockets.keys,
         nil,
         second_to_timeout(current_clock_time, ends_at),
@@ -243,8 +243,8 @@ class Socket
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved || 'nil'}" if DEBUG
       if hostname_resolved&.any?
-        while (hostname_resolution_result = hostname_resolution_queue.get)
-          family_name, result = hostname_resolution_result
+        while (family_and_result = hostname_resolution_result.get)
+          family_name, result = family_and_result
           puts "[DEBUG] #{count}: family_name, result #{[family_name, result]}" if DEBUG
 
           if result.is_a? Exception
@@ -263,7 +263,7 @@ class Socket
         if resolution_store.resolved?(:ipv4)
           if resolution_store.resolved?(:ipv6)
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
-            hostname_resolution_waiting = nil
+            hostname_resolution_notifier = nil
             resolution_delay_expires_at = nil
             user_specified_resolv_timeout_at = nil
           elsif resolution_store.resolved_successfully?(:ipv4)
@@ -296,7 +296,7 @@ class Socket
       thread.exit
     end
 
-    hostname_resolution_queue&.close_all
+    hostname_resolution_result&.term
 
     connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
@@ -347,15 +347,15 @@ class Socket
   end
   private_class_method :ip_address?
 
-  def self.hostname_resolution(family, host, port, hostname_resolution_queue)
+  def self.resolve_hostname(family, host, port, hostname_resolution_result)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
-      hostname_resolution_queue.add_resolved(family, resolved_addrinfos)
+      hostname_resolution_result.add_resolved(family, resolved_addrinfos)
     rescue => e
-      hostname_resolution_queue.add_error(family, e)
+      hostname_resolution_result.add_error(family, e)
     end
   end
-  private_class_method :hostname_resolution
+  private_class_method :resolve_hostname
 
   def self.current_clock_time
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -375,59 +375,58 @@ class Socket
   end
   private_class_method :expired?
 
-  class HostnameResolutionQueue
+  class HostnameResolutionResult
     def initialize(size)
       @size = size
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
-      @queue = Queue.new
+      @results = []
       @mutex = Mutex.new
     end
 
-    def waiting_pipe
+    def notifier
       [@rpipe]
     end
 
     def add_resolved(family, resolved_addrinfos)
       @mutex.synchronize do
-        @queue.push [family, resolved_addrinfos]
+        @results.push [family, resolved_addrinfos]
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
 
     def add_error(family, error)
       @mutex.synchronize do
-        @queue.push [family, error]
+        @results.push [family, error]
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
 
     def get
-      return nil if @queue.empty?
+      return nil if @results.empty?
 
       res = nil
 
       @mutex.synchronize do
         @rpipe.getbyte
-        res = @queue.pop
+        res = @results.shift
       end
 
       @taken_count += 1
-      close_all if @taken_count == @size
+      term if @taken_count == @size
       res
     end
 
-    def close_all
-      @queue.close unless @queue.closed?
-      @rpipe.close unless @rpipe.closed?
-      @wpipe.close unless @wpipe.closed?
+    def term
+      @rpipe.close
+      @wpipe.close
     end
 
     def empty?
-      @queue.empty?
+      @results.empty?
     end
   end
-  private_constant :HostnameResolutionQueue
+  private_constant :HostnameResolutionResult
 
   class HostnameResolutionStore
     PRIORITY_ON_V6 = [:ipv6, :ipv4]
@@ -480,7 +479,7 @@ class Socket
     end
 
     def resolved_successfully?(family)
-      !!@error_dict[family]
+      resolved?(family) && !!@error_dict[family]
     end
 
     def resolved_all_families?
