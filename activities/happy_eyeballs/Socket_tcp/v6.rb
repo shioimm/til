@@ -65,7 +65,7 @@ class Socket
     user_specified_connect_timeout_at = nil
     last_error = nil
 
-    if resolving_family_names.size.eql? 1
+    if resolving_family_names.size == 1
       family_name = resolving_family_names.first
       addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
       resolution_store.add_resolved(family_name, addrinfos)
@@ -296,7 +296,7 @@ class Socket
       thread.exit
     end
 
-    hostname_resolution_result&.term
+    hostname_resolution_result&.close
 
     connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
@@ -413,17 +413,13 @@ class Socket
       end
 
       @taken_count += 1
-      term if @taken_count == @size
+      close if @taken_count == @size
       res
     end
 
-    def term
+    def close
       @rpipe.close
       @wpipe.close
-    end
-
-    def empty?
-      @results.empty?
     end
   end
   private_constant :HostnameResolutionResult
