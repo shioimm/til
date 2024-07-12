@@ -135,8 +135,28 @@ init_inetsock_internal_happy(VALUE v)
 
         // TODO タイムアウト値の設定
 
+        // ------------------- WIP ----------------------
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO 待機開始
+        wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
+        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+
+        // TODO 割り込み時の処理
+
+        status = wait_arg.status;
+        syscall = "select(2)";
+        if (status < 0) rb_syserr_fail(errno, "select(2)");
+
+        resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+        if (resolved_type_size < 0) {
+            last_error = errno;
+            // TODO 例外を発生させる
+        }
+
+        resolved_type[resolved_type_size] = '\0';
+        // TODO 解決できたアドレスファミリを確認し、適切に保存する
+
+        // ------------------- WIP ----------------------
 
         if (debug) printf("[DEBUG] %d: ** Check for writable_sockets **\n", count);
         // TODO 接続状態の確認
