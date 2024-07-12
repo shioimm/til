@@ -23,23 +23,108 @@
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
-    // 元々あった変数定義
-    struct inetsock_arg *arg = (void *)v;
-    int error = 0;
-    int type = arg->type;
-    struct addrinfo *res, *lres;
-    int fd, status = 0, local = 0;
-    int family = AF_UNSPEC;
+    struct inetsock_happy_arg *arg = (void *)v;
+    struct inetsock_arg *inetsock = arg->inetsock_resource;
+    struct addrinfo *remote_ai = NULL, *local_ai = NULL;
+    int fd, last_error = 0, status = 0, local_status = 0;
     const char *syscall = 0;
-    VALUE connect_timeout = arg->connect_timeout;
+
+    // TODO ユーザー指定のタイムアウトに関する変数定義
+
+    int remote_addrinfo_hints = 0;
+
+    #ifdef HAVE_CONST_AI_ADDRCONFIG
+    remote_addrinfo_hints |= AI_ADDRCONFIG;
+    #endif
+
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
+    int families_size = arg->families_size;
+
+    int wait_resolution_pipe, notify_resolution_pipe;
+    int pipefd[2];
+
+    struct wait_happy_eyeballs_fds_arg wait_arg;
+
+    pthread_t threads[families_size];
+    char resolved_type[2];
+    ssize_t resolved_type_size;
+
+    pipe(pipefd);
+    wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
+    notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
+
+    getaddrinfo_shared->node = strdup(arg->hostp);
+    getaddrinfo_shared->service = strdup(arg->portp);
+    getaddrinfo_shared->refcount = families_size + 1;
+    getaddrinfo_shared->notify = notify_resolution_pipe;
+    getaddrinfo_shared->wait = wait_resolution_pipe;
+    rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
+    getaddrinfo_shared->connecting_fds = arg->connecting_fds;
+    getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
+
+    fd_set readfds, writefds;
+    FD_ZERO(&readfds);
+    FD_ZERO(&writefds);
+    wait_arg.readfds = readfds;
+    wait_arg.writefds = writefds;
+    wait_arg.nfds = 0;
+    wait_arg.delay = NULL;
+
+    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
+    struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
+    struct addrinfo *tmp_selected_ai;
+
+    // HEv2対応前の変数定義 ----------------------------
+    // struct inetsock_arg *arg = (void *)v;
+    // int error = 0;
+    int type = inetsock->type;
+    struct addrinfo *res, *lres;
+    // int fd, status = 0, local = 0;
+    int family = AF_UNSPEC;
+    // const char *syscall = 0;
+    VALUE connect_timeout = inetsock->connect_timeout;
     struct timeval tv_storage;
     struct timeval *tv = NULL;
+
+    if (!NIL_P(connect_timeout)) {
+        tv_storage = rb_time_interval(connect_timeout);
+        tv = &tv_storage;
+    }
+    // -------------------------------------------
 
     // debug
     int debug = true;
     int count = 0;
 
-    // TODO 名前解決開始
+    // 接続開始 -----------------------------------
+    /*
+     * Maybe also accept a local address
+     */
+    // TODO local_host / local_portが指定された場合
+
+    struct addrinfo getaddrinfo_hints[families_size];
+
+    for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
+        allocate_rb_getaddrinfo_happy_hints(
+            &getaddrinfo_hints[i],
+            arg->families[i],
+            remote_addrinfo_hints,
+            arg->additional_flags
+        );
+
+        arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
+        arg->getaddrinfo_entries[i]->ai = NULL;
+        arg->getaddrinfo_entries[i]->family = arg->families[i];
+        arg->getaddrinfo_entries[i]->refcount = 2;
+
+        if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
+            last_error = EAI_AGAIN;
+            rb_syserr_fail(EAI_AGAIN, NULL); // TODO 要確認
+        }
+        pthread_detach(threads[i]);
+    }
+    // -------------------------------------------
+
     while (true) {
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
@@ -69,46 +154,41 @@ init_inetsock_internal_happy(VALUE v)
         if (debug) puts("------------");
     }
     // TODO
-    // return rsock_init_sock(arg->sock, fd);
+    // return rsock_init_sock(inetsock->sock, fd);
 
-    if (!NIL_P(connect_timeout)) {
-        tv_storage = rb_time_interval(connect_timeout);
-        tv = &tv_storage;
-    }
-
-    arg->remote.res = rsock_addrinfo(
-        arg->remote.host,
-        arg->remote.serv,
+    // HEv2対応前 ---------------------------------
+    inetsock->remote.res = rsock_addrinfo(
+        inetsock->remote.host,
+        inetsock->remote.serv,
         family,
         SOCK_STREAM,
         0
     );
 
-
     /*
      * Maybe also accept a local address
      */
 
-    if ((!NIL_P(arg->local.host) || !NIL_P(arg->local.serv))) {
-        arg->local.res = rsock_addrinfo(
-            arg->local.host,
-            arg->local.serv,
+    if ((!NIL_P(inetsock->local.host) || !NIL_P(inetsock->local.serv))) {
+        inetsock->local.res = rsock_addrinfo(
+            inetsock->local.host,
+            inetsock->local.serv,
             family,
             SOCK_STREAM,
             0
         );
     }
 
-    arg->fd = fd = -1;
-    for (res = arg->remote.res->ai; res; res = res->ai_next) {
+    inetsock->fd = fd = -1;
+    for (res = inetsock->remote.res->ai; res; res = res->ai_next) {
         #if !defined(INET6) && defined(AF_INET6)
         if (res->ai_family == AF_INET6)
             continue;
         #endif
         lres = NULL;
 
-        if (arg->local.res) {
-            for (lres = arg->local.res->ai; lres; lres = lres->ai_next) {
+        if (inetsock->local.res) {
+            for (lres = inetsock->local.res->ai; lres; lres = lres->ai_next) {
                 if (lres->ai_family == res->ai_family)
                     break;
             }
@@ -118,7 +198,7 @@ init_inetsock_internal_happy(VALUE v)
                     continue;
                 /* Use a different family local address if no choice, this
                  * will cause EAFNOSUPPORT. */
-                lres = arg->local.res->ai;
+                lres = inetsock->local.res->ai;
             }
         }
 
@@ -127,10 +207,10 @@ init_inetsock_internal_happy(VALUE v)
         fd = status;
 
         if (fd < 0) {
-            error = errno;
+            last_error = errno;
             continue;
         }
-        arg->fd = fd;
+        inetsock->fd = fd;
 
         if (lres) {
             #if !defined(_WIN32) && !defined(__CYGWIN__)
@@ -144,7 +224,7 @@ init_inetsock_internal_happy(VALUE v)
             );
             #endif
             status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-            local = status;
+            local_status = status;
             syscall = "bind(2)";
         }
 
@@ -160,9 +240,9 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (status < 0) {
-            error = errno;
+            last_error = errno;
             close(fd);
-            arg->fd = fd = -1;
+            inetsock->fd = fd = -1;
             continue;
         } else
             break;
@@ -171,21 +251,22 @@ init_inetsock_internal_happy(VALUE v)
     if (status < 0) {
         VALUE host, port;
 
-        if (local < 0) {
-            host = arg->local.host;
-            port = arg->local.serv;
+        if (local_status < 0) {
+            host = inetsock->local.host;
+            port = inetsock->local.serv;
         } else {
-            host = arg->remote.host;
-            port = arg->remote.serv;
+            host = inetsock->remote.host;
+            port = inetsock->remote.serv;
         }
 
-        rsock_syserr_fail_host_port(error, syscall, host, port);
+        rsock_syserr_fail_host_port(last_error, syscall, host, port);
     }
 
-    arg->fd = -1;
+    inetsock->fd = -1;
 
     /* create new instance */
-    return rsock_init_sock(arg->sock, fd);
+    return rsock_init_sock(inetsock->sock, fd);
+    // ---------------------------------
 }
 
 VALUE
@@ -207,8 +288,43 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.connect_timeout = connect_timeout;
 
     if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
-        return rb_ensure(init_inetsock_internal_happy, (VALUE)&arg,
-                         inetsock_cleanup, (VALUE)&arg);
+        char *hostp, *portp;
+        char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+        int additional_flags = 0;
+        hostp = host_str(arg.remote.host, hbuf, sizeof(hbuf), &additional_flags);
+        portp = port_str(arg.remote.serv, pbuf, sizeof(pbuf), &additional_flags);
+
+        if (!is_specified_ip_address(hostp)) {
+            struct inetsock_happy_arg inetsock_happy_resource;
+            memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
+
+            inetsock_happy_resource.inetsock_resource = &arg;
+            inetsock_happy_resource.hostp = hostp;
+            inetsock_happy_resource.portp = portp;
+            inetsock_happy_resource.additional_flags = additional_flags;
+            inetsock_happy_resource.connected_fd = -1;
+
+            int families[2] = { AF_INET6, AF_INET };
+            inetsock_happy_resource.families = families;
+            inetsock_happy_resource.families_size = sizeof(families) / sizeof(int);
+
+            inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
+            if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+
+            inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
+            if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
+
+            for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
+                inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
+                if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
+                inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
+            }
+
+            inetsock_happy_resource.getaddrinfo_shared->cancelled = false;
+
+            return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
+                             inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
+        }
     }
 
     return rb_ensure(init_inetsock_internal, (VALUE)&arg,
