@@ -20,6 +20,262 @@
 #  endif
 #endif
 
+tatic struct rb_getaddrinfo_happy_shared *
+create_rb_getaddrinfo_happy_shared()
+{
+    struct rb_getaddrinfo_happy_shared *shared;
+    shared = (struct rb_getaddrinfo_happy_shared *)calloc(1, sizeof(struct rb_getaddrinfo_happy_shared));
+    return shared;
+}
+
+static struct rb_getaddrinfo_happy_entry *
+allocate_rb_getaddrinfo_happy_entry()
+{
+    struct rb_getaddrinfo_happy_entry *entry;
+    entry = (struct rb_getaddrinfo_happy_entry *)calloc(1, sizeof(struct rb_getaddrinfo_happy_entry));
+    return entry;
+}
+
+static void allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+{
+    MEMZERO(hints, struct addrinfo, 1);
+    hints->ai_family = family;
+    hints->ai_socktype = SOCK_STREAM;
+    hints->ai_protocol = IPPROTO_TCP;
+    hints->ai_flags = remote_addrinfo_hints;
+    hints->ai_flags |= additional_flags;
+}
+
+struct wait_happy_eyeballs_fds_arg
+{
+    int status, nfds;
+    fd_set readfds, writefds;
+    struct timeval *delay;
+};
+
+static void *
+wait_happy_eyeballs_fds(void *ptr)
+{
+    struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
+    int status;
+    status = select(arg->nfds, &arg->readfds, &arg->writefds, NULL, arg->delay);
+    arg->status = status;
+    return 0;
+}
+
+static void
+cancel_happy_eyeballs_fds(void *ptr)
+{
+    struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
+
+    rb_nativethread_lock_lock(arg->lock);
+    {
+        arg->cancelled = true;
+        write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED));
+    }
+    rb_nativethread_lock_unlock(arg->lock);
+}
+
+static void
+socket_nonblock_set(int fd)
+{
+    int flags = fcntl(fd, F_GETFL);
+
+    if (flags == -1) rb_sys_fail(0);
+    if ((flags & O_NONBLOCK) != 0) return;
+
+    flags |= O_NONBLOCK;
+
+    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
+    return;
+}
+
+struct timespec current_clocktime_ts()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts;
+}
+
+struct timespec add_timeval_to_timespec(struct timeval tv, struct timespec ts)
+{
+    long long nsec_total = ts.tv_nsec + (long long)tv.tv_usec * 1000;
+
+    if (nsec_total >= 1000000000LL) {
+        ts.tv_sec += nsec_total / 1000000000LL;
+        ts.tv_nsec = nsec_total % 1000000000LL;
+    } else {
+        ts.tv_nsec = nsec_total;
+    }
+
+    ts.tv_sec += tv.tv_sec;
+    return ts;
+}
+
+struct timespec resolv_timeout_expires_at_ts(struct timeval resolv_timeout)
+{
+    struct timespec ts = current_clocktime_ts();
+    ts = add_timeval_to_timespec(resolv_timeout, ts);
+    return ts;
+}
+
+struct timespec connection_attempt_delay_expires_at_ts()
+{
+    struct timespec ts = current_clocktime_ts();
+    ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
+
+    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        ts.tv_nsec -= 1000000000;
+        ts.tv_sec += 1;
+    }
+    return ts;
+}
+
+long usec_to_timeout(struct timespec ends_at)
+{
+    if (ends_at.tv_sec == -1 && ends_at.tv_nsec == -1) return 0;
+
+    struct timespec starts_at = current_clocktime_ts();
+    long sec_diff = ends_at.tv_sec - starts_at.tv_sec;
+    long nsec_diff = ends_at.tv_nsec - starts_at.tv_nsec;
+    long remaining = sec_diff * 1000000L + nsec_diff / 1000;
+
+    return remaining > 0 ? remaining : 0;
+}
+
+int is_timeout(struct timespec expires_at) {
+    struct timespec current = current_clocktime_ts();
+
+    if (current.tv_sec > expires_at.tv_sec) return 1;
+    if (current.tv_sec == expires_at.tv_sec && current.tv_nsec > expires_at.tv_nsec) return 1;
+    return 0;
+}
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_store
+{
+    struct hostname_resolution_result v6;
+    struct hostname_resolution_result v4;
+    int is_all_finised;
+};
+
+struct addrinfo *
+select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
+{
+    int priority_on_v6[2] = { AF_INET6, AF_INET };
+    int priority_on_v4[2] = { AF_INET, AF_INET6 };
+    int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
+    struct addrinfo *selected_ai = NULL;
+
+    for (int i = 0; i < 2; i++) {
+        if (precedences[i] == AF_INET6) {
+            selected_ai = addrinfos->ip6_ai;
+            if (selected_ai) {
+                addrinfos->ip6_ai = selected_ai->ai_next;
+                break;
+            }
+        } else {
+            selected_ai = addrinfos->ip4_ai;
+            if (selected_ai) {
+                addrinfos->ip4_ai = selected_ai->ai_next;
+                break;
+            }
+        }
+    }
+    return selected_ai;
+}
+
+static int
+initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
+{
+    FD_ZERO(set);
+    FD_SET(fd, set);
+    return (fd + 1) > initial_nfds ? fd + 1 : initial_nfds;
+}
+
+static int
+initialize_write_fds(const int *fds, int fds_size, fd_set *set)
+{
+    if (fds_size == 0) return 0;
+
+    int nfds = 0;
+    FD_ZERO(set);
+
+    for (int i = 0; i < fds_size; i++) {
+        int fd = fds[i];
+        if (fd < 0) continue;
+        if (fd > nfds) nfds = fd;
+        FD_SET(fd, set);
+    }
+
+    if (nfds > 0) nfds++;
+    return nfds;
+}
+
+static int
+find_connected_socket(int *fds, int fds_size, fd_set *writefds)
+{
+    for (int i = 0; i < fds_size; i++) {
+        int fd = fds[i];
+
+        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
+
+        int error;
+        socklen_t len = sizeof(error);
+
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+            if (error == 0) { // success
+                fds[i] = -1;
+                return fd;
+            } else { // fail
+                errno = error;
+                close_fd(fd);
+                fds[i] = -1;
+                break;
+            }
+        }
+    }
+    return -1;
+}
+
+static int
+is_connecting_fds_empty(const int *fds, int fds_size)
+{
+    for (int i = 0; i < fds_size; i++) {
+        if (fds[i] > 0) return false;
+    }
+    return true;
+}
+
+int is_specified_ip_address(const char *hostname)
+{
+    struct in_addr ipv4addr;
+    struct in6_addr ipv6addr;
+
+    return (inet_pton(AF_INET6, hostname, &ipv6addr) == 1 ||
+            inet_pton(AF_INET, hostname, &ipv4addr) == 1);
+}
+
+struct inetsock_happy_arg
+{
+    struct inetsock_arg *inetsock_resource;
+    const char *hostp, *portp;
+    int *families;
+    int families_size;
+    int additional_flags;
+    rb_nativethread_lock_t *lock;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
+    int connecting_fds_size, connecting_fds_capacity, connected_fd;
+    int *connecting_fds;
+};
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -71,8 +327,10 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.delay = NULL;
 
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
-    struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
-    struct addrinfo *tmp_selected_ai;
+    struct hostname_resolution_store resolution_store;
+    resolution_store.is_all_finised = false;
+    resolution_store.v6.finished = false;
+    resolution_store.v4.finished = false;
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
@@ -96,7 +354,7 @@ init_inetsock_internal_happy(VALUE v)
     int debug = true;
     int count = 0;
 
-    // 接続開始 -----------------------------------
+    // 名前解決開始 -----------------------------------
     /*
      * Maybe also accept a local address
      */
@@ -135,38 +393,65 @@ init_inetsock_internal_happy(VALUE v)
 
         // TODO タイムアウト値の設定
 
-        // ------------------- WIP ----------------------
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
-        // TODO 待機開始
+        // TODO 接続も待機する
         wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
-
         status = wait_arg.status;
         syscall = "select(2)";
+
         if (status < 0) rb_syserr_fail(errno, "select(2)");
+        printf("status %d\n", status);
 
-        resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
-        if (resolved_type_size < 0) {
-            last_error = errno;
-            // TODO 例外を発生させる
+        if (status > 0) {
+            if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
+                if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
+                // TODO この方法で良いのか要検討
+                resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+                if (resolved_type_size < 0) {
+                    last_error = errno;
+                    // TODO 例外を発生させる
+                }
+
+                resolved_type[resolved_type_size] = '\0';
+
+                // TODO エラーを保存する
+                if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
+                    resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+                    resolution_store.v6.finished = true;
+                    resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                    if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
+                    resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+                    resolution_store.v4.finished = true;
+                    resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+
+                    if (resolution_store.v6.finished) {
+                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                        // TODO
+                        // hostname_resolution_notifier = nil
+                        // resolution_delay_expires_at = nil
+                        // user_specified_resolv_timeout_at = nil
+                        resolution_store.is_all_finised = true;
+                    } else if (!resolution_store.v4.error) {
+                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                        // TODO
+                        // resolution_delay_expires_at = now + RESOLUTION_DELAY
+                    }
+                }
+                // TMP
+                if (resolution_store.is_all_finised) break;
+            } else {
+                if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
+                // TODO 接続状態の確認
+                if (count == 2) { // TODO if 接続確立している
+                    puts("connection established");
+                    break;
+                }
+            }
         }
-
-        resolved_type[resolved_type_size] = '\0';
-        // TODO 解決できたアドレスファミリを確認し、適切に保存する
-
-        // ------------------- WIP ----------------------
-
-        if (debug) printf("[DEBUG] %d: ** Check for writable_sockets **\n", count);
-        // TODO 接続状態の確認
-        if (count == 2) { // TODO if 接続確立している
-            puts("connection established");
-            break;
-        }
-
-        if (debug) printf("[DEBUG] %d: ** Check for hostname resolution finish **\n", count);
-        // TODO 解決したaddrinfoの保存
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         // TODO if 次のループに進むことができる
