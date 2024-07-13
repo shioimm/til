@@ -151,10 +151,17 @@ int is_timeout(struct timespec expires_at) {
     return 0;
 }
 
-struct resolved_addrinfos
+struct hostname_resolution_result
 {
-    struct addrinfo *ip6_ai;
-    struct addrinfo *ip4_ai;
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_store
+{
+    struct hostname_resolution_result v6;
+    struct hostname_resolution_result v4;
 };
 
 struct addrinfo *
@@ -319,8 +326,9 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.delay = NULL;
 
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
-    struct resolved_addrinfos selectable_addrinfos = { NULL, NULL };
-    struct addrinfo *tmp_selected_ai;
+    struct hostname_resolution_store resolution_store;
+    resolution_store.v6.finished = false;
+    resolution_store.v4.finished = false;
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
@@ -383,28 +391,17 @@ init_inetsock_internal_happy(VALUE v)
 
         // TODO タイムアウト値の設定
 
-        // ------------------- WIP ----------------------
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO 待機開始
+
         wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
-
         status = wait_arg.status;
         syscall = "select(2)";
         if (status < 0) rb_syserr_fail(errno, "select(2)");
-
-        resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
-        if (resolved_type_size < 0) {
-            last_error = errno;
-            // TODO 例外を発生させる
-        }
-
-        resolved_type[resolved_type_size] = '\0';
-        // TODO 解決できたアドレスファミリを確認し、適切に保存する
-
-        // ------------------- WIP ----------------------
+        printf("status %d\n", status);
 
         if (debug) printf("[DEBUG] %d: ** Check for writable_sockets **\n", count);
         // TODO 接続状態の確認
@@ -414,7 +411,37 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (debug) printf("[DEBUG] %d: ** Check for hostname resolution finish **\n", count);
-        // TODO 解決したaddrinfoの保存
+        // TODO この方法で良いのか要検討
+        resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+        if (resolved_type_size < 0) {
+            last_error = errno;
+            // TODO 例外を発生させる
+        }
+
+        resolved_type[resolved_type_size] = '\0';
+
+        // TODO エラーを保存する
+        if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
+            resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+            resolution_store.v6.finished = true;
+            resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+        } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
+            resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+            resolution_store.v4.finished = true;
+            resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+
+            if (resolution_store.v6.finished) {
+                if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                // TODO
+                // hostname_resolution_notifier = nil
+                // resolution_delay_expires_at = nil
+                // user_specified_resolv_timeout_at = nil
+            } else if (!resolution_store.v4.error) {
+                if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                // TODO
+                // resolution_delay_expires_at = now + RESOLUTION_DELAY
+            }
+        }
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         // TODO if 次のループに進むことができる
