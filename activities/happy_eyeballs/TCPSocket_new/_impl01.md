@@ -162,6 +162,7 @@ struct hostname_resolution_store
 {
     struct hostname_resolution_result v6;
     struct hostname_resolution_result v4;
+    int is_all_finised;
 };
 
 struct addrinfo *
@@ -327,6 +328,7 @@ init_inetsock_internal_happy(VALUE v)
 
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct hostname_resolution_store resolution_store;
+    resolution_store.is_all_finised = false;
     resolution_store.v6.finished = false;
     resolution_store.v4.finished = false;
 
@@ -352,7 +354,7 @@ init_inetsock_internal_happy(VALUE v)
     int debug = true;
     int count = 0;
 
-    // 接続開始 -----------------------------------
+    // 名前解決開始 -----------------------------------
     /*
      * Maybe also accept a local address
      */
@@ -392,54 +394,62 @@ init_inetsock_internal_happy(VALUE v)
         // TODO タイムアウト値の設定
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
-        // TODO 待機開始
-
+        // TODO 接続も待機する
         wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
         status = wait_arg.status;
         syscall = "select(2)";
+
         if (status < 0) rb_syserr_fail(errno, "select(2)");
         printf("status %d\n", status);
 
-        if (debug) printf("[DEBUG] %d: ** Check for writable_sockets **\n", count);
-        // TODO 接続状態の確認
-        if (count == 2) { // TODO if 接続確立している
-            puts("connection established");
-            break;
-        }
+        if (status > 0) {
+            if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
+                if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
+                // TODO この方法で良いのか要検討
+                resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+                if (resolved_type_size < 0) {
+                    last_error = errno;
+                    // TODO 例外を発生させる
+                }
 
-        if (debug) printf("[DEBUG] %d: ** Check for hostname resolution finish **\n", count);
-        // TODO この方法で良いのか要検討
-        resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
-        if (resolved_type_size < 0) {
-            last_error = errno;
-            // TODO 例外を発生させる
-        }
+                resolved_type[resolved_type_size] = '\0';
 
-        resolved_type[resolved_type_size] = '\0';
+                // TODO エラーを保存する
+                if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
+                    resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+                    resolution_store.v6.finished = true;
+                    resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                    if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
+                    resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+                    resolution_store.v4.finished = true;
+                    resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
 
-        // TODO エラーを保存する
-        if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
-            resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
-            resolution_store.v6.finished = true;
-            resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
-        } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
-            resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
-            resolution_store.v4.finished = true;
-            resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-
-            if (resolution_store.v6.finished) {
-                if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                // TODO
-                // hostname_resolution_notifier = nil
-                // resolution_delay_expires_at = nil
-                // user_specified_resolv_timeout_at = nil
-            } else if (!resolution_store.v4.error) {
-                if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                // TODO
-                // resolution_delay_expires_at = now + RESOLUTION_DELAY
+                    if (resolution_store.v6.finished) {
+                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                        // TODO
+                        // hostname_resolution_notifier = nil
+                        // resolution_delay_expires_at = nil
+                        // user_specified_resolv_timeout_at = nil
+                        resolution_store.is_all_finised = true;
+                    } else if (!resolution_store.v4.error) {
+                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                        // TODO
+                        // resolution_delay_expires_at = now + RESOLUTION_DELAY
+                    }
+                }
+                // TMP
+                if (resolution_store.is_all_finised) break;
+            } else {
+                if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
+                // TODO 接続状態の確認
+                if (count == 2) { // TODO if 接続確立している
+                    puts("connection established");
+                    break;
+                }
             }
         }
 
