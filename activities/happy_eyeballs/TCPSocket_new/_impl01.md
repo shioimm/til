@@ -151,6 +151,13 @@ int is_timeout(struct timespec expires_at) {
     return 0;
 }
 
+int
+set_timeout(struct timeval *timeout, int usec)
+{
+    // WIP
+    return 0;
+}
+
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -341,6 +348,11 @@ init_inetsock_internal_happy(VALUE v)
     resolution_store.v4.ai = NULL;
     resolution_store.v4.finished = false;
     resolution_store.v4.error = false;
+
+    // TODO struct timevalを渡すと、副作用としてtimevalにタイムアウト値をセットする関数を用意する
+    struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
+    struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
+    struct timeval ends_at = (struct timeval){ -1, -1 };
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
