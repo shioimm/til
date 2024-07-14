@@ -165,6 +165,12 @@ struct hostname_resolution_store
     int is_all_finised;
 };
 
+int
+are_any_addrinfos(struct hostname_resolution_store *resolution_store)
+{
+    return resolution_store->v6.ai || resolution_store->v4.ai;
+}
+
 struct addrinfo *
 select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
 {
@@ -329,8 +335,12 @@ init_inetsock_internal_happy(VALUE v)
     struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct hostname_resolution_store resolution_store;
     resolution_store.is_all_finised = false;
+    resolution_store.v6.ai = NULL;
     resolution_store.v6.finished = false;
+    resolution_store.v6.error = false;
+    resolution_store.v4.ai = NULL;
     resolution_store.v4.finished = false;
+    resolution_store.v4.error = false;
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
@@ -390,6 +400,9 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
         // TODO 接続開始
+        if (are_any_addrinfos(&resolution_store)) {
+            puts("any_addrinfos");
+        }
 
         // TODO タイムアウト値の設定
 
