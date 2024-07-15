@@ -151,11 +151,23 @@ int is_timeout(struct timespec expires_at) {
     return 0;
 }
 
-int
-set_timeout(struct timeval *timeout, int usec)
+void
+set_timeout_tv(struct timeval *tv, long ms)
 {
-    // WIP
-    return 0;
+    long seconds = ms / 1000;
+    long nanoseconds = (ms % 1000) * 1000000;
+
+    struct timespec ts = current_clocktime_ts();
+    ts.tv_sec += seconds;
+    ts.tv_nsec += nanoseconds;
+
+    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        ts.tv_nsec -= 1000000000;
+        ts.tv_sec += 1;
+    }
+
+    tv->tv_sec = ts.tv_sec;
+    tv->tv_usec = (int)(ts.tv_nsec / 1000);
 }
 
 struct hostname_resolution_result
@@ -339,7 +351,6 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.nfds = 0;
     wait_arg.delay = NULL;
 
-    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct hostname_resolution_store resolution_store;
     resolution_store.is_all_finised = false;
     resolution_store.v6.ai = NULL;
@@ -457,13 +468,12 @@ init_inetsock_internal_happy(VALUE v)
                         if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
                         // TODO
                         // hostname_resolution_notifier = nil
-                        // resolution_delay_expires_at = nil
+                        resolution_delay_expires_at = (struct timeval){ -1, -1 };
                         // user_specified_resolv_timeout_at = nil
                         resolution_store.is_all_finised = true;
                     } else if (!resolution_store.v4.error) {
-                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                        // TODO
-                        // resolution_delay_expires_at = now + RESOLUTION_DELAY
+                        if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
+                        set_timeout_tv(&resolution_delay_expires_at, 50);
                     }
                 }
                 // TMP
