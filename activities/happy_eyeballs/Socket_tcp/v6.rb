@@ -350,9 +350,9 @@ class Socket
   def self.resolve_hostname(family, host, port, hostname_resolution_result)
     begin
       resolved_addrinfos = Addrinfo.getaddrinfo(host, port, ADDRESS_FAMILIES[family], :STREAM)
-      hostname_resolution_result.add_resolved(family, resolved_addrinfos)
+      hostname_resolution_result.add(family, resolved_addrinfos)
     rescue => e
-      hostname_resolution_result.add_error(family, e)
+      hostname_resolution_result.add(family, e)
     end
   end
   private_class_method :resolve_hostname
@@ -388,16 +388,9 @@ class Socket
       [@rpipe]
     end
 
-    def add_resolved(family, resolved_addrinfos)
+    def add(family, result)
       @mutex.synchronize do
-        @results.push [family, resolved_addrinfos]
-        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
-      end
-    end
-
-    def add_error(family, error)
-      @mutex.synchronize do
-        @results.push [family, error]
+        @results.push [family, result]
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
