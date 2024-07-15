@@ -170,6 +170,19 @@ set_timeout_tv(struct timeval *tv, long ms)
     tv->tv_usec = (int)(ts.tv_nsec / 1000);
 }
 
+int
+is_timeout_tv_invalid(struct timeval tv)
+{
+    return tv.tv_sec == -1 && tv.tv_usec == -1;
+}
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -360,7 +373,6 @@ init_inetsock_internal_happy(VALUE v)
     resolution_store.v4.finished = false;
     resolution_store.v4.error = false;
 
-    // TODO struct timevalを渡すと、副作用としてtimevalにタイムアウト値をセットする関数を用意する
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
@@ -419,12 +431,11 @@ init_inetsock_internal_happy(VALUE v)
     while (true) {
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
-        // TODO if 接続開始条件を満たしている
-
-        if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
-        // TODO 接続開始
-        if (are_any_addrinfos(&resolution_store)) {
-            puts("any_addrinfos");
+        if (are_any_addrinfos(&resolution_store) &&
+           is_timeout_tv_invalid(resolution_delay_expires_at) &&
+           is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
+            if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
+            // TODO 接続開始
         }
 
         // TODO タイムアウト値の設定
