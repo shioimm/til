@@ -20,7 +20,7 @@
 #  endif
 #endif
 
-tatic struct rb_getaddrinfo_happy_shared *
+static struct rb_getaddrinfo_happy_shared *
 create_rb_getaddrinfo_happy_shared()
 {
     struct rb_getaddrinfo_happy_shared *shared;
@@ -36,7 +36,8 @@ allocate_rb_getaddrinfo_happy_entry()
     return entry;
 }
 
-static void allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+static void
+allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
 {
     MEMZERO(hints, struct addrinfo, 1);
     hints->ai_family = family;
@@ -90,65 +91,12 @@ socket_nonblock_set(int fd)
     return;
 }
 
-struct timespec current_clocktime_ts()
+struct timespec
+current_clocktime_ts()
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts;
-}
-
-struct timespec add_timeval_to_timespec(struct timeval tv, struct timespec ts)
-{
-    long long nsec_total = ts.tv_nsec + (long long)tv.tv_usec * 1000;
-
-    if (nsec_total >= 1000000000LL) {
-        ts.tv_sec += nsec_total / 1000000000LL;
-        ts.tv_nsec = nsec_total % 1000000000LL;
-    } else {
-        ts.tv_nsec = nsec_total;
-    }
-
-    ts.tv_sec += tv.tv_sec;
-    return ts;
-}
-
-struct timespec resolv_timeout_expires_at_ts(struct timeval resolv_timeout)
-{
-    struct timespec ts = current_clocktime_ts();
-    ts = add_timeval_to_timespec(resolv_timeout, ts);
-    return ts;
-}
-
-struct timespec connection_attempt_delay_expires_at_ts()
-{
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
-
-    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        ts.tv_nsec -= 1000000000;
-        ts.tv_sec += 1;
-    }
-    return ts;
-}
-
-long usec_to_timeout(struct timespec ends_at)
-{
-    if (ends_at.tv_sec == -1 && ends_at.tv_nsec == -1) return 0;
-
-    struct timespec starts_at = current_clocktime_ts();
-    long sec_diff = ends_at.tv_sec - starts_at.tv_sec;
-    long nsec_diff = ends_at.tv_nsec - starts_at.tv_nsec;
-    long remaining = sec_diff * 1000000L + nsec_diff / 1000;
-
-    return remaining > 0 ? remaining : 0;
-}
-
-int is_timeout(struct timespec expires_at) {
-    struct timespec current = current_clocktime_ts();
-
-    if (current.tv_sec > expires_at.tv_sec) return 1;
-    if (current.tv_sec == expires_at.tv_sec && current.tv_nsec > expires_at.tv_nsec) return 1;
-    return 0;
 }
 
 void
