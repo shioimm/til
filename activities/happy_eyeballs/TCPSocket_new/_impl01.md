@@ -20,7 +20,7 @@
 #  endif
 #endif
 
-tatic struct rb_getaddrinfo_happy_shared *
+static struct rb_getaddrinfo_happy_shared *
 create_rb_getaddrinfo_happy_shared()
 {
     struct rb_getaddrinfo_happy_shared *shared;
@@ -36,7 +36,8 @@ allocate_rb_getaddrinfo_happy_entry()
     return entry;
 }
 
-static void allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+static void
+allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
 {
     MEMZERO(hints, struct addrinfo, 1);
     hints->ai_family = family;
@@ -90,73 +91,45 @@ socket_nonblock_set(int fd)
     return;
 }
 
-struct timespec current_clocktime_ts()
+struct timespec
+current_clocktime_ts()
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts;
 }
 
-struct timespec add_timeval_to_timespec(struct timeval tv, struct timespec ts)
+void
+set_timeout_tv(struct timeval *tv, long ms)
 {
-    long long nsec_total = ts.tv_nsec + (long long)tv.tv_usec * 1000;
+    long seconds = ms / 1000;
+    long nanoseconds = (ms % 1000) * 1000000;
 
-    if (nsec_total >= 1000000000LL) {
-        ts.tv_sec += nsec_total / 1000000000LL;
-        ts.tv_nsec = nsec_total % 1000000000LL;
-    } else {
-        ts.tv_nsec = nsec_total;
-    }
-
-    ts.tv_sec += tv.tv_sec;
-    return ts;
-}
-
-struct timespec resolv_timeout_expires_at_ts(struct timeval resolv_timeout)
-{
     struct timespec ts = current_clocktime_ts();
-    ts = add_timeval_to_timespec(resolv_timeout, ts);
-    return ts;
-}
-
-struct timespec connection_attempt_delay_expires_at_ts()
-{
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_nsec += CONNECTION_ATTEMPT_DELAY_NSEC;
+    ts.tv_sec += seconds;
+    ts.tv_nsec += nanoseconds;
 
     while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
         ts.tv_nsec -= 1000000000;
         ts.tv_sec += 1;
     }
-    return ts;
-}
 
-long usec_to_timeout(struct timespec ends_at)
-{
-    if (ends_at.tv_sec == -1 && ends_at.tv_nsec == -1) return 0;
-
-    struct timespec starts_at = current_clocktime_ts();
-    long sec_diff = ends_at.tv_sec - starts_at.tv_sec;
-    long nsec_diff = ends_at.tv_nsec - starts_at.tv_nsec;
-    long remaining = sec_diff * 1000000L + nsec_diff / 1000;
-
-    return remaining > 0 ? remaining : 0;
-}
-
-int is_timeout(struct timespec expires_at) {
-    struct timespec current = current_clocktime_ts();
-
-    if (current.tv_sec > expires_at.tv_sec) return 1;
-    if (current.tv_sec == expires_at.tv_sec && current.tv_nsec > expires_at.tv_nsec) return 1;
-    return 0;
+    tv->tv_sec = ts.tv_sec;
+    tv->tv_usec = (int)(ts.tv_nsec / 1000);
 }
 
 int
-set_timeout(struct timeval *timeout, int usec)
+is_timeout_tv_invalid(struct timeval tv)
 {
-    // WIP
-    return 0;
+    return tv.tv_sec == -1 && tv.tv_usec == -1;
 }
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
 
 struct hostname_resolution_result
 {
@@ -339,7 +312,6 @@ init_inetsock_internal_happy(VALUE v)
     wait_arg.nfds = 0;
     wait_arg.delay = NULL;
 
-    struct rb_getaddrinfo_happy_entry *tmp_getaddrinfo_entry = NULL;
     struct hostname_resolution_store resolution_store;
     resolution_store.is_all_finised = false;
     resolution_store.v6.ai = NULL;
@@ -349,7 +321,6 @@ init_inetsock_internal_happy(VALUE v)
     resolution_store.v4.finished = false;
     resolution_store.v4.error = false;
 
-    // TODO struct timevalを渡すと、副作用としてtimevalにタイムアウト値をセットする関数を用意する
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
@@ -408,12 +379,11 @@ init_inetsock_internal_happy(VALUE v)
     while (true) {
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
-        // TODO if 接続開始条件を満たしている
-
-        if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
-        // TODO 接続開始
-        if (are_any_addrinfos(&resolution_store)) {
-            puts("any_addrinfos");
+        if (are_any_addrinfos(&resolution_store) &&
+           is_timeout_tv_invalid(resolution_delay_expires_at) &&
+           is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
+            if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
+            // TODO 接続開始
         }
 
         // TODO タイムアウト値の設定
@@ -457,13 +427,12 @@ init_inetsock_internal_happy(VALUE v)
                         if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
                         // TODO
                         // hostname_resolution_notifier = nil
-                        // resolution_delay_expires_at = nil
+                        resolution_delay_expires_at = (struct timeval){ -1, -1 };
                         // user_specified_resolv_timeout_at = nil
                         resolution_store.is_all_finised = true;
                     } else if (!resolution_store.v4.error) {
-                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                        // TODO
-                        // resolution_delay_expires_at = now + RESOLUTION_DELAY
+                        if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
+                        set_timeout_tv(&resolution_delay_expires_at, 50);
                     }
                 }
                 // TMP
