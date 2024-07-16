@@ -561,3 +561,69 @@ end
 #   socket.write "GET / HTTP/1.0\r\n\r\n"
 #   print socket.read
 # end
+
+__END__
+
+This is a proposed improvement to `Socket.tcp`, which has implemented Happy Eyeballs version 2 (RFC8305) in PR9374.
+
+### Background
+I implemented Happy Eyeballs version 2 (HEv2) for Socket.tcp in PR9374, but several issues have been identified:
+
+- `IO.select` waits for both IPv6/IPv4 name resolution (in start), but when it returns a value, it doesn't consider the case where name resolution for both address families is complete.
+  - In this case, `Socket.tcp` can only obtain the addresses of one address family and needs to execute an unnecessary loop to obtain the other addresses. In some cases, it may unnecessarily wait for 50ms (in v4w).
+- `IO.select` waits for name resolution or connection establishment in v46w, but it does not consider the case where both events occur simultaneously when it returns a value.
+  - In this case, Socket.tcp can only capture one event and needs to execute an unnecessary loop to capture the other one, calling `IO.select` one extra time.
+- The consideration for `connect_timeout` was insufficient. After initiating one or more connections, it raises a 'user specified timeout' after the `connect_timeout` period even if there were addresses that have been resolved and have not yet tried to connect.
+- It does not retry with another address in case of a connection failure.
+- It executes unnecessary state transitions even when an IP address is passed as the `host` argument.
+- The regex for IP addresses did not correctly specify the start and end.
+
+### Proposal & Outcome
+To overcome the aforementioned issues, this PR introduces the following changes:
+
+- Previously, each loop iteration represented a single state transition. This has been changed to execute all processes that meet the execution conditions within a single loop iteration.
+  - This prevents unnecessary repeated loops and calling `IO.select`
+- Introduced logic to determine the timeout value set for `IO.select`. During the Resolution Delay and Connection Attempt Delay, the user-specified timeout is ignored. Otherwise, the timeout value is set to the larger of `resolv_timeout` and `connect_timeout`.
+  - This ensures that the `connect_timeout` is only detected after attempting to connect to all resolved addresses.
+- Retry with another address in case of a connection failure.
+  - This prevents unnecessary repeated loops upon connection failure.
+- Call `tcp_without_fast_fallback` when an IP address is passed as the host argument.
+  - This prevents unnecessary state transitions when an IP address is passed.
+- Fixed regex for IP addresses.
+
+### Performance
+No significant performance changes were observed in the happy case before and after the improvement.
+However, improvements in state transition deficiencies are expected to enhance performance in edge cases.
+
+```ruby
+require 'socket'
+require 'benchmark'
+
+Benchmark.bmbm do |x|
+  x.report('fast_fallback: true') do
+    30.times { Socket.tcp("www.ruby-lang.org", 80) }
+  end
+
+  x.report('fast_fallback: false') do # Ruby3.3時点と同じ
+    30.times { Socket.tcp("www.ruby-lang.org", 80, fast_fallback: false) }
+  end
+end
+```
+
+```
+# Before
+~/s/build ❯❯❯ ../install/bin/ruby ../ruby/test.rb
+
+                           user     system      total        real
+fast_fallback: true    0.021315   0.040723   0.062038 (  0.504866)
+fast_fallback: false   0.007553   0.026248   0.033801 (  0.533211)
+```
+
+```
+# After
+~/s/build ❯❯❯ ../install/bin/ruby ../ruby/test.rb
+
+                           user     system      total        real
+fast_fallback: true    0.023081   0.040525   0.063606 (  0.406219)
+fast_fallback: false   0.007302   0.025515   0.032817 (  0.418680)
+```
