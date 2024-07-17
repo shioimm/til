@@ -591,6 +591,8 @@ To overcome the aforementioned issues, this PR introduces the following changes:
   - This prevents unnecessary state transitions when an IP address is passed.
 - Fixed regex for IP addresses.
 
+Additionally, the code has been reduced by over 100 lines, and redundancy has been minimized, which is expected to improve readability.
+
 ### Performance
 No significant performance changes were observed in the happy case before and after the improvement.
 However, improvements in state transition deficiencies are expected to enhance performance in edge cases.
