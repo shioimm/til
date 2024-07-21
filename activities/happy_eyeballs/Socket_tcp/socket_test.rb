@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
-require_relative "./v6"
+require_relative "./v6_for_win"
 
 class SocketTest < Minitest::Test
   def test_that_returns_IPv6_connected_socket_when_IPv4_address_name_resolution_takes_time
