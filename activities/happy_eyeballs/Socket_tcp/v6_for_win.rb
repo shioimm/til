@@ -85,7 +85,7 @@ class Socket
         }
       )
 
-      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : 0
+      user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
     end
 
     count = 0 if DEBUG # for DEBUGging
@@ -143,7 +143,7 @@ class Socket
             if result == :wait_writable
               connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
               if resolution_store.empty_addrinfos?
-                user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : 0
+                user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
               end
 
               connecting_sockets[socket] = addrinfo
@@ -187,22 +187,15 @@ class Socket
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
       puts "[DEBUG] #{count}: IO.select(#{hostname_resolution_notifier}, #{connecting_sockets.keys}, nil, #{second_to_timeout(current_clock_time, ends_at)})" if DEBUG
-      hostname_resolved, writable_sockets, = IO.select(
+      hostname_resolved, writable_sockets, except_sockets = IO.select(
         hostname_resolution_notifier,
         connecting_sockets.keys,
-        nil,
+        connecting_sockets.keys,
         second_to_timeout(current_clock_time, ends_at),
       )
       now = current_clock_time
       resolution_delay_expires_at = nil if expired?(now, resolution_delay_expires_at)
       connection_attempt_delay_expires_at = nil if expired?(now, connection_attempt_delay_expires_at)
-
-      if is_windows_environment
-        connecting_sockets.each do |connecting_socket, _|
-          sockopt = connecting_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
-          connecting_sockets.delete(connecting_socket) if sockopt.unpack('i').first < 0
-        end
-      end
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -225,22 +218,49 @@ class Socket
             return writable_socket
           else
             failed_ai = connecting_sockets.delete writable_socket
+            except_sockets.delete writable_socket
             writable_socket.close
+            ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+            last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
 
             if writable_sockets.any? ||
                resolution_store.any_addrinfos? ||
                connecting_sockets.any? ||
                resolution_store.any_unresolved_family?
               user_specified_connect_timeout_at = nil if connecting_sockets.empty?
+
               # Try other writable socket in next "while"
               # Or exit this "while" and try other connection attempt
               # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
               # Or exit this "while" and wait for hostname resolution in next loop
             else
-              ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
-              last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
               raise last_error
             end
+          end
+        end
+      end
+
+      if except_sockets&.any?
+        except_sockets.each do |excepted_socket|
+          failed_ai = connecting_sockets.delete excepted_socket
+          sockopt = is_windows_environment ?
+            writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME) :
+            writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+          excepted_socket.close
+          ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+          last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
+
+          if writable_sockets.any? ||
+             resolution_store.any_addrinfos? ||
+             connecting_sockets.any? ||
+             resolution_store.any_unresolved_family?
+            user_specified_connect_timeout_at = nil if connecting_sockets.empty?
+            # Try other writable socket in next "while"
+            # Or exit this "while" and try other connection attempt
+            # Or exit this "while" and wait for connections to be established or hostname resolution in next loop
+            # Or exit this "while" and wait for hostname resolution in next loop
+          else
+            raise last_error
           end
         end
       end
@@ -370,7 +390,7 @@ class Socket
   private_class_method :current_clock_time
 
   def self.second_to_timeout(started_at, ends_at)
-    return nil if ends_at.nil? || ends_at.zero?
+    return nil if ends_at == Float::INFINITY || ends_at.nil?
 
     remaining = (ends_at - started_at)
     remaining.negative? ? 0 : remaining
