@@ -190,7 +190,8 @@ class Socket
       hostname_resolved, writable_sockets, except_sockets = IO.select(
         hostname_resolution_notifier,
         connecting_sockets.keys,
-        connecting_sockets.keys,
+        # Use errorfds to wait for non-blocking connect failures on Windows
+        is_windows_environment ? connecting_sockets.keys : nil,
         second_to_timeout(current_clock_time, ends_at),
       )
       now = current_clock_time
@@ -203,14 +204,10 @@ class Socket
 
       if writable_sockets&.any?
         while (writable_socket = writable_sockets.pop)
-          is_connected =
-            if is_windows_environment
-              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME)
-              sockopt.unpack('i').first >= 0
-            else
-              sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
-              sockopt.int.zero?
-            end
+          is_connected = is_windows_environment || (
+            sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+            sockopt.int.zero?
+          )
 
           if is_connected
             puts "[DEBUG] #{count}: Socket for #{writable_socket.remote_address.ip_address} is connected" if DEBUG
@@ -218,7 +215,6 @@ class Socket
             return writable_socket
           else
             failed_ai = connecting_sockets.delete writable_socket
-            except_sockets.delete writable_socket
             writable_socket.close
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
@@ -243,9 +239,7 @@ class Socket
       if except_sockets&.any?
         except_sockets.each do |excepted_socket|
           failed_ai = connecting_sockets.delete excepted_socket
-          sockopt = is_windows_environment ?
-            writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME) :
-            writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
+          sockopt = excepted_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_CONNECT_TIME) :
           excepted_socket.close
           ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
           last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
