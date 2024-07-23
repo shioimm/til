@@ -650,3 +650,20 @@ fast_fallback: false   0.007553   0.026248   0.033801 (  0.533211)
 fast_fallback: true    0.023081   0.040525   0.063606 (  0.406219)
 fast_fallback: false   0.007302   0.025515   0.032817 (  0.418680)
 ```
+
+Additional note
+The PR for this issue is Improve Socket.tcp https://github.com/ruby/ruby/pull/11187 .
+
+Also, as the number of times the performance measurement has been run is low, the results of sending 3000 requests to localhost are attached for reference.
+
+Before
+```
+                          user     system      total        real
+fast_fallback: true   1.612526   4.072099   5.684625 ( 29.892578)
+```
+
+After
+```
+                          user     system      total        real
+fast_fallback: true   1.631585   4.012447   5.644032 ( 31.351084)
+```
