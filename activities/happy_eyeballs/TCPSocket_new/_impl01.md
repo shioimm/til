@@ -264,6 +264,32 @@ are_any_addrinfos(struct hostname_resolution_store *resolution_store)
     return resolution_store->v6.ai || resolution_store->v4.ai;
 }
 
+truct addrinfo *
+select_resolved_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
+{
+    int priority_on_v6[2] = { AF_INET6, AF_INET };
+    int priority_on_v4[2] = { AF_INET, AF_INET6 };
+    int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
+    struct addrinfo *selected_ai = NULL;
+
+    for (int i = 0; i < 2; i++) {
+        if (precedences[i] == AF_INET6) {
+            selected_ai = resolution_store->v6.ai;
+            if (selected_ai) {
+                resolution_store->v6.ai = selected_ai->ai_next;
+                break;
+            }
+        } else {
+            selected_ai = resolution_store->v4.ai;
+            if (selected_ai) {
+                resolution_store->v4.ai = selected_ai->ai_next;
+                break;
+            }
+        }
+    }
+    return selected_ai;
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -327,6 +353,9 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
 
+    int last_family = 0;
+    struct addrinfo *tmp_ai;
+
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
     // int error = 0;
@@ -385,6 +414,14 @@ init_inetsock_internal_happy(VALUE v)
            is_timeout_tv_invalid(resolution_delay_expires_at) &&
            is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
+            tmp_ai = select_resolved_addrinfo(&resolution_store, last_family);
+
+            if (tmp_ai) {
+                inetsock->fd = fd = -1;
+                remote_ai = tmp_ai;
+                printf("remote_ai %p\n", remote_ai);
+            } else { // 接続可能なaddrinfoが見つからなかった
+            }
             // TODO 接続開始
         }
 
