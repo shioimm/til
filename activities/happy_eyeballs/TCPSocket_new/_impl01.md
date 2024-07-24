@@ -413,7 +413,7 @@ init_inetsock_internal_happy(VALUE v)
         if (are_any_addrinfos(&resolution_store) &&
            is_timeout_tv_invalid(resolution_delay_expires_at) &&
            is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
-            if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
+            if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
             tmp_ai = select_resolved_addrinfo(&resolution_store, last_family);
 
             if (tmp_ai) {
@@ -431,6 +431,7 @@ init_inetsock_internal_happy(VALUE v)
             local_ai = NULL;
             // TODO local_addrinfos.any?
 
+            if (debug) printf("[DEBUG] %d: ** Create socket **\n", count);
             status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
             syscall = "socket(2)";
             fd = status;
@@ -441,24 +442,44 @@ init_inetsock_internal_happy(VALUE v)
                 // TODO
             }
 
-            // TODO local_aiがある場合はSocketを作成してbind
+            if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
+            if (are_any_addrinfos(&resolution_store)) {
+                // || connecting_sockets.any?
+                // || resolution_store.any_unresolved_family?
 
-            socket_nonblock_set(fd);
-            status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
-            syscall = "connect(2)";
+                // TODO local_aiがある場合はSocketを作成してbind
 
-            last_family = remote_ai->ai_family;
+                socket_nonblock_set(fd);
+                status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
+                syscall = "connect(2)";
 
-            if (status == 0) { // 接続に成功
-                if (debug) printf("[DEBUG] %d: connection successful\n", count);
-                // TODO
-            } else if (errno == EINPROGRESS) { // 接続中
-                if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
-                // TODO
+                last_family = remote_ai->ai_family;
+
+                if (status == 0) { // 接続に成功
+                    if (debug) printf("[DEBUG] %d: connection successful\n", count);
+                    // TODO 接続に成功したソケットを返す
+                } else if (errno == EINPROGRESS) { // 接続中
+                    if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                    // TODO 接続中のfdを保存する
+                } else {
+                    last_error = errno;
+                    if (debug) printf("[DEBUG] %d: connection failed\n", count);
+                    // socket&.close
+                    // last_error = e
+                    // if resolution_store.any_addrinfos?
+                    //   next
+                    // elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
+                    //   break
+                    // else
+                    //   raise last_error
+                    // end
+                }
             } else {
-                last_error = errno;
-                if (debug) printf("[DEBUG] %d: connection failed\n", count);
                 // TODO
+                // result = socket = local_addrinfo ?
+                //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                //   addrinfo.connect(timeout: connect_timeout)
+                // 成功したらreturn、失敗したらraise
             }
         }
 
