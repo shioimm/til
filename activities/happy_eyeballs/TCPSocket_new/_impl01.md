@@ -99,58 +99,6 @@ current_clocktime_ts()
     return ts;
 }
 
-void
-set_timeout_tv(struct timeval *tv, long ms)
-{
-    long seconds = ms / 1000;
-    long nanoseconds = (ms % 1000) * 1000000;
-
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_sec += seconds;
-    ts.tv_nsec += nanoseconds;
-
-    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        ts.tv_nsec -= 1000000000;
-        ts.tv_sec += 1;
-    }
-
-    tv->tv_sec = ts.tv_sec;
-    tv->tv_usec = (int)(ts.tv_nsec / 1000);
-}
-
-int
-is_timeout_tv_invalid(struct timeval tv)
-{
-    return tv.tv_sec == -1 && tv.tv_usec == -1;
-}
-
-struct hostname_resolution_result
-{
-    struct addrinfo *ai;
-    int finished;
-    int error;
-};
-
-struct hostname_resolution_result
-{
-    struct addrinfo *ai;
-    int finished;
-    int error;
-};
-
-struct hostname_resolution_store
-{
-    struct hostname_resolution_result v6;
-    struct hostname_resolution_result v4;
-    int is_all_finised;
-};
-
-int
-are_any_addrinfos(struct hostname_resolution_store *resolution_store)
-{
-    return resolution_store->v6.ai || resolution_store->v4.ai;
-}
-
 struct addrinfo *
 select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
 {
@@ -239,7 +187,8 @@ is_connecting_fds_empty(const int *fds, int fds_size)
     return true;
 }
 
-int is_specified_ip_address(const char *hostname)
+int
+is_specified_ip_address(const char *hostname)
 {
     struct in_addr ipv4addr;
     struct in6_addr ipv6addr;
@@ -261,6 +210,59 @@ struct inetsock_happy_arg
     int connecting_fds_size, connecting_fds_capacity, connected_fd;
     int *connecting_fds;
 };
+
+// 追加 ----------------------
+void
+set_timeout_tv(struct timeval *tv, long ms)
+{
+    long seconds = ms / 1000;
+    long nanoseconds = (ms % 1000) * 1000000;
+
+    struct timespec ts = current_clocktime_ts();
+    ts.tv_sec += seconds;
+    ts.tv_nsec += nanoseconds;
+
+    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        ts.tv_nsec -= 1000000000;
+        ts.tv_sec += 1;
+    }
+
+    tv->tv_sec = ts.tv_sec;
+    tv->tv_usec = (int)(ts.tv_nsec / 1000);
+}
+
+int
+is_timeout_tv_invalid(struct timeval tv)
+{
+    return tv.tv_sec == -1 && tv.tv_usec == -1;
+}
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_store
+{
+    struct hostname_resolution_result v6;
+    struct hostname_resolution_result v4;
+    int is_all_finised;
+};
+
+int
+are_any_addrinfos(struct hostname_resolution_store *resolution_store)
+{
+    return resolution_store->v6.ai || resolution_store->v4.ai;
+}
 
 static VALUE
 init_inetsock_internal_happy(VALUE v)
