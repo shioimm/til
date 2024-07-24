@@ -419,7 +419,7 @@ init_inetsock_internal_happy(VALUE v)
             if (tmp_ai) {
                 inetsock->fd = fd = -1;
                 remote_ai = tmp_ai;
-                if (debug) printf("[DEBUG] %d: remote_ai %p\n", remote_ai);
+                if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
             } else { // 接続可能なaddrinfoが見つからなかった
               // TODO
             }
@@ -434,15 +434,32 @@ init_inetsock_internal_happy(VALUE v)
             status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
             syscall = "socket(2)";
             fd = status;
-            if (debug) printf("[DEBUG] %d: fd %d\n", fd);
+            if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
 
             if (fd < 0) { // socket(2)に失敗
                 last_error = errno;
                 // TODO
             }
+
             // TODO local_aiがある場合はSocketを作成してbind
+
             socket_nonblock_set(fd);
-            // TODO 接続開始
+            status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
+            syscall = "connect(2)";
+
+            last_family = remote_ai->ai_family;
+
+            if (status == 0) { // 接続に成功
+                if (debug) printf("[DEBUG] %d: connection successful\n", count);
+                // TODO
+            } else if (errno == EINPROGRESS) { // 接続中
+                if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                // TODO
+            } else {
+                last_error = errno;
+                if (debug) printf("[DEBUG] %d: connection failed\n", count);
+                // TODO
+            }
         }
 
         // TODO タイムアウト値の設定
@@ -457,7 +474,6 @@ init_inetsock_internal_happy(VALUE v)
         syscall = "select(2)";
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
-        printf("status %d\n", status);
 
         if (status > 0) {
             if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
