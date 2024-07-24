@@ -77,20 +77,6 @@ cancel_happy_eyeballs_fds(void *ptr)
     rb_nativethread_lock_unlock(arg->lock);
 }
 
-static void
-socket_nonblock_set(int fd)
-{
-    int flags = fcntl(fd, F_GETFL);
-
-    if (flags == -1) rb_sys_fail(0);
-    if ((flags & O_NONBLOCK) != 0) return;
-
-    flags |= O_NONBLOCK;
-
-    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
-    return;
-}
-
 struct timespec
 current_clocktime_ts()
 {
@@ -290,6 +276,20 @@ select_resolved_addrinfo(struct hostname_resolution_store *resolution_store, int
     return selected_ai;
 }
 
+static void
+socket_nonblock_set(int fd)
+{
+    int flags = fcntl(fd, F_GETFL);
+
+    if (flags == -1) rb_sys_fail(0);
+    if ((flags & O_NONBLOCK) != 0) return;
+
+    flags |= O_NONBLOCK;
+
+    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
+    return;
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -419,9 +419,29 @@ init_inetsock_internal_happy(VALUE v)
             if (tmp_ai) {
                 inetsock->fd = fd = -1;
                 remote_ai = tmp_ai;
-                printf("remote_ai %p\n", remote_ai);
+                if (debug) printf("[DEBUG] %d: remote_ai %p\n", remote_ai);
             } else { // 接続可能なaddrinfoが見つからなかった
+              // TODO
             }
+
+            #if !defined(INET6) && defined(AF_INET6)
+            // TODO
+            #endif
+
+            local_ai = NULL;
+            // TODO local_addrinfos.any?
+
+            status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
+            syscall = "socket(2)";
+            fd = status;
+            if (debug) printf("[DEBUG] %d: fd %d\n", fd);
+
+            if (fd < 0) { // socket(2)に失敗
+                last_error = errno;
+                // TODO
+            }
+            // TODO local_aiがある場合はSocketを作成してbind
+            socket_nonblock_set(fd);
             // TODO 接続開始
         }
 
