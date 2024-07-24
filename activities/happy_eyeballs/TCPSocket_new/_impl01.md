@@ -85,32 +85,6 @@ current_clocktime_ts()
     return ts;
 }
 
-struct addrinfo *
-select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
-{
-    int priority_on_v6[2] = { AF_INET6, AF_INET };
-    int priority_on_v4[2] = { AF_INET, AF_INET6 };
-    int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
-    struct addrinfo *selected_ai = NULL;
-
-    for (int i = 0; i < 2; i++) {
-        if (precedences[i] == AF_INET6) {
-            selected_ai = addrinfos->ip6_ai;
-            if (selected_ai) {
-                addrinfos->ip6_ai = selected_ai->ai_next;
-                break;
-            }
-        } else {
-            selected_ai = addrinfos->ip4_ai;
-            if (selected_ai) {
-                addrinfos->ip4_ai = selected_ai->ai_next;
-                break;
-            }
-        }
-    }
-    return selected_ai;
-}
-
 static int
 initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
 {
