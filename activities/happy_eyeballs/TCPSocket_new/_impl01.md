@@ -77,104 +77,12 @@ cancel_happy_eyeballs_fds(void *ptr)
     rb_nativethread_lock_unlock(arg->lock);
 }
 
-static void
-socket_nonblock_set(int fd)
-{
-    int flags = fcntl(fd, F_GETFL);
-
-    if (flags == -1) rb_sys_fail(0);
-    if ((flags & O_NONBLOCK) != 0) return;
-
-    flags |= O_NONBLOCK;
-
-    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
-    return;
-}
-
 struct timespec
 current_clocktime_ts()
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts;
-}
-
-void
-set_timeout_tv(struct timeval *tv, long ms)
-{
-    long seconds = ms / 1000;
-    long nanoseconds = (ms % 1000) * 1000000;
-
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_sec += seconds;
-    ts.tv_nsec += nanoseconds;
-
-    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        ts.tv_nsec -= 1000000000;
-        ts.tv_sec += 1;
-    }
-
-    tv->tv_sec = ts.tv_sec;
-    tv->tv_usec = (int)(ts.tv_nsec / 1000);
-}
-
-int
-is_timeout_tv_invalid(struct timeval tv)
-{
-    return tv.tv_sec == -1 && tv.tv_usec == -1;
-}
-
-struct hostname_resolution_result
-{
-    struct addrinfo *ai;
-    int finished;
-    int error;
-};
-
-struct hostname_resolution_result
-{
-    struct addrinfo *ai;
-    int finished;
-    int error;
-};
-
-struct hostname_resolution_store
-{
-    struct hostname_resolution_result v6;
-    struct hostname_resolution_result v4;
-    int is_all_finised;
-};
-
-int
-are_any_addrinfos(struct hostname_resolution_store *resolution_store)
-{
-    return resolution_store->v6.ai || resolution_store->v4.ai;
-}
-
-struct addrinfo *
-select_addrinfo(struct resolved_addrinfos *addrinfos, int last_family)
-{
-    int priority_on_v6[2] = { AF_INET6, AF_INET };
-    int priority_on_v4[2] = { AF_INET, AF_INET6 };
-    int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
-    struct addrinfo *selected_ai = NULL;
-
-    for (int i = 0; i < 2; i++) {
-        if (precedences[i] == AF_INET6) {
-            selected_ai = addrinfos->ip6_ai;
-            if (selected_ai) {
-                addrinfos->ip6_ai = selected_ai->ai_next;
-                break;
-            }
-        } else {
-            selected_ai = addrinfos->ip4_ai;
-            if (selected_ai) {
-                addrinfos->ip4_ai = selected_ai->ai_next;
-                break;
-            }
-        }
-    }
-    return selected_ai;
 }
 
 static int
@@ -239,7 +147,8 @@ is_connecting_fds_empty(const int *fds, int fds_size)
     return true;
 }
 
-int is_specified_ip_address(const char *hostname)
+int
+is_specified_ip_address(const char *hostname)
 {
     struct in_addr ipv4addr;
     struct in6_addr ipv6addr;
@@ -261,6 +170,99 @@ struct inetsock_happy_arg
     int connecting_fds_size, connecting_fds_capacity, connected_fd;
     int *connecting_fds;
 };
+
+// 追加 ----------------------
+void
+set_timeout_tv(struct timeval *tv, long ms)
+{
+    long seconds = ms / 1000;
+    long nanoseconds = (ms % 1000) * 1000000;
+
+    struct timespec ts = current_clocktime_ts();
+    ts.tv_sec += seconds;
+    ts.tv_nsec += nanoseconds;
+
+    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        ts.tv_nsec -= 1000000000;
+        ts.tv_sec += 1;
+    }
+
+    tv->tv_sec = ts.tv_sec;
+    tv->tv_usec = (int)(ts.tv_nsec / 1000);
+}
+
+int
+is_timeout_tv_invalid(struct timeval tv)
+{
+    return tv.tv_sec == -1 && tv.tv_usec == -1;
+}
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_store
+{
+    struct hostname_resolution_result v6;
+    struct hostname_resolution_result v4;
+    int is_all_finised;
+};
+
+int
+are_any_addrinfos(struct hostname_resolution_store *resolution_store)
+{
+    return resolution_store->v6.ai || resolution_store->v4.ai;
+}
+
+truct addrinfo *
+select_resolved_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
+{
+    int priority_on_v6[2] = { AF_INET6, AF_INET };
+    int priority_on_v4[2] = { AF_INET, AF_INET6 };
+    int *precedences = last_family == AF_INET6 ? priority_on_v4 : priority_on_v6;
+    struct addrinfo *selected_ai = NULL;
+
+    for (int i = 0; i < 2; i++) {
+        if (precedences[i] == AF_INET6) {
+            selected_ai = resolution_store->v6.ai;
+            if (selected_ai) {
+                resolution_store->v6.ai = selected_ai->ai_next;
+                break;
+            }
+        } else {
+            selected_ai = resolution_store->v4.ai;
+            if (selected_ai) {
+                resolution_store->v4.ai = selected_ai->ai_next;
+                break;
+            }
+        }
+    }
+    return selected_ai;
+}
+
+static void
+socket_nonblock_set(int fd)
+{
+    int flags = fcntl(fd, F_GETFL);
+
+    if (flags == -1) rb_sys_fail(0);
+    if ((flags & O_NONBLOCK) != 0) return;
+
+    flags |= O_NONBLOCK;
+
+    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
+    return;
+}
 
 static VALUE
 init_inetsock_internal_happy(VALUE v)
@@ -325,6 +327,9 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
 
+    int last_family = 0;
+    struct addrinfo *tmp_ai;
+
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
     // int error = 0;
@@ -382,8 +387,74 @@ init_inetsock_internal_happy(VALUE v)
         if (are_any_addrinfos(&resolution_store) &&
            is_timeout_tv_invalid(resolution_delay_expires_at) &&
            is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
-            if (debug) printf("[DEBUG] %d: ** Start to connect **\n", count);
-            // TODO 接続開始
+            if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
+            tmp_ai = select_resolved_addrinfo(&resolution_store, last_family);
+
+            if (tmp_ai) {
+                inetsock->fd = fd = -1;
+                remote_ai = tmp_ai;
+                if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
+            } else { // 接続可能なaddrinfoが見つからなかった
+              // TODO
+            }
+
+            #if !defined(INET6) && defined(AF_INET6)
+            // TODO
+            #endif
+
+            local_ai = NULL;
+            // TODO local_addrinfos.any?
+
+            if (debug) printf("[DEBUG] %d: ** Create socket **\n", count);
+            status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
+            syscall = "socket(2)";
+            fd = status;
+            if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
+
+            if (fd < 0) { // socket(2)に失敗
+                last_error = errno;
+                // TODO
+            }
+
+            if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
+            if (are_any_addrinfos(&resolution_store)) {
+                // || connecting_sockets.any?
+                // || resolution_store.any_unresolved_family?
+
+                // TODO local_aiがある場合はSocketを作成してbind
+
+                socket_nonblock_set(fd);
+                status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
+                syscall = "connect(2)";
+
+                last_family = remote_ai->ai_family;
+
+                if (status == 0) { // 接続に成功
+                    if (debug) printf("[DEBUG] %d: connection successful\n", count);
+                    // TODO 接続に成功したソケットを返す
+                } else if (errno == EINPROGRESS) { // 接続中
+                    if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                    // TODO 接続中のfdを保存する
+                } else {
+                    last_error = errno;
+                    if (debug) printf("[DEBUG] %d: connection failed\n", count);
+                    // socket&.close
+                    // last_error = e
+                    // if resolution_store.any_addrinfos?
+                    //   next
+                    // elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
+                    //   break
+                    // else
+                    //   raise last_error
+                    // end
+                }
+            } else {
+                // TODO
+                // result = socket = local_addrinfo ?
+                //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                //   addrinfo.connect(timeout: connect_timeout)
+                // 成功したらreturn、失敗したらraise
+            }
         }
 
         // TODO タイムアウト値の設定
@@ -398,7 +469,6 @@ init_inetsock_internal_happy(VALUE v)
         syscall = "select(2)";
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
-        printf("status %d\n", status);
 
         if (status > 0) {
             if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
