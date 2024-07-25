@@ -323,12 +323,19 @@ init_inetsock_internal_happy(VALUE v)
     resolution_store.v4.finished = false;
     resolution_store.v4.error = false;
 
+    int last_family = 0;
+    struct addrinfo *tmp_ai;
+
+    int connecting_fds_size = arg->connecting_fds_size;
+    int initial_capacity = 10;
+    int current_capacity = initial_capacity;
+    arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
+    if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+    arg->connecting_fds_capacity = initial_capacity;
+
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
-
-    int last_family = 0;
-    struct addrinfo *tmp_ai;
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
@@ -417,43 +424,56 @@ init_inetsock_internal_happy(VALUE v)
             }
 
             if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
-            if (any_addrinfos(&resolution_store)) {
-                // || connecting_sockets.any?
-                // || resolution_store.any_unresolved_family?
+            if (any_addrinfos(&resolution_store) ||
+                // connecting_sockets.any? ||
+                !resolution_store.is_all_finised) {
 
                 // TODO local_aiがある場合はSocketを作成してbind
 
                 socket_nonblock_set(fd);
                 status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                 syscall = "connect(2)";
-
                 last_family = remote_ai->ai_family;
-
-                if (status == 0) { // 接続に成功
-                    if (debug) printf("[DEBUG] %d: connection successful\n", count);
-                    // TODO 接続に成功したソケットを返す
-                } else if (errno == EINPROGRESS) { // 接続中
-                    if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
-                    // TODO 接続中のfdを保存する
-                } else {
-                    last_error = errno;
-                    if (debug) printf("[DEBUG] %d: connection failed\n", count);
-                    // socket&.close
-                    // last_error = e
-                    // if resolution_store.any_addrinfos?
-                    //   next
-                    // elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
-                    //   break
-                    // else
-                    //   raise last_error
-                    // end
-                }
             } else {
                 // TODO
                 // result = socket = local_addrinfo ?
                 //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
                 //   addrinfo.connect(timeout: connect_timeout)
                 // 成功したらreturn、失敗したらraise
+            }
+
+            if (status == 0) { // 接続に成功
+                if (debug) printf("[DEBUG] %d: connection successful\n", count);
+                // TODO 接続に成功したソケットを返す
+            } else if (errno == EINPROGRESS) { // 接続中
+                if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                // TODO 接続中のfdを保存する
+                if (current_capacity == connecting_fds_size) {
+                    int new_capacity = current_capacity + initial_capacity;
+                    arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
+                    if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+                    current_capacity = new_capacity;
+                    arg->connecting_fds_capacity = current_capacity;
+                }
+                arg->connecting_fds[connecting_fds_size] = fd;
+                (connecting_fds_size)++;
+                if (debug) {
+                    for (int i = 0; i < connecting_fds_size; i++) {
+                        printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
+                    }
+                }
+            } else {
+                last_error = errno;
+                if (debug) printf("[DEBUG] %d: connection failed\n", count);
+                // socket&.close
+                // last_error = e
+                // if resolution_store.any_addrinfos?
+                //   next
+                // elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
+                //   break
+                // else
+                //   raise last_error
+                // end
             }
         }
 
