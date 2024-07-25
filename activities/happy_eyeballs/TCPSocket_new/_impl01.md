@@ -219,7 +219,7 @@ struct hostname_resolution_store
 };
 
 int
-are_any_addrinfos(struct hostname_resolution_store *resolution_store)
+any_addrinfos(struct hostname_resolution_store *resolution_store)
 {
     return resolution_store->v6.ai || resolution_store->v4.ai;
 }
@@ -384,7 +384,7 @@ init_inetsock_internal_happy(VALUE v)
     while (true) {
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
-        if (are_any_addrinfos(&resolution_store) &&
+        if (any_addrinfos(&resolution_store) &&
            is_timeout_tv_invalid(resolution_delay_expires_at) &&
            is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
@@ -417,7 +417,7 @@ init_inetsock_internal_happy(VALUE v)
             }
 
             if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
-            if (are_any_addrinfos(&resolution_store)) {
+            if (any_addrinfos(&resolution_store)) {
                 // || connecting_sockets.any?
                 // || resolution_store.any_unresolved_family?
 
