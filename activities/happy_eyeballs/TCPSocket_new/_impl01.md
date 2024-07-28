@@ -309,6 +309,7 @@ init_inetsock_internal_happy(VALUE v)
     fd_set readfds, writefds;
     FD_ZERO(&readfds);
     FD_ZERO(&writefds);
+    wait_arg.nfds = 0;
     wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
     wait_arg.nfds = 0;
@@ -477,11 +478,15 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        // TODO タイムアウト値の設定
+        // TODO タイムアウト値(wait_arg.delay)の設定
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO 接続も待機する
-        wait_arg.nfds = initialize_read_fds(0, wait_resolution_pipe, &wait_arg.readfds);
+        // TODO fdsをまとめて初期化できるようにしたい
+        wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+        if (!resolution_store.is_all_finised) {
+            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, wait_resolution_pipe, &wait_arg.readfds);
+        }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
@@ -503,12 +508,12 @@ init_inetsock_internal_happy(VALUE v)
                 resolved_type[resolved_type_size] = '\0';
 
                 // TODO エラーを保存する
-                if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
+                if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
                     resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                     resolution_store.v6.finished = true;
                     resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
                     if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
-                } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
+                } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
                     resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                     resolution_store.v4.finished = true;
                     resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
@@ -525,15 +530,10 @@ init_inetsock_internal_happy(VALUE v)
                         set_timeout_tv(&resolution_delay_expires_at, 50);
                     }
                 }
-                // TMP
-                if (resolution_store.is_all_finised) break;
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
                 // TODO 接続状態の確認
-                if (count == 2) { // TODO if 接続確立している
-                    puts("connection established");
-                    break;
-                }
+                break;
             }
         }
 
