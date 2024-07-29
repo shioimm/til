@@ -113,32 +113,6 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
 }
 
 static int
-find_connected_socket(int *fds, int fds_size, fd_set *writefds)
-{
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-
-        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
-
-        int error;
-        socklen_t len = sizeof(error);
-
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
-            if (error == 0) { // success
-                fds[i] = -1;
-                return fd;
-            } else { // fail
-                errno = error;
-                close_fd(fd);
-                fds[i] = -1;
-                break;
-            }
-        }
-    }
-    return -1;
-}
-
-static int
 is_connecting_fds_empty(const int *fds, int fds_size)
 {
     for (int i = 0; i < fds_size; i++) {
@@ -224,7 +198,7 @@ any_addrinfos(struct hostname_resolution_store *resolution_store)
     return resolution_store->v6.ai || resolution_store->v4.ai;
 }
 
-truct addrinfo *
+struct addrinfo *
 select_resolved_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
 {
     int priority_on_v6[2] = { AF_INET6, AF_INET };
@@ -262,6 +236,32 @@ socket_nonblock_set(int fd)
 
     if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
     return;
+}
+
+static int
+find_connected_socket(int *fds, int fds_size, fd_set *writefds)
+{
+    for (int i = 0; i < fds_size; i++) {
+        int fd = fds[i];
+
+        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
+
+        int error;
+        socklen_t len = sizeof(error);
+
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+            if (error == 0) { // success
+                fds[i] = -1;
+                return fd;
+            } else { // fail
+                errno = error;
+                close(fd);
+                fds[i] = -1;
+                break;
+            }
+        }
+    }
+    return -1;
 }
 
 static VALUE
@@ -464,9 +464,9 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
             } else {
-                last_error = errno;
                 if (debug) printf("[DEBUG] %d: connection failed\n", count);
-                // socket&.close
+                last_error = errno;
+                close(fd);
                 // last_error = e
                 // if resolution_store.any_addrinfos?
                 //   next
@@ -532,7 +532,30 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
-                // TODO 接続状態の確認
+                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+
+                if (fd >= 0) {
+                    if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
+                    inetsock->fd = fd;
+                    arg->connected_fd = inetsock->fd;
+                    inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                    /* create new instance */
+                    return rsock_init_sock(inetsock->sock, fd);
+                } else {
+                    last_error = errno;
+                    close(fd);
+                    inetsock->fd = fd = -1;
+
+                    // TODO
+                    // if writable_sockets.any? ||
+                    //    resolution_store.any_addrinfos? ||
+                    //    connecting_sockets.any? ||
+                    //    resolution_store.any_unresolved_family?
+                    //    user_specified_connect_timeout_at = nil if connecting_sockets.empty?
+                    //  else
+                    //    raise last_error
+                    //  end
+                }
                 break;
             }
         }
@@ -542,120 +565,6 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) puts("------------");
     }
-    // TODO
-    // return rsock_init_sock(inetsock->sock, fd);
-
-    // HEv2対応前 ---------------------------------
-    inetsock->remote.res = rsock_addrinfo(
-        inetsock->remote.host,
-        inetsock->remote.serv,
-        family,
-        SOCK_STREAM,
-        0
-    );
-
-    /*
-     * Maybe also accept a local address
-     */
-
-    if ((!NIL_P(inetsock->local.host) || !NIL_P(inetsock->local.serv))) {
-        inetsock->local.res = rsock_addrinfo(
-            inetsock->local.host,
-            inetsock->local.serv,
-            family,
-            SOCK_STREAM,
-            0
-        );
-    }
-
-    inetsock->fd = fd = -1;
-    for (res = inetsock->remote.res->ai; res; res = res->ai_next) {
-        #if !defined(INET6) && defined(AF_INET6)
-        if (res->ai_family == AF_INET6)
-            continue;
-        #endif
-        lres = NULL;
-
-        if (inetsock->local.res) {
-            for (lres = inetsock->local.res->ai; lres; lres = lres->ai_next) {
-                if (lres->ai_family == res->ai_family)
-                    break;
-            }
-
-            if (!lres) {
-                if (res->ai_next || status < 0)
-                    continue;
-                /* Use a different family local address if no choice, this
-                 * will cause EAFNOSUPPORT. */
-                lres = inetsock->local.res->ai;
-            }
-        }
-
-        status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
-        syscall = "socket(2)";
-        fd = status;
-
-        if (fd < 0) {
-            last_error = errno;
-            continue;
-        }
-        inetsock->fd = fd;
-
-        if (lres) {
-            #if !defined(_WIN32) && !defined(__CYGWIN__)
-            status = 1;
-            setsockopt(
-                fd,
-                SOL_SOCKET,
-                SO_REUSEADDR,
-                (char*)&status,
-                (socklen_t)sizeof(status)
-            );
-            #endif
-            status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-            local_status = status;
-            syscall = "bind(2)";
-        }
-
-        if (status >= 0) {
-            status = rsock_connect(
-                fd,
-                res->ai_addr,
-                res->ai_addrlen,
-                false,
-                tv
-            );
-            syscall = "connect(2)";
-        }
-
-        if (status < 0) {
-            last_error = errno;
-            close(fd);
-            inetsock->fd = fd = -1;
-            continue;
-        } else
-            break;
-    }
-
-    if (status < 0) {
-        VALUE host, port;
-
-        if (local_status < 0) {
-            host = inetsock->local.host;
-            port = inetsock->local.serv;
-        } else {
-            host = inetsock->remote.host;
-            port = inetsock->remote.serv;
-        }
-
-        rsock_syserr_fail_host_port(last_error, syscall, host, port);
-    }
-
-    inetsock->fd = -1;
-
-    /* create new instance */
-    return rsock_init_sock(inetsock->sock, fd);
-    // ---------------------------------
 }
 
 VALUE
