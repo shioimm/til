@@ -537,6 +537,10 @@ init_inetsock_internal_happy(VALUE v)
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
                     inetsock->fd = fd;
+                    arg->connected_fd = inetsock->fd;
+                    inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                    /* create new instance */
+                    return rsock_init_sock(inetsock->sock, fd);
                 } else {
                     last_error = errno;
                     close(fd);
@@ -561,120 +565,6 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) puts("------------");
     }
-    // TODO
-    // return rsock_init_sock(inetsock->sock, fd);
-
-    // HEv2対応前 ---------------------------------
-    inetsock->remote.res = rsock_addrinfo(
-        inetsock->remote.host,
-        inetsock->remote.serv,
-        family,
-        SOCK_STREAM,
-        0
-    );
-
-    /*
-     * Maybe also accept a local address
-     */
-
-    if ((!NIL_P(inetsock->local.host) || !NIL_P(inetsock->local.serv))) {
-        inetsock->local.res = rsock_addrinfo(
-            inetsock->local.host,
-            inetsock->local.serv,
-            family,
-            SOCK_STREAM,
-            0
-        );
-    }
-
-    inetsock->fd = fd = -1;
-    for (res = inetsock->remote.res->ai; res; res = res->ai_next) {
-        #if !defined(INET6) && defined(AF_INET6)
-        if (res->ai_family == AF_INET6)
-            continue;
-        #endif
-        lres = NULL;
-
-        if (inetsock->local.res) {
-            for (lres = inetsock->local.res->ai; lres; lres = lres->ai_next) {
-                if (lres->ai_family == res->ai_family)
-                    break;
-            }
-
-            if (!lres) {
-                if (res->ai_next || status < 0)
-                    continue;
-                /* Use a different family local address if no choice, this
-                 * will cause EAFNOSUPPORT. */
-                lres = inetsock->local.res->ai;
-            }
-        }
-
-        status = rsock_socket(res->ai_family,res->ai_socktype,res->ai_protocol);
-        syscall = "socket(2)";
-        fd = status;
-
-        if (fd < 0) {
-            last_error = errno;
-            continue;
-        }
-        inetsock->fd = fd;
-
-        if (lres) {
-            #if !defined(_WIN32) && !defined(__CYGWIN__)
-            status = 1;
-            setsockopt(
-                fd,
-                SOL_SOCKET,
-                SO_REUSEADDR,
-                (char*)&status,
-                (socklen_t)sizeof(status)
-            );
-            #endif
-            status = bind(fd, lres->ai_addr, lres->ai_addrlen);
-            local_status = status;
-            syscall = "bind(2)";
-        }
-
-        if (status >= 0) {
-            status = rsock_connect(
-                fd,
-                res->ai_addr,
-                res->ai_addrlen,
-                false,
-                tv
-            );
-            syscall = "connect(2)";
-        }
-
-        if (status < 0) {
-            last_error = errno;
-            close(fd);
-            inetsock->fd = fd = -1;
-            continue;
-        } else
-            break;
-    }
-
-    if (status < 0) {
-        VALUE host, port;
-
-        if (local_status < 0) {
-            host = inetsock->local.host;
-            port = inetsock->local.serv;
-        } else {
-            host = inetsock->remote.host;
-            port = inetsock->remote.serv;
-        }
-
-        rsock_syserr_fail_host_port(last_error, syscall, host, port);
-    }
-
-    inetsock->fd = -1;
-
-    /* create new instance */
-    return rsock_init_sock(inetsock->sock, fd);
-    // ---------------------------------
 }
 
 VALUE
