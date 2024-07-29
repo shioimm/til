@@ -464,9 +464,9 @@ init_inetsock_internal_happy(VALUE v)
                     }
                 }
             } else {
-                last_error = errno;
                 if (debug) printf("[DEBUG] %d: connection failed\n", count);
-                // socket&.close
+                last_error = errno;
+                close(fd);
                 // last_error = e
                 // if resolution_store.any_addrinfos?
                 //   next
