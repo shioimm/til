@@ -113,32 +113,6 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
 }
 
 static int
-find_connected_socket(int *fds, int fds_size, fd_set *writefds)
-{
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-
-        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
-
-        int error;
-        socklen_t len = sizeof(error);
-
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
-            if (error == 0) { // success
-                fds[i] = -1;
-                return fd;
-            } else { // fail
-                errno = error;
-                close_fd(fd);
-                fds[i] = -1;
-                break;
-            }
-        }
-    }
-    return -1;
-}
-
-static int
 is_connecting_fds_empty(const int *fds, int fds_size)
 {
     for (int i = 0; i < fds_size; i++) {
@@ -224,7 +198,7 @@ any_addrinfos(struct hostname_resolution_store *resolution_store)
     return resolution_store->v6.ai || resolution_store->v4.ai;
 }
 
-truct addrinfo *
+struct addrinfo *
 select_resolved_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
 {
     int priority_on_v6[2] = { AF_INET6, AF_INET };
@@ -262,6 +236,32 @@ socket_nonblock_set(int fd)
 
     if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
     return;
+}
+
+static int
+find_connected_socket(int *fds, int fds_size, fd_set *writefds)
+{
+    for (int i = 0; i < fds_size; i++) {
+        int fd = fds[i];
+
+        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
+
+        int error;
+        socklen_t len = sizeof(error);
+
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
+            if (error == 0) { // success
+                fds[i] = -1;
+                return fd;
+            } else { // fail
+                errno = error;
+                close(fd);
+                fds[i] = -1;
+                break;
+            }
+        }
+    }
+    return -1;
 }
 
 static VALUE
@@ -532,7 +532,26 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
-                // TODO 接続状態の確認
+                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+
+                if (fd >= 0) {
+                    if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
+                    inetsock->fd = fd;
+                } else {
+                    last_error = errno;
+                    close(fd);
+                    inetsock->fd = fd = -1;
+
+                    // TODO
+                    // if writable_sockets.any? ||
+                    //    resolution_store.any_addrinfos? ||
+                    //    connecting_sockets.any? ||
+                    //    resolution_store.any_unresolved_family?
+                    //    user_specified_connect_timeout_at = nil if connecting_sockets.empty?
+                    //  else
+                    //    raise last_error
+                    //  end
+                }
                 break;
             }
         }
