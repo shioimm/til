@@ -160,6 +160,12 @@ struct hostname_resolution_store
     int is_all_finised;
 };
 
+int
+any_addrinfos(struct hostname_resolution_store *resolution_store)
+{
+    return resolution_store->v6.ai || resolution_store->v4.ai;
+}
+
 void
 set_timeout_tv(struct timeval *tv, long ms)
 {
@@ -193,14 +199,15 @@ select_expires_at(
     // TODO user specified timeoutを追加する
 ) {
     struct timeval delay = (struct timeval){ -1, -1 };
-    // TODO ロジックを追加
-    return delay;
-}
 
-int
-any_addrinfos(struct hostname_resolution_store *resolution_store)
-{
-    return resolution_store->v6.ai || resolution_store->v4.ai;
+    if (any_addrinfos(resolution_store)) {
+        delay = (resolution_delay.tv_sec != -1) ? resolution_delay : connection_attempt_delay;
+    } else {
+        // TODO user specified timeout
+        // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+    }
+
+    return delay;
 }
 
 struct addrinfo *
@@ -484,13 +491,6 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        // TODO タイムアウト値(wait_arg.delay)の設定
-        // ends_at =
-        //   if resolution_store.any_addrinfos?
-        //     resolution_delay_expires_at || connection_attempt_delay_expires_at
-        //   else
-        //     [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
-        //   end
         delay = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
