@@ -461,7 +461,6 @@ init_inetsock_internal_happy(VALUE v)
                 // TODO 接続に成功したソケットを返す
             } else if (errno == EINPROGRESS) { // 接続中
                 if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
-                // TODO 接続中のfdを保存する
                 if (current_capacity == connecting_fds_size) {
                     int new_capacity = current_capacity + initial_capacity;
                     arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
@@ -471,6 +470,13 @@ init_inetsock_internal_happy(VALUE v)
                 }
                 arg->connecting_fds[connecting_fds_size] = fd;
                 (connecting_fds_size)++;
+
+                set_timeout_tv(&connection_attempt_delay_expires_at, 250);
+                // TODO
+                // if resolution_store.empty_addrinfos?
+                //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
+                // end
+
                 if (debug) {
                     for (int i = 0; i < connecting_fds_size; i++) {
                         printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
@@ -518,6 +524,8 @@ init_inetsock_internal_happy(VALUE v)
         syscall = "select(2)";
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
+
+        // TODO 時間切れのタイムアウト値を無効にする
 
         if (status > 0) {
             if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
