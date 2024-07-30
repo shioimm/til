@@ -188,7 +188,7 @@ set_timeout_tv(struct timeval *tv, long ms)
 int
 is_timeout_tv_invalid(struct timeval tv)
 {
-    return tv.tv_sec == -1 && tv.tv_usec == -1;
+    return tv.tv_sec == -1 || tv.tv_usec == -1;
 }
 
 struct timeval
@@ -201,7 +201,7 @@ select_expires_at(
     struct timeval delay = (struct timeval){ -1, -1 };
 
     if (any_addrinfos(resolution_store)) {
-        delay = (resolution_delay.tv_sec != -1) ? resolution_delay : connection_attempt_delay;
+        delay = is_timeout_tv_invalid(resolution_delay) ? connection_attempt_delay : resolution_delay;
     } else {
         // TODO user specified timeout
         // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
@@ -505,11 +505,7 @@ init_inetsock_internal_happy(VALUE v)
         );
         if (debug) printf("[DEBUG] %d: delay.tv_sec %ld\n", count, delay.tv_sec);
         if (debug) printf("[DEBUG] %d: delay.tv_usec %d\n", count, delay.tv_usec);
-        if (delay.tv_sec == -1 && delay.tv_usec == -1) {
-            wait_arg.delay = NULL;
-        } else {
-            wait_arg.delay = &delay;
-        }
+        wait_arg.delay = is_timeout_tv_invalid(delay) ? NULL : &delay;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO fdsをまとめて初期化できるようにしたい
