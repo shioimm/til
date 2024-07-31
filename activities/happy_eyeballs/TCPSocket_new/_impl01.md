@@ -146,6 +146,26 @@ struct inetsock_happy_arg
 };
 
 // 追加 ----------------------
+struct hostname_resolution_result
+{
+    struct addrinfo *ai;
+    int finished;
+    int error;
+};
+
+struct hostname_resolution_store
+{
+    struct hostname_resolution_result v6;
+    struct hostname_resolution_result v4;
+    int is_all_finised;
+};
+
+int
+any_addrinfos(struct hostname_resolution_store *resolution_store)
+{
+    return resolution_store->v6.ai || resolution_store->v4.ai;
+}
+
 void
 set_timeout_tv(struct timeval *tv, long ms)
 {
@@ -168,34 +188,26 @@ set_timeout_tv(struct timeval *tv, long ms)
 int
 is_timeout_tv_invalid(struct timeval tv)
 {
-    return tv.tv_sec == -1 && tv.tv_usec == -1;
+    return tv.tv_sec == -1 || tv.tv_usec == -1;
 }
 
-struct hostname_resolution_result
-{
-    struct addrinfo *ai;
-    int finished;
-    int error;
-};
+struct timeval
+select_expires_at(
+    struct hostname_resolution_store *resolution_store,
+    struct timeval resolution_delay,
+    struct timeval connection_attempt_delay
+    // TODO user specified timeoutを追加する
+) {
+    struct timeval delay = (struct timeval){ -1, -1 };
 
-struct hostname_resolution_result
-{
-    struct addrinfo *ai;
-    int finished;
-    int error;
-};
+    if (any_addrinfos(resolution_store)) {
+        delay = is_timeout_tv_invalid(resolution_delay) ? connection_attempt_delay : resolution_delay;
+    } else {
+        // TODO user specified timeout
+        // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+    }
 
-struct hostname_resolution_store
-{
-    struct hostname_resolution_result v6;
-    struct hostname_resolution_result v4;
-    int is_all_finised;
-};
-
-int
-any_addrinfos(struct hostname_resolution_store *resolution_store)
-{
-    return resolution_store->v6.ai || resolution_store->v4.ai;
+    return delay;
 }
 
 struct addrinfo *
@@ -287,8 +299,6 @@ init_inetsock_internal_happy(VALUE v)
     int wait_resolution_pipe, notify_resolution_pipe;
     int pipefd[2];
 
-    struct wait_happy_eyeballs_fds_arg wait_arg;
-
     pthread_t threads[families_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
@@ -309,11 +319,14 @@ init_inetsock_internal_happy(VALUE v)
     fd_set readfds, writefds;
     FD_ZERO(&readfds);
     FD_ZERO(&writefds);
+
+    struct wait_happy_eyeballs_fds_arg wait_arg;
+    struct timeval delay;
     wait_arg.nfds = 0;
     wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
     wait_arg.nfds = 0;
-    wait_arg.delay = NULL;
+    wait_arg.delay = &delay;
 
     struct hostname_resolution_store resolution_store;
     resolution_store.is_all_finised = false;
@@ -448,7 +461,6 @@ init_inetsock_internal_happy(VALUE v)
                 // TODO 接続に成功したソケットを返す
             } else if (errno == EINPROGRESS) { // 接続中
                 if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
-                // TODO 接続中のfdを保存する
                 if (current_capacity == connecting_fds_size) {
                     int new_capacity = current_capacity + initial_capacity;
                     arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
@@ -458,6 +470,13 @@ init_inetsock_internal_happy(VALUE v)
                 }
                 arg->connecting_fds[connecting_fds_size] = fd;
                 (connecting_fds_size)++;
+
+                set_timeout_tv(&connection_attempt_delay_expires_at, 250);
+                // TODO
+                // if resolution_store.empty_addrinfos?
+                //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
+                // end
+
                 if (debug) {
                     for (int i = 0; i < connecting_fds_size; i++) {
                         printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
@@ -478,10 +497,17 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        // TODO タイムアウト値(wait_arg.delay)の設定
+        delay = select_expires_at(
+            &resolution_store,
+            resolution_delay_expires_at,
+            connection_attempt_delay_expires_at
+            // TODO user specified timeoutを追加する
+        );
+        if (debug) printf("[DEBUG] %d: delay.tv_sec %ld\n", count, delay.tv_sec);
+        if (debug) printf("[DEBUG] %d: delay.tv_usec %d\n", count, delay.tv_usec);
+        wait_arg.delay = is_timeout_tv_invalid(delay) ? NULL : &delay;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
-        // TODO 接続も待機する
         // TODO fdsをまとめて初期化できるようにしたい
         wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
@@ -494,6 +520,8 @@ init_inetsock_internal_happy(VALUE v)
         syscall = "select(2)";
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
+
+        // TODO 時間切れのタイムアウト値を無効にする
 
         if (status > 0) {
             if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
