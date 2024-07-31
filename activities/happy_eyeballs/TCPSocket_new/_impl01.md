@@ -457,8 +457,12 @@ init_inetsock_internal_happy(VALUE v)
             }
 
             if (status == 0) { // 接続に成功
-                if (debug) printf("[DEBUG] %d: connection successful\n", count);
-                // TODO 接続に成功したソケットを返す
+                if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
+                inetsock->fd = fd;
+                arg->connected_fd = inetsock->fd;
+                inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                /* create new instance */
+                return rsock_init_sock(inetsock->sock, fd);
             } else if (errno == EINPROGRESS) { // 接続中
                 if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
                 if (current_capacity == connecting_fds_size) {
