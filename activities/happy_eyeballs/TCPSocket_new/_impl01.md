@@ -185,7 +185,7 @@ set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
 }
 
 int
-is_timeout_tv_invalid(struct timeval tv)
+is_invalid_tv(struct timeval tv)
 {
     return tv.tv_sec == -1 || tv.tv_usec == -1;
 }
@@ -200,7 +200,7 @@ select_expires_at(
     struct timeval delay = (struct timeval){ -1, -1 };
 
     if (any_addrinfos(resolution_store)) {
-        delay = is_timeout_tv_invalid(resolution_delay) ? connection_attempt_delay : resolution_delay;
+        delay = is_invalid_tv(resolution_delay) ? connection_attempt_delay : resolution_delay;
     } else {
         // TODO user specified timeout
         // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
@@ -406,8 +406,8 @@ init_inetsock_internal_happy(VALUE v)
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
         if (any_addrinfos(&resolution_store) &&
-           is_timeout_tv_invalid(resolution_delay_expires_at) &&
-           is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
+           is_invalid_tv(resolution_delay_expires_at) &&
+           is_invalid_tv(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
             tmp_ai = select_resolved_addrinfo(&resolution_store, last_family);
 
@@ -509,7 +509,7 @@ init_inetsock_internal_happy(VALUE v)
         );
         if (debug) printf("[DEBUG] %d: delay.tv_sec %ld\n", count, delay.tv_sec);
         if (debug) printf("[DEBUG] %d: delay.tv_usec %d\n", count, delay.tv_usec);
-        wait_arg.delay = is_timeout_tv_invalid(delay) ? NULL : &delay;
+        wait_arg.delay = is_invalid_tv(delay) ? NULL : &delay;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO fdsをまとめて初期化できるようにしたい
