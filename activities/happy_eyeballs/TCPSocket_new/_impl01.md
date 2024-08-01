@@ -190,6 +190,25 @@ is_invalid_tv(struct timeval tv)
     return tv.tv_sec == -1 || tv.tv_usec == -1;
 }
 
+int
+is_timeout_tv(struct timeval timeout_tv, struct timespec now) {
+    struct timespec tv;
+    tv.tv_sec = timeout_tv.tv_sec;
+    tv.tv_nsec = timeout_tv.tv_usec * 1000;
+
+    if (tv.tv_sec > now.tv_sec) {
+        return true;
+    } else if (tv.tv_sec < now.tv_sec) {
+        return false;
+    }
+
+    if (tv.tv_nsec >= now.tv_nsec) {
+        return true;
+    } else if (tv.tv_nsec < now.tv_nsec) {
+        return false;
+    }
+}
+
 struct timeval
 select_expires_at(
     struct hostname_resolution_store *resolution_store,
@@ -522,6 +541,14 @@ init_inetsock_internal_happy(VALUE v)
         // TODO 割り込み時の処理
         status = wait_arg.status;
         syscall = "select(2)";
+
+        now = current_clocktime_ts();
+        if (is_timeout_tv(resolution_delay_expires_at, now)) {
+            resolution_delay_expires_at = (struct timeval){ -1, -1 };
+        }
+        if (is_timeout_tv(connection_attempt_delay_expires_at, now)) {
+            connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
+        }
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
