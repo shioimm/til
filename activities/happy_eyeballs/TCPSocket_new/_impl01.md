@@ -167,22 +167,21 @@ any_addrinfos(struct hostname_resolution_store *resolution_store)
 }
 
 void
-set_timeout_tv(struct timeval *tv, long ms)
+set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
 {
     long seconds = ms / 1000;
     long nanoseconds = (ms % 1000) * 1000000;
 
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_sec += seconds;
-    ts.tv_nsec += nanoseconds;
+    from.tv_sec += seconds;
+    from.tv_nsec += nanoseconds;
 
-    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        ts.tv_nsec -= 1000000000;
-        ts.tv_sec += 1;
+    while (from.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        from.tv_nsec -= 1000000000;
+        from.tv_sec += 1;
     }
 
-    tv->tv_sec = ts.tv_sec;
-    tv->tv_usec = (int)(ts.tv_nsec / 1000);
+    tv->tv_sec = from.tv_sec;
+    tv->tv_usec = (int)(from.tv_nsec / 1000);
 }
 
 int
@@ -350,6 +349,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
+    struct timespec now = current_clocktime_ts();
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
@@ -475,7 +475,7 @@ init_inetsock_internal_happy(VALUE v)
                 arg->connecting_fds[connecting_fds_size] = fd;
                 (connecting_fds_size)++;
 
-                set_timeout_tv(&connection_attempt_delay_expires_at, 250);
+                set_timeout_tv(&connection_attempt_delay_expires_at, 250, now);
                 // TODO
                 // if resolution_store.empty_addrinfos?
                 //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
@@ -559,7 +559,7 @@ init_inetsock_internal_happy(VALUE v)
                         resolution_store.is_all_finised = true;
                     } else if (!resolution_store.v4.error) {
                         if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
-                        set_timeout_tv(&resolution_delay_expires_at, 50);
+                        set_timeout_tv(&resolution_delay_expires_at, 50, now);
                     }
                 }
             } else {
