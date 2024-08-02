@@ -167,28 +167,46 @@ any_addrinfos(struct hostname_resolution_store *resolution_store)
 }
 
 void
-set_timeout_tv(struct timeval *tv, long ms)
+set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
 {
     long seconds = ms / 1000;
     long nanoseconds = (ms % 1000) * 1000000;
 
-    struct timespec ts = current_clocktime_ts();
-    ts.tv_sec += seconds;
-    ts.tv_nsec += nanoseconds;
+    from.tv_sec += seconds;
+    from.tv_nsec += nanoseconds;
 
-    while (ts.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        ts.tv_nsec -= 1000000000;
-        ts.tv_sec += 1;
+    while (from.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
+        from.tv_nsec -= 1000000000;
+        from.tv_sec += 1;
     }
 
-    tv->tv_sec = ts.tv_sec;
-    tv->tv_usec = (int)(ts.tv_nsec / 1000);
+    tv->tv_sec = from.tv_sec;
+    tv->tv_usec = (int)(from.tv_nsec / 1000);
 }
 
 int
-is_timeout_tv_invalid(struct timeval tv)
+is_invalid_tv(struct timeval tv)
 {
     return tv.tv_sec == -1 || tv.tv_usec == -1;
+}
+
+int
+is_timeout_tv(struct timeval timeout_tv, struct timespec now) {
+    struct timespec tv;
+    tv.tv_sec = timeout_tv.tv_sec;
+    tv.tv_nsec = timeout_tv.tv_usec * 1000;
+
+    if (tv.tv_sec > now.tv_sec) {
+        return true;
+    } else if (tv.tv_sec < now.tv_sec) {
+        return false;
+    }
+
+    if (tv.tv_nsec >= now.tv_nsec) {
+        return true;
+    } else if (tv.tv_nsec < now.tv_nsec) {
+        return false;
+    }
 }
 
 struct timeval
@@ -201,7 +219,7 @@ select_expires_at(
     struct timeval delay = (struct timeval){ -1, -1 };
 
     if (any_addrinfos(resolution_store)) {
-        delay = is_timeout_tv_invalid(resolution_delay) ? connection_attempt_delay : resolution_delay;
+        delay = is_invalid_tv(resolution_delay) ? connection_attempt_delay : resolution_delay;
     } else {
         // TODO user specified timeout
         // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
@@ -350,6 +368,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval ends_at = (struct timeval){ -1, -1 };
+    struct timespec now = current_clocktime_ts();
 
     // HEv2対応前の変数定義 ----------------------------
     // struct inetsock_arg *arg = (void *)v;
@@ -406,8 +425,8 @@ init_inetsock_internal_happy(VALUE v)
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
         if (any_addrinfos(&resolution_store) &&
-           is_timeout_tv_invalid(resolution_delay_expires_at) &&
-           is_timeout_tv_invalid(connection_attempt_delay_expires_at)) {
+           is_invalid_tv(resolution_delay_expires_at) &&
+           is_invalid_tv(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
             tmp_ai = select_resolved_addrinfo(&resolution_store, last_family);
 
@@ -475,7 +494,7 @@ init_inetsock_internal_happy(VALUE v)
                 arg->connecting_fds[connecting_fds_size] = fd;
                 (connecting_fds_size)++;
 
-                set_timeout_tv(&connection_attempt_delay_expires_at, 250);
+                set_timeout_tv(&connection_attempt_delay_expires_at, 250, now);
                 // TODO
                 // if resolution_store.empty_addrinfos?
                 //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
@@ -509,7 +528,7 @@ init_inetsock_internal_happy(VALUE v)
         );
         if (debug) printf("[DEBUG] %d: delay.tv_sec %ld\n", count, delay.tv_sec);
         if (debug) printf("[DEBUG] %d: delay.tv_usec %d\n", count, delay.tv_usec);
-        wait_arg.delay = is_timeout_tv_invalid(delay) ? NULL : &delay;
+        wait_arg.delay = is_invalid_tv(delay) ? NULL : &delay;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO fdsをまとめて初期化できるようにしたい
@@ -522,6 +541,14 @@ init_inetsock_internal_happy(VALUE v)
         // TODO 割り込み時の処理
         status = wait_arg.status;
         syscall = "select(2)";
+
+        now = current_clocktime_ts();
+        if (is_timeout_tv(resolution_delay_expires_at, now)) {
+            resolution_delay_expires_at = (struct timeval){ -1, -1 };
+        }
+        if (is_timeout_tv(connection_attempt_delay_expires_at, now)) {
+            connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
+        }
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
@@ -559,7 +586,7 @@ init_inetsock_internal_happy(VALUE v)
                         resolution_store.is_all_finised = true;
                     } else if (!resolution_store.v4.error) {
                         if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
-                        set_timeout_tv(&resolution_delay_expires_at, 50);
+                        set_timeout_tv(&resolution_delay_expires_at, 50, now);
                     }
                 }
             } else {
