@@ -112,15 +112,6 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
     return nfds;
 }
 
-static int
-is_connecting_fds_empty(const int *fds, int fds_size)
-{
-    for (int i = 0; i < fds_size; i++) {
-        if (fds[i] > 0) return false;
-    }
-    return true;
-}
-
 int
 is_specified_ip_address(const char *hostname)
 {
@@ -294,6 +285,15 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
     return -1;
 }
 
+static int
+connecting_fds_empty(const int *fds, int fds_size)
+{
+    for (int i = 0; i < fds_size; i++) {
+        if (fds[i] > 0) return false;
+    }
+    return true;
+}
+
 static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
@@ -458,7 +458,7 @@ init_inetsock_internal_happy(VALUE v)
 
             if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
             if (any_addrinfos(&resolution_store) ||
-                // connecting_sockets.any? ||
+                !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                 !resolution_store.is_all_finised) {
 
                 // TODO local_aiがある場合はSocketを作成してbind
@@ -552,8 +552,6 @@ init_inetsock_internal_happy(VALUE v)
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
-        // TODO 時間切れのタイムアウト値を無効にする
-
         if (status > 0) {
             if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
@@ -620,7 +618,17 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
-        // TODO if 次のループに進むことができる
+        if (!any_addrinfos(&resolution_store)) {
+            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                resolution_store.is_all_finised) { // TODO is_all_finisedが正しく設定されているか確認
+                // TODO raise last_error
+            }
+            // TODO user specified timeout
+            // if (expired?(now, user_specified_resolv_timeout_at) || resolution_store.resolved_all_families?) &&
+            //    (expired?(now, user_specified_connect_timeout_at) || connecting_sockets.empty?)
+            //   raise Errno::ETIMEDOUT, 'user specified timeout'
+            // end
+        }
 
         if (debug) puts("------------");
     }
