@@ -367,17 +367,9 @@ init_inetsock_internal_happy(VALUE v)
 
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
-    struct timeval ends_at = (struct timeval){ -1, -1 };
     struct timespec now = current_clocktime_ts();
 
     // HEv2対応前の変数定義 ----------------------------
-    // struct inetsock_arg *arg = (void *)v;
-    // int error = 0;
-    int type = inetsock->type;
-    struct addrinfo *res, *lres;
-    // int fd, status = 0, local = 0;
-    int family = AF_UNSPEC;
-    // const char *syscall = 0;
     VALUE connect_timeout = inetsock->connect_timeout;
     struct timeval tv_storage;
     struct timeval *tv = NULL;
