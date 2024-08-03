@@ -417,8 +417,8 @@ init_inetsock_internal_happy(VALUE v)
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
         if (any_addrinfos(&resolution_store) &&
-           is_invalid_tv(resolution_delay_expires_at) &&
-           is_invalid_tv(connection_attempt_delay_expires_at)) {
+            is_invalid_tv(resolution_delay_expires_at) &&
+            is_invalid_tv(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
             while (tmp_ai = pick_addrinfo(&resolution_store, last_family)) {
                 inetsock->fd = fd = -1;
@@ -446,7 +446,6 @@ init_inetsock_internal_happy(VALUE v)
                 if (any_addrinfos(&resolution_store) ||
                     !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                     !resolution_store.is_all_finised) {
-
                     // TODO local_aiがある場合はSocketを作成してbind
 
                     socket_nonblock_set(fd);
@@ -499,8 +498,8 @@ init_inetsock_internal_happy(VALUE v)
                     if (any_addrinfos(&resolution_store)) continue;
 
                     // TODO is_all_finisedが正しく設定されているか確認
-                    if (!connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
-                        !resolution_store.is_all_finised) break;
+                    if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                        resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
                         // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
@@ -612,7 +611,8 @@ init_inetsock_internal_happy(VALUE v)
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
             // TODO is_all_finisedが正しく設定されているか確認
-            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) && resolution_store.is_all_finised) {
+            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                resolution_store.is_all_finised) {
                 if (local_status < 0) {
                     // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
