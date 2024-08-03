@@ -420,7 +420,7 @@ init_inetsock_internal_happy(VALUE v)
             is_invalid_tv(resolution_delay_expires_at) &&
             is_invalid_tv(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
-            while (tmp_ai = pick_addrinfo(&resolution_store, last_family)) {
+            while ((tmp_ai = pick_addrinfo(&resolution_store, last_family))) {
                 inetsock->fd = fd = -1;
                 remote_ai = tmp_ai;
                 if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
@@ -504,9 +504,8 @@ init_inetsock_internal_happy(VALUE v)
                     if (local_status < 0) {
                         // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                         rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                    } else {
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                     }
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                 }
             }
         }
@@ -556,9 +555,8 @@ init_inetsock_internal_happy(VALUE v)
                         if (local_status < 0) {
                             // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                             rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                        } else {
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                     }
                 } else {
                     resolved_type[resolved_type_size] = '\0';
@@ -625,9 +623,8 @@ init_inetsock_internal_happy(VALUE v)
                 if (local_status < 0) {
                     // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                } else {
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                 }
+                rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
             // TODO user specified timeout
             // if (expired?(now, user_specified_resolv_timeout_at) || resolution_store.resolved_all_families?) &&
