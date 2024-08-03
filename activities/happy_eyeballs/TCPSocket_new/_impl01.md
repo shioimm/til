@@ -550,32 +550,41 @@ init_inetsock_internal_happy(VALUE v)
                 resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
                 if (resolved_type_size < 0) {
                     last_error = errno;
-                    // TODO 例外を発生させる
-                }
+                    if (!any_addrinfos(&resolution_store) &&
+                        connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                        resolution_store.is_all_finised) {
+                        if (local_status < 0) {
+                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        } else {
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                        }
+                    }
+                } else {
+                    resolved_type[resolved_type_size] = '\0';
 
-                resolved_type[resolved_type_size] = '\0';
+                    // TODO エラーを保存する
+                    if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
+                        resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+                        resolution_store.v6.finished = true;
+                        resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                        if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                    } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
+                        resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+                        resolution_store.v4.finished = true;
+                        resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
 
-                // TODO エラーを保存する
-                if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
-                    resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
-                    resolution_store.v6.finished = true;
-                    resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
-                    if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
-                } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
-                    resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
-                    resolution_store.v4.finished = true;
-                    resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-
-                    if (resolution_store.v6.finished) {
-                        if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                        // TODO
-                        // hostname_resolution_notifier = nil
-                        resolution_delay_expires_at = (struct timeval){ -1, -1 };
-                        // user_specified_resolv_timeout_at = nil
-                        resolution_store.is_all_finised = true;
-                    } else if (!resolution_store.v4.error) {
-                        if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
-                        set_timeout_tv(&resolution_delay_expires_at, 50, now);
+                        if (resolution_store.v6.finished) {
+                            if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                            // TODO
+                            // hostname_resolution_notifier = nil
+                            resolution_delay_expires_at = (struct timeval){ -1, -1 };
+                            // user_specified_resolv_timeout_at = nil
+                            resolution_store.is_all_finised = true;
+                        } else if (!resolution_store.v4.error) {
+                            if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
+                            set_timeout_tv(&resolution_delay_expires_at, 50, now);
+                        }
                     }
                 }
             } else {
