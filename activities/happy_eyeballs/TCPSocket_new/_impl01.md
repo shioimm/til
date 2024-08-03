@@ -141,7 +141,7 @@ struct hostname_resolution_result
 {
     struct addrinfo *ai;
     int finished;
-    int error;
+    int succeed;
 };
 
 struct hostname_resolution_store
@@ -350,10 +350,8 @@ init_inetsock_internal_happy(VALUE v)
     resolution_store.is_all_finised = false;
     resolution_store.v6.ai = NULL;
     resolution_store.v6.finished = false;
-    resolution_store.v6.error = false;
     resolution_store.v4.ai = NULL;
     resolution_store.v4.finished = false;
-    resolution_store.v4.error = false;
 
     int last_family = 0;
     struct addrinfo *tmp_ai;
@@ -561,17 +559,25 @@ init_inetsock_internal_happy(VALUE v)
                 } else {
                     resolved_type[resolved_type_size] = '\0';
 
-                    // TODO エラーを保存する
                     if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
                         resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                         resolution_store.v6.finished = true;
-                        resolution_store.v6.error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                        if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
+                            last_error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                            resolution_store.v6.succeed = false;
+                        } else {
+                            resolution_store.v6.succeed = true;
+                        }
                         if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
                     } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
                         resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                         resolution_store.v4.finished = true;
-                        resolution_store.v4.error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-
+                        if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
+                            last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+                            resolution_store.v4.succeed = false;
+                        } else {
+                            resolution_store.v4.succeed = true;
+                        }
                         if (resolution_store.v6.finished) {
                             if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
                             // TODO
@@ -579,7 +585,7 @@ init_inetsock_internal_happy(VALUE v)
                             resolution_delay_expires_at = (struct timeval){ -1, -1 };
                             // user_specified_resolv_timeout_at = nil
                             resolution_store.is_all_finised = true;
-                        } else if (!resolution_store.v4.error) {
+                        } else if (resolution_store.v4.succeed) {
                             if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
                             set_timeout_tv(&resolution_delay_expires_at, 50, now);
                         }
