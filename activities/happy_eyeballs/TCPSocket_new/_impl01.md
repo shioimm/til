@@ -220,7 +220,7 @@ select_expires_at(
 }
 
 struct addrinfo *
-select_resolved_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
+pick_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
 {
     int priority_on_v6[2] = { AF_INET6, AF_INET };
     int priority_on_v4[2] = { AF_INET, AF_INET6 };
@@ -420,95 +420,95 @@ init_inetsock_internal_happy(VALUE v)
            is_invalid_tv(resolution_delay_expires_at) &&
            is_invalid_tv(connection_attempt_delay_expires_at)) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
-            tmp_ai = select_resolved_addrinfo(&resolution_store, last_family);
-
-            if (tmp_ai) {
+            while (tmp_ai = pick_addrinfo(&resolution_store, last_family)) {
                 inetsock->fd = fd = -1;
                 remote_ai = tmp_ai;
                 if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
-            } else { // 接続可能なaddrinfoが見つからなかった
-              // TODO
-            }
 
-            #if !defined(INET6) && defined(AF_INET6)
-            // TODO
-            #endif
-
-            local_ai = NULL;
-            // TODO local_addrinfos.any?
-
-            if (debug) printf("[DEBUG] %d: ** Create socket **\n", count);
-            status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
-            syscall = "socket(2)";
-            fd = status;
-            if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
-
-            if (fd < 0) { // socket(2)に失敗
-                last_error = errno;
+                #if !defined(INET6) && defined(AF_INET6)
                 // TODO
-            }
+                #endif
 
-            if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
-            if (any_addrinfos(&resolution_store) ||
-                !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
-                !resolution_store.is_all_finised) {
+                local_ai = NULL;
+                // TODO local_addrinfos.any?
 
-                // TODO local_aiがある場合はSocketを作成してbind
-
-                socket_nonblock_set(fd);
-                status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
-                syscall = "connect(2)";
-                last_family = remote_ai->ai_family;
-            } else {
-                // TODO
-                // result = socket = local_addrinfo ?
-                //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
-                //   addrinfo.connect(timeout: connect_timeout)
-                // 成功したらreturn、失敗したらraise
-            }
-
-            if (status == 0) { // 接続に成功
-                if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                inetsock->fd = fd;
-                arg->connected_fd = inetsock->fd;
-                inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
-                /* create new instance */
-                return rsock_init_sock(inetsock->sock, fd);
-            } else if (errno == EINPROGRESS) { // 接続中
-                if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
-                if (current_capacity == connecting_fds_size) {
-                    int new_capacity = current_capacity + initial_capacity;
-                    arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
-                    if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
-                    current_capacity = new_capacity;
-                    arg->connecting_fds_capacity = current_capacity;
+                if (debug) printf("[DEBUG] %d: ** Create socket **\n", count);
+                status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
+                syscall = "socket(2)";
+                fd = status;
+                if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
+                if (fd < 0) { // socket(2)に失敗
+                    last_error = errno;
+                    // TODO
                 }
-                arg->connecting_fds[connecting_fds_size] = fd;
-                (connecting_fds_size)++;
 
-                set_timeout_tv(&connection_attempt_delay_expires_at, 250, now);
-                // TODO
-                // if resolution_store.empty_addrinfos?
-                //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
-                // end
+                if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
+                if (any_addrinfos(&resolution_store) ||
+                    !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                    !resolution_store.is_all_finised) {
 
-                if (debug) {
-                    for (int i = 0; i < connecting_fds_size; i++) {
-                        printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
+                    // TODO local_aiがある場合はSocketを作成してbind
+
+                    socket_nonblock_set(fd);
+                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
+                    syscall = "connect(2)";
+                    last_family = remote_ai->ai_family;
+                } else {
+                    // TODO
+                    // result = socket = local_addrinfo ?
+                    //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                    //   addrinfo.connect(timeout: connect_timeout)
+                    // 成功したらreturn、失敗したらraise
+                }
+
+                if (status == 0) { // 接続に成功
+                    if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
+                    inetsock->fd = fd;
+                    arg->connected_fd = inetsock->fd;
+                    inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                    /* create new instance */
+                    return rsock_init_sock(inetsock->sock, fd);
+                } else if (errno == EINPROGRESS) { // 接続中
+                    if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                    if (current_capacity == connecting_fds_size) {
+                        int new_capacity = current_capacity + initial_capacity;
+                        arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
+                        if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+                        current_capacity = new_capacity;
+                        arg->connecting_fds_capacity = current_capacity;
+                    }
+                    arg->connecting_fds[connecting_fds_size] = fd;
+                    (connecting_fds_size)++;
+
+                    set_timeout_tv(&connection_attempt_delay_expires_at, 250, now);
+                    // TODO
+                    // if resolution_store.empty_addrinfos?
+                    //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
+                    // end
+
+                    if (debug) {
+                        for (int i = 0; i < connecting_fds_size; i++) {
+                            printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
+                        }
+                    }
+                } else {
+                    if (debug) printf("[DEBUG] %d: connection failed\n", count);
+                    last_error = errno;
+                    close(fd);
+
+                    if (any_addrinfos(&resolution_store)) continue;
+
+                    // TODO is_all_finisedが正しく設定されているか確認
+                    if (!connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                        !resolution_store.is_all_finised) break;
+
+                    if (local_status < 0) {
+                        // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                    } else {
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                     }
                 }
-            } else {
-                if (debug) printf("[DEBUG] %d: connection failed\n", count);
-                last_error = errno;
-                close(fd);
-                // last_error = e
-                // if resolution_store.any_addrinfos?
-                //   next
-                // elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
-                //   break
-                // else
-                //   raise last_error
-                // end
             }
         }
 
