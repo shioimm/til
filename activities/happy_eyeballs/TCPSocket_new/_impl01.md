@@ -611,9 +611,14 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
-            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
-                resolution_store.is_all_finised) { // TODO is_all_finisedが正しく設定されているか確認
-                // TODO raise last_error
+            // TODO is_all_finisedが正しく設定されているか確認
+            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) && resolution_store.is_all_finised) {
+                if (local_status < 0) {
+                    // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                } else {
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                }
             }
             // TODO user specified timeout
             // if (expired?(now, user_specified_resolv_timeout_at) || resolution_store.resolved_all_families?) &&
