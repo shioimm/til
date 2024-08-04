@@ -278,7 +278,6 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
                 errno = error;
                 close(fd);
                 fds[i] = -1;
-                break;
             }
         }
     }
@@ -607,15 +606,18 @@ init_inetsock_internal_happy(VALUE v)
                     close(fd);
                     inetsock->fd = fd = -1;
 
-                    // TODO
-                    // if writable_sockets.any? ||
-                    //    resolution_store.any_addrinfos? ||
-                    //    connecting_sockets.any? ||
-                    //    resolution_store.any_unresolved_family?
-                    //    user_specified_connect_timeout_at = nil if connecting_sockets.empty?
-                    //  else
-                    //    raise last_error
-                    //  end
+                    if (any_addrinfos(&resolution_store) ||
+                        !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                        !resolution_store.is_all_finised) {
+                        // TODO
+                        // user_specified_connect_timeout_at = nil if connecting_sockets.empty?
+                    } else {
+                        if (local_status < 0) {
+                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        }
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    }
                 }
                 break;
             }
