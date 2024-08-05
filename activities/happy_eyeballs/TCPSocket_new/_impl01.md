@@ -219,6 +219,34 @@ select_expires_at(
     return delay;
 }
 
+struct timeval
+tv_to_timeout(struct timeval ends_at, struct timespec now)
+{
+    // TODO
+    // return nil if ends_at == Float::INFINITY || ends_at.nil?
+    // Float::INFINITYを表す値が必要かも...
+
+    struct timespec expires_at;
+    expires_at.tv_sec = ends_at.tv_sec;
+    expires_at.tv_nsec = ends_at.tv_usec * 1000;
+
+    struct timespec diff;
+    diff.tv_sec = expires_at.tv_sec - now.tv_sec;
+
+    if (expires_at.tv_nsec >= now.tv_nsec) {
+        diff.tv_nsec = expires_at.tv_nsec - now.tv_nsec;
+    } else {
+        diff.tv_sec -= 1;
+        diff.tv_nsec = (1000000000 + expires_at.tv_nsec) - now.tv_nsec;
+    }
+
+    struct timeval timeout;
+    timeout.tv_sec = diff.tv_sec;
+    timeout.tv_usec = diff.tv_nsec / 1000;
+
+    return timeout;
+}
+
 struct addrinfo *
 pick_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
 {
@@ -335,7 +363,7 @@ init_inetsock_internal_happy(VALUE v)
     FD_ZERO(&writefds);
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
-    struct timeval delay;
+    struct timeval ends_at, delay;
     wait_arg.nfds = 0;
     wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
@@ -495,15 +523,20 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        delay = select_expires_at(
+        ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
             connection_attempt_delay_expires_at
             // TODO user specified timeoutを追加する
         );
-        if (debug) printf("[DEBUG] %d: delay.tv_sec %ld\n", count, delay.tv_sec);
-        if (debug) printf("[DEBUG] %d: delay.tv_usec %d\n", count, delay.tv_usec);
-        wait_arg.delay = is_invalid_tv(delay) ? NULL : &delay;
+        if (debug) printf("[DEBUG] %d: ends_at.tv_sec %ld\n", count, ends_at.tv_sec);
+        if (debug) printf("[DEBUG] %d: ends_at.tv_usec %d\n", count, ends_at.tv_usec);
+        if (is_invalid_tv(ends_at)) {
+            wait_arg.delay = NULL;
+        } else {
+            delay = tv_to_timeout(ends_at, now);
+            wait_arg.delay = &delay;
+        }
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO fdsをまとめて初期化できるようにしたい
