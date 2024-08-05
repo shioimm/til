@@ -298,32 +298,29 @@ init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_happy_arg *arg = (void *)v;
     struct inetsock_arg *inetsock = arg->inetsock_resource;
+    VALUE resolv_timeout = inetsock->resolv_timeout;
+    VALUE connect_timeout = inetsock->connect_timeout;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
     int fd, last_error = 0, status = 0, local_status = 0;
-    const char *syscall = 0;
-
-    // TODO ユーザー指定のタイムアウトに関する変数定義
-
     int remote_addrinfo_hints = 0;
+    const char *syscall = 0;
 
     #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
-    int families_size = arg->families_size;
-
     int wait_resolution_pipe, notify_resolution_pipe;
     int pipefd[2];
-
-    pthread_t threads[families_size];
-    char resolved_type[2];
-    ssize_t resolved_type_size;
-
     pipe(pipefd);
     wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
     notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
 
+    int families_size = arg->families_size;
+    pthread_t threads[families_size];
+    char resolved_type[2];
+    ssize_t resolved_type_size;
+
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
     getaddrinfo_shared->node = strdup(arg->hostp);
     getaddrinfo_shared->service = strdup(arg->portp);
     getaddrinfo_shared->refcount = families_size + 1;
@@ -364,18 +361,9 @@ init_inetsock_internal_happy(VALUE v)
 
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
+    struct timeval user_specified_resolv_timeout_at = (struct timeval){ -1, -1 };
+    struct timeval user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
     struct timespec now = current_clocktime_ts();
-
-    // HEv2対応前の変数定義 ----------------------------
-    VALUE connect_timeout = inetsock->connect_timeout;
-    struct timeval tv_storage;
-    struct timeval *tv = NULL;
-
-    if (!NIL_P(connect_timeout)) {
-        tv_storage = rb_time_interval(connect_timeout);
-        tv = &tv_storage;
-    }
-    // -------------------------------------------
 
     // debug
     int debug = true;
