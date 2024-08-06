@@ -387,6 +387,8 @@ init_inetsock_internal_happy(VALUE v)
     if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
     arg->connecting_fds_capacity = initial_capacity;
 
+    // TODO
+    // 一旦nilを{ -1, -1 }で表現している。Float::INFINITYとの整合性を考える必要あり
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval user_specified_resolv_timeout_at = (struct timeval){ -1, -1 };
@@ -424,6 +426,8 @@ init_inetsock_internal_happy(VALUE v)
         }
         pthread_detach(threads[i]);
     }
+    // TODO
+    // user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
     // -------------------------------------------
 
     while (true) {
@@ -603,7 +607,7 @@ init_inetsock_internal_happy(VALUE v)
                             // TODO
                             // hostname_resolution_notifier = nil
                             resolution_delay_expires_at = (struct timeval){ -1, -1 };
-                            // user_specified_resolv_timeout_at = nil
+                            user_specified_resolv_timeout_at = (struct timeval){ -1, -1 };
                             resolution_store.is_all_finised = true;
                         } else if (resolution_store.v4.succeed) {
                             if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
@@ -630,8 +634,9 @@ init_inetsock_internal_happy(VALUE v)
                     if (any_addrinfos(&resolution_store) ||
                         !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                         !resolution_store.is_all_finised) {
-                        // TODO
-                        // user_specified_connect_timeout_at = nil if connecting_sockets.empty?
+                        if (!connecting_fds_empty(arg->connecting_fds, connecting_fds_size)) {
+                            user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
+                        }
                     } else {
                         if (local_status < 0) {
                             // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
