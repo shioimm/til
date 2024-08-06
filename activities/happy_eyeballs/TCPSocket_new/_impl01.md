@@ -219,6 +219,34 @@ select_expires_at(
     return delay;
 }
 
+struct timeval
+tv_to_timeout(struct timeval ends_at, struct timespec now)
+{
+    // TODO
+    // return nil if ends_at == Float::INFINITY || ends_at.nil?
+    // Float::INFINITYを表す値が必要かも...
+
+    struct timespec expires_at;
+    expires_at.tv_sec = ends_at.tv_sec;
+    expires_at.tv_nsec = ends_at.tv_usec * 1000;
+
+    struct timespec diff;
+    diff.tv_sec = expires_at.tv_sec - now.tv_sec;
+
+    if (expires_at.tv_nsec >= now.tv_nsec) {
+        diff.tv_nsec = expires_at.tv_nsec - now.tv_nsec;
+    } else {
+        diff.tv_sec -= 1;
+        diff.tv_nsec = (1000000000 + expires_at.tv_nsec) - now.tv_nsec;
+    }
+
+    struct timeval timeout;
+    timeout.tv_sec = diff.tv_sec;
+    timeout.tv_usec = diff.tv_nsec / 1000;
+
+    return timeout;
+}
+
 struct addrinfo *
 pick_addrinfo(struct hostname_resolution_store *resolution_store, int last_family)
 {
@@ -298,32 +326,29 @@ init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_happy_arg *arg = (void *)v;
     struct inetsock_arg *inetsock = arg->inetsock_resource;
+    VALUE resolv_timeout = inetsock->resolv_timeout;
+    VALUE connect_timeout = inetsock->connect_timeout;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
     int fd, last_error = 0, status = 0, local_status = 0;
-    const char *syscall = 0;
-
-    // TODO ユーザー指定のタイムアウトに関する変数定義
-
     int remote_addrinfo_hints = 0;
+    const char *syscall = 0;
 
     #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
-    int families_size = arg->families_size;
-
     int wait_resolution_pipe, notify_resolution_pipe;
     int pipefd[2];
-
-    pthread_t threads[families_size];
-    char resolved_type[2];
-    ssize_t resolved_type_size;
-
     pipe(pipefd);
     wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
     notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
 
+    int families_size = arg->families_size;
+    pthread_t threads[families_size];
+    char resolved_type[2];
+    ssize_t resolved_type_size;
+
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
     getaddrinfo_shared->node = strdup(arg->hostp);
     getaddrinfo_shared->service = strdup(arg->portp);
     getaddrinfo_shared->refcount = families_size + 1;
@@ -338,7 +363,7 @@ init_inetsock_internal_happy(VALUE v)
     FD_ZERO(&writefds);
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
-    struct timeval delay;
+    struct timeval ends_at, delay;
     wait_arg.nfds = 0;
     wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
@@ -364,18 +389,9 @@ init_inetsock_internal_happy(VALUE v)
 
     struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
     struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
+    struct timeval user_specified_resolv_timeout_at = (struct timeval){ -1, -1 };
+    struct timeval user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
     struct timespec now = current_clocktime_ts();
-
-    // HEv2対応前の変数定義 ----------------------------
-    VALUE connect_timeout = inetsock->connect_timeout;
-    struct timeval tv_storage;
-    struct timeval *tv = NULL;
-
-    if (!NIL_P(connect_timeout)) {
-        tv_storage = rb_time_interval(connect_timeout);
-        tv = &tv_storage;
-    }
-    // -------------------------------------------
 
     // debug
     int debug = true;
@@ -507,15 +523,20 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        delay = select_expires_at(
+        ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
             connection_attempt_delay_expires_at
             // TODO user specified timeoutを追加する
         );
-        if (debug) printf("[DEBUG] %d: delay.tv_sec %ld\n", count, delay.tv_sec);
-        if (debug) printf("[DEBUG] %d: delay.tv_usec %d\n", count, delay.tv_usec);
-        wait_arg.delay = is_invalid_tv(delay) ? NULL : &delay;
+        if (debug) printf("[DEBUG] %d: ends_at.tv_sec %ld\n", count, ends_at.tv_sec);
+        if (debug) printf("[DEBUG] %d: ends_at.tv_usec %d\n", count, ends_at.tv_usec);
+        if (is_invalid_tv(ends_at)) {
+            wait_arg.delay = NULL;
+        } else {
+            delay = tv_to_timeout(ends_at, now);
+            wait_arg.delay = &delay;
+        }
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
         // TODO fdsをまとめて初期化できるようにしたい
