@@ -456,7 +456,18 @@ init_inetsock_internal_happy(VALUE v)
                 if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
-                    // TODO
+                    inetsock->fd = fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                    if (any_addrinfos(&resolution_store) ||
+                        connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                        !resolution_store.is_all_finised) { // TODO is_all_finisedが正しく設定されているか確認
+                        break;
+                    } else {
+                        if (local_status < 0) {
+                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        }
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    }
                 }
 
                 if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
