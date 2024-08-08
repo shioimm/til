@@ -395,6 +395,16 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
     struct timespec now = current_clocktime_ts();
 
+    // TODO
+    // if resolving_family_names.size == 1
+    //   family_name = resolving_family_names.first
+    //   addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
+    //   resolution_store.add_resolved(family_name, addrinfos)
+    //   hostname_resolution_result = nil
+    //   hostname_resolution_notifier = nil
+    //   user_specified_resolv_timeout_at = nil
+    // end
+
     // debug
     int debug = true;
     int count = 0;
@@ -456,7 +466,18 @@ init_inetsock_internal_happy(VALUE v)
                 if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
-                    // TODO
+                    inetsock->fd = fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                    if (any_addrinfos(&resolution_store) ||
+                        connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                        !resolution_store.is_all_finised) { // TODO is_all_finisedが正しく設定されているか確認
+                        break;
+                    } else {
+                        if (local_status < 0) {
+                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        }
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    }
                 }
 
                 if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
@@ -470,11 +491,17 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "connect(2)";
                     last_family = remote_ai->ai_family;
                 } else {
-                    // TODO
-                    // result = socket = local_addrinfo ?
-                    //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
-                    //   addrinfo.connect(timeout: connect_timeout)
-                    // 成功したらreturn、失敗したらraise
+                    if (!NIL_P(connect_timeout)) {
+                        user_specified_connect_timeout_at = rb_time_interval(connect_timeout);
+                    }
+                    status = rsock_connect(
+                        fd,
+                        remote_ai->ai_addr,
+                        remote_ai->ai_addrlen,
+                        0,
+                        &user_specified_connect_timeout_at
+                    );
+                    syscall = "connect(2)";
                 }
 
                 if (status == 0) { // 接続に成功
