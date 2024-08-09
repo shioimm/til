@@ -686,8 +686,8 @@ init_inetsock_internal_happy(VALUE v)
                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
 
-            if ((is_timeout_tv(resolution_delay_expires_at, now) || resolution_store.is_all_finised) &&
-                (is_timeout_tv(connection_attempt_delay_expires_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
+            if ((is_timeout_tv(*user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
+                (is_timeout_tv(*user_specified_connect_timeout_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
                 VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
                 rb_raise(etimedout_error, "user specified timeout");
