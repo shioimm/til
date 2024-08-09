@@ -469,7 +469,7 @@ init_inetsock_internal_happy(VALUE v)
                     inetsock->fd = fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
                     if (any_addrinfos(&resolution_store) ||
                         connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
-                        !resolution_store.is_all_finised) { // TODO is_all_finisedが正しく設定されているか確認
+                        !resolution_store.is_all_finised) {
                         break;
                     } else {
                         if (local_status < 0) {
@@ -541,7 +541,6 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (any_addrinfos(&resolution_store)) continue;
 
-                    // TODO is_all_finisedが正しく設定されているか確認
                     if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                         resolution_store.is_all_finised) break;
 
@@ -678,7 +677,6 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
-            // TODO is_all_finisedが正しく設定されているか確認
             if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
                 resolution_store.is_all_finised) {
                 if (local_status < 0) {
