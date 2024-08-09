@@ -395,6 +395,16 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
     struct timespec now = current_clocktime_ts();
 
+    // TODO
+    // if resolving_family_names.size == 1
+    //   family_name = resolving_family_names.first
+    //   addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
+    //   resolution_store.add_resolved(family_name, addrinfos)
+    //   hostname_resolution_result = nil
+    //   hostname_resolution_notifier = nil
+    //   user_specified_resolv_timeout_at = nil
+    // end
+
     // debug
     int debug = true;
     int count = 0;
@@ -481,11 +491,17 @@ init_inetsock_internal_happy(VALUE v)
                     syscall = "connect(2)";
                     last_family = remote_ai->ai_family;
                 } else {
-                    // TODO
-                    // result = socket = local_addrinfo ?
-                    //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
-                    //   addrinfo.connect(timeout: connect_timeout)
-                    // 成功したらreturn、失敗したらraise
+                    if (!NIL_P(connect_timeout)) {
+                        user_specified_connect_timeout_at = rb_time_interval(connect_timeout);
+                    }
+                    status = rsock_connect(
+                        fd,
+                        remote_ai->ai_addr,
+                        remote_ai->ai_addrlen,
+                        0,
+                        &user_specified_connect_timeout_at
+                    );
+                    syscall = "connect(2)";
                 }
 
                 if (status == 0) { // 接続に成功
