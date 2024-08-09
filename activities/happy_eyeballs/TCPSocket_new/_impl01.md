@@ -182,10 +182,12 @@ is_invalid_tv(struct timeval tv)
 }
 
 int
-is_timeout_tv(struct timeval timeout_tv, struct timespec now) {
+is_timeout_tv(struct timeval *timeout_tv, struct timespec now) {
+    if (!timeout_tv) return false;
+
     struct timespec tv;
-    tv.tv_sec = timeout_tv.tv_sec;
-    tv.tv_nsec = timeout_tv.tv_usec * 1000;
+    tv.tv_sec = timeout_tv->tv_sec;
+    tv.tv_nsec = timeout_tv->tv_usec * 1000;
 
     if (tv.tv_sec > now.tv_sec) {
         return true;
@@ -203,14 +205,14 @@ is_timeout_tv(struct timeval timeout_tv, struct timespec now) {
 struct timeval
 select_expires_at(
     struct hostname_resolution_store *resolution_store,
-    struct timeval resolution_delay,
-    struct timeval connection_attempt_delay
+    struct timeval *resolution_delay,
+    struct timeval *connection_attempt_delay
     // TODO user specified timeoutを追加する
 ) {
     struct timeval delay = (struct timeval){ -1, -1 };
 
     if (any_addrinfos(resolution_store)) {
-        delay = is_invalid_tv(resolution_delay) ? connection_attempt_delay : resolution_delay;
+        delay = resolution_delay ? *resolution_delay : *connection_attempt_delay;
     } else {
         // TODO user specified timeout
         // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
@@ -224,7 +226,6 @@ tv_to_timeout(struct timeval ends_at, struct timespec now)
 {
     // TODO
     // return nil if ends_at == Float::INFINITY || ends_at.nil?
-    // Float::INFINITYを表す値が必要かも...
 
     struct timespec expires_at;
     expires_at.tv_sec = ends_at.tv_sec;
@@ -387,12 +388,16 @@ init_inetsock_internal_happy(VALUE v)
     if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
     arg->connecting_fds_capacity = initial_capacity;
 
-    // TODO
-    // 一旦nilを{ -1, -1 }で表現している。Float::INFINITYとの整合性を考える必要あり
-    struct timeval resolution_delay_expires_at = (struct timeval){ -1, -1 };
-    struct timeval connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
-    struct timeval user_specified_resolv_timeout_at = (struct timeval){ -1, -1 };
-    struct timeval user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
+    // nil = null
+    // Float::INFINITY = { -1, -1 }
+    struct timeval resolution_delay_storage;
+    struct timeval *resolution_delay_expires_at = NULL;
+    struct timeval connection_attempt_delay_strage;
+    struct timeval *connection_attempt_delay_expires_at = NULL;
+    struct timeval user_specified_resolv_timeout_storage;
+    struct timeval *user_specified_resolv_timeout_at = NULL;
+    struct timeval user_specified_connect_timeout_storage;
+    struct timeval *user_specified_connect_timeout_at = NULL;
     struct timespec now = current_clocktime_ts();
 
     // TODO
@@ -444,8 +449,8 @@ init_inetsock_internal_happy(VALUE v)
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
         if (any_addrinfos(&resolution_store) &&
-            is_invalid_tv(resolution_delay_expires_at) &&
-            is_invalid_tv(connection_attempt_delay_expires_at)) {
+            !resolution_delay_expires_at &&
+            !connection_attempt_delay_expires_at) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
             while ((tmp_ai = pick_addrinfo(&resolution_store, last_family))) {
                 inetsock->fd = fd = -1;
@@ -492,14 +497,15 @@ init_inetsock_internal_happy(VALUE v)
                     last_family = remote_ai->ai_family;
                 } else {
                     if (!NIL_P(connect_timeout)) {
-                        user_specified_connect_timeout_at = rb_time_interval(connect_timeout);
+                        user_specified_connect_timeout_storage = rb_time_interval(connect_timeout);
+                        user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
                     }
                     status = rsock_connect(
                         fd,
                         remote_ai->ai_addr,
                         remote_ai->ai_addrlen,
                         0,
-                        &user_specified_connect_timeout_at
+                        user_specified_connect_timeout_at
                     );
                     syscall = "connect(2)";
                 }
@@ -523,7 +529,8 @@ init_inetsock_internal_happy(VALUE v)
                     arg->connecting_fds[connecting_fds_size] = fd;
                     (connecting_fds_size)++;
 
-                    set_timeout_tv(&connection_attempt_delay_expires_at, 250, now);
+                    set_timeout_tv(&connection_attempt_delay_strage, 250, now);
+                    connection_attempt_delay_expires_at = &connection_attempt_delay_strage;
                     // TODO
                     // if resolution_store.empty_addrinfos?
                     //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
@@ -553,7 +560,7 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        ends_at = select_expires_at(
+        ends_at = select_expires_at( // TODO 返り値がこれで良いかをもう少し考える
             &resolution_store,
             resolution_delay_expires_at,
             connection_attempt_delay_expires_at
@@ -566,9 +573,11 @@ init_inetsock_internal_happy(VALUE v)
         } else {
             delay = tv_to_timeout(ends_at, now);
             wait_arg.delay = &delay;
+            delay = tv_to_timeout(ends_at, now);
         }
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
+
         // TODO fdsをまとめて初期化できるようにしたい
         wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
@@ -582,10 +591,10 @@ init_inetsock_internal_happy(VALUE v)
 
         now = current_clocktime_ts();
         if (is_timeout_tv(resolution_delay_expires_at, now)) {
-            resolution_delay_expires_at = (struct timeval){ -1, -1 };
+            resolution_delay_expires_at = NULL;
         }
         if (is_timeout_tv(connection_attempt_delay_expires_at, now)) {
-            connection_attempt_delay_expires_at = (struct timeval){ -1, -1 };
+            connection_attempt_delay_expires_at = NULL;
         }
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
@@ -632,19 +641,19 @@ init_inetsock_internal_happy(VALUE v)
                             if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
                             // TODO
                             // hostname_resolution_notifier = nil
-                            resolution_delay_expires_at = (struct timeval){ -1, -1 };
-                            user_specified_resolv_timeout_at = (struct timeval){ -1, -1 };
+                            resolution_delay_expires_at = NULL;
+                            user_specified_resolv_timeout_at = NULL;
                             resolution_store.is_all_finised = true;
                         } else if (resolution_store.v4.succeed) {
                             if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
-                            set_timeout_tv(&resolution_delay_expires_at, 50, now);
+                            set_timeout_tv(&resolution_delay_storage, 50, now);
+                            resolution_delay_expires_at = &resolution_delay_storage;
                         }
                     }
                 }
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
                 fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
-
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
                     inetsock->fd = fd;
@@ -661,7 +670,7 @@ init_inetsock_internal_happy(VALUE v)
                         !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                         !resolution_store.is_all_finised) {
                         if (!connecting_fds_empty(arg->connecting_fds, connecting_fds_size)) {
-                            user_specified_connect_timeout_at = (struct timeval){ -1, -1 };
+                            user_specified_connect_timeout_at = NULL;
                         }
                     } else {
                         if (local_status < 0) {
@@ -677,8 +686,7 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
-            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
-                resolution_store.is_all_finised) {
+            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) && resolution_store.is_all_finised) {
                 if (local_status < 0) {
                     // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
@@ -686,8 +694,8 @@ init_inetsock_internal_happy(VALUE v)
                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
 
-            if ((is_timeout_tv(*user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
-                (is_timeout_tv(*user_specified_connect_timeout_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
+            if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
+                (is_timeout_tv(user_specified_connect_timeout_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
                 VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
                 rb_raise(etimedout_error, "user specified timeout");
