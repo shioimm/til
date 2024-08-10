@@ -202,17 +202,23 @@ is_timeout_tv(struct timeval *timeout_tv, struct timespec now) {
     }
 }
 
-struct timeval
+struct timeval *
 select_expires_at(
     struct hostname_resolution_store *resolution_store,
     struct timeval *resolution_delay,
     struct timeval *connection_attempt_delay
     // TODO user specified timeoutを追加する
 ) {
-    struct timeval delay = (struct timeval){ -1, -1 };
+    struct timeval *delay = NULL;
 
     if (any_addrinfos(resolution_store)) {
-        delay = resolution_delay ? *resolution_delay : *connection_attempt_delay;
+        if (resolution_delay) {
+            delay = resolution_delay;
+        } else if (connection_attempt_delay) {
+            delay = connection_attempt_delay;
+        } else {
+            delay = NULL;
+        }
     } else {
         // TODO user specified timeout
         // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
@@ -221,15 +227,17 @@ select_expires_at(
     return delay;
 }
 
-struct timeval
-tv_to_timeout(struct timeval ends_at, struct timespec now)
+void
+tv_to_timeout(struct timeval *ends_at, struct timespec now, struct timeval *delay)
 {
-    // TODO
-    // return nil if ends_at == Float::INFINITY || ends_at.nil?
+    if (!ends_at) { // TODO ends_at == Float::INFINITY の場合もNULLをセット
+        delay = NULL;
+        return;
+    }
 
     struct timespec expires_at;
-    expires_at.tv_sec = ends_at.tv_sec;
-    expires_at.tv_nsec = ends_at.tv_usec * 1000;
+    expires_at.tv_sec = ends_at->tv_sec;
+    expires_at.tv_nsec = ends_at->tv_usec * 1000;
 
     struct timespec diff;
     diff.tv_sec = expires_at.tv_sec - now.tv_sec;
@@ -241,11 +249,10 @@ tv_to_timeout(struct timeval ends_at, struct timespec now)
         diff.tv_nsec = (1000000000 + expires_at.tv_nsec) - now.tv_nsec;
     }
 
-    struct timeval timeout;
-    timeout.tv_sec = diff.tv_sec;
-    timeout.tv_usec = (int)diff.tv_nsec / 1000;
+    delay->tv_sec = diff.tv_sec;
+    delay->tv_usec = (int)diff.tv_nsec / 1000;
 
-    return timeout;
+    return;
 }
 
 struct addrinfo *
@@ -364,12 +371,12 @@ init_inetsock_internal_happy(VALUE v)
     FD_ZERO(&writefds);
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
-    struct timeval ends_at, delay;
+    struct timeval *ends_at = NULL;
+    struct timeval *delay = NULL;
     wait_arg.nfds = 0;
     wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
     wait_arg.nfds = 0;
-    wait_arg.delay = &delay;
 
     struct hostname_resolution_store resolution_store;
     resolution_store.is_all_finised = false;
@@ -560,21 +567,18 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        ends_at = select_expires_at( // TODO 返り値がこれで良いかをもう少し考える
+        ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
             connection_attempt_delay_expires_at
             // TODO user specified timeoutを追加する
         );
-        if (debug) printf("[DEBUG] %d: ends_at.tv_sec %ld\n", count, ends_at.tv_sec);
-        if (debug) printf("[DEBUG] %d: ends_at.tv_usec %d\n", count, ends_at.tv_usec);
-        if (is_invalid_tv(ends_at)) {
-            wait_arg.delay = NULL;
-        } else {
-            delay = tv_to_timeout(ends_at, now);
-            wait_arg.delay = &delay;
-            delay = tv_to_timeout(ends_at, now);
+        if (ends_at) {
+            if (debug) printf("[DEBUG] %d: ends_at->tv_sec %ld\n", count, ends_at->tv_sec);
+            if (debug) printf("[DEBUG] %d: ends_at->tv_usec %d\n", count, ends_at->tv_usec);
         }
+        tv_to_timeout(ends_at, now, delay);
+        wait_arg.delay = delay ? delay : NULL;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
 
