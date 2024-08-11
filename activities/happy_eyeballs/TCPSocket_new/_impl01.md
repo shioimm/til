@@ -227,14 +227,13 @@ select_expires_at(
     return delay;
 }
 
-void
-tv_to_timeout(struct timeval *ends_at, struct timespec now, struct timeval *delay)
+struct timeval
+tv_to_timeout(struct timeval *ends_at, struct timespec now)
 {
-    if (!ends_at) { // TODO ends_at == Float::INFINITY の場合もNULLをセット
-        delay = NULL;
-        return;
-    }
+    // TODO ends_at == Float::INFINITY の場合もここ
+    if (!ends_at) return (struct timeval){ -1, -1 };
 
+    struct timeval delay;
     struct timespec expires_at;
     expires_at.tv_sec = ends_at->tv_sec;
     expires_at.tv_nsec = ends_at->tv_usec * 1000;
@@ -249,10 +248,10 @@ tv_to_timeout(struct timeval *ends_at, struct timespec now, struct timeval *dela
         diff.tv_nsec = (1000000000 + expires_at.tv_nsec) - now.tv_nsec;
     }
 
-    delay->tv_sec = diff.tv_sec;
-    delay->tv_usec = (int)diff.tv_nsec / 1000;
+    delay.tv_sec = diff.tv_sec;
+    delay.tv_usec = (int)diff.tv_nsec / 1000;
 
-    return;
+    return delay;
 }
 
 struct addrinfo *
@@ -373,7 +372,7 @@ init_inetsock_internal_happy(VALUE v)
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     struct timeval *ends_at = NULL;
-    struct timeval *delay = NULL;
+    struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
     wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
@@ -613,9 +612,9 @@ init_inetsock_internal_happy(VALUE v)
         if (ends_at) {
             if (debug) printf("[DEBUG] %d: ends_at->tv_sec %ld\n", count, ends_at->tv_sec);
             if (debug) printf("[DEBUG] %d: ends_at->tv_usec %d\n", count, ends_at->tv_usec);
+            delay = tv_to_timeout(ends_at, now);
         }
-        tv_to_timeout(ends_at, now, delay);
-        wait_arg.delay = delay ? delay : NULL;
+        wait_arg.delay = is_invalid_tv(delay) ? NULL : &delay;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
 
