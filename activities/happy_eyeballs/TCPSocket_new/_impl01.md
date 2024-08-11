@@ -337,34 +337,35 @@ init_inetsock_internal_happy(VALUE v)
     VALUE resolv_timeout = inetsock->resolv_timeout;
     VALUE connect_timeout = inetsock->connect_timeout;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
-    int fd, last_error = 0, status = 0, local_status = 0;
+    int fd, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
+    int last_error = 0;
     const char *syscall = 0;
 
     #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
-    int wait_resolution_pipe, notify_resolution_pipe;
-    int pipefd[2];
-    pipe(pipefd);
-    wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
-    notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
+    // TODO
+    // rsock_init_inetsockの中で確認した方が良いかもしれない...
+    // arg->families_sizeに対象のアドレスファミリの数を格納する必要がある
+    // (arg->local_addrinfosみたいな感じで取得できるようにするとか?)
+    // if local_host || local_port
+    //   local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
+    //   resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
+    // else
+    //   local_addrinfos = []
+    //   resolving_family_names = ADDRESS_FAMILIES.keys
+    // end
 
     int families_size = arg->families_size;
+
     pthread_t threads[families_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
-
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
-    getaddrinfo_shared->node = strdup(arg->hostp);
-    getaddrinfo_shared->service = strdup(arg->portp);
-    getaddrinfo_shared->refcount = families_size + 1;
-    getaddrinfo_shared->notify = notify_resolution_pipe;
-    getaddrinfo_shared->wait = wait_resolution_pipe;
-    rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
-    getaddrinfo_shared->connecting_fds = arg->connecting_fds;
-    getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
+    int wait_resolution_pipe, notify_resolution_pipe;
+    int pipefd[2];
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
 
     fd_set readfds, writefds;
     FD_ZERO(&readfds);
@@ -407,50 +408,60 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *user_specified_connect_timeout_at = NULL;
     struct timespec now = current_clocktime_ts();
 
-    // TODO
-    // if resolving_family_names.size == 1
-    //   family_name = resolving_family_names.first
-    //   addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
-    //   resolution_store.add_resolved(family_name, addrinfos)
-    //   hostname_resolution_result = nil
-    //   hostname_resolution_notifier = nil
-    //   user_specified_resolv_timeout_at = nil
-    // end
+    if (false) { // if resolving_family_names.size == 1
+        // family_name = resolving_family_names.first
+        // addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
+        // resolution_store.add_resolved(family_name, addrinfos)
+        // hostname_resolution_result = nil
+        // hostname_resolution_notifier = nil
+        // user_specified_resolv_timeout_at = nil
+    } else {
+        pipe(pipefd);
+        wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
+        notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
+
+        getaddrinfo_shared = arg->getaddrinfo_shared;
+        getaddrinfo_shared->node = strdup(arg->hostp);
+        getaddrinfo_shared->service = strdup(arg->portp);
+        getaddrinfo_shared->refcount = families_size + 1;
+        getaddrinfo_shared->notify = notify_resolution_pipe;
+        getaddrinfo_shared->wait = wait_resolution_pipe;
+        rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
+        getaddrinfo_shared->connecting_fds = arg->connecting_fds;
+        getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
+
+        /*
+         * Maybe also accept a local address
+         */
+
+        struct addrinfo getaddrinfo_hints[families_size];
+
+        for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
+            allocate_rb_getaddrinfo_happy_hints(
+                &getaddrinfo_hints[i],
+                arg->families[i],
+                remote_addrinfo_hints,
+                arg->additional_flags
+            );
+
+            arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
+            arg->getaddrinfo_entries[i]->ai = NULL;
+            arg->getaddrinfo_entries[i]->family = arg->families[i];
+            arg->getaddrinfo_entries[i]->refcount = 2;
+
+            if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
+                last_error = EAI_AGAIN;
+                rb_syserr_fail(EAI_AGAIN, NULL); // TODO 要確認
+            }
+            pthread_detach(threads[i]);
+        }
+        // TODO
+        // user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
+    }
 
     // debug
     int debug = true;
     int count = 0;
-
-    // 名前解決開始 -----------------------------------
-    /*
-     * Maybe also accept a local address
-     */
-    // TODO local_host / local_portが指定された場合
-
-    struct addrinfo getaddrinfo_hints[families_size];
-
-    for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
-        allocate_rb_getaddrinfo_happy_hints(
-            &getaddrinfo_hints[i],
-            arg->families[i],
-            remote_addrinfo_hints,
-            arg->additional_flags
-        );
-
-        arg->getaddrinfo_entries[i]->hints = getaddrinfo_hints[i];
-        arg->getaddrinfo_entries[i]->ai = NULL;
-        arg->getaddrinfo_entries[i]->family = arg->families[i];
-        arg->getaddrinfo_entries[i]->refcount = 2;
-
-        if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
-            last_error = EAI_AGAIN;
-            rb_syserr_fail(EAI_AGAIN, NULL); // TODO 要確認
-        }
-        pthread_detach(threads[i]);
-    }
-    // TODO
-    // user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
-    // -------------------------------------------
 
     while (true) {
         count++;
@@ -469,13 +480,31 @@ init_inetsock_internal_happy(VALUE v)
                 #endif
 
                 local_ai = NULL;
-                // TODO local_addrinfos.any?
+                // TODO
+                // if local_addrinfos.any?
+                //   puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}" if DEBUG
+                //   local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
+
+                //   if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
+                //     if resolution_store.any_addrinfos?
+                //       # Try other Addrinfo in next "while"
+                //       next
+                //     elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
+                //       # Exit this "while" and wait for connections to be established or hostname resolution in next loop
+                //       # Or exit this "while" and wait for hostname resolution in next loop
+                //       break
+                //     else
+                //       raise SocketError.new 'no appropriate local address'
+                //     end
+                //   end
+                // end
 
                 if (debug) printf("[DEBUG] %d: ** Create socket **\n", count);
                 status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
                 syscall = "socket(2)";
                 fd = status;
                 if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
+
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
                     inetsock->fd = fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
@@ -496,8 +525,8 @@ init_inetsock_internal_happy(VALUE v)
                 if (any_addrinfos(&resolution_store) ||
                     !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                     !resolution_store.is_all_finised) {
-                    // TODO local_aiがある場合はSocketを作成してbind
-
+                    // TODO
+                    // socket.bind(local_addrinfo) if local_addrinfo
                     socket_nonblock_set(fd);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
@@ -507,6 +536,14 @@ init_inetsock_internal_happy(VALUE v)
                         user_specified_connect_timeout_storage = rb_time_interval(connect_timeout);
                         user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
                     }
+
+                    // TODO local_addrinfoがある場合の接続
+                    // socket.bind(local_addrinfo)すればいいのかな?
+                    // (参考)
+                    // result = socket = local_addrinfo ?
+                    //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
+                    //   addrinfo.connect(timeout: connect_timeout)
+
                     status = rsock_connect(
                         fd,
                         remote_ai->ai_addr,
@@ -710,6 +747,9 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (debug) puts("------------");
+        // TODO
+        // ループを脱出してここでreturnするようにしないと警告が出る...
+        // non-void function does not return a value in all control paths
     }
 }
 
