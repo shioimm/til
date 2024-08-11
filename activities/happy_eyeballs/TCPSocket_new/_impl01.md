@@ -190,17 +190,11 @@ is_timeout_tv(struct timeval *timeout_tv, struct timespec now) {
     tv.tv_sec = timeout_tv->tv_sec;
     tv.tv_nsec = timeout_tv->tv_usec * 1000;
 
-    if (tv.tv_sec > now.tv_sec) {
-        return true;
-    } else if (tv.tv_sec < now.tv_sec) {
-        return false;
-    }
+    if (tv.tv_sec > now.tv_sec) return true;
+    if (tv.tv_sec < now.tv_sec) return false;
+    if (tv.tv_nsec >= now.tv_nsec) return true;
 
-    if (tv.tv_nsec >= now.tv_nsec) {
-        return true;
-    } else if (tv.tv_nsec < now.tv_nsec) {
-        return false;
-    }
+    return false;
 }
 
 struct timeval *
