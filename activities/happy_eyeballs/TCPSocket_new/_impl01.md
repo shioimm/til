@@ -178,6 +178,7 @@ set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
 int
 is_invalid_tv(struct timeval tv)
 {
+    // TODO ends_at == Float::INFINITY の場合
     return tv.tv_sec == -1 || tv.tv_usec == -1;
 }
 
@@ -230,9 +231,6 @@ select_expires_at(
 struct timeval
 tv_to_timeout(struct timeval *ends_at, struct timespec now)
 {
-    // TODO ends_at == Float::INFINITY の場合もここ
-    if (!ends_at) return (struct timeval){ -1, -1 };
-
     struct timeval delay;
     struct timespec expires_at;
     expires_at.tv_sec = ends_at->tv_sec;
@@ -609,12 +607,14 @@ init_inetsock_internal_happy(VALUE v)
             connection_attempt_delay_expires_at
             // TODO user specified timeoutを追加する
         );
-        if (ends_at) {
+        if (ends_at && !is_invalid_tv(*ends_at)) {
             if (debug) printf("[DEBUG] %d: ends_at->tv_sec %ld\n", count, ends_at->tv_sec);
             if (debug) printf("[DEBUG] %d: ends_at->tv_usec %d\n", count, ends_at->tv_usec);
             delay = tv_to_timeout(ends_at, now);
+            wait_arg.delay = &delay;
+        } else {
+            wait_arg.delay = NULL;
         }
-        wait_arg.delay = is_invalid_tv(delay) ? NULL : &delay;
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
 
