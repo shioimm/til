@@ -641,6 +641,9 @@ init_inetsock_internal_happy(VALUE v)
                         } else {
                             resolution_store.v4.succeed = true;
                         }
+                    }
+
+                    if (resolution_store.v4.finished) {
                         if (resolution_store.v6.finished) {
                             if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
                             // TODO
