@@ -175,6 +175,21 @@ set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
     tv->tv_usec = (int)(from.tv_nsec / 1000);
 }
 
+struct timeval
+add_ts_to_tv(struct timeval tv, struct timespec ts)
+{
+    long ts_usec = ts.tv_nsec / 1000;
+    tv.tv_sec += ts.tv_sec;
+    tv.tv_usec += ts_usec;
+
+    if (tv.tv_usec >= 1000000) {
+        tv.tv_sec += tv.tv_usec / 1000000;
+        tv.tv_usec = tv.tv_usec % 1000000;
+    }
+
+    return tv;
+}
+
 int
 is_infinity(struct timeval tv)
 {
@@ -446,8 +461,14 @@ init_inetsock_internal_happy(VALUE v)
             }
             pthread_detach(threads[i]);
         }
-        // TODO
-        // user_specified_resolv_timeout_at = resolv_timeout ? now + resolv_timeout : Float::INFINITY
+
+        if (NIL_P(resolv_timeout)) {
+            user_specified_resolv_timeout_storage = (struct timeval){ -1, -1 };
+        } else {
+            struct timeval resolv_timeout_tv = rb_time_interval(resolv_timeout);
+            user_specified_resolv_timeout_storage = add_ts_to_tv(resolv_timeout_tv, now);
+        }
+        user_specified_resolv_timeout_at = &user_specified_resolv_timeout_storage;
     }
 
     // debug
@@ -566,10 +587,16 @@ init_inetsock_internal_happy(VALUE v)
 
                     set_timeout_tv(&connection_attempt_delay_strage, 250, now);
                     connection_attempt_delay_expires_at = &connection_attempt_delay_strage;
-                    // TODO
-                    // if resolution_store.empty_addrinfos?
-                    //   user_specified_connect_timeout_at = connect_timeout ? now + connect_timeout : Float::INFINITY
-                    // end
+
+                    if (!any_addrinfos(&resolution_store)) {
+                        if (NIL_P(connect_timeout)) {
+                            user_specified_connect_timeout_storage = (struct timeval){ -1, -1 };
+                        } else {
+                            struct timeval connect_timeout_tv = rb_time_interval(connect_timeout);
+                            user_specified_connect_timeout_storage = add_ts_to_tv(connect_timeout_tv, now);
+                        }
+                        user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
+                    }
 
                     if (debug) {
                         for (int i = 0; i < connecting_fds_size; i++) {
