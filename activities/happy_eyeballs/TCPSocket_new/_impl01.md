@@ -216,25 +216,29 @@ struct timeval *
 select_expires_at(
     struct hostname_resolution_store *resolution_store,
     struct timeval *resolution_delay,
-    struct timeval *connection_attempt_delay
-    // TODO user specified timeoutを追加する
+    struct timeval *connection_attempt_delay,
+    struct timeval *user_specified_resolv_timeout_at,
+    struct timeval *user_specified_connect_timeout_at
 ) {
-    struct timeval *delay = NULL;
-
     if (any_addrinfos(resolution_store)) {
-        if (resolution_delay) {
-            delay = resolution_delay;
-        } else if (connection_attempt_delay) {
-            delay = connection_attempt_delay;
-        } else {
-            delay = NULL;
-        }
-    } else {
-        // TODO user specified timeout
-        // [user_specified_resolv_timeout_at, user_specified_connect_timeout_at].compact.max
+        return resolution_delay ? resolution_delay : connection_attempt_delay;
     }
 
-    return delay;
+    struct timeval *timeout = NULL;
+
+    if (user_specified_resolv_timeout_at) {
+        if (is_infinity(*user_specified_resolv_timeout_at)) return user_specified_resolv_timeout_at;
+        timeout = user_specified_resolv_timeout_at;
+    }
+
+    if (user_specified_connect_timeout_at) {
+        if (is_infinity(*user_specified_connect_timeout_at)) return user_specified_connect_timeout_at;
+        if (!timeout || timercmp(user_specified_connect_timeout_at, timeout, >)) {
+            return user_specified_connect_timeout_at;
+        }
+    }
+
+    return timeout;
 }
 
 struct timeval
@@ -625,8 +629,9 @@ init_inetsock_internal_happy(VALUE v)
         ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
-            connection_attempt_delay_expires_at
-            // TODO user specified timeoutを追加する
+            connection_attempt_delay_expires_at,
+            user_specified_resolv_timeout_at,
+            user_specified_connect_timeout_at
         );
         if (ends_at && !is_infinity(*ends_at)) {
             if (debug) printf("[DEBUG] %d: ends_at->tv_sec %ld\n", count, ends_at->tv_sec);
