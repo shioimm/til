@@ -1,5 +1,6 @@
-# prototype/02 時点
+# 7/10 -
 - (参照先: `getaddrinfo/_impl00`)
+- 状態管理をやめ、ifによる条件分岐をベースに処理を実行する
 
 ```c
 // ext/socket/ipsocket.c
