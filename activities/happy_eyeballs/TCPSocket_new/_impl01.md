@@ -805,6 +805,39 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
         portp = port_str(arg.remote.serv, pbuf, sizeof(pbuf), &additional_flags);
 
         if (!is_specified_ip_address(hostp)) {
+            int target_families[2] = { 0, 0 };
+            int resolving_family_size = 0;
+
+            /*
+             * Maybe also accept a local address
+             */
+            if (!NIL_P(arg.local.host) || !NIL_P(arg.local.serv)) {
+                arg.local.res = rsock_addrinfo(
+                    arg.local.host,
+                    arg.local.serv,
+                    AF_UNSPEC,
+                    SOCK_STREAM,
+                    0
+                );
+
+                struct addrinfo *tmp_p = arg.local.res->ai;
+                for (tmp_p; tmp_p != NULL; tmp_p = tmp_p->ai_next) {
+                    if (target_families[0] == 0 && tmp_p->ai_family == AF_INET6) {
+                        target_families[0] = AF_INET6;
+                        resolving_family_size++;
+                    }
+                    if (target_families[1] == 0 && tmp_p->ai_family == AF_INET) {
+                        target_families[1] = AF_INET;
+                        resolving_family_size++;
+                    }
+                }
+            }  else {
+                resolving_family_size = 2;
+                target_families[0] = AF_INET6;
+                target_families[1] = AF_INET;
+            }
+            // TODO 解決できたアドレスファミリを取得してfamiliesおよびfamilies_sizeに値をセット
+
             struct inetsock_happy_arg inetsock_happy_resource;
             memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
 
@@ -814,9 +847,10 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.additional_flags = additional_flags;
             inetsock_happy_resource.connected_fd = -1;
 
-            int families[2] = { AF_INET6, AF_INET };
-            inetsock_happy_resource.families = families;
-            inetsock_happy_resource.families_size = sizeof(families) / sizeof(int);
+            int resolving_families[resolving_family_size];
+            for (int i = 0; resolving_family_size > i; i++) resolving_families[i] = target_families[i];
+            inetsock_happy_resource.families = resolving_families;
+            inetsock_happy_resource.families_size = resolving_family_size;
 
             inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
             if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
