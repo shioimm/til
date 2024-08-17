@@ -128,7 +128,7 @@ struct inetsock_happy_arg
     struct inetsock_arg *inetsock_resource;
     const char *hostp, *portp;
     int *families;
-    int families_size;
+    int family_size;
     int additional_flags;
     rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
@@ -359,7 +359,7 @@ init_inetsock_internal_happy(VALUE v)
 
     // TODO
     // rsock_init_inetsockの中で確認した方が良いかもしれない...
-    // arg->families_sizeに対象のアドレスファミリの数を格納する必要がある
+    // arg->family_sizeに対象のアドレスファミリの数を格納する必要がある
     // (arg->local_addrinfosみたいな感じで取得できるようにするとか?)
     // if local_host || local_port
     //   local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
@@ -369,9 +369,9 @@ init_inetsock_internal_happy(VALUE v)
     //   resolving_family_names = ADDRESS_FAMILIES.keys
     // end
 
-    int families_size = arg->families_size;
+    int family_size = arg->families_size;
 
-    pthread_t threads[families_size];
+    pthread_t threads[family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
     int wait_resolution_pipe, notify_resolution_pipe;
@@ -434,7 +434,7 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared = arg->getaddrinfo_shared;
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
-        getaddrinfo_shared->refcount = families_size + 1;
+        getaddrinfo_shared->refcount = family_size + 1;
         getaddrinfo_shared->notify = notify_resolution_pipe;
         getaddrinfo_shared->wait = wait_resolution_pipe;
         rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
@@ -445,9 +445,9 @@ init_inetsock_internal_happy(VALUE v)
          * Maybe also accept a local address
          */
 
-        struct addrinfo getaddrinfo_hints[families_size];
+        struct addrinfo getaddrinfo_hints[family_size];
 
-        for (int i = 0; i < families_size; i++) { // 1周目...IPv6 / 2周目...IPv4
+        for (int i = 0; i < family_size; i++) { // 1周目...IPv6 / 2周目...IPv4
             allocate_rb_getaddrinfo_happy_hints(
                 &getaddrinfo_hints[i],
                 arg->families[i],
@@ -836,7 +836,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                 target_families[0] = AF_INET6;
                 target_families[1] = AF_INET;
             }
-            // TODO 解決できたアドレスファミリを取得してfamiliesおよびfamilies_sizeに値をセット
 
             struct inetsock_happy_arg inetsock_happy_resource;
             memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
@@ -850,7 +849,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             int resolving_families[resolving_family_size];
             for (int i = 0; resolving_family_size > i; i++) resolving_families[i] = target_families[i];
             inetsock_happy_resource.families = resolving_families;
-            inetsock_happy_resource.families_size = resolving_family_size;
+            inetsock_happy_resource.family_size = resolving_family_size;
 
             inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
             if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
@@ -858,7 +857,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
             if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
 
-            for (int i = 0; i < inetsock_happy_resource.families_size; i++) {
+            for (int i = 0; i < inetsock_happy_resource.family_size; i++) {
                 inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
                 if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
                 inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
