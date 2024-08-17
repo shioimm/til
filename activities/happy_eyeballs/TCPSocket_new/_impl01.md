@@ -779,6 +779,57 @@ init_inetsock_internal_happy(VALUE v)
     }
 }
 
+static VALUE
+inetsock_cleanup_happy(VALUE v)
+{
+    struct inetsock_happy_arg *arg = (void *)v;
+    struct inetsock_arg *inetsock_resource = arg->inetsock_resource;
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
+
+    if (inetsock_resource->remote.res) {
+        rb_freeaddrinfo(inetsock_resource->remote.res);
+        inetsock_resource->remote.res = 0;
+    }
+    if (inetsock_resource->local.res) {
+        rb_freeaddrinfo(inetsock_resource->local.res);
+        inetsock_resource->local.res = 0;
+    }
+    if (inetsock_resource->fd >= 0) {
+        close(inetsock_resource->fd);
+    }
+    if (arg->family_size == 1) return Qnil;
+
+    int shared_need_free = 0;
+    int need_free[2] = { 0, 0 };
+    rb_nativethread_lock_lock(getaddrinfo_shared->lock);
+    {
+        for (int i = 0; i < arg->family_size; i++) {
+            if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
+                need_free[i] = 1;
+            }
+        }
+        if (--(getaddrinfo_shared->refcount) == 0) {
+            shared_need_free = 1;
+        }
+    }
+    rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
+
+    for (int i = 0; i < arg->family_size; i++) {
+        if (need_free[i]) free_rb_getaddrinfo_happy_entry(&arg->getaddrinfo_entries[i]);
+    }
+    if (shared_need_free) free_rb_getaddrinfo_happy_shared(&getaddrinfo_shared);
+
+    for (int i = 0; i < arg->connecting_fds_size; i++) {
+        int connecting_fd = arg->connecting_fds[i];
+        close_fd(connecting_fd);
+    }
+
+    free(arg->connecting_fds);
+    arg->connecting_fds = NULL;
+
+    return Qnil;
+}
+
 VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
