@@ -898,7 +898,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.connected_fd = -1;
 
             int resolving_families[resolving_family_size];
-            for (int i = 0; resolving_family_size > i; i++) resolving_families[i] = target_families[i];
+            for (int i = 0; resolving_family_size > i; i++) {
+                if (target_families[i] != 0) resolving_families[i] = target_families[i];
+            }
             inetsock_happy_resource.families = resolving_families;
             inetsock_happy_resource.family_size = resolving_family_size;
 
