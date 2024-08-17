@@ -357,18 +357,7 @@ init_inetsock_internal_happy(VALUE v)
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
-    // TODO
-    // rsock_init_inetsockの中で確認した方が良いかもしれない...
-    // arg->family_sizeに対象のアドレスファミリの数を格納する必要がある
-    // (arg->local_addrinfosみたいな感じで取得できるようにするとか?)
-    // if local_host || local_port
-    //   local_addrinfos = Addrinfo.getaddrinfo(local_host, local_port, nil, :STREAM, timeout: resolv_timeout)
-    //   resolving_family_names = local_addrinfos.map { |lai| ADDRESS_FAMILIES.key(lai.afamily) }.uniq
-    // else
-    //   local_addrinfos = []
-    //   resolving_family_names = ADDRESS_FAMILIES.keys
-    // end
-
+    // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
     int family_size = arg->families_size;
 
     pthread_t threads[family_size];
@@ -419,11 +408,27 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *user_specified_connect_timeout_at = NULL;
     struct timespec now = current_clocktime_ts();
 
-    if (false) { // if resolving_family_names.size == 1
-        // family_name = resolving_family_names.first
-        // addrinfos = Addrinfo.getaddrinfo(host, port, family_name, :STREAM, timeout: resolv_timeout)
-        // resolution_store.add_resolved(family_name, addrinfos)
-        // hostname_resolution_result = nil
+    if (family_size == 1) {
+        int family = arg->families[0];
+        inetsock->remote.res = rsock_addrinfo(
+            inetsock->remote.host,
+            inetsock->remote.serv,
+            family,
+            SOCK_STREAM,
+            0
+        );
+
+        if (family == AF_INET6) {
+            resolution_store.v6.ai = inetsock->remote.res->ai;
+            resolution_store.v6.finished = true;
+            resolution_store.v4.finished = true;
+        } else if (family == AF_INET) {
+            resolution_store.v4.ai = inetsock->remote.res->ai;
+            resolution_store.v4.finished = true;
+            resolution_store.v6.finished = true;
+        }
+        resolution_store.is_all_finised = true;
+        // TODO
         // hostname_resolution_notifier = nil
         // user_specified_resolv_timeout_at = nil
     } else {
