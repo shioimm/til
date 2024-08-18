@@ -68,8 +68,6 @@ wait_happy_eyeballs_fds(void *ptr)
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
-    if (!ptr) return;
-
     struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
 
     rb_nativethread_lock_lock(arg->lock);
@@ -362,7 +360,8 @@ init_inetsock_internal_happy(VALUE v)
     // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
     int family_size = arg->families_size;
 
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
+    rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
     char resolved_type[2];
     ssize_t resolved_type_size;
     int wait_resolution_pipe;
@@ -439,13 +438,11 @@ init_inetsock_internal_happy(VALUE v)
         wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
         notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
 
-        getaddrinfo_shared = arg->getaddrinfo_shared;
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = family_size + 1;
         getaddrinfo_shared->notify = notify_resolution_pipe;
         getaddrinfo_shared->wait = wait_resolution_pipe;
-        rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
         getaddrinfo_shared->connecting_fds = arg->connecting_fds;
         getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
 
@@ -805,7 +802,6 @@ inetsock_cleanup_happy(VALUE v)
     if (inetsock_resource->fd >= 0) {
         close(inetsock_resource->fd);
     }
-    if (arg->family_size == 1) return Qnil;
 
     int shared_need_free = 0;
     int need_free[2] = { 0, 0 };
