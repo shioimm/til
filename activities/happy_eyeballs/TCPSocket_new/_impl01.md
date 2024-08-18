@@ -908,6 +908,12 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.families = resolving_families;
             inetsock_happy_resource.family_size = resolving_family_size;
 
+            // TODO あとでよく考える
+            // inetsock_happy_resource.family_size > 1の場合だけ初期化するようにしたかったが、
+            // local_host/local_portあり・なしで連続で呼び出す際もこの関数が一回しか呼ばれていないっぽく
+            // resolving_family_sizeが正しく設定できずSEGVしたりai_familyの値がおかしくなったりしている
+            // init_inetsock_internal_happyの中で初期化できると良い?
+            // そもそもここでresolving_familiesを特定しない方が良い?
             inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
             if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
 
