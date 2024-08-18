@@ -68,6 +68,8 @@ wait_happy_eyeballs_fds(void *ptr)
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
+    if (!ptr) return;
+
     struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
 
     rb_nativethread_lock_lock(arg->lock);
@@ -360,12 +362,10 @@ init_inetsock_internal_happy(VALUE v)
     // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
     int family_size = arg->families_size;
 
-    pthread_t threads[family_size];
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int wait_resolution_pipe, notify_resolution_pipe;
-    int pipefd[2];
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
+    int wait_resolution_pipe;
 
     fd_set readfds, writefds;
     FD_ZERO(&readfds);
@@ -432,6 +432,9 @@ init_inetsock_internal_happy(VALUE v)
         // hostname_resolution_notifier = nil
         // user_specified_resolv_timeout_at = nil
     } else {
+        pthread_t threads[family_size];
+        int notify_resolution_pipe;
+        int pipefd[2];
         pipe(pipefd);
         wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
         notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
