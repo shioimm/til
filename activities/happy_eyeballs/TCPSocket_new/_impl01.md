@@ -360,12 +360,11 @@ init_inetsock_internal_happy(VALUE v)
     // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
     int family_size = arg->families_size;
 
-    pthread_t threads[family_size];
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
+    rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int wait_resolution_pipe, notify_resolution_pipe;
-    int pipefd[2];
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
+    int wait_resolution_pipe;
 
     fd_set readfds, writefds;
     FD_ZERO(&readfds);
@@ -432,17 +431,18 @@ init_inetsock_internal_happy(VALUE v)
         // hostname_resolution_notifier = nil
         // user_specified_resolv_timeout_at = nil
     } else {
+        pthread_t threads[family_size];
+        int notify_resolution_pipe;
+        int pipefd[2];
         pipe(pipefd);
         wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
         notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
 
-        getaddrinfo_shared = arg->getaddrinfo_shared;
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = family_size + 1;
         getaddrinfo_shared->notify = notify_resolution_pipe;
         getaddrinfo_shared->wait = wait_resolution_pipe;
-        rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
         getaddrinfo_shared->connecting_fds = arg->connecting_fds;
         getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
 
@@ -802,7 +802,6 @@ inetsock_cleanup_happy(VALUE v)
     if (inetsock_resource->fd >= 0) {
         close(inetsock_resource->fd);
     }
-    if (arg->family_size == 1) return Qnil;
 
     int shared_need_free = 0;
     int need_free[2] = { 0, 0 };
@@ -909,6 +908,12 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.families = resolving_families;
             inetsock_happy_resource.family_size = resolving_family_size;
 
+            // TODO あとでよく考える
+            // inetsock_happy_resource.family_size > 1の場合だけ初期化するようにしたかったが、
+            // local_host/local_portあり・なしで連続で呼び出す際もこの関数が一回しか呼ばれていないっぽく
+            // resolving_family_sizeが正しく設定できずSEGVしたりai_familyの値がおかしくなったりしている
+            // init_inetsock_internal_happyの中で初期化できると良い?
+            // そもそもここでresolving_familiesを特定しない方が良い?
             inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
             if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
 
