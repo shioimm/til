@@ -427,9 +427,6 @@ init_inetsock_internal_happy(VALUE v)
             resolution_store.v6.finished = true;
         }
         resolution_store.is_all_finised = true;
-        // TODO
-        // hostname_resolution_notifier = nil
-        // user_specified_resolv_timeout_at = nil
     } else {
         pthread_t threads[family_size];
         int notify_resolution_pipe;
