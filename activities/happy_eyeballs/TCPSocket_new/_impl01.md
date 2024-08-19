@@ -51,7 +51,7 @@ allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remo
 struct wait_happy_eyeballs_fds_arg
 {
     int status, nfds;
-    fd_set readfds, writefds;
+    fd_set *readfds, *writefds;
     struct timeval *delay;
 };
 
@@ -60,7 +60,7 @@ wait_happy_eyeballs_fds(void *ptr)
 {
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
-    status = select(arg->nfds, &arg->readfds, &arg->writefds, NULL, arg->delay);
+    status = select(arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
     arg->status = status;
     return 0;
 }
@@ -366,15 +366,15 @@ init_inetsock_internal_happy(VALUE v)
     ssize_t resolved_type_size;
     int hostname_resolution_waiter;
 
-    fd_set readfds, writefds;
-    FD_ZERO(&readfds);
-    FD_ZERO(&writefds);
+    fd_set *readfds, *writefds;
+    fd_set rfds, wfds;
+    writefds = &wfds;
+    FD_ZERO(writefds);
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
-    wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
     wait_arg.nfds = 0;
 
@@ -428,6 +428,10 @@ init_inetsock_internal_happy(VALUE v)
         }
         resolution_store.is_all_finised = true;
     } else {
+        readfds = &rfds;
+        FD_ZERO(readfds);
+        wait_arg.readfds = readfds
+
         pthread_t threads[family_size];
         int hostname_resolution_notifier;
         int pipefd[2];
@@ -648,9 +652,9 @@ init_inetsock_internal_happy(VALUE v)
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
 
         // TODO fdsをまとめて初期化できるようにしたい
-        wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+        wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
-            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, &wait_arg.readfds);
+            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
         }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
@@ -711,8 +715,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (resolution_store.v4.finished) {
                         if (resolution_store.v6.finished) {
                             if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                            // TODO
-                            // hostname_resolution_notifier = nil
+                            wait_arg.readfds = NULL;
                             resolution_delay_expires_at = NULL;
                             user_specified_resolv_timeout_at = NULL;
                             resolution_store.is_all_finised = true;
@@ -725,7 +728,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
-                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
                     inetsock->fd = fd;
