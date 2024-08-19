@@ -51,7 +51,7 @@ allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remo
 struct wait_happy_eyeballs_fds_arg
 {
     int status, nfds;
-    fd_set readfds, writefds;
+    fd_set *readfds, *writefds;
     struct timeval *delay;
 };
 
@@ -60,7 +60,7 @@ wait_happy_eyeballs_fds(void *ptr)
 {
     struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
     int status;
-    status = select(arg->nfds, &arg->readfds, &arg->writefds, NULL, arg->delay);
+    status = select(arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
     arg->status = status;
     return 0;
 }
@@ -364,17 +364,17 @@ init_inetsock_internal_happy(VALUE v)
     rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int wait_resolution_pipe;
+    int hostname_resolution_waiter;
 
-    fd_set readfds, writefds;
-    FD_ZERO(&readfds);
-    FD_ZERO(&writefds);
+    fd_set *readfds, *writefds;
+    fd_set rfds, wfds;
+    writefds = &wfds;
+    FD_ZERO(writefds);
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
-    wait_arg.readfds = readfds;
     wait_arg.writefds = writefds;
     wait_arg.nfds = 0;
 
@@ -427,22 +427,23 @@ init_inetsock_internal_happy(VALUE v)
             resolution_store.v6.finished = true;
         }
         resolution_store.is_all_finised = true;
-        // TODO
-        // hostname_resolution_notifier = nil
-        // user_specified_resolv_timeout_at = nil
     } else {
+        readfds = &rfds;
+        FD_ZERO(readfds);
+        wait_arg.readfds = readfds
+
         pthread_t threads[family_size];
-        int notify_resolution_pipe;
+        int hostname_resolution_notifier;
         int pipefd[2];
         pipe(pipefd);
-        wait_resolution_pipe = pipefd[IPV6_ENTRY_POS];
-        notify_resolution_pipe = pipefd[IPV4_ENTRY_POS];
+        hostname_resolution_waiter = pipefd[IPV6_ENTRY_POS];
+        hostname_resolution_notifier = pipefd[IPV4_ENTRY_POS];
 
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = family_size + 1;
-        getaddrinfo_shared->notify = notify_resolution_pipe;
-        getaddrinfo_shared->wait = wait_resolution_pipe;
+        getaddrinfo_shared->notify = hostname_resolution_notifier;
+        getaddrinfo_shared->wait = hostname_resolution_waiter;
         getaddrinfo_shared->connecting_fds = arg->connecting_fds;
         getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
 
@@ -651,9 +652,9 @@ init_inetsock_internal_happy(VALUE v)
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
 
         // TODO fdsをまとめて初期化できるようにしたい
-        wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+        wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
-            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, wait_resolution_pipe, &wait_arg.readfds);
+            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
         }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
@@ -672,10 +673,10 @@ init_inetsock_internal_happy(VALUE v)
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
         if (status > 0) {
-            if (!resolution_store.is_all_finised && FD_ISSET(wait_resolution_pipe, &wait_arg.readfds)) { // 名前解決できた
+            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, &wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
                 // TODO この方法で良いのか要検討
-                resolved_type_size = read(wait_resolution_pipe, resolved_type, sizeof(resolved_type) - 1);
+                resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
                 if (resolved_type_size < 0) {
                     last_error = errno;
                     if (!any_addrinfos(&resolution_store) &&
@@ -714,8 +715,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (resolution_store.v4.finished) {
                         if (resolution_store.v6.finished) {
                             if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
-                            // TODO
-                            // hostname_resolution_notifier = nil
+                            wait_arg.readfds = NULL;
                             resolution_delay_expires_at = NULL;
                             user_specified_resolv_timeout_at = NULL;
                             resolution_store.is_all_finised = true;
@@ -728,7 +728,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
-                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, &wait_arg.writefds);
+                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
                     inetsock->fd = fd;
@@ -909,11 +909,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.family_size = resolving_family_size;
 
             // TODO あとでよく考える
-            // inetsock_happy_resource.family_size > 1の場合だけ初期化するようにしたかったが、
-            // local_host/local_portあり・なしで連続で呼び出す際もこの関数が一回しか呼ばれていないっぽく
-            // resolving_family_sizeが正しく設定できずSEGVしたりai_familyの値がおかしくなったりしている
-            // init_inetsock_internal_happyの中で初期化できると良い?
-            // そもそもここでresolving_familiesを特定しない方が良い?
+            // resolving_family_size == 1の場合はメモリアロケーションしたくない
+            // cancelledはinetsock_happy_resource自体に持たせておいて、
+            // resolving_family_size > 1の場合はgetaddrinfo_sharedにも持たせるようにしたらどうか
             inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
             if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
 
