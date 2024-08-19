@@ -5,7 +5,6 @@
 ```c
 // ext/socket/ipsocket.c
 
-// 追加
 #ifndef HAPPY_EYEBALLS_INIT_INETSOCK_IMPL
 #  if defined(HAVE_PTHREAD_CREATE) && defined(HAVE_PTHREAD_DETACH) && \
      !defined(__MINGW32__) && !defined(__MINGW64__) && \
@@ -137,7 +136,6 @@ struct inetsock_happy_arg
     int *connecting_fds;
 };
 
-// 追加 ----------------------
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -325,6 +323,7 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
                 errno = error;
                 close(fd);
                 fds[i] = -1;
+                break;
             }
         }
     }
@@ -358,7 +357,7 @@ init_inetsock_internal_happy(VALUE v)
     #endif
 
     // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
-    int family_size = arg->families_size;
+    int family_size = arg->family_size;
 
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
     rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
@@ -430,7 +429,7 @@ init_inetsock_internal_happy(VALUE v)
     } else {
         readfds = &rfds;
         FD_ZERO(readfds);
-        wait_arg.readfds = readfds
+        wait_arg.readfds = readfds;
 
         pthread_t threads[family_size];
         int hostname_resolution_notifier;
@@ -673,7 +672,7 @@ init_inetsock_internal_happy(VALUE v)
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
         if (status > 0) {
-            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, &wait_arg.readfds)) { // 名前解決できた
+            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
                 // TODO この方法で良いのか要検討
                 resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
