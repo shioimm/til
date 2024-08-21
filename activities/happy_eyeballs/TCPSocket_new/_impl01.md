@@ -384,7 +384,6 @@ init_inetsock_internal_happy(VALUE v)
     resolution_store.v4.finished = false;
 
     int last_family = 0;
-    struct addrinfo *tmp_ai;
 
     int connecting_fds_size = arg->connecting_fds_size;
     int initial_capacity = 10;
@@ -507,9 +506,8 @@ init_inetsock_internal_happy(VALUE v)
             !resolution_delay_expires_at &&
             !connection_attempt_delay_expires_at) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
-            while ((tmp_ai = pick_addrinfo(&resolution_store, last_family))) {
+            while ((remote_ai = pick_addrinfo(&resolution_store, last_family))) {
                 inetsock->fd = fd = -1;
-                remote_ai = tmp_ai;
                 if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
 
                 #if !defined(INET6) && defined(AF_INET6)
