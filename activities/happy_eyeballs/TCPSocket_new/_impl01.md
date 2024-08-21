@@ -5,7 +5,6 @@
 ```c
 // ext/socket/ipsocket.c
 
-// 追加
 #ifndef HAPPY_EYEBALLS_INIT_INETSOCK_IMPL
 #  if defined(HAVE_PTHREAD_CREATE) && defined(HAVE_PTHREAD_DETACH) && \
      !defined(__MINGW32__) && !defined(__MINGW64__) && \
@@ -137,7 +136,6 @@ struct inetsock_happy_arg
     int *connecting_fds;
 };
 
-// 追加 ----------------------
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -325,6 +323,7 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
                 errno = error;
                 close(fd);
                 fds[i] = -1;
+                break;
             }
         }
     }
@@ -358,10 +357,9 @@ init_inetsock_internal_happy(VALUE v)
     #endif
 
     // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
-    int family_size = arg->families_size;
+    int family_size = arg->family_size;
 
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
-    rb_nativethread_lock_initialize(getaddrinfo_shared->lock);
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
     char resolved_type[2];
     ssize_t resolved_type_size;
     int hostname_resolution_waiter;
@@ -428,9 +426,25 @@ init_inetsock_internal_happy(VALUE v)
         }
         resolution_store.is_all_finised = true;
     } else {
+        arg->getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
+        if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+
+        arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
+        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
+        rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
+
+        for (int i = 0; i < arg->family_size; i++) {
+            arg->getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
+            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
+            arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
+        }
+
+        arg->getaddrinfo_shared->cancelled = false;
+        getaddrinfo_shared = arg->getaddrinfo_shared;
+
         readfds = &rfds;
         FD_ZERO(readfds);
-        wait_arg.readfds = readfds
+        wait_arg.readfds = readfds;
 
         pthread_t threads[family_size];
         int hostname_resolution_notifier;
@@ -673,7 +687,7 @@ init_inetsock_internal_happy(VALUE v)
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
         if (status > 0) {
-            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, &wait_arg.readfds)) { // 名前解決できた
+            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
                 // TODO この方法で良いのか要検討
                 resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
@@ -803,25 +817,28 @@ inetsock_cleanup_happy(VALUE v)
         close(inetsock_resource->fd);
     }
 
-    int shared_need_free = 0;
-    int need_free[2] = { 0, 0 };
-    rb_nativethread_lock_lock(getaddrinfo_shared->lock);
-    {
-        for (int i = 0; i < arg->family_size; i++) {
-            if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
-                need_free[i] = 1;
+    if (getaddrinfo_shared) {
+        int shared_need_free = 0;
+        int need_free[2] = { 0, 0 };
+
+        rb_nativethread_lock_lock(getaddrinfo_shared->lock);
+        {
+            for (int i = 0; i < arg->family_size; i++) {
+                if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
+                    need_free[i] = 1;
+                }
+            }
+            if (--(getaddrinfo_shared->refcount) == 0) {
+                shared_need_free = 1;
             }
         }
-        if (--(getaddrinfo_shared->refcount) == 0) {
-            shared_need_free = 1;
-        }
-    }
-    rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
+        rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
 
-    for (int i = 0; i < arg->family_size; i++) {
-        if (need_free[i]) free_rb_getaddrinfo_happy_entry(&arg->getaddrinfo_entries[i]);
+        for (int i = 0; i < arg->family_size; i++) {
+            if (need_free[i]) free_rb_getaddrinfo_happy_entry(&arg->getaddrinfo_entries[i]);
+        }
+        if (shared_need_free) free_rb_getaddrinfo_happy_shared(&getaddrinfo_shared);
     }
-    if (shared_need_free) free_rb_getaddrinfo_happy_shared(&getaddrinfo_shared);
 
     for (int i = 0; i < arg->connecting_fds_size; i++) {
         int connecting_fd = arg->connecting_fds[i];
@@ -902,29 +919,17 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.connected_fd = -1;
 
             int resolving_families[resolving_family_size];
-            for (int i = 0; resolving_family_size > i; i++) {
-                if (target_families[i] != 0) resolving_families[i] = target_families[i];
+            int resolving_family_index = 0;
+            for (int i = 0; 2 > i; i++) {
+                if (target_families[i] != 0) {
+                    resolving_families[resolving_family_index] = target_families[i];
+                    resolving_family_index++;
+                }
             }
             inetsock_happy_resource.families = resolving_families;
             inetsock_happy_resource.family_size = resolving_family_size;
 
-            // TODO あとでよく考える
-            // resolving_family_size == 1の場合はメモリアロケーションしたくない
-            // cancelledはinetsock_happy_resource自体に持たせておいて、
-            // resolving_family_size > 1の場合はgetaddrinfo_sharedにも持たせるようにしたらどうか
-            inetsock_happy_resource.getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
-            if (!inetsock_happy_resource.getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
-
-            inetsock_happy_resource.getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-            if (!inetsock_happy_resource.getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
-
-            for (int i = 0; i < inetsock_happy_resource.family_size; i++) {
-                inetsock_happy_resource.getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
-                if (!(inetsock_happy_resource.getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
-                inetsock_happy_resource.getaddrinfo_entries[i]->shared = inetsock_happy_resource.getaddrinfo_shared;
-            }
-
-            inetsock_happy_resource.getaddrinfo_shared->cancelled = false;
+            printf("[DEBUG] resolving_family_size %d\n", resolving_family_size);
 
             return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
                              inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
