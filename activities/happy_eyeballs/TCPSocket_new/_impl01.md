@@ -517,24 +517,26 @@ init_inetsock_internal_happy(VALUE v)
                 #endif
 
                 local_ai = NULL;
-                // TODO
-                // if local_addrinfos.any?
-                //   puts "[DEBUG] #{count}: local_addrinfos #{local_addrinfos}" if DEBUG
-                //   local_addrinfo = local_addrinfos.find { |lai| lai.afamily == addrinfo.afamily }
 
-                //   if local_addrinfo.nil? # Connecting addrinfoと同じアドレスファミリのLocal addrinfoがない
-                //     if resolution_store.any_addrinfos?
-                //       # Try other Addrinfo in next "while"
-                //       next
-                //     elsif connecting_sockets.any? || resolution_store.any_unresolved_family?
-                //       # Exit this "while" and wait for connections to be established or hostname resolution in next loop
-                //       # Or exit this "while" and wait for hostname resolution in next loop
-                //       break
-                //     else
-                //       raise SocketError.new 'no appropriate local address'
-                //     end
-                //   end
-                // end
+                if (inetsock->local.res) {
+                    for (local_ai = inetsock->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
+                        if (local_ai->ai_family == remote_ai->ai_family) break;
+                    }
+                    if (!local_ai) {
+                        if (any_addrinfos(&resolution_store)) {
+                            // Try other addrinfo in next loop
+                            continue;
+                        } else {
+                            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                                resolution_store.is_all_finised) {
+                                /* Use a different family local address if no choice, this
+                                 * will cause EAFNOSUPPORT. */
+                                last_error = EAFNOSUPPORT;
+                                rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                            }
+                        }
+                    }
+                }
 
                 if (debug) printf("[DEBUG] %d: ** Create socket **\n", count);
                 status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
