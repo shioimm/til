@@ -562,8 +562,28 @@ init_inetsock_internal_happy(VALUE v)
                 if (any_addrinfos(&resolution_store) ||
                     !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                     !resolution_store.is_all_finised) {
-                    // TODO
-                    // socket.bind(local_addrinfo) if local_addrinfo
+
+                    if (local_ai) {
+                        // TODO?
+                        // #if !defined(_WIN32) && !defined(__CYGWIN__)
+                        // #endif
+                        status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
+                        local_status = status;
+                        syscall = "bind(2)";
+
+                        if (status < 0) { // bind(2) に失敗
+                            last_error = errno;
+                            inetsock->fd = fd = -1;
+
+                            if (any_addrinfos(&resolution_store)) {
+                                // Try other addrinfo in next loop
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
                     socket_nonblock_set(fd);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
                     syscall = "connect(2)";
