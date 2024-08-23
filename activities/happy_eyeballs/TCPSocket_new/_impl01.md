@@ -594,12 +594,20 @@ init_inetsock_internal_happy(VALUE v)
                         user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
                     }
 
-                    // TODO local_addrinfoがある場合の接続
-                    // socket.bind(local_addrinfo)すればいいのかな?
-                    // (参考)
-                    // result = socket = local_addrinfo ?
-                    //   addrinfo.connect_from(local_addrinfo, timeout: connect_timeout) :
-                    //   addrinfo.connect(timeout: connect_timeout)
+                    if (local_ai) {
+                        // TODO?
+                        // #if !defined(_WIN32) && !defined(__CYGWIN__)
+                        // #endif
+                        status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
+                        local_status = status;
+                        syscall = "bind(2)";
+
+                        if (status < 0) { // bind(2) に失敗
+                            last_error = errno;
+                            inetsock->fd = fd = -1;
+                            break;
+                        }
+                    }
 
                     status = rsock_connect(
                         fd,
