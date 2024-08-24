@@ -511,7 +511,21 @@ init_inetsock_internal_happy(VALUE v)
                 if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
 
                 #if !defined(INET6) && defined(AF_INET6)
-                // TODO
+                if (remote_ai->ai_family == AF_INET6) {
+                    inetsock->fd = fd = -1;
+                    if (any_addrinfos(&resolution_store)) {
+                        continue;
+                    } else if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) || resolution_store.is_all_finised) {
+                        break;
+                    } else {
+                        if (local_status < 0)
+                        {
+                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        }
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    }
+                }
                 #endif
 
                 local_ai = NULL;
