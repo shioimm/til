@@ -98,8 +98,8 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
 {
     if (fds_size == 0) return 0;
 
-    int nfds = 0;
     FD_ZERO(set);
+    int nfds = 0;
 
     for (int i = 0; i < fds_size; i++) {
         int fd = fds[i];
@@ -366,7 +366,6 @@ init_inetsock_internal_happy(VALUE v)
     fd_set *writefds;
     fd_set wfds;
     writefds = &wfds;
-    FD_ZERO(writefds);
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     struct timeval *ends_at = NULL;
@@ -441,18 +440,17 @@ init_inetsock_internal_happy(VALUE v)
         arg->getaddrinfo_shared->cancelled = false;
         getaddrinfo_shared = arg->getaddrinfo_shared;
 
-        fd_set *readfds;
-        fd_set rfds;
-        readfds = &rfds;
-        FD_ZERO(readfds);
-        wait_arg.readfds = readfds;
-
         pthread_t threads[family_size];
         int hostname_resolution_notifier;
         int pipefd[2];
         pipe(pipefd);
         hostname_resolution_waiter = pipefd[0];
         hostname_resolution_notifier = pipefd[1];
+
+        fd_set *readfds;
+        fd_set rfds;
+        readfds = &rfds;
+        wait_arg.readfds = readfds;
 
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
@@ -653,6 +651,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     arg->connecting_fds[connecting_fds_size] = fd;
                     (connecting_fds_size)++;
+                    wait_arg.writefds = writefds;
 
                     set_timeout_tv(&connection_attempt_delay_strage, 250, now);
                     connection_attempt_delay_expires_at = &connection_attempt_delay_strage;
@@ -802,7 +801,9 @@ init_inetsock_internal_happy(VALUE v)
                     if (any_addrinfos(&resolution_store) ||
                         !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                         !resolution_store.is_all_finised) {
-                        if (!connecting_fds_empty(arg->connecting_fds, connecting_fds_size)) {
+                        if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size)) {
+                            wait_arg.writefds = NULL;
+                        } else {
                             user_specified_connect_timeout_at = NULL;
                         }
                     } else {
