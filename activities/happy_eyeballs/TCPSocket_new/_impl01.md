@@ -356,7 +356,6 @@ init_inetsock_internal_happy(VALUE v)
     remote_addrinfo_hints |= AI_ADDRCONFIG;
     #endif
 
-    // TODO アドレスファミリ数が1の場合は不要なリソースを初期化しないようにする
     int family_size = arg->family_size;
 
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
@@ -364,8 +363,8 @@ init_inetsock_internal_happy(VALUE v)
     ssize_t resolved_type_size;
     int hostname_resolution_waiter;
 
-    fd_set *readfds, *writefds;
-    fd_set rfds, wfds;
+    fd_set *writefds;
+    fd_set wfds;
     writefds = &wfds;
     FD_ZERO(writefds);
 
@@ -424,6 +423,7 @@ init_inetsock_internal_happy(VALUE v)
             resolution_store.v6.finished = true;
         }
         resolution_store.is_all_finised = true;
+        wait_arg.readfds = NULL;
     } else {
         arg->getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
         if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
@@ -441,6 +441,8 @@ init_inetsock_internal_happy(VALUE v)
         arg->getaddrinfo_shared->cancelled = false;
         getaddrinfo_shared = arg->getaddrinfo_shared;
 
+        fd_set *readfds;
+        fd_set rfds;
         readfds = &rfds;
         FD_ZERO(readfds);
         wait_arg.readfds = readfds;
