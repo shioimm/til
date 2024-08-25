@@ -373,7 +373,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
     wait_arg.writefds = writefds;
-    wait_arg.nfds = 0;
+    wait_arg.status = 0;
 
     struct hostname_resolution_store resolution_store;
     resolution_store.is_all_finised = false;
@@ -815,6 +815,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
                 break;
             }
+            status = wait_arg.status = 0;
         }
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
