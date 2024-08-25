@@ -451,8 +451,8 @@ init_inetsock_internal_happy(VALUE v)
         int hostname_resolution_notifier;
         int pipefd[2];
         pipe(pipefd);
-        hostname_resolution_waiter = pipefd[IPV6_ENTRY_POS];
-        hostname_resolution_notifier = pipefd[IPV4_ENTRY_POS];
+        hostname_resolution_waiter = pipefd[0];
+        hostname_resolution_notifier = pipefd[1];
 
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
