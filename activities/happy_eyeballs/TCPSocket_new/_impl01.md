@@ -483,7 +483,7 @@ init_inetsock_internal_happy(VALUE v)
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
                 last_error = EAI_AGAIN;
-                rb_syserr_fail(EAI_AGAIN, NULL); // TODO 要確認
+                rsock_raise_resolution_error("getaddrinfo", last_error);
             }
             pthread_detach(threads[i]);
         }
