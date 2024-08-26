@@ -132,7 +132,7 @@ struct inetsock_happy_arg
     rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
-    int connecting_fds_size, connecting_fds_capacity, connected_fd;
+    int connecting_fds_size, connecting_fds_capacity;
     int *connecting_fds;
 };
 
@@ -507,12 +507,11 @@ init_inetsock_internal_happy(VALUE v)
             !connection_attempt_delay_expires_at) {
             if (debug) printf("[DEBUG] %d: ** Select addrinfo **\n", count);
             while ((remote_ai = pick_addrinfo(&resolution_store, last_family))) {
-                inetsock->fd = fd = -1;
+                fd = -1;
                 if (debug) printf("[DEBUG] %d: remote_ai %p\n", count, remote_ai);
 
                 #if !defined(INET6) && defined(AF_INET6)
                 if (remote_ai->ai_family == AF_INET6) {
-                    inetsock->fd = fd = -1;
                     if (any_addrinfos(&resolution_store)) {
                         continue;
                     } else if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) || resolution_store.is_all_finised) {
@@ -558,7 +557,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
-                    inetsock->fd = fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
+                    fd = -1;
                     if (any_addrinfos(&resolution_store) ||
                         connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
                         !resolution_store.is_all_finised) {
@@ -587,7 +586,7 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (status < 0) { // bind(2) に失敗
                             last_error = errno;
-                            inetsock->fd = fd = -1;
+                            fd = -1;
 
                             if (any_addrinfos(&resolution_store)) {
                                 // Try other addrinfo in next loop
@@ -618,7 +617,7 @@ init_inetsock_internal_happy(VALUE v)
 
                         if (status < 0) { // bind(2) に失敗
                             last_error = errno;
-                            inetsock->fd = fd = -1;
+                            fd = -1;
                             break;
                         }
                     }
@@ -635,9 +634,6 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status == 0) { // 接続に成功
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                    inetsock->fd = fd;
-                    arg->connected_fd = inetsock->fd;
-                    inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
                     /* create new instance */
                     return rsock_init_sock(inetsock->sock, fd);
                 } else if (errno == EINPROGRESS) { // 接続中
@@ -788,15 +784,12 @@ init_inetsock_internal_happy(VALUE v)
                 fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                    inetsock->fd = fd;
-                    arg->connected_fd = inetsock->fd;
-                    inetsock->fd = -1; // TODO arg->connected_fdとinetsock->fdが必要な理由がよくわからない...
                     /* create new instance */
                     return rsock_init_sock(inetsock->sock, fd);
                 } else {
                     last_error = errno;
                     close(fd);
-                    inetsock->fd = fd = -1;
+                    fd = -1;
 
                     if (any_addrinfos(&resolution_store) ||
                         !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
@@ -962,7 +955,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.hostp = hostp;
             inetsock_happy_resource.portp = portp;
             inetsock_happy_resource.additional_flags = additional_flags;
-            inetsock_happy_resource.connected_fd = -1;
 
             int resolving_families[resolving_family_size];
             int resolving_family_index = 0;
