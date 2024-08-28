@@ -347,7 +347,7 @@ init_inetsock_internal_happy(VALUE v)
     VALUE resolv_timeout = inetsock->resolv_timeout;
     VALUE connect_timeout = inetsock->connect_timeout;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
-    int fd, status = 0, local_status = 0;
+    int fd = -1, connected_fd = -1, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
     int last_error = 0;
     const char *syscall = 0;
@@ -648,8 +648,8 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status == 0) { // 接続に成功
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                    /* create new instance */
-                    return rsock_init_sock(inetsock->sock, fd);
+                    connected_fd = fd;
+                    break;
                 } else if (errno == EINPROGRESS) { // 接続中
                     if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
                     if (current_capacity == connecting_fds_size) {
@@ -699,6 +699,8 @@ init_inetsock_internal_happy(VALUE v)
                 }
             }
         }
+
+        if (connected_fd >= 0) break;
 
         ends_at = select_expires_at(
             &resolution_store,
@@ -798,8 +800,8 @@ init_inetsock_internal_happy(VALUE v)
                 fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                    /* create new instance */
-                    return rsock_init_sock(inetsock->sock, fd);
+                    connected_fd = fd;
+                    break;
                 } else {
                     last_error = errno;
                     close(fd);
@@ -826,6 +828,8 @@ init_inetsock_internal_happy(VALUE v)
             status = wait_arg.status = 0;
         }
 
+        if (connected_fd >= 0) break;
+
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
             if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) && resolution_store.is_all_finised) {
@@ -843,12 +847,10 @@ init_inetsock_internal_happy(VALUE v)
                 rb_raise(etimedout_error, "user specified timeout");
             }
         }
-
         if (debug) puts("------------");
-        // TODO
-        // ループを脱出してここでreturnするようにしないと警告が出る...
-        // non-void function does not return a value in all control paths
     }
+    /* create new instance */
+    return rsock_init_sock(inetsock->sock, connected_fd);
 }
 
 static VALUE
