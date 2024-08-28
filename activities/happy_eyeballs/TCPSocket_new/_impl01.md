@@ -371,7 +371,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
-    wait_arg.writefds = writefds;
+    wait_arg.writefds = NULL;
     wait_arg.status = 0;
 
     struct hostname_resolution_store resolution_store;
@@ -724,12 +724,19 @@ init_inetsock_internal_happy(VALUE v)
         wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
             wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
+            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
         }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
         status = wait_arg.status;
         syscall = "select(2)";
+        if (debug) printf("[DEBUG] %d: select(2) returned status %d\n", count, status);
+        if (!resolution_store.is_all_finised && debug) {
+            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+        }
 
         now = current_clocktime_ts();
         if (is_timeout_tv(resolution_delay_expires_at, now)) {
@@ -741,7 +748,15 @@ init_inetsock_internal_happy(VALUE v)
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
+        if (!resolution_store.is_all_finised && debug) {
+            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+        }
         if (status > 0) {
+            if (!resolution_store.is_all_finised && debug) {
+                printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+                printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+            }
             if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
                 // TODO この方法で良いのか要検討
