@@ -347,7 +347,7 @@ init_inetsock_internal_happy(VALUE v)
     VALUE resolv_timeout = inetsock->resolv_timeout;
     VALUE connect_timeout = inetsock->connect_timeout;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
-    int fd, status = 0, local_status = 0;
+    int fd = -1, connected_fd = -1, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
     int last_error = 0;
     const char *syscall = 0;
@@ -371,7 +371,7 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
-    wait_arg.writefds = writefds;
+    wait_arg.writefds = NULL;
     wait_arg.status = 0;
 
     struct hostname_resolution_store resolution_store;
@@ -648,8 +648,8 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (status == 0) { // 接続に成功
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                    /* create new instance */
-                    return rsock_init_sock(inetsock->sock, fd);
+                    connected_fd = fd;
+                    break;
                 } else if (errno == EINPROGRESS) { // 接続中
                     if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
                     if (current_capacity == connecting_fds_size) {
@@ -700,6 +700,8 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
+        if (connected_fd >= 0) break;
+
         ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
@@ -722,12 +724,19 @@ init_inetsock_internal_happy(VALUE v)
         wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
             wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
+            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
         }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
         status = wait_arg.status;
         syscall = "select(2)";
+        if (debug) printf("[DEBUG] %d: select(2) returned status %d\n", count, status);
+        if (!resolution_store.is_all_finised && debug) {
+            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+        }
 
         now = current_clocktime_ts();
         if (is_timeout_tv(resolution_delay_expires_at, now)) {
@@ -739,7 +748,15 @@ init_inetsock_internal_happy(VALUE v)
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
+        if (!resolution_store.is_all_finised && debug) {
+            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+        }
         if (status > 0) {
+            if (!resolution_store.is_all_finised && debug) {
+                printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
+                printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+            }
             if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
                 // TODO この方法で良いのか要検討
@@ -798,8 +815,8 @@ init_inetsock_internal_happy(VALUE v)
                 fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
-                    /* create new instance */
-                    return rsock_init_sock(inetsock->sock, fd);
+                    connected_fd = fd;
+                    break;
                 } else {
                     last_error = errno;
                     close(fd);
@@ -826,6 +843,8 @@ init_inetsock_internal_happy(VALUE v)
             status = wait_arg.status = 0;
         }
 
+        if (connected_fd >= 0) break;
+
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
             if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) && resolution_store.is_all_finised) {
@@ -843,12 +862,10 @@ init_inetsock_internal_happy(VALUE v)
                 rb_raise(etimedout_error, "user specified timeout");
             }
         }
-
         if (debug) puts("------------");
-        // TODO
-        // ループを脱出してここでreturnするようにしないと警告が出る...
-        // non-void function does not return a value in all control paths
     }
+    /* create new instance */
+    return rsock_init_sock(inetsock->sock, connected_fd);
 }
 
 static VALUE
