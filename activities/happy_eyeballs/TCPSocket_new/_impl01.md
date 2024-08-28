@@ -577,9 +577,16 @@ init_inetsock_internal_happy(VALUE v)
                     !resolution_store.is_all_finised) {
 
                     if (local_ai) {
-                        // TODO?
-                        // #if !defined(_WIN32) && !defined(__CYGWIN__)
-                        // #endif
+                        #if !defined(_WIN32) && !defined(__CYGWIN__)
+                        status = 1;
+                        setsockopt(
+                            fd,
+                            SOL_SOCKET,
+                            SO_REUSEADDR,
+                            (char*)&status,
+                            (socklen_t)sizeof(status)
+                        );
+                        #endif
                         status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
                         local_status = status;
                         syscall = "bind(2)";
@@ -608,9 +615,16 @@ init_inetsock_internal_happy(VALUE v)
                     }
 
                     if (local_ai) {
-                        // TODO?
-                        // #if !defined(_WIN32) && !defined(__CYGWIN__)
-                        // #endif
+                        #if !defined(_WIN32) && !defined(__CYGWIN__)
+                        status = 1;
+                        setsockopt(
+                            fd,
+                            SOL_SOCKET,
+                            SO_REUSEADDR,
+                            (char*)&status,
+                            (socklen_t)sizeof(status)
+                        );
+                        #endif
                         status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
                         local_status = status;
                         syscall = "bind(2)";
