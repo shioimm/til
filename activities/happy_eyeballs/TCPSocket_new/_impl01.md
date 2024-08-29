@@ -837,7 +837,6 @@ init_inetsock_internal_happy(VALUE v)
                         rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                     }
                 }
-                break;
             }
             status = wait_arg.status = 0;
         }
