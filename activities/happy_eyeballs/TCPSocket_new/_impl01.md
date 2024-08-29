@@ -813,14 +813,13 @@ init_inetsock_internal_happy(VALUE v)
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
                 fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
+                if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
                 if (fd >= 0) {
-                    if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
+                    if (debug) printf("[DEBUG] %d: fd %d is connected successfully\n", count, fd);
                     connected_fd = fd;
                     break;
                 } else {
                     last_error = errno;
-                    close(fd);
-                    fd = -1;
 
                     if (any_addrinfos(&resolution_store) ||
                         !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
