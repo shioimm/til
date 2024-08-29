@@ -402,6 +402,27 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *user_specified_connect_timeout_at = NULL;
     struct timespec now = current_clocktime_ts();
 
+    /* For testing HEv2 */
+    ID test_delay_resolution_iv = rb_intern("@test_delay_resolution_settings");
+    VALUE klass = rb_path2class("TCPSocket");
+    int test_delay_resolution = false;
+    // TODO timespecを利用する
+    useconds_t test_delay_ts[family_size];
+    test_delay_us[0] = (useconds_t)0;
+    test_delay_us[1] = (useconds_t)0;
+
+    if (rb_ivar_defined(klass, test_delay_resolution_iv)) {
+        VALUE test_delay_resolution_settings = rb_ivar_get(klass, test_delay_resolution_iv);
+
+        if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
+            test_delay_resolution = true;
+            VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
+            VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
+            test_delay_ts[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
+            test_delay_ts[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
+        }
+    }
+
     if (family_size == 1) {
         int family = arg->families[0];
         inetsock->remote.res = rsock_addrinfo(
@@ -478,6 +499,11 @@ init_inetsock_internal_happy(VALUE v)
             arg->getaddrinfo_entries[i]->ai = NULL;
             arg->getaddrinfo_entries[i]->family = arg->families[i];
             arg->getaddrinfo_entries[i]->refcount = 2;
+
+            /* For testing HEv2 */
+            if (test_delay_resolution) {
+                // arg->getaddrinfo_entries[i]->sleepに時間をセットする
+            }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
                 last_error = EAI_AGAIN;
@@ -776,6 +802,7 @@ init_inetsock_internal_happy(VALUE v)
                     resolved_type[resolved_type_size] = '\0';
 
                     if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
+                        printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
                         resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                         resolution_store.v6.finished = true;
                         if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
@@ -786,6 +813,7 @@ init_inetsock_internal_happy(VALUE v)
                         }
                         if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
                     } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
+                        printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
                         resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                         resolution_store.v4.finished = true;
                         if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
@@ -798,7 +826,7 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (resolution_store.v4.finished) {
                         if (resolution_store.v6.finished) {
-                            if (debug) printf("[DEBUG] %d: All hostname resolution is finished\n", count);
+                            if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
                             wait_arg.readfds = NULL;
                             resolution_delay_expires_at = NULL;
                             user_specified_resolv_timeout_at = NULL;
