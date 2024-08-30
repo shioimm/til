@@ -304,6 +304,12 @@ socket_nonblock_set(int fd)
     return;
 }
 
+// TODO 全体的に考え直す
+// selectに渡す対象の集合から-1のものを除く必要がある
+// 対象のfdをconnecting_fdsから除外する(大変そう)か、
+// 直接connecting_fdsをselectに渡すのではなく、connecting_fdsから-1のものを除いた配列を毎回作ってselectに渡す必要あり
+// 後者の場合はconnecting_fds_sizeを正しく管理する必要がある
+// ここでconnecting_fds_sizeのポインタも受け取るようにする...?
 static int
 find_connected_socket(int *fds, int fds_size, fd_set *writefds)
 {
