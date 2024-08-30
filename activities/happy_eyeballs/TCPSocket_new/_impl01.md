@@ -1,5 +1,5 @@
 # 7/10 -
-- (参照先: `getaddrinfo/_impl00`)
+- (参照先: `getaddrinfo/_impl01`)
 - 状態管理をやめ、ifによる条件分岐をベースに処理を実行する
 
 ```c
@@ -413,7 +413,7 @@ init_inetsock_internal_happy(VALUE v)
     /* For testing HEv2 */
     int test_delay_resolution = false;
     // TODO timespecを利用する
-    useconds_t test_delay_ts[family_size];
+    useconds_t test_delay_us[family_size];
     test_delay_us[0] = (useconds_t)0;
     test_delay_us[1] = (useconds_t)0;
 
@@ -422,8 +422,8 @@ init_inetsock_internal_happy(VALUE v)
             test_delay_resolution = true;
             VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
             VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-            test_delay_ts[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
-            test_delay_ts[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
+            test_delay_us[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
+            test_delay_us[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
         }
     }
 
@@ -506,7 +506,7 @@ init_inetsock_internal_happy(VALUE v)
 
             /* For testing HEv2 */
             if (test_delay_resolution) {
-                // arg->getaddrinfo_entries[i]->sleepに時間をセットする
+                usleep(test_delay_us[i]);
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
