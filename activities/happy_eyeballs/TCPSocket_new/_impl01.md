@@ -707,6 +707,7 @@ init_inetsock_internal_happy(VALUE v)
                             printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
                         }
                     }
+                    break;
                 } else {
                     if (debug) printf("[DEBUG] %d: connection failed\n", count);
                     last_error = errno;
