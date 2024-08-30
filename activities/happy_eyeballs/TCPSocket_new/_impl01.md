@@ -677,7 +677,7 @@ init_inetsock_internal_happy(VALUE v)
                     connected_fd = fd;
                     break;
                 } else if (errno == EINPROGRESS) { // 接続中
-                    if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                    if (debug) printf("[DEBUG] %d: connection inprogress %d\n", count, fd);
                     if (current_capacity == connecting_fds_size) {
                         int new_capacity = current_capacity + initial_capacity;
                         arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
@@ -728,6 +728,9 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (connected_fd >= 0) break;
+
+        if (debug) printf("[DEBUG] %d: resolution_delay_expires_at %p\n", count, resolution_delay_expires_at);
+        if (debug) printf("[DEBUG] %d: connection_attempt_delay_expires_at %p\n", count, connection_attempt_delay_expires_at);
 
         ends_at = select_expires_at(
             &resolution_store,
@@ -848,6 +851,7 @@ init_inetsock_internal_happy(VALUE v)
                     connected_fd = fd;
                     break;
                 } else {
+                    if (debug) printf("[DEBUG] %d: fd %d is failed to connect\n", count, fd);
                     last_error = errno;
 
                     if (any_addrinfos(&resolution_store) ||
@@ -882,6 +886,8 @@ init_inetsock_internal_happy(VALUE v)
                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
 
+            if (debug) printf("[DEBUG] %d: user_specified_resolv_timeout_at %p\n", count, user_specified_resolv_timeout_at);
+            if (debug) printf("[DEBUG] %d: user_specified_connect_timeout_at %p\n", count, user_specified_connect_timeout_at);
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
                 (is_timeout_tv(user_specified_connect_timeout_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
@@ -889,6 +895,14 @@ init_inetsock_internal_happy(VALUE v)
                 rb_raise(etimedout_error, "user specified timeout");
             }
         }
+        if (debug && connecting_fds_size > 0) {
+            printf("[DEBUG] %d: connecting fds: ", count);
+            for(int i = 0; i < connecting_fds_size; i++) {
+                printf("arg->connecting_fds[%d]=%d, ", i, arg->connecting_fds[i]);
+            }
+            printf("\n");
+        }
+
         if (debug) puts("------------");
     }
     /* create new instance */
