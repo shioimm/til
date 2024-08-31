@@ -1,5 +1,5 @@
 # 7/10 -
-- (参照先: `getaddrinfo/_impl00`)
+- (参照先: `getaddrinfo/_impl01`)
 - 状態管理をやめ、ifによる条件分岐をベースに処理を実行する
 
 ```c
@@ -134,6 +134,7 @@ struct inetsock_happy_arg
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
     int connecting_fds_size, connecting_fds_capacity;
     int *connecting_fds;
+    VALUE test_delay_resolution_settings;
 };
 
 struct hostname_resolution_result
@@ -199,14 +200,14 @@ is_infinity(struct timeval tv)
 int
 is_timeout_tv(struct timeval *timeout_tv, struct timespec now) {
     if (!timeout_tv) return false;
+    if (timeout_tv->tv_sec == -1 && timeout_tv->tv_usec == -1) return false;
 
     struct timespec tv;
     tv.tv_sec = timeout_tv->tv_sec;
     tv.tv_nsec = timeout_tv->tv_usec * 1000;
 
-    if (tv.tv_sec > now.tv_sec) return true;
-    if (tv.tv_sec < now.tv_sec) return false;
-    if (tv.tv_nsec >= now.tv_nsec) return true;
+    if (tv.tv_sec < now.tv_sec) return true;
+    if (tv.tv_sec == now.tv_sec && tv.tv_nsec < now.tv_nsec) return true;
 
     return false;
 }
@@ -304,6 +305,12 @@ socket_nonblock_set(int fd)
     return;
 }
 
+// TODO 全体的に考え直す
+// selectに渡す対象の集合から-1のものを除く必要がある
+// 対象のfdをconnecting_fdsから除外する(大変そう)か、
+// 直接connecting_fdsをselectに渡すのではなく、connecting_fdsから-1のものを除いた配列を毎回作ってselectに渡す必要あり
+// 後者の場合はconnecting_fds_sizeを正しく管理する必要がある
+// ここでconnecting_fds_sizeのポインタも受け取るようにする...?
 static int
 find_connected_socket(int *fds, int fds_size, fd_set *writefds)
 {
@@ -346,6 +353,7 @@ init_inetsock_internal_happy(VALUE v)
     struct inetsock_arg *inetsock = arg->inetsock_resource;
     VALUE resolv_timeout = inetsock->resolv_timeout;
     VALUE connect_timeout = inetsock->connect_timeout;
+    VALUE test_delay_resolution_settings = arg->test_delay_resolution_settings;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
     int fd = -1, connected_fd = -1, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
@@ -403,23 +411,19 @@ init_inetsock_internal_happy(VALUE v)
     struct timespec now = current_clocktime_ts();
 
     /* For testing HEv2 */
-    ID test_delay_resolution_iv = rb_intern("@test_delay_resolution_settings");
-    VALUE klass = rb_path2class("TCPSocket");
     int test_delay_resolution = false;
     // TODO timespecを利用する
-    useconds_t test_delay_ts[family_size];
+    useconds_t test_delay_us[family_size];
     test_delay_us[0] = (useconds_t)0;
     test_delay_us[1] = (useconds_t)0;
 
-    if (rb_ivar_defined(klass, test_delay_resolution_iv)) {
-        VALUE test_delay_resolution_settings = rb_ivar_get(klass, test_delay_resolution_iv);
-
+    if (!NIL_P(test_delay_resolution_settings)) {
         if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
             test_delay_resolution = true;
             VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
             VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-            test_delay_ts[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
-            test_delay_ts[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
+            test_delay_us[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
+            test_delay_us[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
         }
     }
 
@@ -502,7 +506,7 @@ init_inetsock_internal_happy(VALUE v)
 
             /* For testing HEv2 */
             if (test_delay_resolution) {
-                // arg->getaddrinfo_entries[i]->sleepに時間をセットする
+                usleep(test_delay_us[i]);
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
@@ -677,7 +681,7 @@ init_inetsock_internal_happy(VALUE v)
                     connected_fd = fd;
                     break;
                 } else if (errno == EINPROGRESS) { // 接続中
-                    if (debug) printf("[DEBUG] %d: connection inprogress\n", count);
+                    if (debug) printf("[DEBUG] %d: connection inprogress %d\n", count, fd);
                     if (current_capacity == connecting_fds_size) {
                         int new_capacity = current_capacity + initial_capacity;
                         arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
@@ -707,6 +711,7 @@ init_inetsock_internal_happy(VALUE v)
                             printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
                         }
                     }
+                    break;
                 } else {
                     if (debug) printf("[DEBUG] %d: connection failed\n", count);
                     last_error = errno;
@@ -727,6 +732,9 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (connected_fd >= 0) break;
+
+        if (debug) printf("[DEBUG] %d: resolution_delay_expires_at %p\n", count, resolution_delay_expires_at);
+        if (debug) printf("[DEBUG] %d: connection_attempt_delay_expires_at %p\n", count, connection_attempt_delay_expires_at);
 
         ends_at = select_expires_at(
             &resolution_store,
@@ -847,6 +855,7 @@ init_inetsock_internal_happy(VALUE v)
                     connected_fd = fd;
                     break;
                 } else {
+                    if (debug) printf("[DEBUG] %d: fd %d is failed to connect\n", count, fd);
                     last_error = errno;
 
                     if (any_addrinfos(&resolution_store) ||
@@ -881,6 +890,8 @@ init_inetsock_internal_happy(VALUE v)
                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
 
+            if (debug) printf("[DEBUG] %d: user_specified_resolv_timeout_at %p\n", count, user_specified_resolv_timeout_at);
+            if (debug) printf("[DEBUG] %d: user_specified_connect_timeout_at %p\n", count, user_specified_connect_timeout_at);
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
                 (is_timeout_tv(user_specified_connect_timeout_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
@@ -888,6 +899,14 @@ init_inetsock_internal_happy(VALUE v)
                 rb_raise(etimedout_error, "user specified timeout");
             }
         }
+        if (debug && connecting_fds_size > 0) {
+            printf("[DEBUG] %d: connecting fds: ", count);
+            for(int i = 0; i < connecting_fds_size; i++) {
+                printf("arg->connecting_fds[%d]=%d, ", i, arg->connecting_fds[i]);
+            }
+            printf("\n");
+        }
+
         if (debug) puts("------------");
     }
     /* create new instance */
@@ -950,7 +969,8 @@ inetsock_cleanup_happy(VALUE v)
 VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
-                    VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback)
+                    VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback,
+                    VALUE test_delay_resolution_settings)
 {
     struct inetsock_arg arg;
     arg.sock = sock;
@@ -1023,7 +1043,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             }
             inetsock_happy_resource.families = resolving_families;
             inetsock_happy_resource.family_size = resolving_family_size;
-
+            inetsock_happy_resource.test_delay_resolution_settings = test_delay_resolution_settings;
             printf("[DEBUG] resolving_family_size %d\n", resolving_family_size);
 
             return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
@@ -1043,7 +1063,7 @@ static VALUE
 tcp_svr_init(int argc, VALUE *argv, VALUE sock)
 {
     // ...
-    return rsock_init_inetsock(sock, hostname, port, Qnil, Qnil, INET_SERVER, Qnil, Qnil, Qfalse); // 変更
+    return rsock_init_inetsock(sock, hostname, port, Qnil, Qnil, INET_SERVER, Qnil, Qnil, Qfalse, Qnil); // 変更
 }
 ```
 
@@ -1054,6 +1074,46 @@ static VALUE
 socks_init(VALUE sock, VALUE host, VALUE port)
 {
     // ...
-    return rsock_init_inetsock(sock, host, port, Qnil, Qnil, INET_SOCKS, Qnil, Qnil, Qfalse);
+    return rsock_init_inetsock(sock, hostname, port, Qnil, Qnil, INET_SERVER, Qnil, Qnil, Qfalse, Qnil); // 変更
+}
+```
+
+```c
+// ext/socket/tcpsocket.c
+static VALUE
+tcp_init(int argc, VALUE *argv, VALUE sock)
+{
+    VALUE remote_host, remote_serv;
+    VALUE local_host, local_serv;
+    VALUE opt;
+    static ID keyword_ids[4];
+    VALUE kwargs[4];
+    VALUE resolv_timeout = Qnil;
+    VALUE connect_timeout = Qnil;
+    VALUE fast_fallback = Qtrue; // 追加
+    VALUE test_delay_resolution_settings = Qnil; // 追加
+
+    if (!keyword_ids[0]) {
+        CONST_ID(keyword_ids[0], "resolv_timeout");
+        CONST_ID(keyword_ids[1], "connect_timeout");
+        CONST_ID(keyword_ids[2], "fast_fallback"); // 追加
+        CONST_ID(keyword_ids[3], "test_delay_resolution_settings"); // 追加
+    }
+
+    rb_scan_args(argc, argv, "22:", &remote_host, &remote_serv,
+                        &local_host, &local_serv, &opt);
+
+    if (!NIL_P(opt)) {
+        rb_get_kwargs(opt, keyword_ids, 0, 4, kwargs); // 変更
+        if (kwargs[0] != Qundef) { resolv_timeout = kwargs[0]; }
+        if (kwargs[1] != Qundef) { connect_timeout = kwargs[1]; }
+        if (kwargs[2] != Qundef) { fast_fallback = kwargs[2]; } // 追加
+        if (kwargs[3] != Qundef) { test_delay_resolution_settings = kwargs[3]; } // 追加
+    }
+
+    return rsock_init_inetsock(sock, remote_host, remote_serv,
+                               local_host, local_serv, INET_CLIENT,
+                               resolv_timeout, connect_timeout, fast_fallback,
+                               test_delay_resolution_settings); // 追加
 }
 ```

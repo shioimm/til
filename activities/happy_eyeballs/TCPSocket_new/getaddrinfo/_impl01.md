@@ -93,15 +93,16 @@ do_rb_getaddrinfo_happy(void *ptr)
 
 // 変更 -------------------
 VALUE rsock_init_inetsock(
-  VALUE sock,
-  VALUE remote_host,
-  VALUE remote_serv,
-  VALUE local_host,
-  VALUE local_serv,
-  int type,
-  VALUE resolv_timeout,
-  VALUE connect_timeout,
-  VALUE fast_fallback
+    VALUE sock,
+    VALUE remote_host,
+    VALUE remote_serv,
+    VALUE local_host,
+    VALUE local_serv,
+    int type,
+    VALUE resolv_timeout,
+    VALUE connect_timeout,
+    VALUE fast_fallback,
+    VALUE test_delay_resolution_settings
 );
 // -----------------------
 
