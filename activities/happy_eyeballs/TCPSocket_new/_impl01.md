@@ -20,6 +20,31 @@
 #  endif
 #endif
 
+int
+is_specified_ip_address(const char *hostname)
+{
+    struct in_addr ipv4addr;
+    struct in6_addr ipv6addr;
+
+    return (inet_pton(AF_INET6, hostname, &ipv6addr) == 1 ||
+            inet_pton(AF_INET, hostname, &ipv4addr) == 1);
+}
+
+struct inetsock_happy_arg
+{
+    struct inetsock_arg *inetsock_resource;
+    const char *hostp, *portp;
+    int *families;
+    int family_size;
+    int additional_flags;
+    rb_nativethread_lock_t *lock;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
+    int connecting_fds_size, connecting_fds_capacity;
+    int *connecting_fds;
+    VALUE test_delay_resolution_settings;
+};
+
 static struct rb_getaddrinfo_happy_shared *
 create_rb_getaddrinfo_happy_shared()
 {
@@ -77,14 +102,6 @@ cancel_happy_eyeballs_fds(void *ptr)
     rb_nativethread_lock_unlock(arg->lock);
 }
 
-struct timespec
-current_clocktime_ts()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts;
-}
-
 static int
 initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
 {
@@ -112,31 +129,6 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
     return nfds;
 }
 
-int
-is_specified_ip_address(const char *hostname)
-{
-    struct in_addr ipv4addr;
-    struct in6_addr ipv6addr;
-
-    return (inet_pton(AF_INET6, hostname, &ipv6addr) == 1 ||
-            inet_pton(AF_INET, hostname, &ipv4addr) == 1);
-}
-
-struct inetsock_happy_arg
-{
-    struct inetsock_arg *inetsock_resource;
-    const char *hostp, *portp;
-    int *families;
-    int family_size;
-    int additional_flags;
-    rb_nativethread_lock_t *lock;
-    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
-    int connecting_fds_size, connecting_fds_capacity;
-    int *connecting_fds;
-    VALUE test_delay_resolution_settings;
-};
-
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -155,6 +147,14 @@ int
 any_addrinfos(struct hostname_resolution_store *resolution_store)
 {
     return resolution_store->v6.ai || resolution_store->v4.ai;
+}
+
+struct timespec
+current_clocktime_ts()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts;
 }
 
 void
