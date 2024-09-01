@@ -114,8 +114,8 @@ char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
 struct rb_getaddrinfo_happy_shared {
-    int wait, notify, refcount, connecting_fds_size;
-    int *connecting_fds;
+    int wait, notify, refcount, connection_attempt_fds_size;
+    int *connection_attempt_fds;
     bool cancelled;
     char *node, *service;
     rb_nativethread_lock_t *lock;
