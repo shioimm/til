@@ -92,6 +92,8 @@ wait_happy_eyeballs_fds(void *ptr)
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
+    if (!ptr) return;
+
     struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
 
     rb_nativethread_lock_lock(arg->lock);
