@@ -707,6 +707,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
 
                     if (debug) {
+                        printf("[DEBUG] %d: connection attempt fd size %d\n", count, connection_attempt_fds_size);
                         for (int i = 0; i < connection_attempt_fds_size; i++) {
                             printf("[DEBUG] %d: connection attempt fd %d\n", count, arg->connection_attempt_fds[i]);
                         }
@@ -758,8 +759,6 @@ init_inetsock_internal_happy(VALUE v)
         wait_arg.nfds = initialize_write_fds(arg->connection_attempt_fds, connection_attempt_fds_size, wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
             wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
-            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
         }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
@@ -767,25 +766,23 @@ init_inetsock_internal_happy(VALUE v)
         status = wait_arg.status;
         syscall = "select(2)";
         if (debug) printf("[DEBUG] %d: select(2) returned status %d\n", count, status);
-        if (!resolution_store.is_all_finised && debug) {
-            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
-        }
 
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(resolution_delay_expires_at, now) %d\n", count, is_timeout_tv(resolution_delay_expires_at, now));
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(connection_attempt_delay_expires_at, now) %d\n", count, is_timeout_tv(connection_attempt_delay_expires_at, now));
         now = current_clocktime_ts();
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(resolution_delay_expires_at, now) %d\n", count, is_timeout_tv(resolution_delay_expires_at, now));
         if (is_timeout_tv(resolution_delay_expires_at, now)) {
             resolution_delay_expires_at = NULL;
         }
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(connection_attempt_delay_expires_at, now) %d\n", count, is_timeout_tv(connection_attempt_delay_expires_at, now));
         if (is_timeout_tv(connection_attempt_delay_expires_at, now)) {
+            printf("connection_attempt_delay_expires_at %p\n", connection_attempt_delay_expires_at);
             connection_attempt_delay_expires_at = NULL;
+            printf("connection_attempt_delay_expires_at %p\n", connection_attempt_delay_expires_at);
         }
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
-        if (!resolution_store.is_all_finised && debug) {
-            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
-        }
         if (status > 0) {
             if (!resolution_store.is_all_finised && debug) {
                 printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
