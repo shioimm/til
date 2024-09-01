@@ -20,6 +20,31 @@
 #  endif
 #endif
 
+int
+is_specified_ip_address(const char *hostname)
+{
+    struct in_addr ipv4addr;
+    struct in6_addr ipv6addr;
+
+    return (inet_pton(AF_INET6, hostname, &ipv6addr) == 1 ||
+            inet_pton(AF_INET, hostname, &ipv4addr) == 1);
+}
+
+struct inetsock_happy_arg
+{
+    struct inetsock_arg *inetsock_resource;
+    const char *hostp, *portp;
+    int *families;
+    int family_size;
+    int additional_flags;
+    rb_nativethread_lock_t *lock;
+    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
+    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
+    int connection_attempt_fds_size, connection_attempt_fds_capacity;
+    int *connection_attempt_fds;
+    VALUE test_delay_resolution_settings;
+};
+
 static struct rb_getaddrinfo_happy_shared *
 create_rb_getaddrinfo_happy_shared()
 {
@@ -67,6 +92,8 @@ wait_happy_eyeballs_fds(void *ptr)
 static void
 cancel_happy_eyeballs_fds(void *ptr)
 {
+    if (!ptr) return;
+
     struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
 
     rb_nativethread_lock_lock(arg->lock);
@@ -75,14 +102,6 @@ cancel_happy_eyeballs_fds(void *ptr)
         write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED));
     }
     rb_nativethread_lock_unlock(arg->lock);
-}
-
-struct timespec
-current_clocktime_ts()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts;
 }
 
 static int
@@ -112,31 +131,6 @@ initialize_write_fds(const int *fds, int fds_size, fd_set *set)
     return nfds;
 }
 
-int
-is_specified_ip_address(const char *hostname)
-{
-    struct in_addr ipv4addr;
-    struct in6_addr ipv6addr;
-
-    return (inet_pton(AF_INET6, hostname, &ipv6addr) == 1 ||
-            inet_pton(AF_INET, hostname, &ipv4addr) == 1);
-}
-
-struct inetsock_happy_arg
-{
-    struct inetsock_arg *inetsock_resource;
-    const char *hostp, *portp;
-    int *families;
-    int family_size;
-    int additional_flags;
-    rb_nativethread_lock_t *lock;
-    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
-    int connecting_fds_size, connecting_fds_capacity;
-    int *connecting_fds;
-    VALUE test_delay_resolution_settings;
-};
-
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -155,6 +149,14 @@ int
 any_addrinfos(struct hostname_resolution_store *resolution_store)
 {
     return resolution_store->v6.ai || resolution_store->v4.ai;
+}
+
+struct timespec
+current_clocktime_ts()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts;
 }
 
 void
@@ -305,12 +307,6 @@ socket_nonblock_set(int fd)
     return;
 }
 
-// TODO 全体的に考え直す
-// selectに渡す対象の集合から-1のものを除く必要がある
-// 対象のfdをconnecting_fdsから除外する(大変そう)か、
-// 直接connecting_fdsをselectに渡すのではなく、connecting_fdsから-1のものを除いた配列を毎回作ってselectに渡す必要あり
-// 後者の場合はconnecting_fds_sizeを正しく管理する必要がある
-// ここでconnecting_fds_sizeのポインタも受け取るようにする...?
 static int
 find_connected_socket(int *fds, int fds_size, fd_set *writefds)
 {
@@ -338,7 +334,7 @@ find_connected_socket(int *fds, int fds_size, fd_set *writefds)
 }
 
 static int
-connecting_fds_empty(const int *fds, int fds_size)
+no_in_progress_fds(const int *fds, int fds_size)
 {
     for (int i = 0; i < fds_size; i++) {
         if (fds[i] > 0) return false;
@@ -391,12 +387,12 @@ init_inetsock_internal_happy(VALUE v)
 
     int last_family = 0;
 
-    int connecting_fds_size = arg->connecting_fds_size;
+    int connection_attempt_fds_size = arg->connection_attempt_fds_size;
     int initial_capacity = 10;
     int current_capacity = initial_capacity;
-    arg->connecting_fds = (int *)malloc(initial_capacity * sizeof(int));
-    if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
-    arg->connecting_fds_capacity = initial_capacity;
+    arg->connection_attempt_fds = (int *)malloc(initial_capacity * sizeof(int));
+    if (!arg->connection_attempt_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+    arg->connection_attempt_fds_capacity = initial_capacity;
 
     // nil = null
     // Float::INFINITY = { -1, -1 }
@@ -482,8 +478,8 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->refcount = family_size + 1;
         getaddrinfo_shared->notify = hostname_resolution_notifier;
         getaddrinfo_shared->wait = hostname_resolution_waiter;
-        getaddrinfo_shared->connecting_fds = arg->connecting_fds;
-        getaddrinfo_shared->connecting_fds_size = arg->connecting_fds_size;
+        getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
+        getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
 
         /*
          * Maybe also accept a local address
@@ -544,7 +540,7 @@ init_inetsock_internal_happy(VALUE v)
                 if (remote_ai->ai_family == AF_INET6) {
                     if (any_addrinfos(&resolution_store)) {
                         continue;
-                    } else if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) || resolution_store.is_all_finised) {
+                    } else if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) || resolution_store.is_all_finised) {
                         break;
                     } else {
                         if (local_status < 0)
@@ -568,7 +564,7 @@ init_inetsock_internal_happy(VALUE v)
                             // Try other addrinfo in next loop
                             continue;
                         } else {
-                            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                            if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
                                 resolution_store.is_all_finised) {
                                 /* Use a different family local address if no choice, this
                                  * will cause EAFNOSUPPORT. */
@@ -589,7 +585,7 @@ init_inetsock_internal_happy(VALUE v)
                     last_error = errno;
                     fd = -1;
                     if (any_addrinfos(&resolution_store) ||
-                        connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                        no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                         !resolution_store.is_all_finised) {
                         break;
                     } else {
@@ -603,7 +599,7 @@ init_inetsock_internal_happy(VALUE v)
 
                 if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
                 if (any_addrinfos(&resolution_store) ||
-                    !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                    !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                     !resolution_store.is_all_finised) {
 
                     if (local_ai) {
@@ -682,15 +678,15 @@ init_inetsock_internal_happy(VALUE v)
                     break;
                 } else if (errno == EINPROGRESS) { // 接続中
                     if (debug) printf("[DEBUG] %d: connection inprogress %d\n", count, fd);
-                    if (current_capacity == connecting_fds_size) {
+                    if (current_capacity == connection_attempt_fds_size) {
                         int new_capacity = current_capacity + initial_capacity;
-                        arg->connecting_fds = (int*)realloc(arg->connecting_fds, new_capacity * sizeof(int));
-                        if (!arg->connecting_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+                        arg->connection_attempt_fds = (int*)realloc(arg->connection_attempt_fds, new_capacity * sizeof(int));
+                        if (!arg->connection_attempt_fds) rb_syserr_fail(EAI_MEMORY, NULL);
                         current_capacity = new_capacity;
-                        arg->connecting_fds_capacity = current_capacity;
+                        arg->connection_attempt_fds_capacity = current_capacity;
                     }
-                    arg->connecting_fds[connecting_fds_size] = fd;
-                    (connecting_fds_size)++;
+                    arg->connection_attempt_fds[connection_attempt_fds_size] = fd;
+                    (connection_attempt_fds_size)++;
                     wait_arg.writefds = writefds;
 
                     set_timeout_tv(&connection_attempt_delay_strage, 250, now);
@@ -707,8 +703,9 @@ init_inetsock_internal_happy(VALUE v)
                     }
 
                     if (debug) {
-                        for (int i = 0; i < connecting_fds_size; i++) {
-                            printf("[DEBUG] %d: connecting fd %d\n", count, arg->connecting_fds[i]);
+                        printf("[DEBUG] %d: connection attempt fd size %d\n", count, connection_attempt_fds_size);
+                        for (int i = 0; i < connection_attempt_fds_size; i++) {
+                            printf("[DEBUG] %d: connection attempt fd %d\n", count, arg->connection_attempt_fds[i]);
                         }
                     }
                     break;
@@ -719,7 +716,7 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (any_addrinfos(&resolution_store)) continue;
 
-                    if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                    if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
                         resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
@@ -735,7 +732,6 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: resolution_delay_expires_at %p\n", count, resolution_delay_expires_at);
         if (debug) printf("[DEBUG] %d: connection_attempt_delay_expires_at %p\n", count, connection_attempt_delay_expires_at);
-
         ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
@@ -755,11 +751,9 @@ init_inetsock_internal_happy(VALUE v)
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
 
         // TODO fdsをまとめて初期化できるようにしたい
-        wait_arg.nfds = initialize_write_fds(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
+        wait_arg.nfds = initialize_write_fds(arg->connection_attempt_fds, connection_attempt_fds_size, wait_arg.writefds);
         if (!resolution_store.is_all_finised) {
             wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
-            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
         }
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
@@ -767,25 +761,23 @@ init_inetsock_internal_happy(VALUE v)
         status = wait_arg.status;
         syscall = "select(2)";
         if (debug) printf("[DEBUG] %d: select(2) returned status %d\n", count, status);
-        if (!resolution_store.is_all_finised && debug) {
-            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
-        }
 
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(resolution_delay_expires_at, now) %d\n", count, is_timeout_tv(resolution_delay_expires_at, now));
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(connection_attempt_delay_expires_at, now) %d\n", count, is_timeout_tv(connection_attempt_delay_expires_at, now));
         now = current_clocktime_ts();
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(resolution_delay_expires_at, now) %d\n", count, is_timeout_tv(resolution_delay_expires_at, now));
         if (is_timeout_tv(resolution_delay_expires_at, now)) {
             resolution_delay_expires_at = NULL;
         }
+        if (debug) printf("[DEBUG] %d: is_timeout_tv(connection_attempt_delay_expires_at, now) %d\n", count, is_timeout_tv(connection_attempt_delay_expires_at, now));
         if (is_timeout_tv(connection_attempt_delay_expires_at, now)) {
+            printf("connection_attempt_delay_expires_at %p\n", connection_attempt_delay_expires_at);
             connection_attempt_delay_expires_at = NULL;
+            printf("connection_attempt_delay_expires_at %p\n", connection_attempt_delay_expires_at);
         }
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
-        if (!resolution_store.is_all_finised && debug) {
-            printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-            printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
-        }
         if (status > 0) {
             if (!resolution_store.is_all_finised && debug) {
                 printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
@@ -798,7 +790,7 @@ init_inetsock_internal_happy(VALUE v)
                 if (resolved_type_size < 0) {
                     last_error = errno;
                     if (!any_addrinfos(&resolution_store) &&
-                        connecting_fds_empty(arg->connecting_fds, connecting_fds_size) &&
+                        no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
                         resolution_store.is_all_finised) {
                         if (local_status < 0) {
                             // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
@@ -848,7 +840,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
-                fd = find_connected_socket(arg->connecting_fds, connecting_fds_size, wait_arg.writefds);
+                fd = find_connected_socket(arg->connection_attempt_fds, connection_attempt_fds_size, wait_arg.writefds);
                 if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
                 if (fd >= 0) {
                     if (debug) printf("[DEBUG] %d: fd %d is connected successfully\n", count, fd);
@@ -859,11 +851,9 @@ init_inetsock_internal_happy(VALUE v)
                     last_error = errno;
 
                     if (any_addrinfos(&resolution_store) ||
-                        !connecting_fds_empty(arg->connecting_fds, connecting_fds_size) ||
+                        !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                         !resolution_store.is_all_finised) {
-                        if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size)) {
-                            wait_arg.writefds = NULL;
-                        } else {
+                        if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
                             user_specified_connect_timeout_at = NULL;
                         }
                     } else {
@@ -882,7 +872,7 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
-            if (connecting_fds_empty(arg->connecting_fds, connecting_fds_size) && resolution_store.is_all_finised) {
+            if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) && resolution_store.is_all_finised) {
                 if (local_status < 0) {
                     // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
@@ -893,20 +883,19 @@ init_inetsock_internal_happy(VALUE v)
             if (debug) printf("[DEBUG] %d: user_specified_resolv_timeout_at %p\n", count, user_specified_resolv_timeout_at);
             if (debug) printf("[DEBUG] %d: user_specified_connect_timeout_at %p\n", count, user_specified_connect_timeout_at);
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
-                (is_timeout_tv(user_specified_connect_timeout_at, now) || connecting_fds_empty(arg->connecting_fds, connecting_fds_size))) {
+                (is_timeout_tv(user_specified_connect_timeout_at, now) || no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
                 VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
                 rb_raise(etimedout_error, "user specified timeout");
             }
         }
-        if (debug && connecting_fds_size > 0) {
-            printf("[DEBUG] %d: connecting fds: ", count);
-            for(int i = 0; i < connecting_fds_size; i++) {
-                printf("arg->connecting_fds[%d]=%d, ", i, arg->connecting_fds[i]);
+        if (debug && connection_attempt_fds_size > 0) {
+            printf("[DEBUG] %d: connection attempt fds: ", count);
+            for(int i = 0; i < connection_attempt_fds_size; i++) {
+                printf("arg->connection_attempt_fds[%d]=%d, ", i, arg->connection_attempt_fds[i]);
             }
             printf("\n");
         }
-
         if (debug) puts("------------");
     }
     /* create new instance */
@@ -955,13 +944,13 @@ inetsock_cleanup_happy(VALUE v)
         if (shared_need_free) free_rb_getaddrinfo_happy_shared(&getaddrinfo_shared);
     }
 
-    for (int i = 0; i < arg->connecting_fds_size; i++) {
-        int connecting_fd = arg->connecting_fds[i];
-        close_fd(connecting_fd);
+    for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
+        int connection_attempt_fd = arg->connection_attempt_fds[i];
+        close(connection_attempt_fd);
     }
 
-    free(arg->connecting_fds);
-    arg->connecting_fds = NULL;
+    free(arg->connection_attempt_fds);
+    arg->connection_attempt_fds = NULL;
 
     return Qnil;
 }
