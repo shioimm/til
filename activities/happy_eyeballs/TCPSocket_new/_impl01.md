@@ -738,7 +738,6 @@ init_inetsock_internal_happy(VALUE v)
 
         if (debug) printf("[DEBUG] %d: resolution_delay_expires_at %p\n", count, resolution_delay_expires_at);
         if (debug) printf("[DEBUG] %d: connection_attempt_delay_expires_at %p\n", count, connection_attempt_delay_expires_at);
-
         ends_at = select_expires_at(
             &resolution_store,
             resolution_delay_expires_at,
@@ -860,9 +859,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (any_addrinfos(&resolution_store) ||
                         !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                         !resolution_store.is_all_finised) {
-                        if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
-                            wait_arg.writefds = NULL;
-                        } else {
+                        if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
                             user_specified_connect_timeout_at = NULL;
                         }
                     } else {
@@ -905,7 +902,6 @@ init_inetsock_internal_happy(VALUE v)
             }
             printf("\n");
         }
-
         if (debug) puts("------------");
     }
     /* create new instance */
