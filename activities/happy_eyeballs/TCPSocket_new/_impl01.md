@@ -716,8 +716,8 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (any_addrinfos(&resolution_store)) continue;
 
-                    if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
-                        resolution_store.is_all_finised) break;
+                    if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                        !resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
                         // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
