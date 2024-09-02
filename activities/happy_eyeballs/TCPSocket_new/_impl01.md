@@ -662,12 +662,15 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
 
+                    struct timeval *timeout =
+                        (user_specified_connect_timeout_at && is_infinity(*user_specified_connect_timeout_at)) ?
+                        NULL : user_specified_connect_timeout_at;
                     status = rsock_connect(
                         fd,
                         remote_ai->ai_addr,
                         remote_ai->ai_addrlen,
                         0,
-                        user_specified_connect_timeout_at
+                        timeout
                     );
                     syscall = "connect(2)";
                 }
