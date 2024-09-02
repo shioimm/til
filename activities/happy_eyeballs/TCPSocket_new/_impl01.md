@@ -853,6 +853,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (any_addrinfos(&resolution_store) ||
                         !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                         !resolution_store.is_all_finised) {
+                        connection_attempt_delay_expires_at = NULL;
                         if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
                             user_specified_connect_timeout_at = NULL;
                         }
