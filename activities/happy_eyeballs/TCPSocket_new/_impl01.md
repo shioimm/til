@@ -406,23 +406,6 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *user_specified_connect_timeout_at = NULL;
     struct timespec now = current_clocktime_ts();
 
-    /* For testing HEv2 */
-    int test_delay_resolution = false;
-    // TODO timespecを利用する
-    useconds_t test_delay_us[family_size];
-    test_delay_us[0] = (useconds_t)0;
-    test_delay_us[1] = (useconds_t)0;
-
-    if (!NIL_P(test_delay_resolution_settings)) {
-        if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
-            test_delay_resolution = true;
-            VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
-            VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-            test_delay_us[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
-            test_delay_us[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
-        }
-    }
-
     if (family_size == 1) {
         int family = arg->families[0];
         inetsock->remote.res = rsock_addrinfo(
@@ -480,7 +463,23 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->wait = hostname_resolution_waiter;
         getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
         getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
+        getaddrinfo_shared->test_mode = false;
 
+        /* For testing HEv2 */
+        // TODO timespecを利用する
+        useconds_t test_delay_us[family_size];
+        test_delay_us[0] = (useconds_t)0;
+        test_delay_us[1] = (useconds_t)0;
+
+        if (!NIL_P(test_delay_resolution_settings)) {
+            if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
+                getaddrinfo_shared->test_mode = true;
+                VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
+                VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
+                test_delay_us[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
+                test_delay_us[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
+            }
+        }
         /*
          * Maybe also accept a local address
          */
@@ -502,7 +501,7 @@ init_inetsock_internal_happy(VALUE v)
 
             /* For testing HEv2 */
             if (test_delay_resolution) {
-                usleep(test_delay_us[i]);
+                arg->getaddrinfo_entries[i]->sleep = test_delay_us[i];
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {

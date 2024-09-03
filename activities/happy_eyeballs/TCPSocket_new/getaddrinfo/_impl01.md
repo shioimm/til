@@ -55,7 +55,9 @@ do_rb_getaddrinfo_happy(void *ptr)
        #endif
     }
 
-    if (entry->sleep) usleep(entry->sleep);
+    if (entry->shared->test_mode) {
+        usleep(entry->sleep);
+    }
 
     rb_nativethread_lock_lock(shared->lock);
     {
@@ -119,6 +121,7 @@ struct rb_getaddrinfo_happy_shared {
     bool cancelled;
     char *node, *service;
     rb_nativethread_lock_t *lock;
+    int test_mode;
 };
 
 struct rb_getaddrinfo_happy_entry
