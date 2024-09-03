@@ -104,33 +104,6 @@ cancel_happy_eyeballs_fds(void *ptr)
     rb_nativethread_lock_unlock(arg->lock);
 }
 
-static int
-initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
-{
-    FD_ZERO(set);
-    FD_SET(fd, set);
-    return (fd + 1) > initial_nfds ? fd + 1 : initial_nfds;
-}
-
-static int
-initialize_write_fds(const int *fds, int fds_size, fd_set *set)
-{
-    if (fds_size == 0) return 0;
-
-    FD_ZERO(set);
-    int nfds = 0;
-
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-        if (fd < 0) continue;
-        if (fd > nfds) nfds = fd;
-        FD_SET(fd, set);
-    }
-
-    if (nfds > 0) nfds++;
-    return nfds;
-}
-
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -751,12 +724,27 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
-
-        // TODO fdsをまとめて初期化できるようにしたい
-        wait_arg.nfds = initialize_write_fds(arg->connection_attempt_fds, connection_attempt_fds_size, wait_arg.writefds);
-        if (!resolution_store.is_all_finised) {
-            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
+        if (connection_attempt_fds_size) {
+            FD_ZERO(wait_arg.writefds);
+            int n = 0;
+            for (int i = 0; i < connection_attempt_fds_size; i++) {
+                int cfd = arg->connection_attempt_fds[i];
+                if (cfd < 0) continue;
+                if (cfd > n) n = cfd;
+                FD_SET(cfd, wait_arg.writefds);
+            }
+            if (n > 0) n++;
+            wait_arg.nfds = n;
         }
+
+        if (!resolution_store.is_all_finised) {
+            FD_ZERO(wait_arg.readfds);
+            FD_SET(hostname_resolution_waiter, wait_arg.readfds);
+            if ((hostname_resolution_waiter + 1) > wait_arg.nfds) {
+                wait_arg.nfds = hostname_resolution_waiter + 1;
+            }
+        }
+
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
