@@ -662,12 +662,15 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
 
+                    struct timeval *timeout =
+                        (user_specified_connect_timeout_at && is_infinity(*user_specified_connect_timeout_at)) ?
+                        NULL : user_specified_connect_timeout_at;
                     status = rsock_connect(
                         fd,
                         remote_ai->ai_addr,
                         remote_ai->ai_addrlen,
                         0,
-                        user_specified_connect_timeout_at
+                        timeout
                     );
                     syscall = "connect(2)";
                 }
@@ -716,8 +719,8 @@ init_inetsock_internal_happy(VALUE v)
 
                     if (any_addrinfos(&resolution_store)) continue;
 
-                    if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
-                        resolution_store.is_all_finised) break;
+                    if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                        !resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
                         // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
@@ -853,6 +856,7 @@ init_inetsock_internal_happy(VALUE v)
                     if (any_addrinfos(&resolution_store) ||
                         !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                         !resolution_store.is_all_finised) {
+                        connection_attempt_delay_expires_at = NULL;
                         if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
                             user_specified_connect_timeout_at = NULL;
                         }
