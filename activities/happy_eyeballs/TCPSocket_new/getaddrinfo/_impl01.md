@@ -56,7 +56,7 @@ do_rb_getaddrinfo_happy(void *ptr)
     }
 
     if (entry->shared->test_mode) {
-        usleep(entry->sleep);
+        nanosleep(entry->sleep, NULL);
     }
 
     rb_nativethread_lock_lock(shared->lock);

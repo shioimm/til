@@ -439,18 +439,30 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->test_mode = false;
 
         /* For testing HEv2 */
-        // TODO timespecを利用する
-        useconds_t test_delay_us[family_size];
-        test_delay_us[0] = (useconds_t)0;
-        test_delay_us[1] = (useconds_t)0;
+        struct timespec test_delay_ts[family_size];
+        test_delay_ts[0].tv_sec = 0;
+        test_delay_ts[0].tv_nsec = 0; // 500 * 1000000L;
+        test_delay_ts[1].tv_sec = 0;
+        test_delay_ts[1].tv_sec = 0;
 
         if (!NIL_P(test_delay_resolution_settings)) {
             if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
                 getaddrinfo_shared->test_mode = true;
                 VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
+                test_delay_ts[0].tv_sec = test_ipv6_delay_ms / 1000;
+                test_delay_ts[0].tv_nsec = (test_ipv6_delay_ms % 1000) * 1000000L;
+                if (test_delay_ts[0].tv_nsec >= 1000000000L) {
+                    test_delay_ts[0].tv_sec += test_delay_ts[0].tv_nsec / 1000000000L;
+                    test_delay_ts[0].tv_nsec = test_delay_ts[0].tv_nsec % 1000000000L;
+                }
+
                 VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-                test_delay_us[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
-                test_delay_us[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
+                test_delay_ts[1].tv_sec = test_ipv4_delay_ms / 1000;
+                test_delay_ts[1].tv_nsec = (test_ipv4_delay_ms % 1000) * 1000000L;
+                if (test_delay_ts[1].tv_nsec >= 1000000000L) {
+                    test_delay_ts[1].tv_sec += test_delay_ts[1].tv_nsec / 1000000000L;
+                    test_delay_ts[1].tv_nsec = test_delay_ts[1].tv_nsec % 1000000000L;
+                }
             }
         }
         /*
@@ -474,7 +486,7 @@ init_inetsock_internal_happy(VALUE v)
 
             /* For testing HEv2 */
             if (test_delay_resolution) {
-                arg->getaddrinfo_entries[i]->sleep = test_delay_us[i];
+                arg->getaddrinfo_entries[i]->sleep = &test_delay_ts[i];
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
