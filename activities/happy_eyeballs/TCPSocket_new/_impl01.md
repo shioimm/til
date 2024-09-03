@@ -104,33 +104,6 @@ cancel_happy_eyeballs_fds(void *ptr)
     rb_nativethread_lock_unlock(arg->lock);
 }
 
-static int
-initialize_read_fds(int initial_nfds, const int fd, fd_set *set)
-{
-    FD_ZERO(set);
-    FD_SET(fd, set);
-    return (fd + 1) > initial_nfds ? fd + 1 : initial_nfds;
-}
-
-static int
-initialize_write_fds(const int *fds, int fds_size, fd_set *set)
-{
-    if (fds_size == 0) return 0;
-
-    FD_ZERO(set);
-    int nfds = 0;
-
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-        if (fd < 0) continue;
-        if (fd > nfds) nfds = fd;
-        FD_SET(fd, set);
-    }
-
-    if (nfds > 0) nfds++;
-    return nfds;
-}
-
 struct hostname_resolution_result
 {
     struct addrinfo *ai;
@@ -229,12 +202,12 @@ select_expires_at(
     struct timeval *timeout = NULL;
 
     if (user_specified_resolv_timeout_at) {
-        if (is_infinity(*user_specified_resolv_timeout_at)) return user_specified_resolv_timeout_at;
+        if (is_infinity(*user_specified_resolv_timeout_at)) return NULL;
         timeout = user_specified_resolv_timeout_at;
     }
 
     if (user_specified_connect_timeout_at) {
-        if (is_infinity(*user_specified_connect_timeout_at)) return user_specified_connect_timeout_at;
+        if (is_infinity(*user_specified_connect_timeout_at)) return NULL;
         if (!timeout || timercmp(user_specified_connect_timeout_at, timeout, >)) {
             return user_specified_connect_timeout_at;
         }
@@ -406,23 +379,6 @@ init_inetsock_internal_happy(VALUE v)
     struct timeval *user_specified_connect_timeout_at = NULL;
     struct timespec now = current_clocktime_ts();
 
-    /* For testing HEv2 */
-    int test_delay_resolution = false;
-    // TODO timespecを利用する
-    useconds_t test_delay_us[family_size];
-    test_delay_us[0] = (useconds_t)0;
-    test_delay_us[1] = (useconds_t)0;
-
-    if (!NIL_P(test_delay_resolution_settings)) {
-        if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
-            test_delay_resolution = true;
-            VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
-            VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-            test_delay_us[0] = (useconds_t)(FIX2INT(test_ipv6_delay_ms) * 1000);
-            test_delay_us[1] = (useconds_t)(FIX2INT(test_ipv4_delay_ms) * 1000);
-        }
-    }
-
     if (family_size == 1) {
         int family = arg->families[0];
         inetsock->remote.res = rsock_addrinfo(
@@ -480,7 +436,35 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->wait = hostname_resolution_waiter;
         getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
         getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
+        getaddrinfo_shared->test_mode = false;
 
+        /* For testing HEv2 */
+        struct timespec test_delay_ts[family_size];
+        test_delay_ts[0].tv_sec = 0;
+        test_delay_ts[0].tv_nsec = 0; // 500 * 1000000L;
+        test_delay_ts[1].tv_sec = 0;
+        test_delay_ts[1].tv_sec = 0;
+
+        if (!NIL_P(test_delay_resolution_settings)) {
+            if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
+                getaddrinfo_shared->test_mode = true;
+                VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
+                test_delay_ts[0].tv_sec = test_ipv6_delay_ms / 1000;
+                test_delay_ts[0].tv_nsec = (test_ipv6_delay_ms % 1000) * 1000000L;
+                if (test_delay_ts[0].tv_nsec >= 1000000000L) {
+                    test_delay_ts[0].tv_sec += test_delay_ts[0].tv_nsec / 1000000000L;
+                    test_delay_ts[0].tv_nsec = test_delay_ts[0].tv_nsec % 1000000000L;
+                }
+
+                VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
+                test_delay_ts[1].tv_sec = test_ipv4_delay_ms / 1000;
+                test_delay_ts[1].tv_nsec = (test_ipv4_delay_ms % 1000) * 1000000L;
+                if (test_delay_ts[1].tv_nsec >= 1000000000L) {
+                    test_delay_ts[1].tv_sec += test_delay_ts[1].tv_nsec / 1000000000L;
+                    test_delay_ts[1].tv_nsec = test_delay_ts[1].tv_nsec % 1000000000L;
+                }
+            }
+        }
         /*
          * Maybe also accept a local address
          */
@@ -502,7 +486,7 @@ init_inetsock_internal_happy(VALUE v)
 
             /* For testing HEv2 */
             if (test_delay_resolution) {
-                usleep(test_delay_us[i]);
+                arg->getaddrinfo_entries[i]->sleep = &test_delay_ts[i];
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
@@ -742,7 +726,7 @@ init_inetsock_internal_happy(VALUE v)
             user_specified_resolv_timeout_at,
             user_specified_connect_timeout_at
         );
-        if (ends_at && !is_infinity(*ends_at)) {
+        if (ends_at) {
             if (debug) printf("[DEBUG] %d: ends_at->tv_sec %ld\n", count, ends_at->tv_sec);
             if (debug) printf("[DEBUG] %d: ends_at->tv_usec %d\n", count, ends_at->tv_usec);
             delay = tv_to_timeout(ends_at, now);
@@ -752,12 +736,27 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (debug) printf("[DEBUG] %d: ** Start to wait **\n", count);
-
-        // TODO fdsをまとめて初期化できるようにしたい
-        wait_arg.nfds = initialize_write_fds(arg->connection_attempt_fds, connection_attempt_fds_size, wait_arg.writefds);
-        if (!resolution_store.is_all_finised) {
-            wait_arg.nfds = initialize_read_fds(wait_arg.nfds, hostname_resolution_waiter, wait_arg.readfds);
+        if (connection_attempt_fds_size) {
+            FD_ZERO(wait_arg.writefds);
+            int n = 0;
+            for (int i = 0; i < connection_attempt_fds_size; i++) {
+                int cfd = arg->connection_attempt_fds[i];
+                if (cfd < 0) continue;
+                if (cfd > n) n = cfd;
+                FD_SET(cfd, wait_arg.writefds);
+            }
+            if (n > 0) n++;
+            wait_arg.nfds = n;
         }
+
+        if (!resolution_store.is_all_finised) {
+            FD_ZERO(wait_arg.readfds);
+            FD_SET(hostname_resolution_waiter, wait_arg.readfds);
+            if ((hostname_resolution_waiter + 1) > wait_arg.nfds) {
+                wait_arg.nfds = hostname_resolution_waiter + 1;
+            }
+        }
+
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
         // TODO 割り込み時の処理
