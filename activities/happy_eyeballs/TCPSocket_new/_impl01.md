@@ -229,12 +229,12 @@ select_expires_at(
     struct timeval *timeout = NULL;
 
     if (user_specified_resolv_timeout_at) {
-        if (is_infinity(*user_specified_resolv_timeout_at)) return user_specified_resolv_timeout_at;
+        if (is_infinity(*user_specified_resolv_timeout_at)) return NULL;
         timeout = user_specified_resolv_timeout_at;
     }
 
     if (user_specified_connect_timeout_at) {
-        if (is_infinity(*user_specified_connect_timeout_at)) return user_specified_connect_timeout_at;
+        if (is_infinity(*user_specified_connect_timeout_at)) return NULL;
         if (!timeout || timercmp(user_specified_connect_timeout_at, timeout, >)) {
             return user_specified_connect_timeout_at;
         }
@@ -741,7 +741,7 @@ init_inetsock_internal_happy(VALUE v)
             user_specified_resolv_timeout_at,
             user_specified_connect_timeout_at
         );
-        if (ends_at && !is_infinity(*ends_at)) {
+        if (ends_at) {
             if (debug) printf("[DEBUG] %d: ends_at->tv_sec %ld\n", count, ends_at->tv_sec);
             if (debug) printf("[DEBUG] %d: ends_at->tv_usec %d\n", count, ends_at->tv_usec);
             delay = tv_to_timeout(ends_at, now);
