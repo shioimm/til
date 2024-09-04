@@ -336,13 +336,13 @@ init_inetsock_internal_happy(VALUE v)
     int family_size = arg->family_size;
 
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
+    pthread_t threads[family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int hostname_resolution_waiter;
+    int hostname_resolution_waiter, hostname_resolution_notifier;
+    int pipefd[2];
 
-    fd_set *writefds;
-    fd_set wfds;
-    writefds = &wfds;
+    fd_set readfds, writefds;
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     struct timeval *ends_at = NULL;
@@ -417,19 +417,12 @@ init_inetsock_internal_happy(VALUE v)
         arg->getaddrinfo_shared->cancelled = false;
         getaddrinfo_shared = arg->getaddrinfo_shared;
 
-        pthread_t threads[family_size];
-        int hostname_resolution_notifier;
-        int pipefd[2];
         pipe(pipefd);
         hostname_resolution_waiter = pipefd[0];
         int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
         fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK);
         hostname_resolution_notifier = pipefd[1];
-
-        fd_set *readfds;
-        fd_set rfds;
-        readfds = &rfds;
-        wait_arg.readfds = readfds;
+        wait_arg.readfds = &readfds;
 
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
@@ -676,7 +669,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     arg->connection_attempt_fds[connection_attempt_fds_size] = fd;
                     (connection_attempt_fds_size)++;
-                    wait_arg.writefds = writefds;
+                    wait_arg.writefds = &writefds
 
                     set_timeout_tv(&connection_attempt_delay_strage, 250, now);
                     connection_attempt_delay_expires_at = &connection_attempt_delay_strage;
