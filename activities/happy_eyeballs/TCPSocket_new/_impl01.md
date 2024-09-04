@@ -336,13 +336,13 @@ init_inetsock_internal_happy(VALUE v)
     int family_size = arg->family_size;
 
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
+    pthread_t threads[family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int hostname_resolution_waiter;
+    int hostname_resolution_waiter, hostname_resolution_notifier;
+    int pipefd[2];
 
-    fd_set *writefds;
-    fd_set wfds;
-    writefds = &wfds;
+    fd_set readfds, writefds;
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
     struct timeval *ends_at = NULL;
@@ -417,17 +417,12 @@ init_inetsock_internal_happy(VALUE v)
         arg->getaddrinfo_shared->cancelled = false;
         getaddrinfo_shared = arg->getaddrinfo_shared;
 
-        pthread_t threads[family_size];
-        int hostname_resolution_notifier;
-        int pipefd[2];
         pipe(pipefd);
         hostname_resolution_waiter = pipefd[0];
+        int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
+        fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK);
         hostname_resolution_notifier = pipefd[1];
-
-        fd_set *readfds;
-        fd_set rfds;
-        readfds = &rfds;
-        wait_arg.readfds = readfds;
+        wait_arg.readfds = &readfds;
 
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
@@ -439,32 +434,38 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->test_mode = false;
 
         /* For testing HEv2 */
-        struct timespec test_delay_ts[family_size];
-        test_delay_ts[0].tv_sec = 0;
-        test_delay_ts[0].tv_nsec = 0; // 500 * 1000000L;
-        test_delay_ts[1].tv_sec = 0;
-        test_delay_ts[1].tv_sec = 0;
+        struct timespec *test_delay_ts;
 
-        if (!NIL_P(test_delay_resolution_settings)) {
-            if (RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
-                getaddrinfo_shared->test_mode = true;
-                VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
-                test_delay_ts[0].tv_sec = test_ipv6_delay_ms / 1000;
-                test_delay_ts[0].tv_nsec = (test_ipv6_delay_ms % 1000) * 1000000L;
-                if (test_delay_ts[0].tv_nsec >= 1000000000L) {
-                    test_delay_ts[0].tv_sec += test_delay_ts[0].tv_nsec / 1000000000L;
-                    test_delay_ts[0].tv_nsec = test_delay_ts[0].tv_nsec % 1000000000L;
-                }
+        if (!NIL_P(test_delay_resolution_settings) && RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
+            getaddrinfo_shared->test_mode = true;
+            test_delay_ts = malloc(sizeof(struct timespec));
 
-                VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-                test_delay_ts[1].tv_sec = test_ipv4_delay_ms / 1000;
-                test_delay_ts[1].tv_nsec = (test_ipv4_delay_ms % 1000) * 1000000L;
-                if (test_delay_ts[1].tv_nsec >= 1000000000L) {
-                    test_delay_ts[1].tv_sec += test_delay_ts[1].tv_nsec / 1000000000L;
-                    test_delay_ts[1].tv_nsec = test_delay_ts[1].tv_nsec % 1000000000L;
-                }
+            for (int i = 0; i < family_size; i++) {
+                test_delay_ts[i].tv_sec = 0;
+                test_delay_ts[i].tv_nsec = 0;
             }
+
+            VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
+            long ipv6_delay_ms = NUM2LONG(test_ipv6_delay_ms);
+            test_delay_ts[0].tv_sec = ipv6_delay_ms / 1000;
+            test_delay_ts[0].tv_nsec = (ipv6_delay_ms % 1000) * 1000000L;
+            if (test_delay_ts[0].tv_nsec >= 1000000000L) {
+                test_delay_ts[0].tv_sec += test_delay_ts[0].tv_nsec / 1000000000L;
+                test_delay_ts[0].tv_nsec = test_delay_ts[0].tv_nsec % 1000000000L;
+            }
+            rb_p(test_ipv6_delay_ms);
+
+            VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
+            long ipv4_delay_ms = NUM2LONG(test_ipv4_delay_ms);
+            test_delay_ts[1].tv_sec = ipv4_delay_ms / 1000;
+            test_delay_ts[1].tv_nsec = (ipv4_delay_ms % 1000) * 1000000L;
+            if (test_delay_ts[1].tv_nsec >= 1000000000L) {
+                test_delay_ts[1].tv_sec += test_delay_ts[1].tv_nsec / 1000000000L;
+                test_delay_ts[1].tv_nsec = test_delay_ts[1].tv_nsec % 1000000000L;
+            }
+            rb_p(test_ipv4_delay_ms);
         }
+
         /*
          * Maybe also accept a local address
          */
@@ -674,7 +675,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     arg->connection_attempt_fds[connection_attempt_fds_size] = fd;
                     (connection_attempt_fds_size)++;
-                    wait_arg.writefds = writefds;
+                    wait_arg.writefds = &writefds
 
                     set_timeout_tv(&connection_attempt_delay_strage, 250, now);
                     connection_attempt_delay_expires_at = &connection_attempt_delay_strage;
@@ -787,57 +788,62 @@ init_inetsock_internal_happy(VALUE v)
             }
             if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
-                // TODO この方法で良いのか要検討
-                resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
-                if (resolved_type_size < 0) {
-                    last_error = errno;
-                    if (!any_addrinfos(&resolution_store) &&
-                        no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
-                        resolution_store.is_all_finised) {
-                        if (local_status < 0) {
-                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                        }
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
-                    }
-                } else {
-                    resolved_type[resolved_type_size] = '\0';
+                while (1) {
+                    resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
+                    if (resolved_type_size > 0) {
+                        resolved_type[resolved_type_size] = '\0';
 
-                    if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
-                        printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
-                        resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
-                        resolution_store.v6.finished = true;
-                        if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
-                            last_error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
-                            resolution_store.v6.succeed = false;
-                        } else {
-                            resolution_store.v6.succeed = true;
+                        if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
+                            printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
+                            resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+                            resolution_store.v6.finished = true;
+                            if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
+                                last_error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                                resolution_store.v6.succeed = false;
+                            } else {
+                                resolution_store.v6.succeed = true;
+                            }
+                            if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                        } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
+                            printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
+                            resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+                            resolution_store.v4.finished = true;
+                            if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
+                                last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+                                resolution_store.v4.succeed = false;
+                            } else {
+                                resolution_store.v4.succeed = true;
+                            }
                         }
-                        if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
-                    } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
-                        printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
-                        resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
-                        resolution_store.v4.finished = true;
-                        if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
-                            last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-                            resolution_store.v4.succeed = false;
-                        } else {
-                            resolution_store.v4.succeed = true;
+                    } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                        if (debug) printf("[DEBUG] %d: ** hostname_resolution_waiter is now empty **\n", count);
+                        errno = 0;
+                        break;
+                    } else {
+                        if (debug) printf("[DEBUG] %d: ** Hostname Resolution may be failed **\n", count);
+                        last_error = errno;
+                        if (!any_addrinfos(&resolution_store) &&
+                            no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
+                            resolution_store.is_all_finised) {
+                            if (local_status < 0) {
+                                // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                                rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                            }
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
                     }
-
-                    if (resolution_store.v4.finished) {
-                        if (resolution_store.v6.finished) {
-                            if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
-                            wait_arg.readfds = NULL;
-                            resolution_delay_expires_at = NULL;
-                            user_specified_resolv_timeout_at = NULL;
-                            resolution_store.is_all_finised = true;
-                        } else if (resolution_store.v4.succeed) {
-                            if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
-                            set_timeout_tv(&resolution_delay_storage, 50, now);
-                            resolution_delay_expires_at = &resolution_delay_storage;
-                        }
+                }
+                if (resolution_store.v4.finished) {
+                    if (resolution_store.v6.finished) {
+                        if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
+                        wait_arg.readfds = NULL;
+                        resolution_delay_expires_at = NULL;
+                        user_specified_resolv_timeout_at = NULL;
+                        resolution_store.is_all_finised = true;
+                    } else if (resolution_store.v4.succeed) {
+                        if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
+                        set_timeout_tv(&resolution_delay_storage, 50, now);
+                        resolution_delay_expires_at = &resolution_delay_storage;
                     }
                 }
             } else {
