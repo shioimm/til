@@ -4,20 +4,14 @@
 // ext/socket/raddrinfo.c
 
 void
-close_fd(int fd)
-{
-    if (fd >= 0 && fcntl(fd, F_GETFL) != -1) close(fd);
-}
-
-void
 free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared)
 {
     free((*shared)->node);
     (*shared)->node = NULL;
     free((*shared)->service);
     (*shared)->service = NULL;
-    close_fd((*shared)->notify);
-    close_fd((*shared)->wait);
+    close((*shared)->notify);
+    close((*shared)->wait);
     rb_nativethread_lock_destroy((*shared)->lock);
     free(*shared);
     *shared = NULL;
@@ -132,7 +126,6 @@ struct rb_getaddrinfo_happy_entry
     struct rb_getaddrinfo_happy_shared *shared;
 };
 
-void close_fd(int fd);
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
 void * do_rb_getaddrinfo_happy(void *ptr);
 void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry);
