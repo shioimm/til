@@ -23,6 +23,8 @@ free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry)
     if ((*entry)->ai) {
         freeaddrinfo((*entry)->ai);
         (*entry)->ai = NULL;
+        free((*entry)->sleep);
+        (*entry)->sleep = NULL;
     }
     free(*entry);
     *entry = NULL;
