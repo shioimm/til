@@ -817,8 +817,10 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         if (debug) printf("[DEBUG] %d: ** hostname_resolution_waiter is now empty **\n", count);
+                        errno = 0;
                         break;
                     } else {
+                        if (debug) printf("[DEBUG] %d: ** Hostname Resolution may be failed **\n", count);
                         last_error = errno;
                         if (!any_addrinfos(&resolution_store) &&
                             no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
