@@ -422,6 +422,8 @@ init_inetsock_internal_happy(VALUE v)
         int pipefd[2];
         pipe(pipefd);
         hostname_resolution_waiter = pipefd[0];
+        int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
+        fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK);
         hostname_resolution_notifier = pipefd[1];
 
         fd_set *readfds;
@@ -787,57 +789,60 @@ init_inetsock_internal_happy(VALUE v)
             }
             if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
-                // TODO この方法で良いのか要検討
-                resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
-                if (resolved_type_size < 0) {
-                    last_error = errno;
-                    if (!any_addrinfos(&resolution_store) &&
-                        no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
-                        resolution_store.is_all_finised) {
-                        if (local_status < 0) {
-                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                        }
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
-                    }
-                } else {
-                    resolved_type[resolved_type_size] = '\0';
+                while (1) {
+                    resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
+                    if (resolved_type_size > 0) {
+                        resolved_type[resolved_type_size] = '\0';
 
-                    if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
-                        printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
-                        resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
-                        resolution_store.v6.finished = true;
-                        if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
-                            last_error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
-                            resolution_store.v6.succeed = false;
-                        } else {
-                            resolution_store.v6.succeed = true;
+                        if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
+                            printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
+                            resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+                            resolution_store.v6.finished = true;
+                            if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
+                                last_error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                                resolution_store.v6.succeed = false;
+                            } else {
+                                resolution_store.v6.succeed = true;
+                            }
+                            if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                        } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
+                            printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
+                            resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+                            resolution_store.v4.finished = true;
+                            if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
+                                last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+                                resolution_store.v4.succeed = false;
+                            } else {
+                                resolution_store.v4.succeed = true;
+                            }
                         }
-                        if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
-                    } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
-                        printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
-                        resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
-                        resolution_store.v4.finished = true;
-                        if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
-                            last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-                            resolution_store.v4.succeed = false;
-                        } else {
-                            resolution_store.v4.succeed = true;
+                    } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                        if (debug) printf("[DEBUG] %d: ** hostname_resolution_waiter is now empty **\n", count);
+                        break;
+                    } else {
+                        last_error = errno;
+                        if (!any_addrinfos(&resolution_store) &&
+                            no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
+                            resolution_store.is_all_finised) {
+                            if (local_status < 0) {
+                                // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                                rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                            }
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
                     }
-
-                    if (resolution_store.v4.finished) {
-                        if (resolution_store.v6.finished) {
-                            if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
-                            wait_arg.readfds = NULL;
-                            resolution_delay_expires_at = NULL;
-                            user_specified_resolv_timeout_at = NULL;
-                            resolution_store.is_all_finised = true;
-                        } else if (resolution_store.v4.succeed) {
-                            if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
-                            set_timeout_tv(&resolution_delay_storage, 50, now);
-                            resolution_delay_expires_at = &resolution_delay_storage;
-                        }
+                }
+                if (resolution_store.v4.finished) {
+                    if (resolution_store.v6.finished) {
+                        if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
+                        wait_arg.readfds = NULL;
+                        resolution_delay_expires_at = NULL;
+                        user_specified_resolv_timeout_at = NULL;
+                        resolution_store.is_all_finised = true;
+                    } else if (resolution_store.v4.succeed) {
+                        if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
+                        set_timeout_tv(&resolution_delay_storage, 50, now);
+                        resolution_delay_expires_at = &resolution_delay_storage;
                     }
                 }
             } else {
