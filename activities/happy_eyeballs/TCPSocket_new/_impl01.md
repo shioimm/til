@@ -816,7 +816,14 @@ init_inetsock_internal_happy(VALUE v)
                             } else {
                                 resolution_store.v6.succeed = true;
                             }
-                            if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                            if (resolution_store.v4.finished) {
+                                if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
+                                resolution_store.is_all_finised = true;
+                                wait_arg.readfds = NULL;
+                                resolution_delay_expires_at = NULL;
+                                user_specified_resolv_timeout_at = NULL;
+                                break;
+                            }
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
                             printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
                             resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
@@ -827,9 +834,18 @@ init_inetsock_internal_happy(VALUE v)
                             } else {
                                 resolution_store.v4.succeed = true;
                             }
+                            if (resolution_store.v6.finished) {
+                                if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
+                                resolution_store.is_all_finised = true;
+                                wait_arg.readfds = NULL;
+                                resolution_delay_expires_at = NULL;
+                                user_specified_resolv_timeout_at = NULL;
+                                break;
+                            }
                         }
                     } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                        // TODO 頻繁にresolution_storeが空になっている
+                        // TODO 頻繁にresolution_storeが空になっている。どの行が原因かどうかはわからない
+                        // Exec format error - select(2) for "localhost" port 54703 (Errno::ENOEXEC)
                         if (debug) printf("[DEBUG] %d: ** hostname_resolution_waiter is now empty **\n", count);
                         errno = 0;
                         break;
@@ -846,16 +862,8 @@ init_inetsock_internal_happy(VALUE v)
                             rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
                     }
-                }
 
-                if (resolution_store.v4.finished) {
-                    if (resolution_store.v6.finished) {
-                        if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
-                        wait_arg.readfds = NULL;
-                        resolution_delay_expires_at = NULL;
-                        user_specified_resolv_timeout_at = NULL;
-                        resolution_store.is_all_finised = true;
-                    } else if (resolution_store.v4.succeed) {
+                    if (!resolution_store.v6.finished && resolution_store.v4.succeed) {
                         if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
                         set_timeout_tv(&resolution_delay_storage, 50, now);
                         resolution_delay_expires_at = &resolution_delay_storage;
