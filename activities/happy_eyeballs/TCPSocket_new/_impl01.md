@@ -374,22 +374,6 @@ init_inetsock_internal_happy(VALUE v)
         resolution_store.is_all_finised = true;
         wait_arg.readfds = NULL;
     } else {
-        arg->getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
-        if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
-
-        arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
-        rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
-
-        for (int i = 0; i < arg->family_size; i++) {
-            arg->getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
-            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
-            arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
-        }
-
-        arg->getaddrinfo_shared->cancelled = false;
-        getaddrinfo_shared = arg->getaddrinfo_shared;
-
         pipe(pipefd);
         hostname_resolution_waiter = pipefd[0];
         int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
@@ -397,6 +381,15 @@ init_inetsock_internal_happy(VALUE v)
         hostname_resolution_notifier = pipefd[1];
         wait_arg.readfds = &readfds;
 
+        arg->getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
+        if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+
+        arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
+        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
+        rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
+
+        arg->getaddrinfo_shared->cancelled = false;
+        getaddrinfo_shared = arg->getaddrinfo_shared;
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = family_size + 1;
@@ -404,44 +397,16 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->wait = hostname_resolution_waiter;
         getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
         getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
-        getaddrinfo_shared->test_mode = false;
-
-        /* For testing HEv2 */
-        struct timespec *test_delay_ts;
-
-        if (!NIL_P(test_delay_resolution_settings) && RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
-            getaddrinfo_shared->test_mode = true;
-            test_delay_ts = malloc(sizeof(struct timespec));
-
-            for (int i = 0; i < family_size; i++) {
-                test_delay_ts[i].tv_sec = 0;
-                test_delay_ts[i].tv_nsec = 0;
-            }
-
-            VALUE test_ipv6_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv6")));
-            long ipv6_delay_ms = NUM2LONG(test_ipv6_delay_ms);
-            test_delay_ts[0].tv_sec = ipv6_delay_ms / 1000;
-            test_delay_ts[0].tv_nsec = (ipv6_delay_ms % 1000) * 1000000L;
-            if (test_delay_ts[0].tv_nsec >= 1000000000L) {
-                test_delay_ts[0].tv_sec += test_delay_ts[0].tv_nsec / 1000000000L;
-                test_delay_ts[0].tv_nsec = test_delay_ts[0].tv_nsec % 1000000000L;
-            }
-            rb_p(test_ipv6_delay_ms);
-
-            VALUE test_ipv4_delay_ms = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern("ipv4")));
-            long ipv4_delay_ms = NUM2LONG(test_ipv4_delay_ms);
-            test_delay_ts[1].tv_sec = ipv4_delay_ms / 1000;
-            test_delay_ts[1].tv_nsec = (ipv4_delay_ms % 1000) * 1000000L;
-            if (test_delay_ts[1].tv_nsec >= 1000000000L) {
-                test_delay_ts[1].tv_sec += test_delay_ts[1].tv_nsec / 1000000000L;
-                test_delay_ts[1].tv_nsec = test_delay_ts[1].tv_nsec % 1000000000L;
-            }
-            rb_p(test_ipv4_delay_ms);
-        }
 
         /*
          * Maybe also accept a local address
          */
+
+        for (int i = 0; i < arg->family_size; i++) {
+            arg->getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
+            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
+            arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
+        }
 
         struct addrinfo getaddrinfo_hints[family_size];
 
@@ -459,8 +424,12 @@ init_inetsock_internal_happy(VALUE v)
             arg->getaddrinfo_entries[i]->refcount = 2;
 
             /* For testing HEv2 */
-            if (getaddrinfo_shared->test_mode) {
-                arg->getaddrinfo_entries[i]->sleep = &test_delay_ts[i];
+            if (!NIL_P(test_delay_resolution_settings) && RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
+                long test_delay_ms = 0;
+                const char *family_sym = arg->families[i] == AF_INET6 ? "ipv6" : "ipv4";
+                VALUE test_delay_ms_value = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern(family_sym)));
+                if (!NIL_P(test_delay_ms_value)) test_delay_ms = NUM2LONG(test_delay_ms_value);
+                arg->getaddrinfo_entries[i]->sleep_ms = test_delay_ms;
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {

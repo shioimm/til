@@ -23,8 +23,6 @@ free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry)
     if ((*entry)->ai) {
         freeaddrinfo((*entry)->ai);
         (*entry)->ai = NULL;
-        free((*entry)->sleep);
-        (*entry)->sleep = NULL;
     }
     free(*entry);
     *entry = NULL;
@@ -38,10 +36,12 @@ do_rb_getaddrinfo_happy(void *ptr)
     struct rb_getaddrinfo_happy_shared *shared = entry->shared;
     int err = 0, need_free = 0, shared_need_free = 0;
 
-    err = numeric_getaddrinfo(shared->node, entry->shared->service, &entry->hints, &entry->ai);
+    err = numeric_getaddrinfo(shared->node, shared->service, &entry->hints, &entry->ai);
+
+    printf("do_rb_getaddrinfo_happy %d starts to getaddrinfo \n", entry->family);
 
     if (err != 0) {
-        err = getaddrinfo(shared->node, entry->shared->service, &entry->hints, &entry->ai);
+        err = getaddrinfo(shared->node, shared->service, &entry->hints, &entry->ai);
        #ifdef __linux__
        /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
         * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
@@ -50,9 +50,20 @@ do_rb_getaddrinfo_happy(void *ptr)
            err = EAI_NONAME;
        #endif
     }
+    printf("do_rb_getaddrinfo_happy %d finished to getaddrinfo\n", entry->family);
 
-    if (entry->shared->test_mode) {
-        nanosleep(entry->sleep, NULL);
+    /* For testing HEv2 */
+    if (entry->sleep_ms) {
+        struct timespec sleep_ts;
+        sleep_ts.tv_sec = entry->sleep_ms / 1000;
+        sleep_ts.tv_nsec = (entry->sleep_ms % 1000) * 1000000L;
+        if (sleep_ts.tv_nsec >= 1000000000L) {
+            sleep_ts.tv_sec += sleep_ts.tv_nsec / 1000000000L;
+            sleep_ts.tv_nsec = sleep_ts.tv_nsec % 1000000000L;
+        }
+        printf("do_rb_getaddrinfo_happy %d starts to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
+        // nanosleep(entry->sleep, NULL);
+        printf("do_rb_getaddrinfo_happy %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
     }
 
     rb_nativethread_lock_lock(shared->lock);
@@ -64,11 +75,13 @@ do_rb_getaddrinfo_happy(void *ptr)
                 entry->ai = NULL;
             }
         } else {
+            printf("do_rb_getaddrinfo_happy %d starts to write\n", entry->family);
             if (entry->family == AF_INET6) {
                 write(shared->notify, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
             } else if (entry->family == AF_INET) {
                 write(shared->notify, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
             }
+            printf("do_rb_getaddrinfo_happy %d finished to write\n", entry->family);
         }
         if (--(entry->refcount) == 0) need_free = 1;
         if (--(shared->refcount) == 0) shared_need_free = 1;
@@ -114,18 +127,18 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 struct rb_getaddrinfo_happy_shared {
     int wait, notify, refcount, connection_attempt_fds_size;
     int *connection_attempt_fds;
-    bool cancelled;
+    bool cancelled, stop;
     char *node, *service;
     rb_nativethread_lock_t *lock;
-    int test_mode;
 };
 
 struct rb_getaddrinfo_happy_entry
 {
-    int family, err, refcount, sleep;
+    int family, err, refcount;
     struct addrinfo hints;
     struct addrinfo *ai;
     struct rb_getaddrinfo_happy_shared *shared;
+    long sleep_ms;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
