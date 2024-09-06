@@ -550,90 +550,50 @@ init_inetsock_internal_happy(VALUE v)
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                 }
 
-                if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
-                if (any_addrinfos(&resolution_store) ||
-                    !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                    !resolution_store.is_all_finised) {
+                if (local_ai) {
+                    #if !defined(_WIN32) && !defined(__CYGWIN__)
+                    status = 1;
+                    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&status, (socklen_t)sizeof(status));
+                    #endif
+                    status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
+                    local_status = status;
+                    syscall = "bind(2)";
 
-                    if (local_ai) { // TODO local_aiとのbindまとめられそう
-                        #if !defined(_WIN32) && !defined(__CYGWIN__)
-                        status = 1;
-                        setsockopt(
-                            fd,
-                            SOL_SOCKET,
-                            SO_REUSEADDR,
-                            (char*)&status,
-                            (socklen_t)sizeof(status)
-                        );
-                        #endif
-                        status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
-                        local_status = status;
-                        syscall = "bind(2)";
+                    if (status < 0) { // bind(2) に失敗
+                        last_error = errno;
+                        fd = -1;
 
-                        if (status < 0) { // bind(2) に失敗
-                            last_error = errno;
-                            fd = -1;
+                        if (any_addrinfos(&resolution_store)) continue;
 
-                            if (any_addrinfos(&resolution_store)) continue;
+                        if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                            !resolution_store.is_all_finised) break;
 
-                            if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                                !resolution_store.is_all_finised) break;
-
-                            if (local_status < 0) {
-                               rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                            }
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                        if (local_status < 0) {
+                           rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                         }
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                     }
+                }
 
-                    socket_nonblock_set(fd);
-                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
-                    syscall = "connect(2)";
-                    last_family = remote_ai->ai_family;
-                } else {
+                if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
+                syscall = "connect(2)";
+
+                if (!any_addrinfos(&resolution_store) ||
+                    no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                    resolution_store.is_all_finised) {
                     if (!NIL_P(connect_timeout)) {
                         user_specified_connect_timeout_storage = rb_time_interval(connect_timeout);
                         user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
                     }
 
-                    if (local_ai) {
-                        #if !defined(_WIN32) && !defined(__CYGWIN__)
-                        status = 1;
-                        setsockopt(
-                            fd,
-                            SOL_SOCKET,
-                            SO_REUSEADDR,
-                            (char*)&status,
-                            (socklen_t)sizeof(status)
-                        );
-                        #endif
-                        status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
-                        local_status = status;
-                        syscall = "bind(2)";
-
-                        if (status < 0) { // bind(2) に失敗
-                            last_error = errno;
-                            fd = -1;
-
-                            if (local_status < 0) {
-                               rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                            }
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
-                        }
-                    }
-
                     struct timeval *timeout =
                         (user_specified_connect_timeout_at && is_infinity(*user_specified_connect_timeout_at)) ?
                         NULL : user_specified_connect_timeout_at;
-
-                    status = rsock_connect(
-                        fd,
-                        remote_ai->ai_addr,
-                        remote_ai->ai_addrlen,
-                        0,
-                        timeout
-                    );
-                    syscall = "connect(2)";
+                    status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, 0, timeout);
+                } else {
+                    socket_nonblock_set(fd);
+                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
+                    last_family = remote_ai->ai_family;
                 }
 
                 if (status == 0) { // 接続に成功
@@ -641,6 +601,7 @@ init_inetsock_internal_happy(VALUE v)
                     connected_fd = fd;
                     break;
                 }
+
                 if (errno == EINPROGRESS) { // 接続中
                     if (debug) printf("[DEBUG] %d: connection inprogress %d\n", count, fd);
                     if (current_capacity == connection_attempt_fds_size) {
