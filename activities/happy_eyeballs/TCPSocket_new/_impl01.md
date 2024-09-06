@@ -459,7 +459,7 @@ init_inetsock_internal_happy(VALUE v)
             arg->getaddrinfo_entries[i]->refcount = 2;
 
             /* For testing HEv2 */
-            if (test_delay_resolution) {
+            if (getaddrinfo_shared->test_mode) {
                 arg->getaddrinfo_entries[i]->sleep = &test_delay_ts[i];
             }
 
