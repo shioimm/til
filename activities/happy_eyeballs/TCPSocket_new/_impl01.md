@@ -315,7 +315,6 @@ init_inetsock_internal_happy(VALUE v)
     ssize_t resolved_type_size;
     int hostname_resolution_waiter, hostname_resolution_notifier;
     int pipefd[2];
-
     fd_set readfds, writefds;
 
     struct wait_happy_eyeballs_fds_arg wait_arg;
@@ -487,6 +486,9 @@ init_inetsock_internal_happy(VALUE v)
     while (true) {
         count++;
         if (debug) printf("[DEBUG] %d: ** Check for readying to connect **\n", count);
+        if (debug) printf("[DEBUG] %d: any_addrinfos %d\n", count, any_addrinfos(&resolution_store));
+        if (debug) printf("[DEBUG] %d: resolution_delay_expires_at %p\n", count, resolution_delay_expires_at);
+        if (debug) printf("[DEBUG] %d: connection_attempt_delay_expires_at %p\n", count, connection_attempt_delay_expires_at);
         if (any_addrinfos(&resolution_store) &&
             !resolution_delay_expires_at &&
             !connection_attempt_delay_expires_at) {
@@ -739,8 +741,6 @@ init_inetsock_internal_happy(VALUE v)
         syscall = "select(2)";
         if (debug) printf("[DEBUG] %d: select(2) returned status %d\n", count, status);
 
-        if (debug) printf("[DEBUG] %d: is_timeout_tv(resolution_delay_expires_at, now) %d\n", count, is_timeout_tv(resolution_delay_expires_at, now));
-        if (debug) printf("[DEBUG] %d: is_timeout_tv(connection_attempt_delay_expires_at, now) %d\n", count, is_timeout_tv(connection_attempt_delay_expires_at, now));
         now = current_clocktime_ts();
         if (debug) printf("[DEBUG] %d: is_timeout_tv(resolution_delay_expires_at, now) %d\n", count, is_timeout_tv(resolution_delay_expires_at, now));
         if (is_timeout_tv(resolution_delay_expires_at, now)) {
@@ -748,9 +748,7 @@ init_inetsock_internal_happy(VALUE v)
         }
         if (debug) printf("[DEBUG] %d: is_timeout_tv(connection_attempt_delay_expires_at, now) %d\n", count, is_timeout_tv(connection_attempt_delay_expires_at, now));
         if (is_timeout_tv(connection_attempt_delay_expires_at, now)) {
-            printf("connection_attempt_delay_expires_at %p\n", connection_attempt_delay_expires_at);
             connection_attempt_delay_expires_at = NULL;
-            printf("connection_attempt_delay_expires_at %p\n", connection_attempt_delay_expires_at);
         }
 
         if (status < 0) rb_syserr_fail(errno, "select(2)");
@@ -875,17 +873,21 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
+        if (debug) printf("[DEBUG] %d: any_addrinfos %d\n", count, any_addrinfos(&resolution_store));
         if (!any_addrinfos(&resolution_store)) {
+            if (debug) printf("[DEBUG] %d: no_in_progress_fds %d\n", count, no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size));
+            if (debug) printf("[DEBUG] %d: resolution_store.is_all_finised %d\n", count, resolution_store.is_all_finised);
             if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) && resolution_store.is_all_finised) {
                 if (local_status < 0) {
-                    // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                 }
                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
 
             if (debug) printf("[DEBUG] %d: user_specified_resolv_timeout_at %p\n", count, user_specified_resolv_timeout_at);
+            if (debug) printf("[DEBUG] %d: is_timeout_tv(user_specified_resolv_timeout_at, now) %d\n", count, is_timeout_tv(user_specified_resolv_timeout_at, now));
             if (debug) printf("[DEBUG] %d: user_specified_connect_timeout_at %p\n", count, user_specified_connect_timeout_at);
+            if (debug) printf("[DEBUG] %d: is_timeout_tv(user_specified_connect_timeout_at, now) %d\n", count, is_timeout_tv(user_specified_connect_timeout_at, now));
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
                 (is_timeout_tv(user_specified_connect_timeout_at, now) || no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
