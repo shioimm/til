@@ -499,18 +499,15 @@ init_inetsock_internal_happy(VALUE v)
 
                 #if !defined(INET6) && defined(AF_INET6)
                 if (remote_ai->ai_family == AF_INET6) {
-                    if (any_addrinfos(&resolution_store)) {
-                        continue;
-                    } else if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) || resolution_store.is_all_finised) {
-                        break;
-                    } else {
-                        if (local_status < 0)
-                        {
-                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                        }
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    if (any_addrinfos(&resolution_store)) continue;
+
+                    if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                        resolution_store.is_all_finised) break;
+
+                    if (local_status < 0) {
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                     }
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                 }
                 #endif
 
@@ -521,17 +518,14 @@ init_inetsock_internal_happy(VALUE v)
                         if (local_ai->ai_family == remote_ai->ai_family) break;
                     }
                     if (!local_ai) {
-                        if (any_addrinfos(&resolution_store)) {
-                            // Try other addrinfo in next loop
-                            continue;
-                        } else {
-                            if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
-                                resolution_store.is_all_finised) {
-                                /* Use a different family local address if no choice, this
-                                 * will cause EAFNOSUPPORT. */
-                                last_error = EAFNOSUPPORT;
-                                rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                            }
+                        if (any_addrinfos(&resolution_store)) continue;
+
+                        if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
+                            resolution_store.is_all_finised) {
+                            /* Use a different family local address if no choice, this
+                             * will cause EAFNOSUPPORT. */
+                            last_error = EAFNOSUPPORT;
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                         }
                     }
                 }
@@ -545,17 +539,15 @@ init_inetsock_internal_happy(VALUE v)
                 if (fd < 0) { // socket(2)に失敗
                     last_error = errno;
                     fd = -1;
+
                     if (any_addrinfos(&resolution_store) ||
                         no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                        !resolution_store.is_all_finised) {
-                        break;
-                    } else {
-                        if (local_status < 0) {
-                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                        }
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                        !resolution_store.is_all_finised) break;
+
+                    if (local_status < 0) {
+                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                     }
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                 }
 
                 if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
@@ -563,7 +555,7 @@ init_inetsock_internal_happy(VALUE v)
                     !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                     !resolution_store.is_all_finised) {
 
-                    if (local_ai) {
+                    if (local_ai) { // TODO local_aiとのbindまとめられそう
                         #if !defined(_WIN32) && !defined(__CYGWIN__)
                         status = 1;
                         setsockopt(
@@ -582,12 +574,15 @@ init_inetsock_internal_happy(VALUE v)
                             last_error = errno;
                             fd = -1;
 
-                            if (any_addrinfos(&resolution_store)) {
-                                // Try other addrinfo in next loop
-                                continue;
-                            } else {
-                                break;
+                            if (any_addrinfos(&resolution_store)) continue;
+
+                            if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                                !resolution_store.is_all_finised) break;
+
+                            if (local_status < 0) {
+                               rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                             }
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
                     }
 
@@ -619,13 +614,18 @@ init_inetsock_internal_happy(VALUE v)
                         if (status < 0) { // bind(2) に失敗
                             last_error = errno;
                             fd = -1;
-                            break;
+
+                            if (local_status < 0) {
+                               rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                            }
+                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
                     }
 
                     struct timeval *timeout =
                         (user_specified_connect_timeout_at && is_infinity(*user_specified_connect_timeout_at)) ?
                         NULL : user_specified_connect_timeout_at;
+
                     status = rsock_connect(
                         fd,
                         remote_ai->ai_addr,
@@ -640,7 +640,8 @@ init_inetsock_internal_happy(VALUE v)
                     if (debug) printf("[DEBUG] %d: ** fd %d is connected successfully **\n", count, fd);
                     connected_fd = fd;
                     break;
-                } else if (errno == EINPROGRESS) { // 接続中
+                }
+                if (errno == EINPROGRESS) { // 接続中
                     if (debug) printf("[DEBUG] %d: connection inprogress %d\n", count, fd);
                     if (current_capacity == connection_attempt_fds_size) {
                         int new_capacity = current_capacity + initial_capacity;
@@ -651,7 +652,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     arg->connection_attempt_fds[connection_attempt_fds_size] = fd;
                     (connection_attempt_fds_size)++;
-                    wait_arg.writefds = &writefds
+                    wait_arg.writefds = &writefds;
 
                     set_timeout_tv(&connection_attempt_delay_strage, 250, now);
                     connection_attempt_delay_expires_at = &connection_attempt_delay_strage;
@@ -673,22 +674,21 @@ init_inetsock_internal_happy(VALUE v)
                         }
                     }
                     break;
-                } else {
-                    if (debug) printf("[DEBUG] %d: connection failed\n", count);
-                    last_error = errno;
-                    close(fd);
-
-                    if (any_addrinfos(&resolution_store)) continue;
-
-                    if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                        !resolution_store.is_all_finised) break;
-
-                    if (local_status < 0) {
-                        // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                    }
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                 }
+
+                if (debug) printf("[DEBUG] %d: connection failed\n", count);
+                last_error = errno;
+                close(fd);
+
+                if (any_addrinfos(&resolution_store)) continue;
+
+                if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                    !resolution_store.is_all_finised) break;
+
+                if (local_status < 0) {
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                }
+                rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
             }
         }
 
@@ -767,13 +767,14 @@ init_inetsock_internal_happy(VALUE v)
                         if (debug) printf("[DEBUG] %d: fd %d is connected successfully\n", count, fd);
                         connected_fd = fd;
                         break;
-                    } else { // fail
-                        if (debug) printf("[DEBUG] %d: fd %d is failed to connect\n", count, fd);
-                        errno = err;
-                        close(fd);
-                        arg->connection_attempt_fds[i] = -1;
-                        continue;
                     }
+
+                    // fail
+                    if (debug) printf("[DEBUG] %d: fd %d is failed to connect\n", count, fd);
+                    errno = err;
+                    close(fd);
+                    arg->connection_attempt_fds[i] = -1;
+                    continue;
                 }
             }
 
@@ -789,7 +790,6 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (local_status < 0) {
-                    // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                 }
                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
@@ -826,12 +826,14 @@ init_inetsock_internal_happy(VALUE v)
                             printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
                             resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                             resolution_store.v4.finished = true;
+
                             if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
                                 last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
                                 resolution_store.v4.succeed = false;
                             } else {
                                 resolution_store.v4.succeed = true;
                             }
+
                             if (resolution_store.v6.finished) {
                                 if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
                                 resolution_store.is_all_finised = true;
@@ -854,7 +856,6 @@ init_inetsock_internal_happy(VALUE v)
                             no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
                             resolution_store.is_all_finised) {
                             if (local_status < 0) {
-                                // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
                                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                             }
                             rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
