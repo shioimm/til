@@ -62,7 +62,7 @@ do_rb_getaddrinfo_happy(void *ptr)
             sleep_ts.tv_nsec = sleep_ts.tv_nsec % 1000000000L;
         }
         printf("do_rb_getaddrinfo_happy %d starts to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
-        // nanosleep(entry->sleep, NULL);
+        nanosleep(&sleep_ts, NULL);
         printf("do_rb_getaddrinfo_happy %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
     }
 
