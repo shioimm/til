@@ -281,32 +281,6 @@ socket_nonblock_set(int fd)
 }
 
 static int
-find_connected_socket(int *fds, int fds_size, fd_set *writefds)
-{
-    for (int i = 0; i < fds_size; i++) {
-        int fd = fds[i];
-
-        if (fd < 0 || !FD_ISSET(fd, writefds)) continue;
-
-        int error;
-        socklen_t len = sizeof(error);
-
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0) {
-            if (error == 0) { // success
-                fds[i] = -1;
-                return fd;
-            } else { // fail
-                errno = error;
-                close(fd);
-                fds[i] = -1;
-                break;
-            }
-        }
-    }
-    return -1;
-}
-
-static int
 no_in_progress_fds(const int *fds, int fds_size)
 {
     for (int i = 0; i < fds_size; i++) {
@@ -782,14 +756,53 @@ init_inetsock_internal_happy(VALUE v)
         if (status < 0) rb_syserr_fail(errno, "select(2)");
 
         if (status > 0) {
-            if (!resolution_store.is_all_finised && debug) {
-                printf("[DEBUG] %d: hostname_resolution_waiter %d\n", count, hostname_resolution_waiter);
-                printf("[DEBUG] %d: FD_ISSET(hostname_resolution_waiter, wait_arg.readfds) %d\n", count, FD_ISSET(hostname_resolution_waiter, wait_arg.readfds));
+            // 接続状態の確定
+            for (int i = 0; i < connection_attempt_fds_size; i++) {
+                fd = arg->connection_attempt_fds[i];
+                if (fd < 0 || !FD_ISSET(fd, wait_arg.writefds)) continue;
+
+                int err;
+                socklen_t len = sizeof(err);
+
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0) {
+                    if (err == 0) { // success
+                        if (debug) printf("[DEBUG] %d: fd %d is connected successfully\n", count, fd);
+                        connected_fd = fd;
+                        break;
+                    } else { // fail
+                        if (debug) printf("[DEBUG] %d: fd %d is failed to connect\n", count, fd);
+                        errno = err;
+                        close(fd);
+                        arg->connection_attempt_fds[i] = -1;
+                        continue;
+                    }
+                }
             }
-            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) { // 名前解決できた
+
+            if (connected_fd >= 0) break;
+            last_error = errno;
+
+            if (any_addrinfos(&resolution_store) ||
+                !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                !resolution_store.is_all_finised) {
+                connection_attempt_delay_expires_at = NULL;
+                if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
+                    user_specified_connect_timeout_at = NULL;
+                }
+            } else {
+                if (local_status < 0) {
+                    // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
+                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                }
+                rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+            }
+
+            // 名前解決
+            if (!resolution_store.is_all_finised && FD_ISSET(hostname_resolution_waiter, wait_arg.readfds)) {
                 if (debug) printf("[DEBUG] %d: ** Hostname resolution finished **\n", count);
-                while (1) {
+                while (true) {
                     resolved_type_size = read(hostname_resolution_waiter, resolved_type, sizeof(resolved_type) - 1);
+
                     if (resolved_type_size > 0) {
                         resolved_type[resolved_type_size] = '\0';
 
@@ -803,7 +816,14 @@ init_inetsock_internal_happy(VALUE v)
                             } else {
                                 resolution_store.v6.succeed = true;
                             }
-                            if (resolution_store.v4.finished) resolution_store.is_all_finised = true;
+                            if (resolution_store.v4.finished) {
+                                if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
+                                resolution_store.is_all_finised = true;
+                                wait_arg.readfds = NULL;
+                                resolution_delay_expires_at = NULL;
+                                user_specified_resolv_timeout_at = NULL;
+                                break;
+                            }
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
                             printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
                             resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
@@ -814,8 +834,18 @@ init_inetsock_internal_happy(VALUE v)
                             } else {
                                 resolution_store.v4.succeed = true;
                             }
+                            if (resolution_store.v6.finished) {
+                                if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
+                                resolution_store.is_all_finised = true;
+                                wait_arg.readfds = NULL;
+                                resolution_delay_expires_at = NULL;
+                                user_specified_resolv_timeout_at = NULL;
+                                break;
+                            }
                         }
                     } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                        // TODO 頻繁にresolution_storeが空になっている。どの行が原因かどうかはわからない
+                        // Exec format error - select(2) for "localhost" port 54703 (Errno::ENOEXEC)
                         if (debug) printf("[DEBUG] %d: ** hostname_resolution_waiter is now empty **\n", count);
                         errno = 0;
                         break;
@@ -832,52 +862,17 @@ init_inetsock_internal_happy(VALUE v)
                             rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
                         }
                     }
-                }
-                if (resolution_store.v4.finished) {
-                    if (resolution_store.v6.finished) {
-                        if (debug) printf("[DEBUG] %d: ** All hostname resolution is finished **\n", count);
-                        wait_arg.readfds = NULL;
-                        resolution_delay_expires_at = NULL;
-                        user_specified_resolv_timeout_at = NULL;
-                        resolution_store.is_all_finised = true;
-                    } else if (resolution_store.v4.succeed) {
+
+                    if (!resolution_store.v6.finished && resolution_store.v4.succeed) {
                         if (debug) printf("[DEBUG] %d: Resolution Delay is ready\n", count);
                         set_timeout_tv(&resolution_delay_storage, 50, now);
                         resolution_delay_expires_at = &resolution_delay_storage;
                     }
                 }
-            } else {
-                if (debug) printf("[DEBUG] %d: ** sockets become writable **\n", count);
-                fd = find_connected_socket(arg->connection_attempt_fds, connection_attempt_fds_size, wait_arg.writefds);
-                if (debug) printf("[DEBUG] %d: fd %d\n", count, fd);
-                if (fd >= 0) {
-                    if (debug) printf("[DEBUG] %d: fd %d is connected successfully\n", count, fd);
-                    connected_fd = fd;
-                    break;
-                } else {
-                    if (debug) printf("[DEBUG] %d: fd %d is failed to connect\n", count, fd);
-                    last_error = errno;
-
-                    if (any_addrinfos(&resolution_store) ||
-                        !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                        !resolution_store.is_all_finised) {
-                        connection_attempt_delay_expires_at = NULL;
-                        if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
-                            user_specified_connect_timeout_at = NULL;
-                        }
-                    } else {
-                        if (local_status < 0) {
-                            // local_host / local_portが指定されており、ローカルに接続可能なアドレスファミリがなかった場合
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
-                        }
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
-                    }
-                }
             }
+
             status = wait_arg.status = 0;
         }
-
-        if (connected_fd >= 0) break;
 
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (!any_addrinfos(&resolution_store)) {
