@@ -42,7 +42,7 @@ struct inetsock_happy_arg
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
     int connection_attempt_fds_size, connection_attempt_fds_capacity;
     int *connection_attempt_fds;
-    VALUE test_delay_resolution_settings;
+    VALUE test_mode_settings;
 };
 
 static struct rb_getaddrinfo_happy_shared *
@@ -296,7 +296,7 @@ init_inetsock_internal_happy(VALUE v)
     struct inetsock_arg *inetsock = arg->inetsock_resource;
     VALUE resolv_timeout = inetsock->resolv_timeout;
     VALUE connect_timeout = inetsock->connect_timeout;
-    VALUE test_delay_resolution_settings = arg->test_delay_resolution_settings;
+    VALUE test_mode_settings = arg->test_mode_settings;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
     int fd = -1, connected_fd = -1, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
@@ -424,12 +424,14 @@ init_inetsock_internal_happy(VALUE v)
             arg->getaddrinfo_entries[i]->refcount = 2;
 
             /* For testing HEv2 */
-            if (!NIL_P(test_delay_resolution_settings) && RB_TYPE_P(test_delay_resolution_settings, T_HASH)) {
-                long test_delay_ms = 0;
-                const char *family_sym = arg->families[i] == AF_INET6 ? "ipv6" : "ipv4";
-                VALUE test_delay_ms_value = rb_hash_aref(test_delay_resolution_settings, ID2SYM(rb_intern(family_sym)));
-                if (!NIL_P(test_delay_ms_value)) test_delay_ms = NUM2LONG(test_delay_ms_value);
-                arg->getaddrinfo_entries[i]->sleep_ms = test_delay_ms;
+            if (!NIL_P(test_mode_settings) && RB_TYPE_P(test_mode_settings, T_HASH)) {
+                VALUE test_delay_setting = rb_hash_aref(test_mode_settings, ID2SYM(rb_intern("delay")));
+                if (!NIL_P(test_delay_setting)) {
+                    const char *family_sym = arg->families[i] == AF_INET6 ? "ipv6" : "ipv4";
+                    VALUE _test_delay_ms = rb_hash_aref(test_delay_setting, ID2SYM(rb_intern(family_sym)));
+                    long test_delay_ms = NIL_P(_test_delay_ms) ? 0 : _test_delay_ms;
+                    arg->getaddrinfo_entries[i]->sleep_ms = test_delay_ms;
+                }
             }
 
             if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
@@ -896,7 +898,7 @@ VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     VALUE local_host, VALUE local_serv, int type,
                     VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback,
-                    VALUE test_delay_resolution_settings)
+                    VALUE test_mode_settings)
 {
     struct inetsock_arg arg;
     arg.sock = sock;
@@ -969,7 +971,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             }
             inetsock_happy_resource.families = resolving_families;
             inetsock_happy_resource.family_size = resolving_family_size;
-            inetsock_happy_resource.test_delay_resolution_settings = test_delay_resolution_settings;
+            inetsock_happy_resource.test_mode_settings = test_mode_settings;
             printf("[DEBUG] resolving_family_size %d\n", resolving_family_size);
 
             return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
@@ -1017,13 +1019,13 @@ tcp_init(int argc, VALUE *argv, VALUE sock)
     VALUE resolv_timeout = Qnil;
     VALUE connect_timeout = Qnil;
     VALUE fast_fallback = Qtrue; // 追加
-    VALUE test_delay_resolution_settings = Qnil; // 追加
+    VALUE test_mode_settings = Qnil; // 追加
 
     if (!keyword_ids[0]) {
         CONST_ID(keyword_ids[0], "resolv_timeout");
         CONST_ID(keyword_ids[1], "connect_timeout");
         CONST_ID(keyword_ids[2], "fast_fallback"); // 追加
-        CONST_ID(keyword_ids[3], "test_delay_resolution_settings"); // 追加
+        CONST_ID(keyword_ids[3], "test_mode_settings"); // 追加
     }
 
     rb_scan_args(argc, argv, "22:", &remote_host, &remote_serv,
@@ -1034,12 +1036,12 @@ tcp_init(int argc, VALUE *argv, VALUE sock)
         if (kwargs[0] != Qundef) { resolv_timeout = kwargs[0]; }
         if (kwargs[1] != Qundef) { connect_timeout = kwargs[1]; }
         if (kwargs[2] != Qundef) { fast_fallback = kwargs[2]; } // 追加
-        if (kwargs[3] != Qundef) { test_delay_resolution_settings = kwargs[3]; } // 追加
+        if (kwargs[3] != Qundef) { test_mode_settings = kwargs[3]; } // 追加
     }
 
     return rsock_init_inetsock(sock, remote_host, remote_serv,
                                local_host, local_serv, INET_CLIENT,
                                resolv_timeout, connect_timeout, fast_fallback,
-                               test_delay_resolution_settings); // 追加
+                               test_mode_settings); // 追加
 }
 ```

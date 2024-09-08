@@ -53,7 +53,7 @@ do_rb_getaddrinfo_happy(void *ptr)
     printf("do_rb_getaddrinfo_happy %d finished to getaddrinfo\n", entry->family);
 
     /* For testing HEv2 */
-    if (entry->sleep_ms) {
+    if (entry->sleep_ms && entry->sleep_ms > 0) {
         struct timespec sleep_ts;
         sleep_ts.tv_sec = entry->sleep_ms / 1000;
         sleep_ts.tv_nsec = (entry->sleep_ms % 1000) * 1000000L;
@@ -113,7 +113,7 @@ VALUE rsock_init_inetsock(
     VALUE resolv_timeout,
     VALUE connect_timeout,
     VALUE fast_fallback,
-    VALUE test_delay_resolution_settings
+    VALUE test_mode_settings
 );
 // -----------------------
 
