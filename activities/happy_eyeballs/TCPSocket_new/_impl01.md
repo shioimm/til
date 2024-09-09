@@ -668,7 +668,8 @@ init_inetsock_internal_happy(VALUE v)
 
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
 
-        // TODO 割り込み時の処理
+        if (getaddrinfo_shared->cancelled) break;
+
         status = wait_arg.status;
         syscall = "select(2)";
         if (debug) printf("[DEBUG] %d: select(2) returned status %d\n", count, status);
@@ -837,6 +838,9 @@ init_inetsock_internal_happy(VALUE v)
         }
         if (debug) puts("------------");
     }
+
+    rb_thread_check_ints();
+
     /* create new instance */
     return rsock_init_sock(inetsock->sock, connected_fd);
 }
