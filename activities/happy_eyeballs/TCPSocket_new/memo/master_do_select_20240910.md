@@ -40,12 +40,13 @@ do_select(VALUE p)
     lerrno = 0; // エラーナンバーを初期化
 
     BLOCKING_REGION(
-      set->th,
+      set->th, // ブロックするRubyスレッド
       {
         struct timeval tv;
 
+        // 割り込みフラグがセットされているかどうか
         if (!RUBY_VM_INTERRUPTED(set->th->ec)) {
-          result = native_fd_select(
+          result = native_fd_select( // select(2) のラッパーを呼び出す
             set->max,
             set->rset,
             set->wset,
@@ -57,9 +58,9 @@ do_select(VALUE p)
           if (result < 0) lerrno = errno;
         }
       },
-      ubf_select,
-      set->th,
-      TRUE
+      ubf_select, // 割り込みが発生した際にselect のブロックを解除する
+      set->th,    // ブロックするRubyスレッド (ubf_selectが扱う用)
+      TRUE        // 割り込み時にキャンセル可能
     );
 
     // 割り込みチェック
