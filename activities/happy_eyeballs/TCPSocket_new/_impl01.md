@@ -670,7 +670,7 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, getaddrinfo_shared);
 
         if (arg->cancelled) break;
 
