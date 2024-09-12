@@ -687,7 +687,7 @@ init_inetsock_internal_happy(VALUE v)
             connection_attempt_delay_expires_at = NULL;
         }
 
-        if (status < 0) rb_syserr_fail(errno, "select(2)");
+        if (status < 0 && (errno && errno != EINTR)) rb_syserr_fail(errno, "select(2)");
 
         if (status > 0) {
             // 接続状態の確定
