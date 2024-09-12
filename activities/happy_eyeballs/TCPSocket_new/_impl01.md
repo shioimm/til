@@ -402,10 +402,6 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->cancelled = &arg->cancelled;
         wait_arg.cancelled = &arg->cancelled;
 
-        /*
-         * Maybe also accept a local address
-         */
-
         for (int i = 0; i < arg->family_size; i++) {
             arg->getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
             if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
