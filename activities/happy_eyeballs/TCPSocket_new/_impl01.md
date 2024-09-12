@@ -37,6 +37,7 @@ struct inetsock_happy_arg
     int *families;
     int family_size;
     int additional_flags;
+    int cancelled;
     rb_nativethread_lock_t *lock;
     struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
@@ -77,6 +78,7 @@ struct wait_happy_eyeballs_fds_arg
     int status, nfds;
     fd_set *readfds, *writefds;
     struct timeval *delay;
+    int *cancelled;
 };
 
 static void *
@@ -86,6 +88,7 @@ wait_happy_eyeballs_fds(void *ptr)
     int status;
     status = select(arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
     arg->status = status;
+    if (errno == EINTR) *arg->cancelled = true;
     return 0;
 }
 
@@ -98,7 +101,7 @@ cancel_happy_eyeballs_fds(void *ptr)
 
     rb_nativethread_lock_lock(arg->lock);
     {
-        arg->cancelled = true;
+        *arg->cancelled = true;
         write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED));
     }
     rb_nativethread_lock_unlock(arg->lock);
@@ -388,7 +391,6 @@ init_inetsock_internal_happy(VALUE v)
         if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
         rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
-        arg->getaddrinfo_shared->cancelled = false;
         getaddrinfo_shared = arg->getaddrinfo_shared;
         getaddrinfo_shared->node = strdup(arg->hostp);
         getaddrinfo_shared->service = strdup(arg->portp);
@@ -397,6 +399,8 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->wait = hostname_resolution_waiter;
         getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
         getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
+        getaddrinfo_shared->cancelled = &arg->cancelled;
+        wait_arg.cancelled = &arg->cancelled;
 
         /*
          * Maybe also accept a local address
@@ -666,9 +670,9 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, &getaddrinfo_shared);
+        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, getaddrinfo_shared);
 
-        if (getaddrinfo_shared->cancelled) break;
+        if (arg->cancelled) break;
 
         status = wait_arg.status;
         syscall = "select(2)";
@@ -964,6 +968,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             inetsock_happy_resource.hostp = hostp;
             inetsock_happy_resource.portp = portp;
             inetsock_happy_resource.additional_flags = additional_flags;
+            inetsock_happy_resource.cancelled = false;
 
             int resolving_families[resolving_family_size];
             int resolving_family_index = 0;
