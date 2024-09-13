@@ -402,10 +402,6 @@ init_inetsock_internal_happy(VALUE v)
         getaddrinfo_shared->cancelled = &arg->cancelled;
         wait_arg.cancelled = &arg->cancelled;
 
-        /*
-         * Maybe also accept a local address
-         */
-
         for (int i = 0; i < arg->family_size; i++) {
             arg->getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
             if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
@@ -671,8 +667,7 @@ init_inetsock_internal_happy(VALUE v)
         }
 
         rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, getaddrinfo_shared);
-
-        if (arg->cancelled) break;
+        rb_thread_check_ints();
 
         status = wait_arg.status;
         syscall = "select(2)";
@@ -688,7 +683,7 @@ init_inetsock_internal_happy(VALUE v)
             connection_attempt_delay_expires_at = NULL;
         }
 
-        if (status < 0) rb_syserr_fail(errno, "select(2)");
+        if (status < 0 && (errno && errno != EINTR)) rb_syserr_fail(errno, "select(2)");
 
         if (status > 0) {
             // 接続状態の確定
@@ -842,8 +837,6 @@ init_inetsock_internal_happy(VALUE v)
         }
         if (debug) puts("------------");
     }
-
-    rb_thread_check_ints();
 
     /* create new instance */
     return rsock_init_sock(inetsock->sock, connected_fd);
