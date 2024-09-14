@@ -549,9 +549,13 @@ init_inetsock_internal_happy(VALUE v)
                 if (debug) printf("[DEBUG] %d: ** Start to connect to %d **\n", count, remote_ai->ai_family);
                 syscall = "connect(2)";
 
-                if (!any_addrinfos(&resolution_store) ||
-                    no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                    resolution_store.is_all_finised) {
+                if (any_addrinfos(&resolution_store) ||
+                    !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                    !resolution_store.is_all_finised) {
+                    socket_nonblock_set(fd);
+                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
+                    last_family = remote_ai->ai_family;
+                } else {
                     if (!NIL_P(connect_timeout)) {
                         user_specified_connect_timeout_storage = rb_time_interval(connect_timeout);
                         user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
@@ -561,10 +565,6 @@ init_inetsock_internal_happy(VALUE v)
                         (user_specified_connect_timeout_at && is_infinity(*user_specified_connect_timeout_at)) ?
                         NULL : user_specified_connect_timeout_at;
                     status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, 0, timeout);
-                } else {
-                    socket_nonblock_set(fd);
-                    status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
-                    last_family = remote_ai->ai_family;
                 }
 
                 if (status == 0) { // 接続に成功
