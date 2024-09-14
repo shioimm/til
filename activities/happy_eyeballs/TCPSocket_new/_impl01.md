@@ -284,12 +284,12 @@ socket_nonblock_set(int fd)
 }
 
 static int
-no_in_progress_fds(const int *fds, int fds_size)
+in_progress_fds(const int *fds, int fds_size)
 {
     for (int i = 0; i < fds_size; i++) {
-        if (fds[i] > 0) return false;
+        if (fds[i] > 0) return true;
     }
-    return true;
+    return false;
 }
 
 static VALUE
@@ -471,9 +471,8 @@ init_inetsock_internal_happy(VALUE v)
                 #if !defined(INET6) && defined(AF_INET6)
                 if (remote_ai->ai_family == AF_INET6) {
                     if (any_addrinfos(&resolution_store)) continue;
-
-                    if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                        resolution_store.is_all_finised) break;
+                    if (!in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) break;
+                    if (resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
                         rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
@@ -490,8 +489,7 @@ init_inetsock_internal_happy(VALUE v)
                     }
                     if (!local_ai) {
                         if (any_addrinfos(&resolution_store)) continue;
-
-                        if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
+                        if (!in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
                             resolution_store.is_all_finised) {
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
@@ -512,7 +510,7 @@ init_inetsock_internal_happy(VALUE v)
                     fd = -1;
 
                     if (any_addrinfos(&resolution_store) ||
-                        no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                        in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                         !resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
@@ -535,10 +533,8 @@ init_inetsock_internal_happy(VALUE v)
                         fd = -1;
 
                         if (any_addrinfos(&resolution_store)) continue;
-
-                        if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                            !resolution_store.is_all_finised) break;
-
+                        if (in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) break;
+                        if (!resolution_store.is_all_finised) break;
                         if (local_status < 0) {
                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                         }
@@ -550,7 +546,7 @@ init_inetsock_internal_happy(VALUE v)
                 syscall = "connect(2)";
 
                 if (any_addrinfos(&resolution_store) ||
-                    !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                    in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                     !resolution_store.is_all_finised) {
                     socket_nonblock_set(fd);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
@@ -613,9 +609,8 @@ init_inetsock_internal_happy(VALUE v)
                 close(fd);
 
                 if (any_addrinfos(&resolution_store)) continue;
-
-                if (!no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
-                    !resolution_store.is_all_finised) break;
+                if (in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) break;
+                if (!resolution_store.is_all_finised) break;
 
                 if (local_status < 0) {
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
@@ -716,10 +711,10 @@ init_inetsock_internal_happy(VALUE v)
             last_error = errno;
 
             if (any_addrinfos(&resolution_store) ||
-                !no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
+                in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) ||
                 !resolution_store.is_all_finised) {
                 connection_attempt_delay_expires_at = NULL;
-                if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
+                if (!in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size)) {
                     user_specified_connect_timeout_at = NULL;
                 }
             } else {
@@ -778,8 +773,6 @@ init_inetsock_internal_happy(VALUE v)
                             }
                         }
                     } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                        // TODO 頻繁にresolution_storeが空になっている。どの行が原因かどうかはわからない
-                        // Exec format error - select(2) for "localhost" port 54703 (Errno::ENOEXEC)
                         if (debug) printf("[DEBUG] %d: ** hostname_resolution_waiter is now empty **\n", count);
                         errno = 0;
                         break;
@@ -787,7 +780,7 @@ init_inetsock_internal_happy(VALUE v)
                         if (debug) printf("[DEBUG] %d: ** Hostname Resolution may be failed **\n", count);
                         last_error = errno;
                         if (!any_addrinfos(&resolution_store) &&
-                            no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
+                            !in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) &&
                             resolution_store.is_all_finised) {
                             if (local_status < 0) {
                                 rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
@@ -810,9 +803,9 @@ init_inetsock_internal_happy(VALUE v)
         if (debug) printf("[DEBUG] %d: ** Check for exiting **\n", count);
         if (debug) printf("[DEBUG] %d: any_addrinfos %d\n", count, any_addrinfos(&resolution_store));
         if (!any_addrinfos(&resolution_store)) {
-            if (debug) printf("[DEBUG] %d: no_in_progress_fds %d\n", count, no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size));
+            if (debug) printf("[DEBUG] %d: in_progress_fds %d\n", count, in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size));
             if (debug) printf("[DEBUG] %d: resolution_store.is_all_finised %d\n", count, resolution_store.is_all_finised);
-            if (no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) && resolution_store.is_all_finised) {
+            if (!in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size) && resolution_store.is_all_finised) {
                 if (local_status < 0) {
                     rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
                 }
@@ -824,7 +817,7 @@ init_inetsock_internal_happy(VALUE v)
             if (debug) printf("[DEBUG] %d: user_specified_connect_timeout_at %p\n", count, user_specified_connect_timeout_at);
             if (debug) printf("[DEBUG] %d: is_timeout_tv(user_specified_connect_timeout_at, now) %d\n", count, is_timeout_tv(user_specified_connect_timeout_at, now));
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
-                (is_timeout_tv(user_specified_connect_timeout_at, now) || no_in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size))) {
+                (is_timeout_tv(user_specified_connect_timeout_at, now) || !in_progress_fds(arg->connection_attempt_fds, connection_attempt_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
                 VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
                 rb_raise(etimedout_error, "user specified timeout");
