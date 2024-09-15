@@ -124,7 +124,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
 
     begin;
       assert_raise(Errno::EFAULT) do
-        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, fail: { ipv4: true } })
+        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, error: { ipv4: Errno::EFAULT } })
       end
     end;
   end
