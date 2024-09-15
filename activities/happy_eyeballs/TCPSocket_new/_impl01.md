@@ -424,12 +424,21 @@ init_inetsock_internal_happy(VALUE v)
 
             /* For testing HEv2 */
             if (!NIL_P(test_mode_settings) && RB_TYPE_P(test_mode_settings, T_HASH)) {
+                const char *family_sym = arg->families[i] == AF_INET6 ? "ipv6" : "ipv4";
+
                 VALUE test_delay_setting = rb_hash_aref(test_mode_settings, ID2SYM(rb_intern("delay")));
                 if (!NIL_P(test_delay_setting)) {
-                    const char *family_sym = arg->families[i] == AF_INET6 ? "ipv6" : "ipv4";
                     VALUE _test_delay_ms = rb_hash_aref(test_delay_setting, ID2SYM(rb_intern(family_sym)));
                     long test_delay_ms = NIL_P(_test_delay_ms) ? 0 : _test_delay_ms;
                     arg->getaddrinfo_entries[i]->sleep_ms = test_delay_ms;
+                }
+
+                VALUE test_fail_setting = rb_hash_aref(test_mode_settings, ID2SYM(rb_intern("fail")));
+                if (!NIL_P(test_fail_setting)) {
+                    VALUE _test_fail_setting = rb_hash_aref(test_fail_setting, ID2SYM(rb_intern(family_sym)));
+                    if (RTEST(_test_fail_setting)) {
+                        arg->getaddrinfo_entries[i]->fail = true;
+                    }
                 }
             }
 

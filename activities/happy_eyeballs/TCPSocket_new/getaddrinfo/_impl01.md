@@ -65,6 +65,10 @@ do_rb_getaddrinfo_happy(void *ptr)
         nanosleep(&sleep_ts, NULL);
         printf("do_rb_getaddrinfo_happy %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
     }
+    if (entry->fail && entry->fail == true) {
+        printf("do_rb_getaddrinfo_happy %d fail\n", entry->family);
+        rb_sys_fail("getaddrinfo(2)");
+    }
 
     rb_nativethread_lock_lock(shared->lock);
     {
