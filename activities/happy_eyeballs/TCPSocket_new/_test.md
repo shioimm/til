@@ -76,6 +76,27 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
     end;
   end
 
+  def test_initialize_v6_hostname_resolved_earlier_and_v6_server_is_not_listening
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      ipv4_address = "127.0.0.1"
+      ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
+      ipv4_server.bind(Socket.pack_sockaddr_in(0, ipv4_address))
+      port = ipv4_server.connect_address.ip_port
+
+      ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 10 } })
+      assert_equal(ipv4_address, socket.remote_address.ip_address)
+
+      accepted, _ = ipv4_server_thread.value
+      accepted.close
+      ipv4_server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
   def test_initialize_resolv_timeout_with_connection_failure
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
