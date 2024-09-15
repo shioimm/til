@@ -67,7 +67,7 @@ do_rb_getaddrinfo_happy(void *ptr)
     }
     if (entry->fail && entry->fail == true) {
         printf("do_rb_getaddrinfo_happy %d fail\n", entry->family);
-        rb_sys_fail("getaddrinfo(2)");
+        err = EFAULT;
     }
 
     rb_nativethread_lock_lock(shared->lock);
