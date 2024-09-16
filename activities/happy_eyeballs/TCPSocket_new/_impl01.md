@@ -898,7 +898,7 @@ fast_fallback_inetsock_cleanup(VALUE v)
 
     for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
         int connection_attempt_fd = arg->connection_attempt_fds[i];
-        close(connection_attempt_fd);
+        if (connection_attempt_fd >= 0) close(connection_attempt_fd);
     }
 
     free(arg->connection_attempt_fds);
