@@ -32,7 +32,16 @@ is_specified_ip_address(const char *hostname)
 
 struct inetsock_happy_arg
 {
-    struct inetsock_arg *inetsock_resource;
+    VALUE sock;
+    struct {
+        VALUE host, serv;
+        struct rb_addrinfo *res;
+    } remote, local;
+    int type;
+    int fd;
+    VALUE resolv_timeout;
+    VALUE connect_timeout;
+
     const char *hostp, *portp;
     int *families;
     int family_size;
@@ -296,9 +305,8 @@ static VALUE
 init_inetsock_internal_happy(VALUE v)
 {
     struct inetsock_happy_arg *arg = (void *)v;
-    struct inetsock_arg *inetsock = arg->inetsock_resource;
-    VALUE resolv_timeout = inetsock->resolv_timeout;
-    VALUE connect_timeout = inetsock->connect_timeout;
+    VALUE resolv_timeout = arg->resolv_timeout;
+    VALUE connect_timeout = arg->connect_timeout;
     VALUE test_mode_settings = arg->test_mode_settings;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
     int fd = -1, connected_fd = -1, status = 0, local_status = 0;
@@ -356,20 +364,20 @@ init_inetsock_internal_happy(VALUE v)
 
     if (family_size == 1) {
         int family = arg->families[0];
-        inetsock->remote.res = rsock_addrinfo(
-            inetsock->remote.host,
-            inetsock->remote.serv,
+        arg->remote.res = rsock_addrinfo(
+            arg->remote.host,
+            arg->remote.serv,
             family,
             SOCK_STREAM,
             0
         );
 
         if (family == AF_INET6) {
-            resolution_store.v6.ai = inetsock->remote.res->ai;
+            resolution_store.v6.ai = arg->remote.res->ai;
             resolution_store.v6.finished = true;
             resolution_store.v4.finished = true;
         } else if (family == AF_INET) {
-            resolution_store.v4.ai = inetsock->remote.res->ai;
+            resolution_store.v4.ai = arg->remote.res->ai;
             resolution_store.v4.finished = true;
             resolution_store.v6.finished = true;
         }
@@ -485,16 +493,16 @@ init_inetsock_internal_happy(VALUE v)
                     if (resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                     }
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
                 }
                 #endif
 
                 local_ai = NULL;
 
-                if (inetsock->local.res) {
-                    for (local_ai = inetsock->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
+                if (arg->local.res) {
+                    for (local_ai = arg->local.res->ai; local_ai; local_ai = local_ai->ai_next) {
                         if (local_ai->ai_family == remote_ai->ai_family) break;
                     }
                     if (!local_ai) {
@@ -504,7 +512,7 @@ init_inetsock_internal_happy(VALUE v)
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
                             last_error = EAFNOSUPPORT;
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                            rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                         }
                     }
                 }
@@ -524,9 +532,9 @@ init_inetsock_internal_happy(VALUE v)
                         !resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                        rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                     }
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                    rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
                 }
 
                 if (local_ai) {
@@ -546,9 +554,9 @@ init_inetsock_internal_happy(VALUE v)
                         if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
                         if (!resolution_store.is_all_finised) break;
                         if (local_status < 0) {
-                           rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                           rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                         }
-                        rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                        rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
                     }
                 }
 
@@ -622,9 +630,9 @@ init_inetsock_internal_happy(VALUE v)
                 if (!resolution_store.is_all_finised) break;
 
                 if (local_status < 0) {
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                    rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                 }
-                rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
             }
         }
 
@@ -729,9 +737,9 @@ init_inetsock_internal_happy(VALUE v)
                 }
             } else {
                 if (local_status < 0) {
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                    rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                 }
-                rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
             }
 
             // 名前解決
@@ -793,9 +801,9 @@ init_inetsock_internal_happy(VALUE v)
                             !in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
                             resolution_store.is_all_finised) {
                             if (local_status < 0) {
-                                rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                                rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                             }
-                            rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                            rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
                         }
                     }
 
@@ -817,9 +825,9 @@ init_inetsock_internal_happy(VALUE v)
             if (debug) printf("[DEBUG] %d: resolution_store.is_all_finised %d\n", count, resolution_store.is_all_finised);
             if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) && resolution_store.is_all_finised) {
                 if (local_status < 0) {
-                    rsock_syserr_fail_host_port(last_error, syscall, inetsock->local.host, inetsock->local.serv);
+                    rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
                 }
-                rsock_syserr_fail_host_port(last_error, syscall, inetsock->remote.host, inetsock->remote.serv);
+                rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
             }
 
             if (debug) printf("[DEBUG] %d: user_specified_resolv_timeout_at %p\n", count, user_specified_resolv_timeout_at);
@@ -844,26 +852,25 @@ init_inetsock_internal_happy(VALUE v)
     }
 
     /* create new instance */
-    return rsock_init_sock(inetsock->sock, connected_fd);
+    return rsock_init_sock(arg->sock, connected_fd);
 }
 
 static VALUE
 inetsock_cleanup_happy(VALUE v)
 {
     struct inetsock_happy_arg *arg = (void *)v;
-    struct inetsock_arg *inetsock_resource = arg->inetsock_resource;
     struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
 
-    if (inetsock_resource->remote.res) {
-        rb_freeaddrinfo(inetsock_resource->remote.res);
-        inetsock_resource->remote.res = 0;
+    if (arg->remote.res) {
+        rb_freeaddrinfo(arg->remote.res);
+        arg->remote.res = 0;
     }
-    if (inetsock_resource->local.res) {
-        rb_freeaddrinfo(inetsock_resource->local.res);
-        inetsock_resource->local.res = 0;
+    if (arg->local.res) {
+        rb_freeaddrinfo(arg->local.res);
+        arg->local.res = 0;
     }
-    if (inetsock_resource->fd >= 0) {
-        close(inetsock_resource->fd);
+    if (arg->fd >= 0) {
+        close(arg->fd);
     }
 
     if (getaddrinfo_shared) {
@@ -959,14 +966,24 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                 target_families[1] = AF_INET;
             }
 
-            struct inetsock_happy_arg inetsock_happy_resource;
-            memset(&inetsock_happy_resource, 0, sizeof(inetsock_happy_resource));
+            struct inetsock_happy_arg fast_fallback_arg;
+            memset(&fast_fallback_arg, 0, sizeof(fast_fallback_arg));
 
-            inetsock_happy_resource.inetsock_resource = &arg;
-            inetsock_happy_resource.hostp = hostp;
-            inetsock_happy_resource.portp = portp;
-            inetsock_happy_resource.additional_flags = additional_flags;
-            inetsock_happy_resource.cancelled = false;
+            fast_fallback_arg.sock = arg.sock;
+            fast_fallback_arg.remote.host = arg.remote.host;
+            fast_fallback_arg.remote.serv = arg.remote.serv;
+            fast_fallback_arg.remote.res = arg.remote.res;
+            fast_fallback_arg.local.host = arg.local.host;
+            fast_fallback_arg.local.serv = arg.local.serv;
+            fast_fallback_arg.local.res = arg.local.res;
+            fast_fallback_arg.type = arg.type;
+            fast_fallback_arg.fd = arg.fd;
+            fast_fallback_arg.resolv_timeout = arg.resolv_timeout;
+            fast_fallback_arg.connect_timeout = arg.connect_timeout;
+            fast_fallback_arg.hostp = hostp;
+            fast_fallback_arg.portp = portp;
+            fast_fallback_arg.additional_flags = additional_flags;
+            fast_fallback_arg.cancelled = false;
 
             int resolving_families[resolving_family_size];
             int resolving_family_index = 0;
@@ -976,13 +993,13 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                     resolving_family_index++;
                 }
             }
-            inetsock_happy_resource.families = resolving_families;
-            inetsock_happy_resource.family_size = resolving_family_size;
-            inetsock_happy_resource.test_mode_settings = test_mode_settings;
+            fast_fallback_arg.families = resolving_families;
+            fast_fallback_arg.family_size = resolving_family_size;
+            fast_fallback_arg.test_mode_settings = test_mode_settings;
             printf("[DEBUG] resolving_family_size %d\n", resolving_family_size);
 
-            return rb_ensure(init_inetsock_internal_happy, (VALUE)&inetsock_happy_resource,
-                             inetsock_cleanup_happy, (VALUE)&inetsock_happy_resource);
+            return rb_ensure(init_inetsock_internal_happy, (VALUE)&fast_fallback_arg,
+                             inetsock_cleanup_happy, (VALUE)&fast_fallback_arg);
         }
     }
 
