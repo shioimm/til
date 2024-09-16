@@ -5,18 +5,18 @@
 ```c
 // ext/socket/ipsocket.c
 
-#ifndef HAPPY_EYEBALLS_INIT_INETSOCK_IMPL
+#ifndef FAST_FALLBACK_INIT_INETSOCK_IMPL
 #  if defined(HAVE_PTHREAD_CREATE) && defined(HAVE_PTHREAD_DETACH) && \
      !defined(__MINGW32__) && !defined(__MINGW64__) && \
      defined(F_SETFL) && defined(F_GETFL)
 #    include "ruby/thread_native.h"
-#    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 1
+#    define FAST_FALLBACK_INIT_INETSOCK_IMPL 1
 #    define RESOLUTION_DELAY_USEC 50000 /* 50ms is a recommended value in RFC8305 */
 #    define CONNECTION_ATTEMPT_DELAY_NSEC 250000 /* 250ms is a recommended value in RFC8305 */
 #    define IPV6_ENTRY_POS 0
 #    define IPV4_ENTRY_POS 1
 #  else
-#    define HAPPY_EYEBALLS_INIT_INETSOCK_IMPL 0
+#    define FAST_FALLBACK_INIT_INETSOCK_IMPL 0
 #  endif
 #endif
 
@@ -30,7 +30,7 @@ is_specified_ip_address(const char *hostname)
             inet_pton(AF_INET, hostname, &ipv4addr) == 1);
 }
 
-struct inetsock_happy_arg
+struct fast_fallback_inetsock_arg
 {
     VALUE sock;
     struct {
@@ -48,31 +48,31 @@ struct inetsock_happy_arg
     int additional_flags;
     int cancelled;
     rb_nativethread_lock_t *lock;
-    struct rb_getaddrinfo_happy_entry *getaddrinfo_entries[2];
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared;
+    struct fast_fallback_getaddrinfo_entry *getaddrinfo_entries[2];
+    struct fast_fallback_getaddrinfo_shared *getaddrinfo_shared;
     int connection_attempt_fds_size;
     int *connection_attempt_fds;
     VALUE test_mode_settings;
 };
 
-static struct rb_getaddrinfo_happy_shared *
-create_rb_getaddrinfo_happy_shared()
+static struct fast_fallback_getaddrinfo_shared *
+create_fast_fallback_getaddrinfo_shared()
 {
-    struct rb_getaddrinfo_happy_shared *shared;
-    shared = (struct rb_getaddrinfo_happy_shared *)calloc(1, sizeof(struct rb_getaddrinfo_happy_shared));
+    struct fast_fallback_getaddrinfo_shared *shared;
+    shared = (struct fast_fallback_getaddrinfo_shared *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_shared));
     return shared;
 }
 
-static struct rb_getaddrinfo_happy_entry *
-allocate_rb_getaddrinfo_happy_entry()
+static struct fast_fallback_getaddrinfo_entry *
+allocate_fast_fallback_getaddrinfo_entry()
 {
-    struct rb_getaddrinfo_happy_entry *entry;
-    entry = (struct rb_getaddrinfo_happy_entry *)calloc(1, sizeof(struct rb_getaddrinfo_happy_entry));
+    struct fast_fallback_getaddrinfo_entry *entry;
+    entry = (struct fast_fallback_getaddrinfo_entry *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_entry));
     return entry;
 }
 
 static void
-allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
+allocate_fast_fallback_getaddrinfo_hints(struct addrinfo *hints, int family, int remote_addrinfo_hints, int additional_flags)
 {
     MEMZERO(hints, struct addrinfo, 1);
     hints->ai_family = family;
@@ -82,7 +82,7 @@ allocate_rb_getaddrinfo_happy_hints(struct addrinfo *hints, int family, int remo
     hints->ai_flags |= additional_flags;
 }
 
-struct wait_happy_eyeballs_fds_arg
+struct wait_fast_fallback_arg
 {
     int status, nfds;
     fd_set *readfds, *writefds;
@@ -91,9 +91,9 @@ struct wait_happy_eyeballs_fds_arg
 };
 
 static void *
-wait_happy_eyeballs_fds(void *ptr)
+wait_fast_fallback(void *ptr)
 {
-    struct wait_happy_eyeballs_fds_arg *arg = (struct wait_happy_eyeballs_fds_arg *)ptr;
+    struct wait_fast_fallback_arg *arg = (struct wait_fast_fallback_arg *)ptr;
     int status;
     status = select(arg->nfds, arg->readfds, arg->writefds, NULL, arg->delay);
     arg->status = status;
@@ -102,11 +102,11 @@ wait_happy_eyeballs_fds(void *ptr)
 }
 
 static void
-cancel_happy_eyeballs_fds(void *ptr)
+cancel_fast_fallback(void *ptr)
 {
     if (!ptr) return;
 
-    struct rb_getaddrinfo_happy_shared *arg = (struct rb_getaddrinfo_happy_shared *)ptr;
+    struct fast_fallback_getaddrinfo_shared *arg = (struct fast_fallback_getaddrinfo_shared *)ptr;
 
     rb_nativethread_lock_lock(arg->lock);
     {
@@ -302,9 +302,9 @@ in_progress_fds(const int *fds, int fds_size)
 }
 
 static VALUE
-init_inetsock_internal_happy(VALUE v)
+init_fast_fallback_inetsock_internal(VALUE v)
 {
-    struct inetsock_happy_arg *arg = (void *)v;
+    struct fast_fallback_inetsock_arg *arg = (void *)v;
     VALUE resolv_timeout = arg->resolv_timeout;
     VALUE connect_timeout = arg->connect_timeout;
     VALUE test_mode_settings = arg->test_mode_settings;
@@ -320,7 +320,7 @@ init_inetsock_internal_happy(VALUE v)
 
     int family_size = arg->family_size;
 
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = NULL;
+    struct fast_fallback_getaddrinfo_shared *getaddrinfo_shared = NULL;
     pthread_t threads[family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
@@ -328,7 +328,7 @@ init_inetsock_internal_happy(VALUE v)
     int pipefd[2];
     fd_set readfds, writefds;
 
-    struct wait_happy_eyeballs_fds_arg wait_arg;
+    struct wait_fast_fallback_arg wait_arg;
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
     wait_arg.nfds = 0;
@@ -391,7 +391,7 @@ init_inetsock_internal_happy(VALUE v)
         hostname_resolution_notifier = pipefd[1];
         wait_arg.readfds = &readfds;
 
-        arg->getaddrinfo_shared = create_rb_getaddrinfo_happy_shared();
+        arg->getaddrinfo_shared = create_fast_fallback_getaddrinfo_shared();
         if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
 
         arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
@@ -410,7 +410,7 @@ init_inetsock_internal_happy(VALUE v)
         wait_arg.cancelled = &arg->cancelled;
 
         for (int i = 0; i < arg->family_size; i++) {
-            arg->getaddrinfo_entries[i] = allocate_rb_getaddrinfo_happy_entry();
+            arg->getaddrinfo_entries[i] = allocate_fast_fallback_getaddrinfo_entry();
             if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
             arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
         }
@@ -418,7 +418,7 @@ init_inetsock_internal_happy(VALUE v)
         struct addrinfo getaddrinfo_hints[family_size];
 
         for (int i = 0; i < family_size; i++) { // 1周目...IPv6 / 2周目...IPv4
-            allocate_rb_getaddrinfo_happy_hints(
+            allocate_fast_fallback_getaddrinfo_hints(
                 &getaddrinfo_hints[i],
                 arg->families[i],
                 remote_addrinfo_hints,
@@ -452,7 +452,7 @@ init_inetsock_internal_happy(VALUE v)
                 }
             }
 
-            if (do_pthread_create(&threads[i], do_rb_getaddrinfo_happy, arg->getaddrinfo_entries[i]) != 0) {
+            if (do_pthread_create(&threads[i], do_fast_fallback_getaddrinfo, arg->getaddrinfo_entries[i]) != 0) {
                 last_error = EAI_AGAIN;
                 rsock_raise_resolution_error("getaddrinfo", last_error);
             }
@@ -680,7 +680,7 @@ init_inetsock_internal_happy(VALUE v)
             }
         }
 
-        rb_thread_call_without_gvl2(wait_happy_eyeballs_fds, &wait_arg, cancel_happy_eyeballs_fds, getaddrinfo_shared);
+        rb_thread_call_without_gvl2(wait_fast_fallback, &wait_arg, cancel_fast_fallback, getaddrinfo_shared);
         rb_thread_check_ints();
 
         status = wait_arg.status;
@@ -856,10 +856,10 @@ init_inetsock_internal_happy(VALUE v)
 }
 
 static VALUE
-inetsock_cleanup_happy(VALUE v)
+fast_fallback_inetsock_cleanup(VALUE v)
 {
-    struct inetsock_happy_arg *arg = (void *)v;
-    struct rb_getaddrinfo_happy_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
+    struct fast_fallback_inetsock_arg *arg = (void *)v;
+    struct fast_fallback_getaddrinfo_shared *getaddrinfo_shared = arg->getaddrinfo_shared;
 
     if (arg->remote.res) {
         rb_freeaddrinfo(arg->remote.res);
@@ -891,9 +891,9 @@ inetsock_cleanup_happy(VALUE v)
         rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
 
         for (int i = 0; i < arg->family_size; i++) {
-            if (need_free[i]) free_rb_getaddrinfo_happy_entry(&arg->getaddrinfo_entries[i]);
+            if (need_free[i]) free_fast_fallback_getaddrinfo_entry(&arg->getaddrinfo_entries[i]);
         }
-        if (shared_need_free) free_rb_getaddrinfo_happy_shared(&getaddrinfo_shared);
+        if (shared_need_free) free_fast_fallback_getaddrinfo_shared(&getaddrinfo_shared);
     }
 
     for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
@@ -926,7 +926,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.resolv_timeout = resolv_timeout;
     arg.connect_timeout = connect_timeout;
 
-    if (type == INET_CLIENT && HAPPY_EYEBALLS_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
+    if (type == INET_CLIENT && FAST_FALLBACK_INIT_INETSOCK_IMPL && RTEST(fast_fallback)) {
         char *hostp, *portp;
         char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
         int additional_flags = 0;
@@ -966,7 +966,7 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
                 target_families[1] = AF_INET;
             }
 
-            struct inetsock_happy_arg fast_fallback_arg;
+            struct fast_fallback_inetsock_arg fast_fallback_arg;
             memset(&fast_fallback_arg, 0, sizeof(fast_fallback_arg));
 
             fast_fallback_arg.sock = arg.sock;
@@ -998,8 +998,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             fast_fallback_arg.test_mode_settings = test_mode_settings;
             printf("[DEBUG] resolving_family_size %d\n", resolving_family_size);
 
-            return rb_ensure(init_inetsock_internal_happy, (VALUE)&fast_fallback_arg,
-                             inetsock_cleanup_happy, (VALUE)&fast_fallback_arg);
+            return rb_ensure(init_fast_fallback_inetsock_internal, (VALUE)&fast_fallback_arg,
+                             fast_fallback_inetsock_cleanup, (VALUE)&fast_fallback_arg);
         }
     }
 

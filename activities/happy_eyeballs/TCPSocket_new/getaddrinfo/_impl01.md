@@ -4,7 +4,7 @@
 // ext/socket/raddrinfo.c
 
 void
-free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared)
+free_fast_fallback_getaddrinfo_shared(struct fast_fallback_getaddrinfo_shared **shared)
 {
     free((*shared)->node);
     (*shared)->node = NULL;
@@ -18,7 +18,7 @@ free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared)
 }
 
 void
-free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry)
+free_fast_fallback_getaddrinfo_entry(struct fast_fallback_getaddrinfo_entry **entry)
 {
     if ((*entry)->ai) {
         freeaddrinfo((*entry)->ai);
@@ -28,17 +28,16 @@ free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry)
     *entry = NULL;
 }
 
-// GETADDRINFO_IMPL == 1のnogvl_getaddrinfoとrsock_getaddrinfoを参考にしている
 void *
-do_rb_getaddrinfo_happy(void *ptr)
+do_fast_fallback_getaddrinfo(void *ptr)
 {
-    struct rb_getaddrinfo_happy_entry *entry = (struct rb_getaddrinfo_happy_entry *)ptr;
-    struct rb_getaddrinfo_happy_shared *shared = entry->shared;
+    struct fast_fallback_getaddrinfo_entry *entry = (struct fast_fallback_getaddrinfo_entry *)ptr;
+    struct fast_fallback_getaddrinfo_shared *shared = entry->shared;
     int err = 0, need_free = 0, shared_need_free = 0;
 
     err = numeric_getaddrinfo(shared->node, shared->service, &entry->hints, &entry->ai);
 
-    printf("do_rb_getaddrinfo_happy %d starts to getaddrinfo \n", entry->family);
+    printf("do_fast_fallback_getaddrinfo %d starts to getaddrinfo \n", entry->family);
 
     if (err != 0) {
         err = getaddrinfo(shared->node, shared->service, &entry->hints, &entry->ai);
@@ -50,7 +49,7 @@ do_rb_getaddrinfo_happy(void *ptr)
            err = EAI_NONAME;
        #endif
     }
-    printf("do_rb_getaddrinfo_happy %d finished to getaddrinfo\n", entry->family);
+    printf("do_fast_fallback_getaddrinfo %d finished to getaddrinfo\n", entry->family);
 
     /* For testing HEv2 */
     if (entry->test_sleep_ms && entry->test_sleep_ms > 0) {
@@ -61,9 +60,9 @@ do_rb_getaddrinfo_happy(void *ptr)
             sleep_ts.tv_sec += sleep_ts.tv_nsec / 1000000000L;
             sleep_ts.tv_nsec = sleep_ts.tv_nsec % 1000000000L;
         }
-        printf("do_rb_getaddrinfo_happy %d starts to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
+        printf("do_fast_fallback_getaddrinfo %d starts to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
         nanosleep(&sleep_ts, NULL);
-        printf("do_rb_getaddrinfo_happy %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
+        printf("do_fast_fallback_getaddrinfo %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
     }
     if (entry->test_ecode && entry->test_ecode > 0) {
         err = entry->test_ecode;
@@ -71,7 +70,7 @@ do_rb_getaddrinfo_happy(void *ptr)
             freeaddrinfo(entry->ai);
             entry->ai = NULL;
         }
-        printf("do_rb_getaddrinfo_happy %d fail\n", entry->family);
+        printf("do_fast_fallback_getaddrinfo %d fail\n", entry->family);
     }
 
     rb_nativethread_lock_lock(shared->lock);
@@ -83,13 +82,13 @@ do_rb_getaddrinfo_happy(void *ptr)
                 entry->ai = NULL;
             }
         } else {
-            printf("do_rb_getaddrinfo_happy %d starts to write\n", entry->family);
+            printf("do_fast_fallback_getaddrinfo %d starts to write\n", entry->family);
             if (entry->family == AF_INET6) {
                 write(shared->notify, IPV6_HOSTNAME_RESOLVED, strlen(IPV6_HOSTNAME_RESOLVED));
             } else if (entry->family == AF_INET) {
                 write(shared->notify, IPV4_HOSTNAME_RESOLVED, strlen(IPV4_HOSTNAME_RESOLVED));
             }
-            printf("do_rb_getaddrinfo_happy %d finished to write\n", entry->family);
+            printf("do_fast_fallback_getaddrinfo %d finished to write\n", entry->family);
         }
         if (--(entry->refcount) == 0) need_free = 1;
         if (--(shared->refcount) == 0) shared_need_free = 1;
@@ -97,10 +96,10 @@ do_rb_getaddrinfo_happy(void *ptr)
     rb_nativethread_lock_unlock(shared->lock);
 
     if (need_free && entry) {
-        free_rb_getaddrinfo_happy_entry(&entry);
+        free_fast_fallback_getaddrinfo_entry(&entry);
     }
     if (shared_need_free && shared) {
-        free_rb_getaddrinfo_happy_shared(&shared);
+        free_fast_fallback_getaddrinfo_shared(&shared);
     }
 
     return 0;
@@ -132,26 +131,26 @@ VALUE rsock_init_inetsock(
 char *host_str(VALUE host, char *hbuf, size_t hbuflen, int *flags_ptr);
 char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
-struct rb_getaddrinfo_happy_shared {
+struct fast_fallback_getaddrinfo_shared {
     int wait, notify, refcount, connection_attempt_fds_size;
     int *connection_attempt_fds, *cancelled;
     char *node, *service;
     rb_nativethread_lock_t *lock;
 };
 
-struct rb_getaddrinfo_happy_entry
+struct fast_fallback_getaddrinfo_entry
 {
     int family, err, refcount;
     struct addrinfo hints;
     struct addrinfo *ai;
-    struct rb_getaddrinfo_happy_shared *shared;
+    struct fast_fallback_getaddrinfo_shared *shared;
     long test_sleep_ms;
     int test_ecode;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
-void * do_rb_getaddrinfo_happy(void *ptr);
-void free_rb_getaddrinfo_happy_entry(struct rb_getaddrinfo_happy_entry **entry);
-void free_rb_getaddrinfo_happy_shared(struct rb_getaddrinfo_happy_shared **shared);
+void * do_fast_fallback_getaddrinfo(void *ptr);
+void free_fast_fallback_getaddrinfo_entry(struct fast_fallback_getaddrinfo_entry **entry);
+void free_fast_fallback_getaddrinfo_shared(struct fast_fallback_getaddrinfo_shared **shared);
 // -------------------------
 ```
