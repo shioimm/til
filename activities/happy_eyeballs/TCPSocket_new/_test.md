@@ -76,6 +76,59 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
     end;
   end
 
+  def test_initialize_v6_hostname_resolved_earlier_and_v6_server_is_not_listening
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      ipv4_address = "127.0.0.1"
+      ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
+      ipv4_server.bind(Socket.pack_sockaddr_in(0, ipv4_address))
+      port = ipv4_server.connect_address.ip_port
+
+      ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 10 } })
+      assert_equal(ipv4_address, socket.remote_address.ip_address)
+
+      accepted, _ = ipv4_server_thread.value
+      accepted.close
+      ipv4_server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
+  def test_initialize_v6_hostname_resolution_failed_and_v4_hostname_resolution_is_success
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.addr[1]
+
+      server_thread = Thread.new { server.accept }
+      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 10 }, fail: { ipv6: true } })
+
+      assert_true(socket.remote_address.ipv4?)
+      server_thread.value.close
+      server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
+  def test_initialize_with_hostname_resolution_failure_after_connection_failure
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+    server = TCPServer.new("::1", 0)
+    port = server.connect_address.ip_port
+    server.close
+
+    begin;
+      assert_raise(Errno::EFAULT) do
+        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, error: { ipv4: Errno::EFAULT } })
+      end
+    end;
+  end
+
   def test_initialize_resolv_timeout_with_connection_failure
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
@@ -114,6 +167,9 @@ end if defined?(TCPSocket)
 - `TestSocket_TCPSocket#test_accept_multithread` -> OK
 - `TestSocket_TCPSocket#test_ai_addrconfig` -> OK
 
-#### 未実施
-- start -> v6c -> v46w -> success (v46w中に名前解決スレッドで例外発生)
-- start -> failure (最後に名前解決に失敗した際のエラーで例外を送出)
+#### そのほか
+自動テストでは検証が難しいが動作確認が必要なもの
+
+- 複数の接続試行を開始後、ひとつが接続に成功した場合そのほかのfdがcloseされていること
+- `local_port` / `local_host`を指定して意図通りに動作すること
+- 連続して複数回実行できること

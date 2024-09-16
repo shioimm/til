@@ -53,10 +53,10 @@ do_rb_getaddrinfo_happy(void *ptr)
     printf("do_rb_getaddrinfo_happy %d finished to getaddrinfo\n", entry->family);
 
     /* For testing HEv2 */
-    if (entry->sleep_ms && entry->sleep_ms > 0) {
+    if (entry->test_sleep_ms && entry->test_sleep_ms > 0) {
         struct timespec sleep_ts;
-        sleep_ts.tv_sec = entry->sleep_ms / 1000;
-        sleep_ts.tv_nsec = (entry->sleep_ms % 1000) * 1000000L;
+        sleep_ts.tv_sec = entry->test_sleep_ms / 1000;
+        sleep_ts.tv_nsec = (entry->test_sleep_ms % 1000) * 1000000L;
         if (sleep_ts.tv_nsec >= 1000000000L) {
             sleep_ts.tv_sec += sleep_ts.tv_nsec / 1000000000L;
             sleep_ts.tv_nsec = sleep_ts.tv_nsec % 1000000000L;
@@ -64,6 +64,14 @@ do_rb_getaddrinfo_happy(void *ptr)
         printf("do_rb_getaddrinfo_happy %d starts to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
         nanosleep(&sleep_ts, NULL);
         printf("do_rb_getaddrinfo_happy %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
+    }
+    if (entry->test_ecode && entry->test_ecode > 0) {
+        err = entry->test_ecode;
+        if (entry->ai) {
+            freeaddrinfo(entry->ai);
+            entry->ai = NULL;
+        }
+        printf("do_rb_getaddrinfo_happy %d fail\n", entry->family);
     }
 
     rb_nativethread_lock_lock(shared->lock);
@@ -137,7 +145,8 @@ struct rb_getaddrinfo_happy_entry
     struct addrinfo hints;
     struct addrinfo *ai;
     struct rb_getaddrinfo_happy_shared *shared;
-    long sleep_ms;
+    long test_sleep_ms;
+    int test_ecode;
 };
 
 int do_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg);
