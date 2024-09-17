@@ -54,7 +54,7 @@ do_fast_fallback_getaddrinfo(void *ptr)
     if (debug) printf("do_fast_fallback_getaddrinfo %d finished to getaddrinfo\n", entry->family);
 
     /* For testing HEv2 */
-    if (entry->test_sleep_ms && entry->test_sleep_ms > 0) {
+    if (entry->test_sleep_ms > 0) {
         struct timespec sleep_ts;
         sleep_ts.tv_sec = entry->test_sleep_ms / 1000;
         sleep_ts.tv_nsec = (entry->test_sleep_ms % 1000) * 1000000L;
@@ -66,7 +66,7 @@ do_fast_fallback_getaddrinfo(void *ptr)
         nanosleep(&sleep_ts, NULL);
         if (debug) printf("do_fast_fallback_getaddrinfo %d finished to nanosleep %ld:%ld\n", entry->family, sleep_ts.tv_sec, sleep_ts.tv_nsec);
     }
-    if (entry->test_ecode && entry->test_ecode > 0) {
+    if (entry->test_ecode > 0) {
         err = entry->test_ecode;
         if (entry->ai) {
             freeaddrinfo(entry->ai);

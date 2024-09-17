@@ -429,6 +429,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
             arg->getaddrinfo_entries[i]->ai = NULL;
             arg->getaddrinfo_entries[i]->family = arg->families[i];
             arg->getaddrinfo_entries[i]->refcount = 2;
+            arg->getaddrinfo_entries[i]->test_sleep_ms = 0;
+            arg->getaddrinfo_entries[i]->test_ecode = 0;
 
             /* For testing HEv2 */
             if (!NIL_P(test_mode_settings) && RB_TYPE_P(test_mode_settings, T_HASH)) {
