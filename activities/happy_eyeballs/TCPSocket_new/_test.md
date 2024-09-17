@@ -97,6 +97,29 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
     end;
   end
 
+  def test_initialize_v6_hostname_resolved_later_and_v6_server_is_not_listening
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      ipv4_server = Socket.new(Socket::AF_INET, :STREAM)
+      ipv4_server.bind(Socket.pack_sockaddr_in(0, "127.0.0.1"))
+      port = ipv4_server.connect_address.ip_port
+
+      ipv4_server_thread = Thread.new { ipv4_server.listen(1); ipv4_server.accept }
+      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv6: 25 } })
+
+      assert_equal(
+        socket.remote_address.ipv4?,
+        true
+      )
+      accepted, _ = ipv4_server_thread.value
+      accepted.close
+      ipv4_server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
   def test_initialize_v6_hostname_resolution_failed_and_v4_hostname_resolution_is_success
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
@@ -106,7 +129,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
       port = server.addr[1]
 
       server_thread = Thread.new { server.accept }
-      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 10 }, fail: { ipv6: true } })
+      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 10 }, error: { ipv6: Errno::EFAULT } })
 
       assert_true(socket.remote_address.ipv4?)
       server_thread.value.close
@@ -142,6 +165,45 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
     end;
   end
 
+  def test_initialize_v6_connected_socket_with_v6_address
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      begin
+        server = TCPServer.new("::1", 0)
+      rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+        exit
+      end
+
+      server_thread = Thread.new { server.accept }
+      port = server.addr[1]
+
+      socket = TCPSocket.new("::1", port)
+      assert_true(socket.remote_address.ipv6?)
+      server_thread.value.close
+      server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
+  def test_initialize_v4_connected_socket_with_v4_address
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+
+    begin;
+      server = TCPServer.new("127.0.0.1", 0)
+      server_thread = Thread.new { server.accept }
+      port = server.addr[1]
+
+      socket = TCPSocket.new("127.0.0.1", port)
+      assert_true(socket.remote_address.ipv4?)
+      server_thread.value.close
+      server.close
+      socket.close if socket && !socket.closed?
+    end;
+  end
+
   def test_initialize_fast_fallback_is_false
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
@@ -170,6 +232,6 @@ end if defined?(TCPSocket)
 #### そのほか
 自動テストでは検証が難しいが動作確認が必要なもの
 
-- 複数の接続試行を開始後、ひとつが接続に成功した場合そのほかのfdがcloseされていること
+- 複数の接続試行を開始後、ひとつが接続に成功した場合そのほかのfdがcloseされていること: OK
 - `local_port` / `local_host`を指定して意図通りに動作すること
 - 連続して複数回実行できること
