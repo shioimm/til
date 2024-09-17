@@ -429,6 +429,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
             arg->getaddrinfo_entries[i]->ai = NULL;
             arg->getaddrinfo_entries[i]->family = arg->families[i];
             arg->getaddrinfo_entries[i]->refcount = 2;
+            arg->getaddrinfo_entries[i]->test_sleep_ms = 0;
+            arg->getaddrinfo_entries[i]->test_ecode = 0;
 
             /* For testing HEv2 */
             if (!NIL_P(test_mode_settings) && RB_TYPE_P(test_mode_settings, T_HASH)) {
@@ -752,7 +754,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         resolved_type[resolved_type_size] = '\0';
 
                         if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) { // IPv6解決
-                            printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
+                            if (debug) printf("[DEBUG] %d: ** Resolved IPv6 **\n", count);
                             resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                             resolution_store.v6.finished = true;
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
@@ -770,7 +772,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                                 break;
                             }
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) { // IPv4解決
-                            printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
+                            if (debug) printf("[DEBUG] %d: ** Resolved IPv4 **\n", count);
                             resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                             resolution_store.v4.finished = true;
 
@@ -996,7 +998,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             fast_fallback_arg.families = resolving_families;
             fast_fallback_arg.family_size = resolving_family_size;
             fast_fallback_arg.test_mode_settings = test_mode_settings;
-            printf("[DEBUG] resolving_family_size %d\n", resolving_family_size);
 
             return rb_ensure(init_fast_fallback_inetsock_internal, (VALUE)&fast_fallback_arg,
                              fast_fallback_inetsock_cleanup, (VALUE)&fast_fallback_arg);
