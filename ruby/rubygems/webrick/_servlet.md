@@ -1,5 +1,4 @@
 # サーブレット
-## TL;DR
 - [WEBrick::HTTPServlet::AbstractServlet](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPServlet=3a=3aAbstractServlet.html)
   - サーブレットの抽象クラス
 - [WEBrick::HTTPServlet::DefaultFileHandler](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPServlet=3a=3aDefaultFileHandler.html)
@@ -15,27 +14,6 @@
   - Procを扱うサーブレット
 - [WEBrick::HTTPServer::MountTable](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPServer=3a=3aMountTable.html)
   - サーバー上のパスとサーブレットの対応関係を管理するクラス
-
-## 継承リスト
-```
-BasicObject
-  |
-Kernel
-  |
-Object
-  |
-WEBrick::HTTPServlet::AbstractServlet
-  |
-  |- WEBrick::HTTPServlet::DefaultFileHandler
-  |
-  |- WEBrick::HTTPServlet::FileHandler
-  |
-  |- WEBrick::HTTPServlet::CGIHandler
-  |
-  |- WEBrick::HTTPServlet::ERBHandler
-  |
-  |- WEBrick::HTTPServlet::ProcHandler
-```
 
 ## サーブレットのマウント
 ```ruby

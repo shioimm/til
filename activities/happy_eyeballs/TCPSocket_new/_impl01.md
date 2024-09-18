@@ -898,13 +898,24 @@ fast_fallback_inetsock_cleanup(VALUE v)
         if (shared_need_free) free_fast_fallback_getaddrinfo_shared(&getaddrinfo_shared);
     }
 
+    int connection_attempt_fd;
+    struct sockaddr_storage addr;
+    socklen_t addr_len = sizeof(addr);
+
     for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
-        int connection_attempt_fd = arg->connection_attempt_fds[i];
-        if (connection_attempt_fd >= 0) close(connection_attempt_fd);
+        connection_attempt_fd = arg->connection_attempt_fds[i];
+        if (connection_attempt_fd >= 0) {
+            if (getpeername(connection_attempt_fd, (struct sockaddr *)&addr, &addr_len) == 0) {
+                shutdown(connection_attempt_fd, SHUT_RDWR);
+            }
+            close(connection_attempt_fd);
+        }
     }
 
-    free(arg->connection_attempt_fds);
-    arg->connection_attempt_fds = NULL;
+    if (arg->connection_attempt_fds) {
+        free(arg->connection_attempt_fds);
+        arg->connection_attempt_fds = NULL;
+    }
 
     return Qnil;
 }
