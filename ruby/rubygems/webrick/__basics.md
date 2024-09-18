@@ -1,7 +1,4 @@
 # WEBrick
-- 参照・引用: [library webrick](https://docs.ruby-lang.org/ja/2.7.0/library/webrick.html)
-
-## TL;DR
 - 汎用HTTPサーバーフレームワーク
 - サーブレットによって機能し、サーブレットを作成することにより機能の追加ができる
   - サーブレット - サーバーの機能を抽象化しオブジェクトにしたもの
@@ -59,7 +56,7 @@ server.start
 - [WEBrick::HTTPAuth::Htgroup](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPAuth=3a=3aHtgroup.html)
 - [WEBrick::HTTPAuth::Htpasswd](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPAuth=3a=3aHtpasswd.html)
 
-### Cookie関連クラス
+### Cookie関連
 - [WEBrick::Cookie](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aCookie.html)
 
 ### フォーム
@@ -71,3 +68,6 @@ server.start
 
 ### バージョン
 - [WEBrick::HTTPVersion](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPVersion.html)
+
+## 参照・引用
+- [library webrick](https://docs.ruby-lang.org/ja/2.7.0/library/webrick.html)

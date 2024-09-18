@@ -1,22 +1,8 @@
 # サーバー
-## TL;DR
 - [WEBrick::GenericServer](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aGenericServer.html)
   - サーバーの抽象クラス
 - [WEBrick::HTTPServer](https://docs.ruby-lang.org/ja/2.7.0/class/WEBrick=3a=3aHTTPServer.html)
   - HTTPサーバークラス
-
-## 継承リスト
-```
-BasicObject
-  |
-Kernel
-  |
-Object
-  |
-WEBrick::GenericServer
-  |
-  |- WEBrick::HTTPServer
-```
 
 ## WEBrickサーバーの仕組み
 1. 構築
