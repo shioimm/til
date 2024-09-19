@@ -899,15 +899,15 @@ fast_fallback_inetsock_cleanup(VALUE v)
     }
 
     int connection_attempt_fd;
-    struct sockaddr_storage addr;
-    socklen_t addr_len = sizeof(addr);
+    int error = 0;
+    socklen_t len = sizeof(error);
 
     for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
         connection_attempt_fd = arg->connection_attempt_fds[i];
+        if (debug) printf("fast_fallback_inetsock_cleanup: connection_attempt_fd %d\n", connection_attempt_fd);
         if (connection_attempt_fd >= 0) {
-            if (getpeername(connection_attempt_fd, (struct sockaddr *)&addr, &addr_len) == 0) {
-                shutdown(connection_attempt_fd, SHUT_RDWR);
-            }
+            getsockopt(connection_attempt_fd, SOL_SOCKET, SO_ERROR, &error, &len);
+            if (error == 0) shutdown(connection_attempt_fd, SHUT_RDWR);
             close(connection_attempt_fd);
         }
     }
