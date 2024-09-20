@@ -395,7 +395,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
         getaddrinfo_shared = arg->getaddrinfo_shared;
-        getaddrinfo_shared->node = strdup(arg->hostp);
+        getaddrinfo_shared->node = arg->hostp ? strdup(arg->hostp) : NULL;
         getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = family_size + 1;
         getaddrinfo_shared->notify = hostname_resolution_notifier;
