@@ -186,13 +186,12 @@ is_timeout_tv(struct timeval *timeout_tv, struct timespec now) {
     if (!timeout_tv) return false;
     if (timeout_tv->tv_sec == -1 && timeout_tv->tv_usec == -1) return false;
 
-    struct timespec tv;
-    tv.tv_sec = timeout_tv->tv_sec;
-    tv.tv_nsec = timeout_tv->tv_usec * 1000;
+    struct timespec ts;
+    ts.tv_sec = timeout_tv->tv_sec;
+    ts.tv_nsec = timeout_tv->tv_usec * 1000;
 
-    if (tv.tv_sec < now.tv_sec) return true;
-    if (tv.tv_sec == now.tv_sec && tv.tv_nsec < now.tv_nsec) return true;
-
+    if (now.tv_sec > ts.tv_sec) return true;
+    if (now.tv_sec == ts.tv_sec && now.tv_nsec >= ts.tv_nsec) return true;
     return false;
 }
 
