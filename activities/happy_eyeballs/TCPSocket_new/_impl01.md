@@ -147,19 +147,16 @@ current_clocktime_ts()
 void
 set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
 {
-    long seconds = ms / 1000;
-    long nanoseconds = (ms % 1000) * 1000000;
+    long sec = ms / 1000;
+    long nsec = (ms % 1000) * 1000000;
+    long result_sec = from.tv_sec + sec;
+    long result_nsec = from.tv_nsec + nsec;
 
-    from.tv_sec += seconds;
-    from.tv_nsec += nanoseconds;
+    result_sec += result_nsec / 1000000000;
+    result_nsec = result_nsec % 1000000000;
 
-    while (from.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        from.tv_nsec -= 1000000000;
-        from.tv_sec += 1;
-    }
-
-    tv->tv_sec = from.tv_sec;
-    tv->tv_usec = (int)(from.tv_nsec / 1000);
+    tv->tv_sec = result_sec;
+    tv->tv_usec = (int)(result_nsec / 1000);
 }
 
 struct timeval
