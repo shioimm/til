@@ -147,19 +147,16 @@ current_clocktime_ts()
 void
 set_timeout_tv(struct timeval *tv, long ms, struct timespec from)
 {
-    long seconds = ms / 1000;
-    long nanoseconds = (ms % 1000) * 1000000;
+    long sec = ms / 1000;
+    long nsec = (ms % 1000) * 1000000;
+    long result_sec = from.tv_sec + sec;
+    long result_nsec = from.tv_nsec + nsec;
 
-    from.tv_sec += seconds;
-    from.tv_nsec += nanoseconds;
+    result_sec += result_nsec / 1000000000;
+    result_nsec = result_nsec % 1000000000;
 
-    while (from.tv_nsec >= 1000000000) { // nsが1sを超えた場合の処理
-        from.tv_nsec -= 1000000000;
-        from.tv_sec += 1;
-    }
-
-    tv->tv_sec = from.tv_sec;
-    tv->tv_usec = (int)(from.tv_nsec / 1000);
+    tv->tv_sec = result_sec;
+    tv->tv_usec = (int)(result_nsec / 1000);
 }
 
 struct timeval
@@ -189,13 +186,12 @@ is_timeout_tv(struct timeval *timeout_tv, struct timespec now) {
     if (!timeout_tv) return false;
     if (timeout_tv->tv_sec == -1 && timeout_tv->tv_usec == -1) return false;
 
-    struct timespec tv;
-    tv.tv_sec = timeout_tv->tv_sec;
-    tv.tv_nsec = timeout_tv->tv_usec * 1000;
+    struct timespec ts;
+    ts.tv_sec = timeout_tv->tv_sec;
+    ts.tv_nsec = timeout_tv->tv_usec * 1000;
 
-    if (tv.tv_sec < now.tv_sec) return true;
-    if (tv.tv_sec == now.tv_sec && tv.tv_nsec < now.tv_nsec) return true;
-
+    if (now.tv_sec > ts.tv_sec) return true;
+    if (now.tv_sec == ts.tv_sec && now.tv_nsec >= ts.tv_nsec) return true;
     return false;
 }
 
@@ -399,7 +395,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
         getaddrinfo_shared = arg->getaddrinfo_shared;
-        getaddrinfo_shared->node = strdup(arg->hostp);
+        getaddrinfo_shared->node = arg->hostp ? strdup(arg->hostp) : NULL;
         getaddrinfo_shared->service = strdup(arg->portp);
         getaddrinfo_shared->refcount = family_size + 1;
         getaddrinfo_shared->notify = hostname_resolution_notifier;
@@ -733,7 +729,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
             if (any_addrinfos(&resolution_store) ||
                 in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
                 !resolution_store.is_all_finised) {
-                connection_attempt_delay_expires_at = NULL;
                 if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) {
                     user_specified_connect_timeout_at = NULL;
                 }
