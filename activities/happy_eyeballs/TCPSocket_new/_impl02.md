@@ -1,6 +1,5 @@
-# 7/10 - 9/20
-- (参照先: `getaddrinfo/_impl01`)
-- 状態管理をやめ、ifによる条件分岐をベースに処理を実行する
+# 9/21-
+- (参照先: `getaddrinfo/_impl02`)
 
 ```c
 // ext/socket/ipsocket.c
