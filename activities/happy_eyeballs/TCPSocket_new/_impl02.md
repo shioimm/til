@@ -32,6 +32,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
 #define IPV6_ENTRY_POS 0
 #define IPV4_ENTRY_POS 1
+#define RESOLUTION_ERROR 0
+#define SYSCALL_ERROR 1
 
 static int
 is_specified_ip_address(const char *hostname)
@@ -312,6 +314,12 @@ in_progress_fds(const int *fds, int fds_size)
     return false;
 }
 
+struct fast_fallback_error
+{
+    int type;
+    int ecode;
+};
+
 static VALUE
 init_fast_fallback_inetsock_internal(VALUE v)
 {
@@ -322,8 +330,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
     int fd = -1, connected_fd = -1, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
-    int last_error = 0;
+    struct fast_fallback_error last_error = { 0, 0 };
     const char *syscall = 0;
+    VALUE host, serv;
 
     #ifdef HAVE_CONST_AI_ADDRCONFIG
     remote_addrinfo_hints |= AI_ADDRCONFIG;
@@ -464,8 +473,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
 
             if (do_pthread_create(&threads[i], do_fast_fallback_getaddrinfo, arg->getaddrinfo_entries[i]) != 0) {
-                last_error = EAI_AGAIN;
-                rsock_raise_resolution_error("getaddrinfo", last_error);
+                rsock_raise_resolution_error("getaddrinfo", EAI_AGAIN);
             }
             pthread_detach(threads[i]);
         }
@@ -494,9 +502,17 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     if (resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
-                        rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                        host = arg->local.host;
+                        serv = arg->local.serv;
+                    } else {
+                        host = arg->remote.host;
+                        serv = arg->remote.serv;
                     }
-                    rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                    if (last_error.type == RESOLUTION_ERROR) {
+                        rsock_raise_resolution_error(syscall, last_error.ecode);
+                    } else {
+                        rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                    }
                 }
                 #endif
 
@@ -512,8 +528,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                             resolution_store.is_all_finised) {
                             /* Use a different family local address if no choice, this
                              * will cause EAFNOSUPPORT. */
-                            last_error = EAFNOSUPPORT;
-                            rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                            rsock_syserr_fail_host_port(EAFNOSUPPORT, syscall, arg->local.host, arg->local.serv);
                         }
                     }
                 }
@@ -523,7 +538,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 fd = status;
 
                 if (fd < 0) {
-                    last_error = errno;
+                    last_error.type = SYSCALL_ERROR;
+                    last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
                     fd = -1;
 
                     if (any_addrinfos(&resolution_store) ||
@@ -531,9 +547,17 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         !resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
-                        rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                        host = arg->local.host;
+                        serv = arg->local.serv;
+                    } else {
+                        host = arg->remote.host;
+                        serv = arg->remote.serv;
                     }
-                    rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                    if (last_error.type == RESOLUTION_ERROR) {
+                        rsock_raise_resolution_error(syscall, last_error.ecode);
+                    } else {
+                        rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                    }
                 }
 
                 if (local_ai) {
@@ -546,16 +570,26 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     syscall = "bind(2)";
 
                     if (status < 0) {
-                        last_error = errno;
+                        last_error.type = SYSCALL_ERROR;
+                        last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
                         fd = -1;
 
                         if (any_addrinfos(&resolution_store)) continue;
                         if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
                         if (!resolution_store.is_all_finised) break;
+
                         if (local_status < 0) {
-                           rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                            host = arg->local.host;
+                            serv = arg->local.serv;
+                        } else {
+                            host = arg->remote.host;
+                            serv = arg->remote.serv;
                         }
-                        rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                        if (last_error.type == RESOLUTION_ERROR) {
+                            rsock_raise_resolution_error(syscall, last_error.ecode);
+                        } else {
+                            rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                        }
                     }
                 }
 
@@ -611,7 +645,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     break;
                 }
 
-                last_error = errno;
+                last_error.type = SYSCALL_ERROR;
+                last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
                 close(fd);
 
                 if (any_addrinfos(&resolution_store)) continue;
@@ -619,9 +654,17 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 if (!resolution_store.is_all_finised) break;
 
                 if (local_status < 0) {
-                    rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                    host = arg->local.host;
+                    serv = arg->local.serv;
+                } else {
+                    host = arg->remote.host;
+                    serv = arg->remote.serv;
                 }
-                rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                if (last_error.type == RESOLUTION_ERROR) {
+                    rsock_raise_resolution_error(syscall, last_error.ecode);
+                } else {
+                    rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                }
             }
         }
 
@@ -702,7 +745,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
 
             if (connected_fd >= 0) break;
-            last_error = errno;
+            last_error.type = SYSCALL_ERROR;
+            last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
 
             if (any_addrinfos(&resolution_store) ||
                 in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
@@ -712,9 +756,17 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 }
             } else {
                 if (local_status < 0) {
-                    rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                    host = arg->local.host;
+                    serv = arg->local.serv;
+                } else {
+                    host = arg->remote.host;
+                    serv = arg->remote.serv;
                 }
-                rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                if (last_error.type == RESOLUTION_ERROR) {
+                    rsock_raise_resolution_error(syscall, last_error.ecode);
+                } else {
+                    rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                }
             }
 
             /* check for hostname resolution */
@@ -729,7 +781,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                             resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                             resolution_store.v6.finished = true;
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
-                                last_error = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                                last_error.type = RESOLUTION_ERROR;
+                                last_error.ecode = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
+                                syscall = "getaddrinfo";
                                 resolution_store.v6.succeed = false;
                             } else {
                                 resolution_store.v6.succeed = true;
@@ -746,7 +800,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                             resolution_store.v4.finished = true;
 
                             if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
-                                last_error = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+                                last_error.type = RESOLUTION_ERROR;
+                                last_error.ecode = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
+                                syscall = "getaddrinfo";
                                 resolution_store.v4.succeed = false;
                             } else {
                                 resolution_store.v4.succeed = true;
@@ -764,14 +820,23 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         errno = 0;
                         break;
                     } else {
-                        last_error = errno;
+                        last_error.type = SYSCALL_ERROR;
+                        last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
                         if (!any_addrinfos(&resolution_store) &&
                             !in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
                             resolution_store.is_all_finised) {
                             if (local_status < 0) {
-                                rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                                host = arg->local.host;
+                                serv = arg->local.serv;
+                            } else {
+                                host = arg->remote.host;
+                                serv = arg->remote.serv;
                             }
-                            rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                            if (last_error.type == RESOLUTION_ERROR) {
+                                rsock_raise_resolution_error(syscall, last_error.ecode);
+                            } else {
+                                rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                            }
                         }
                     }
 
@@ -788,9 +853,17 @@ init_fast_fallback_inetsock_internal(VALUE v)
         if (!any_addrinfos(&resolution_store)) {
             if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) && resolution_store.is_all_finised) {
                 if (local_status < 0) {
-                    rsock_syserr_fail_host_port(last_error, syscall, arg->local.host, arg->local.serv);
+                    host = arg->local.host;
+                    serv = arg->local.serv;
+                } else {
+                    host = arg->remote.host;
+                    serv = arg->remote.serv;
                 }
-                rsock_syserr_fail_host_port(last_error, syscall, arg->remote.host, arg->remote.serv);
+                if (last_error.type == RESOLUTION_ERROR) {
+                    rsock_raise_resolution_error(syscall, last_error.ecode);
+                } else {
+                    rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                }
             }
 
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) || resolution_store.is_all_finised) &&
