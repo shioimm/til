@@ -10,6 +10,7 @@
 class TestSocket_TCPSocket < Test::Unit::TestCase
   # ...
   def test_initialize_v6_hostname_resolved_earlier
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -34,6 +35,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_v4_hostname_resolved_earlier
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -53,6 +55,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_v6_hostname_resolved_in_resolution_delay
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -77,6 +80,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_v6_hostname_resolved_earlier_and_v6_server_is_not_listening
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -98,6 +102,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_v6_hostname_resolved_later_and_v6_server_is_not_listening
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -136,20 +141,41 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_with_hostname_resolution_failure_after_connection_failure
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
-    server = TCPServer.new("::1", 0)
+    begin
+      server = TCPServer.new("::1", 0)
+    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
+      exit
+    end
     port = server.connect_address.ip_port
     server.close
 
     begin;
-      assert_raise(Errno::EFAULT) do
-        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, error: { ipv4: Errno::EFAULT } })
+      assert_raise(Socket::ResolutionError) do
+        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, error: { ipv4: Socket::EAI_FAIL } })
+      end
+    end;
+  end
+
+  def test_initialize_with_connection_failure_after_hostname_resolution_failure
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
+    opts = %w[-rsocket -W1]
+    assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+    server = TCPServer.new("127.0.0.1", 0)
+    port = server.connect_address.ip_port
+    server.close
+
+    begin;
+      assert_raise(Socket::ResolutionError) do
+        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, error: { ipv6: Socket::EAI_FAIL } })
       end
     end;
   end
 
   def test_initialize_resolv_timeout_with_connection_failure
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -163,6 +189,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_v6_connected_socket_with_v6_address
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -185,6 +212,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_v4_connected_socket_with_v4_address
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
 
@@ -202,6 +230,7 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   end
 
   def test_initialize_fast_fallback_is_false
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     server = TCPServer.new("127.0.0.1", 0)
     _, port, = server.addr
     server_thread = Thread.new { server.accept }
