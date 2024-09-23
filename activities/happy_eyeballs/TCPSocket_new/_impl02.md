@@ -446,18 +446,16 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
                 VALUE test_delay_setting = rb_hash_aref(test_mode_settings, ID2SYM(rb_intern("delay")));
                 if (!NIL_P(test_delay_setting)) {
-                    VALUE _test_delay_ms = rb_hash_aref(test_delay_setting, ID2SYM(rb_intern(family_sym)));
-                    long test_delay_ms = NIL_P(_test_delay_ms) ? 0 : _test_delay_ms;
+                    VALUE rb_test_delay_ms = rb_hash_aref(test_delay_setting, ID2SYM(rb_intern(family_sym)));
+                    long test_delay_ms = NIL_P(rb_test_delay_ms) ? 0 : rb_test_delay_ms;
                     arg->getaddrinfo_entries[i]->test_sleep_ms = test_delay_ms;
                 }
 
-                VALUE test_fail_setting = rb_hash_aref(test_mode_settings, ID2SYM(rb_intern("error")));
-                if (!NIL_P(test_fail_setting)) {
-                    VALUE _test_fail_setting = rb_hash_aref(test_fail_setting, ID2SYM(rb_intern(family_sym)));
-                    if (!NIL_P(_test_fail_setting)) {
-                        VALUE error_obj = rb_funcall(_test_fail_setting, rb_intern("new"), 0);
-                        VALUE ecode = rb_funcall(error_obj, rb_intern("errno"), 0);
-                        arg->getaddrinfo_entries[i]->test_ecode = NUM2INT(ecode);
+                VALUE test_error_setting = rb_hash_aref(test_mode_settings, ID2SYM(rb_intern("error")));
+                if (!NIL_P(test_error_setting)) {
+                    VALUE rb_test_ecode = rb_hash_aref(test_error_setting, ID2SYM(rb_intern(family_sym)));
+                    if (!NIL_P(rb_test_ecode)) {
+                        arg->getaddrinfo_entries[i]->test_ecode = NUM2INT(rb_test_ecode);
                     }
                 }
             }

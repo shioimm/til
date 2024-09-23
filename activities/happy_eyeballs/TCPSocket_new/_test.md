@@ -120,21 +120,18 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
     end;
   end
 
-  def test_initialize_v6_hostname_resolution_failed_and_v4_hostname_resolution_is_success
+  def test_initialize_with_hostname_resolution_failure_after_connection_failure
+    return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
     opts = %w[-rsocket -W1]
     assert_separately opts, "#{<<-"begin;"}\n#{<<-'end;'}"
+    server = TCPServer.new("::1", 0)
+    port = server.connect_address.ip_port
+    server.close
 
     begin;
-      server = TCPServer.new("127.0.0.1", 0)
-      port = server.addr[1]
-
-      server_thread = Thread.new { server.accept }
-      socket = TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 10 }, error: { ipv6: Errno::EFAULT } })
-
-      assert_true(socket.remote_address.ipv4?)
-      server_thread.value.close
-      server.close
-      socket.close if socket && !socket.closed?
+      assert_raise(Socket::ResolutionError) do
+        TCPSocket.new("localhost", port, test_mode_settings: { delay: { ipv4: 100 }, error: { ipv4: Socket::EAI_FAIL } })
+      end
     end;
   end
 
