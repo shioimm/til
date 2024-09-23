@@ -30,6 +30,9 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
 
 #elif FAST_FALLBACK_INIT_INETSOCK_IMPL == 1
 
+#define IPV6_ENTRY_POS 0
+#define IPV4_ENTRY_POS 1
+
 static int
 is_specified_ip_address(const char *hostname)
 {
