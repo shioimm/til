@@ -542,9 +542,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
                     fd = -1;
 
-                    if (any_addrinfos(&resolution_store) ||
-                        in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
-                        !resolution_store.is_all_finised) break;
+                    if (any_addrinfos(&resolution_store)) continue;
+                    if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                    if (!resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
                         host = arg->local.host;
