@@ -344,7 +344,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     pthread_t threads[family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int hostname_resolution_waiter, hostname_resolution_notifier;
+    int hostname_resolution_waiter = 0, hostname_resolution_notifier = 0;
     int pipefd[2];
     fd_set readfds, writefds;
 
