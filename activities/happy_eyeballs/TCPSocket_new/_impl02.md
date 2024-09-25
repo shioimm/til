@@ -73,7 +73,7 @@ struct fast_fallback_inetsock_arg
 };
 
 static struct fast_fallback_getaddrinfo_shared *
-create_fast_fallback_getaddrinfo_shared()
+create_fast_fallback_getaddrinfo_shared(void)
 {
     struct fast_fallback_getaddrinfo_shared *shared;
     shared = (struct fast_fallback_getaddrinfo_shared *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_shared));
@@ -81,7 +81,7 @@ create_fast_fallback_getaddrinfo_shared()
 }
 
 static struct fast_fallback_getaddrinfo_entry *
-allocate_fast_fallback_getaddrinfo_entry()
+allocate_fast_fallback_getaddrinfo_entry(void)
 {
     struct fast_fallback_getaddrinfo_entry *entry;
     entry = (struct fast_fallback_getaddrinfo_entry *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_entry));
@@ -154,7 +154,7 @@ any_addrinfos(struct hostname_resolution_store *resolution_store)
 }
 
 static struct timespec
-current_clocktime_ts()
+current_clocktime_ts(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
