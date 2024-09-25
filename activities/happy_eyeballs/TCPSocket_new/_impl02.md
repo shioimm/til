@@ -475,7 +475,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
 
             if (do_pthread_create(&threads[i], do_fast_fallback_getaddrinfo, arg->getaddrinfo_entries[i]) != 0) {
-                rsock_raise_resolution_error("getaddrinfo", EAI_AGAIN);
+                rsock_raise_resolution_error("getaddrinfo(3)", EAI_AGAIN);
             }
             pthread_detach(threads[i]);
         }
@@ -787,7 +787,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
                                 last_error.type = RESOLUTION_ERROR;
                                 last_error.ecode = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
-                                syscall = "getaddrinfo";
+                                syscall = "getaddrinfo(3)";
                                 resolution_store.v6.has_error = true;
                             } else {
                                 resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
@@ -805,7 +805,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                             if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
                                 last_error.type = RESOLUTION_ERROR;
                                 last_error.ecode = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-                                syscall = "getaddrinfo";
+                                syscall = "getaddrinfo(3)";
                                 resolution_store.v4.has_error = true;
                             } else {
                                 resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
