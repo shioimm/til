@@ -537,14 +537,14 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 syscall = "socket(2)";
                 fd = status;
 
-                if (fd < 0) {
+                if (status < 0) {
                     last_error.type = SYSCALL_ERROR;
-                    last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
+                    last_error.ecode = errno;
                     fd = -1;
 
-                    if (any_addrinfos(&resolution_store) ||
-                        in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
-                        !resolution_store.is_all_finised) break;
+                    if (any_addrinfos(&resolution_store)) continue;
+                    if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                    if (!resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
                         host = arg->local.host;
@@ -571,7 +571,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
                     if (status < 0) {
                         last_error.type = SYSCALL_ERROR;
-                        last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
+                        last_error.ecode = errno;
+                        close(fd);
                         fd = -1;
 
                         if (any_addrinfos(&resolution_store)) continue;
@@ -646,8 +647,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 }
 
                 last_error.type = SYSCALL_ERROR;
-                last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
+                last_error.ecode = errno;
                 close(fd);
+                fd = -1;
 
                 if (any_addrinfos(&resolution_store)) continue;
                 if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
@@ -746,7 +748,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
             if (connected_fd >= 0) break;
             last_error.type = SYSCALL_ERROR;
-            last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
+            last_error.ecode = errno;
 
             if (any_addrinfos(&resolution_store) ||
                 in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
@@ -821,7 +823,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         break;
                     } else {
                         last_error.type = SYSCALL_ERROR;
-                        last_error.ecode = errno; // TODO ネットワーク系のエラーかもしれないので要確認
+                        last_error.ecode = errno;
+
                         if (!any_addrinfos(&resolution_store) &&
                             !in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
                             resolution_store.is_all_finised) {

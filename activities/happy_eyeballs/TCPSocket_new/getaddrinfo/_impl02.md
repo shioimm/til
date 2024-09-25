@@ -61,7 +61,7 @@ do_fast_fallback_getaddrinfo(void *ptr)
         }
         nanosleep(&sleep_ts, NULL);
     }
-    if (entry->test_ecode > 0) {
+    if (entry->test_ecode != 0) {
         err = entry->test_ecode;
         if (entry->ai) {
             freeaddrinfo(entry->ai);
