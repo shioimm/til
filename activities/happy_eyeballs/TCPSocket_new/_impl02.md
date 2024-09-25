@@ -137,7 +137,7 @@ struct hostname_resolution_result
 {
     struct addrinfo *ai;
     int finished;
-    int succeed;
+    int has_error;
 };
 
 struct hostname_resolution_store
@@ -359,8 +359,10 @@ init_fast_fallback_inetsock_internal(VALUE v)
     resolution_store.is_all_finised = false;
     resolution_store.v6.ai = NULL;
     resolution_store.v6.finished = false;
+    resolution_store.v6.has_error = false;
     resolution_store.v4.ai = NULL;
     resolution_store.v4.finished = false;
+    resolution_store.v4.has_error = false;
 
     int last_family = 0;
 
@@ -780,15 +782,15 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         resolved_type[resolved_type_size] = '\0';
 
                         if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
-                            resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                             resolution_store.v6.finished = true;
+
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
                                 last_error.type = RESOLUTION_ERROR;
                                 last_error.ecode = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
                                 syscall = "getaddrinfo";
-                                resolution_store.v6.succeed = false;
+                                resolution_store.v6.has_error = true;
                             } else {
-                                resolution_store.v6.succeed = true;
+                                resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                             }
                             if (resolution_store.v4.finished) {
                                 resolution_store.is_all_finised = true;
@@ -798,16 +800,15 @@ init_fast_fallback_inetsock_internal(VALUE v)
                                 break;
                             }
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
-                            resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                             resolution_store.v4.finished = true;
 
                             if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
                                 last_error.type = RESOLUTION_ERROR;
                                 last_error.ecode = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
                                 syscall = "getaddrinfo";
-                                resolution_store.v4.succeed = false;
+                                resolution_store.v4.has_error = true;
                             } else {
-                                resolution_store.v4.succeed = true;
+                                resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                             }
 
                             if (resolution_store.v6.finished) {
@@ -843,7 +844,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         }
                     }
 
-                    if (!resolution_store.v6.finished && resolution_store.v4.succeed) {
+                    if (!resolution_store.v6.finished &&
+                        resolution_store.v4.finished &&
+                        !resolution_store.v4.has_error) {
                         set_timeout_tv(&resolution_delay_storage, 50, now);
                         resolution_delay_expires_at = &resolution_delay_storage;
                     }
