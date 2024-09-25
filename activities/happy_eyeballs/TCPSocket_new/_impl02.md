@@ -818,32 +818,15 @@ init_fast_fallback_inetsock_internal(VALUE v)
                                 user_specified_resolv_timeout_at = NULL;
                                 break;
                             }
+                        } else {
+                            /* Retry to read from hostname_resolution_waiter */
                         }
                     } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         errno = 0;
                         break;
                     } else {
-                        last_error.type = SYSCALL_ERROR;
-                        last_error.ecode = errno;
-
-                        if (!any_addrinfos(&resolution_store) &&
-                            !in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
-                            resolution_store.is_all_finised) {
-                            if (local_status < 0) {
-                                host = arg->local.host;
-                                serv = arg->local.serv;
-                            } else {
-                                host = arg->remote.host;
-                                serv = arg->remote.serv;
-                            }
-                            if (last_error.type == RESOLUTION_ERROR) {
-                                rsock_raise_resolution_error(syscall, last_error.ecode);
-                            } else {
-                                rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
-                            }
-                        }
+                        /* Retry to read from hostname_resolution_waiter */
                     }
-
                     if (!resolution_store.v6.finished &&
                         resolution_store.v4.finished &&
                         !resolution_store.v4.has_error) {
