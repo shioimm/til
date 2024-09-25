@@ -73,7 +73,7 @@ struct fast_fallback_inetsock_arg
 };
 
 static struct fast_fallback_getaddrinfo_shared *
-create_fast_fallback_getaddrinfo_shared()
+create_fast_fallback_getaddrinfo_shared(void)
 {
     struct fast_fallback_getaddrinfo_shared *shared;
     shared = (struct fast_fallback_getaddrinfo_shared *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_shared));
@@ -81,7 +81,7 @@ create_fast_fallback_getaddrinfo_shared()
 }
 
 static struct fast_fallback_getaddrinfo_entry *
-allocate_fast_fallback_getaddrinfo_entry()
+allocate_fast_fallback_getaddrinfo_entry(void)
 {
     struct fast_fallback_getaddrinfo_entry *entry;
     entry = (struct fast_fallback_getaddrinfo_entry *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_entry));
@@ -137,7 +137,7 @@ struct hostname_resolution_result
 {
     struct addrinfo *ai;
     int finished;
-    int succeed;
+    int has_error;
 };
 
 struct hostname_resolution_store
@@ -154,7 +154,7 @@ any_addrinfos(struct hostname_resolution_store *resolution_store)
 }
 
 static struct timespec
-current_clocktime_ts()
+current_clocktime_ts(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -344,7 +344,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     pthread_t threads[family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int hostname_resolution_waiter, hostname_resolution_notifier;
+    int hostname_resolution_waiter = 0, hostname_resolution_notifier = 0;
     int pipefd[2];
     fd_set readfds, writefds;
 
@@ -359,8 +359,10 @@ init_fast_fallback_inetsock_internal(VALUE v)
     resolution_store.is_all_finised = false;
     resolution_store.v6.ai = NULL;
     resolution_store.v6.finished = false;
+    resolution_store.v6.has_error = false;
     resolution_store.v4.ai = NULL;
     resolution_store.v4.finished = false;
+    resolution_store.v4.has_error = false;
 
     int last_family = 0;
 
@@ -403,7 +405,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         resolution_store.is_all_finised = true;
         wait_arg.readfds = NULL;
     } else {
-        pipe(pipefd);
+        if (pipe(pipefd) != 0) rb_syserr_fail(errno, NULL);
         hostname_resolution_waiter = pipefd[0];
         int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
         fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK);
@@ -473,7 +475,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
 
             if (do_pthread_create(&threads[i], do_fast_fallback_getaddrinfo, arg->getaddrinfo_entries[i]) != 0) {
-                rsock_raise_resolution_error("getaddrinfo", EAI_AGAIN);
+                rsock_raise_resolution_error("getaddrinfo(3)", EAI_AGAIN);
             }
             pthread_detach(threads[i]);
         }
@@ -780,15 +782,15 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         resolved_type[resolved_type_size] = '\0';
 
                         if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
-                            resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                             resolution_store.v6.finished = true;
+
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err) {
                                 last_error.type = RESOLUTION_ERROR;
                                 last_error.ecode = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err;
-                                syscall = "getaddrinfo";
-                                resolution_store.v6.succeed = false;
+                                syscall = "getaddrinfo(3)";
+                                resolution_store.v6.has_error = true;
                             } else {
-                                resolution_store.v6.succeed = true;
+                                resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
                             }
                             if (resolution_store.v4.finished) {
                                 resolution_store.is_all_finised = true;
@@ -798,16 +800,15 @@ init_fast_fallback_inetsock_internal(VALUE v)
                                 break;
                             }
                         } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
-                            resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                             resolution_store.v4.finished = true;
 
                             if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
                                 last_error.type = RESOLUTION_ERROR;
                                 last_error.ecode = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err;
-                                syscall = "getaddrinfo";
-                                resolution_store.v4.succeed = false;
+                                syscall = "getaddrinfo(3)";
+                                resolution_store.v4.has_error = true;
                             } else {
-                                resolution_store.v4.succeed = true;
+                                resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
                             }
 
                             if (resolution_store.v6.finished) {
@@ -817,33 +818,18 @@ init_fast_fallback_inetsock_internal(VALUE v)
                                 user_specified_resolv_timeout_at = NULL;
                                 break;
                             }
+                        } else {
+                            /* Retry to read from hostname_resolution_waiter */
                         }
                     } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         errno = 0;
                         break;
                     } else {
-                        last_error.type = SYSCALL_ERROR;
-                        last_error.ecode = errno;
-
-                        if (!any_addrinfos(&resolution_store) &&
-                            !in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
-                            resolution_store.is_all_finised) {
-                            if (local_status < 0) {
-                                host = arg->local.host;
-                                serv = arg->local.serv;
-                            } else {
-                                host = arg->remote.host;
-                                serv = arg->remote.serv;
-                            }
-                            if (last_error.type == RESOLUTION_ERROR) {
-                                rsock_raise_resolution_error(syscall, last_error.ecode);
-                            } else {
-                                rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
-                            }
-                        }
+                        /* Retry to read from hostname_resolution_waiter */
                     }
-
-                    if (!resolution_store.v6.finished && resolution_store.v4.succeed) {
+                    if (!resolution_store.v6.finished &&
+                        resolution_store.v4.finished &&
+                        !resolution_store.v4.has_error) {
                         set_timeout_tv(&resolution_delay_storage, 50, now);
                         resolution_delay_expires_at = &resolution_delay_storage;
                     }
