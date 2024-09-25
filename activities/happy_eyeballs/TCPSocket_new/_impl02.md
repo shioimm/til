@@ -405,7 +405,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         resolution_store.is_all_finised = true;
         wait_arg.readfds = NULL;
     } else {
-        pipe(pipefd);
+        if (pipe(pipefd) != 0) rb_syserr_fail(errno, NULL);
         hostname_resolution_waiter = pipefd[0];
         int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
         fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK);
