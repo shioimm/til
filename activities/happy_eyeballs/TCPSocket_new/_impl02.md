@@ -735,12 +735,13 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 socklen_t len = sizeof(err);
 
                 if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0) {
-                    if (err == 0) {
+                    if (err == 0) { /* success */
                         arg->connection_attempt_fds[i] = -1;
                         connected_fd = fd;
                         break;
                     }
 
+                    /* fail */
                     errno = err;
                     close(fd);
                     arg->connection_attempt_fds[i] = -1;
