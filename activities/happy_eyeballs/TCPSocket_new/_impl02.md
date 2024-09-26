@@ -526,12 +526,12 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     }
                     if (!local_ai) {
                         if (any_addrinfos(&resolution_store)) continue;
-                        if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
-                            resolution_store.is_all_finised) {
-                            /* Use a different family local address if no choice, this
-                             * will cause EAFNOSUPPORT. */
-                            rsock_syserr_fail_host_port(EAFNOSUPPORT, syscall, arg->local.host, arg->local.serv);
-                        }
+                        if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                        if (!resolution_store.is_all_finised) break;
+
+                        /* Use a different family local address if no choice, this
+                         * will cause EAFNOSUPPORT. */
+                        rsock_syserr_fail_host_port(EAFNOSUPPORT, syscall, arg->local.host, arg->local.serv);
                     }
                 }
 
