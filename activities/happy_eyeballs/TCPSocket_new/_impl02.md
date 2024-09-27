@@ -469,6 +469,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             arg->getaddrinfo_entries[i]->ai = NULL;
             arg->getaddrinfo_entries[i]->family = arg->families[i];
             arg->getaddrinfo_entries[i]->refcount = 2;
+            arg->getaddrinfo_entries[i]->has_syserr = false;
             arg->getaddrinfo_entries[i]->test_sleep_ms = 0;
             arg->getaddrinfo_entries[i]->test_ecode = 0;
 
@@ -882,6 +883,34 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
                 VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
                 rb_raise(etimedout_error, "user specified timeout");
+            }
+        }
+
+        if (!resolution_store.is_all_finised) {
+            if (!resolution_store.v6.finished && arg->getaddrinfo_entries[IPV6_ENTRY_POS]->has_syserr) {
+                resolution_store.v6.ai = arg->getaddrinfo_entries[IPV6_ENTRY_POS]->ai;
+                resolution_store.v6.finished = true;
+
+                if (resolution_store.v4.finished) {
+                    resolution_store.is_all_finised = true;
+                    wait_arg.readfds = NULL;
+                    resolution_delay_expires_at = NULL;
+                    user_specified_resolv_timeout_at = NULL;
+                }
+            }
+            if (!resolution_store.v4.finished && arg->getaddrinfo_entries[IPV4_ENTRY_POS]->has_syserr) {
+                resolution_store.v4.ai = arg->getaddrinfo_entries[IPV4_ENTRY_POS]->ai;
+                resolution_store.v4.finished = true;
+
+                if (resolution_store.v6.finished) {
+                    resolution_store.is_all_finised = true;
+                    wait_arg.readfds = NULL;
+                    resolution_delay_expires_at = NULL;
+                    user_specified_resolv_timeout_at = NULL;
+                } else {
+                    set_timeout_tv(&resolution_delay_storage, 50, now);
+                    resolution_delay_expires_at = &resolution_delay_storage;
+                }
             }
         }
     }
