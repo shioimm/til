@@ -383,7 +383,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     int initial_capacity = 10;
     int current_capacity = initial_capacity;
     arg->connection_attempt_fds = (int *)malloc(initial_capacity * sizeof(int));
-    if (!arg->connection_attempt_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+    if (!arg->connection_attempt_fds) rb_syserr_fail(errno, "malloc(3)");
     arg->connection_attempt_fds_size = 0;
 
     struct timeval resolution_delay_storage;
@@ -421,6 +421,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     } else {
         if (pipe(pipefd) != 0) rb_syserr_fail(errno, "pipe(2)");
         hostname_resolution_waiter = pipefd[0];
+        int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
         if (waiter_flags < 0) rb_syserr_fail(errno, "fcntl(2)");
         if ((fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK)) < 0) {
             rb_syserr_fail(errno, "fcntl(2)");
@@ -430,10 +431,10 @@ init_fast_fallback_inetsock_internal(VALUE v)
         wait_arg.readfds = &readfds;
 
         arg->getaddrinfo_shared = allocate_fast_fallback_getaddrinfo_shared();
-        if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, "calloc(3)");
+        if (!arg->getaddrinfo_shared) rb_syserr_fail(errno, "calloc(3)");
 
         arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, "malloc(3)");
+        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(errno, "malloc(3)");
         rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
         getaddrinfo_shared = arg->getaddrinfo_shared;
@@ -450,7 +451,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
         for (int i = 0; i < arg->family_size; i++) {
             arg->getaddrinfo_entries[i] = allocate_fast_fallback_getaddrinfo_entry();
-            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, "calloc(3)");
+            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(errno, "calloc(3)");
             arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
         }
 
@@ -583,7 +584,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     #if !defined(_WIN32) && !defined(__CYGWIN__)
                     status = 1;
                     if ((setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&status, (socklen_t)sizeof(status))) < 0) {
-                        rb_sys_fail("setsockopt(2)");
+                        rb_syserr_fail(errno, "setsockopt(2)");
                     }
                     #endif
                     status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
@@ -644,7 +645,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     if (current_capacity == arg->connection_attempt_fds_size) {
                         int new_capacity = current_capacity + initial_capacity;
                         arg->connection_attempt_fds = (int*)realloc(arg->connection_attempt_fds, new_capacity * sizeof(int));
-                        if (!arg->connection_attempt_fds) rb_syserr_fail(EAI_MEMORY, "realloc(3)");
+                        if (!arg->connection_attempt_fds) rb_syserr_fail(errno, "realloc(3)");
                         current_capacity = new_capacity;
                     }
                     arg->connection_attempt_fds[arg->connection_attempt_fds_size] = fd;
@@ -847,6 +848,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     } else {
                         /* Retry to read from hostname_resolution_waiter */
                     }
+
                     if (!resolution_store.v6.finished &&
                         resolution_store.v4.finished &&
                         !resolution_store.v4.has_error) {
