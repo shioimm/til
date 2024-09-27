@@ -73,10 +73,15 @@ struct fast_fallback_inetsock_arg
 };
 
 static struct fast_fallback_getaddrinfo_shared *
-create_fast_fallback_getaddrinfo_shared(void)
+allocate_fast_fallback_getaddrinfo_shared(void)
 {
     struct fast_fallback_getaddrinfo_shared *shared;
-    shared = (struct fast_fallback_getaddrinfo_shared *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_shared));
+
+    shared = (struct fast_fallback_getaddrinfo_shared *)calloc(
+        1,
+        sizeof(struct fast_fallback_getaddrinfo_shared)
+    );
+
     return shared;
 }
 
@@ -84,7 +89,12 @@ static struct fast_fallback_getaddrinfo_entry *
 allocate_fast_fallback_getaddrinfo_entry(void)
 {
     struct fast_fallback_getaddrinfo_entry *entry;
-    entry = (struct fast_fallback_getaddrinfo_entry *)calloc(1, sizeof(struct fast_fallback_getaddrinfo_entry));
+
+    entry = (struct fast_fallback_getaddrinfo_entry *)calloc(
+        1,
+        sizeof(struct fast_fallback_getaddrinfo_entry)
+    );
+
     return entry;
 }
 
@@ -128,7 +138,9 @@ cancel_fast_fallback(void *ptr)
     rb_nativethread_lock_lock(arg->lock);
     {
         *arg->cancelled = true;
-        write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED));
+        if ((write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED))) < 0) {
+            rb_syserr_fail(errno, "write(2)");
+        }
     }
     rb_nativethread_lock_unlock(arg->lock);
 }
@@ -157,7 +169,9 @@ static struct timespec
 current_clocktime_ts(void)
 {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    if ((clock_gettime(CLOCK_MONOTONIC, &ts)) < 0) {
+        rb_syserr_fail(errno, "clock_gettime(2)");
+    }
     return ts;
 }
 
@@ -296,12 +310,12 @@ socket_nonblock_set(int fd)
 {
     int flags = fcntl(fd, F_GETFL);
 
-    if (flags == -1) rb_sys_fail(0);
+    if (flags < 0) rb_syserr_fail(errno, "fcntl(2)");
     if ((flags & O_NONBLOCK) != 0) return;
 
     flags |= O_NONBLOCK;
 
-    if (fcntl(fd, F_SETFL, flags) == -1) rb_sys_fail(0);
+    if (fcntl(fd, F_SETFL, flags) < 0) rb_syserr_fail(errno, "fcntl(2)");
     return;
 }
 
@@ -405,18 +419,21 @@ init_fast_fallback_inetsock_internal(VALUE v)
         resolution_store.is_all_finised = true;
         wait_arg.readfds = NULL;
     } else {
-        if (pipe(pipefd) != 0) rb_syserr_fail(errno, NULL);
+        if (pipe(pipefd) != 0) rb_syserr_fail(errno, "pipe(2)");
         hostname_resolution_waiter = pipefd[0];
-        int waiter_flags = fcntl(hostname_resolution_waiter, F_GETFL, 0);
-        fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK);
+        if (waiter_flags < 0) rb_syserr_fail(errno, "fcntl(2)");
+        if ((fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK)) < 0) {
+            rb_syserr_fail(errno, "fcntl(2)");
+        }
+
         hostname_resolution_notifier = pipefd[1];
         wait_arg.readfds = &readfds;
 
-        arg->getaddrinfo_shared = create_fast_fallback_getaddrinfo_shared();
-        if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, NULL);
+        arg->getaddrinfo_shared = allocate_fast_fallback_getaddrinfo_shared();
+        if (!arg->getaddrinfo_shared) rb_syserr_fail(EAI_MEMORY, "calloc(3)");
 
         arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, NULL);
+        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(EAI_MEMORY, "malloc(3)");
         rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
         getaddrinfo_shared = arg->getaddrinfo_shared;
@@ -433,7 +450,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
         for (int i = 0; i < arg->family_size; i++) {
             arg->getaddrinfo_entries[i] = allocate_fast_fallback_getaddrinfo_entry();
-            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, NULL);
+            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(EAI_MEMORY, "calloc(3)");
             arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
         }
 
@@ -526,12 +543,12 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     }
                     if (!local_ai) {
                         if (any_addrinfos(&resolution_store)) continue;
-                        if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
-                            resolution_store.is_all_finised) {
-                            /* Use a different family local address if no choice, this
-                             * will cause EAFNOSUPPORT. */
-                            rsock_syserr_fail_host_port(EAFNOSUPPORT, syscall, arg->local.host, arg->local.serv);
-                        }
+                        if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                        if (!resolution_store.is_all_finised) break;
+
+                        /* Use a different family local address if no choice, this
+                         * will cause EAFNOSUPPORT. */
+                        rsock_syserr_fail_host_port(EAFNOSUPPORT, syscall, arg->local.host, arg->local.serv);
                     }
                 }
 
@@ -565,7 +582,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 if (local_ai) {
                     #if !defined(_WIN32) && !defined(__CYGWIN__)
                     status = 1;
-                    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&status, (socklen_t)sizeof(status));
+                    if ((setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&status, (socklen_t)sizeof(status))) < 0) {
+                        rb_sys_fail("setsockopt(2)");
+                    }
                     #endif
                     status = bind(fd, local_ai->ai_addr, local_ai->ai_addrlen);
                     local_status = status;
@@ -625,7 +644,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     if (current_capacity == arg->connection_attempt_fds_size) {
                         int new_capacity = current_capacity + initial_capacity;
                         arg->connection_attempt_fds = (int*)realloc(arg->connection_attempt_fds, new_capacity * sizeof(int));
-                        if (!arg->connection_attempt_fds) rb_syserr_fail(EAI_MEMORY, NULL);
+                        if (!arg->connection_attempt_fds) rb_syserr_fail(EAI_MEMORY, "realloc(3)");
                         current_capacity = new_capacity;
                     }
                     arg->connection_attempt_fds[arg->connection_attempt_fds_size] = fd;
@@ -735,12 +754,13 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 socklen_t len = sizeof(err);
 
                 if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0) {
-                    if (err == 0) {
+                    if (err == 0) { /* success */
                         arg->connection_attempt_fds[i] = -1;
                         connected_fd = fd;
                         break;
                     }
 
+                    /* fail */
                     errno = err;
                     close(fd);
                     arg->connection_attempt_fds[i] = -1;
@@ -821,7 +841,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         } else {
                             /* Retry to read from hostname_resolution_waiter */
                         }
-                    } else if (resolved_type_size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    } else if (resolved_type_size < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         errno = 0;
                         break;
                     } else {
@@ -916,8 +936,14 @@ fast_fallback_inetsock_cleanup(VALUE v)
     for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
         connection_attempt_fd = arg->connection_attempt_fds[i];
         if (connection_attempt_fd >= 0) {
-            getsockopt(connection_attempt_fd, SOL_SOCKET, SO_ERROR, &error, &len);
-            if (error == 0) shutdown(connection_attempt_fd, SHUT_RDWR);
+            if ((getsockopt(connection_attempt_fd, SOL_SOCKET, SO_ERROR, &error, &len)) < 0) {
+                rb_syserr_fail(errno, "getsockopt(2)");
+            }
+            if (error == 0) {
+                if ((shutdown(connection_attempt_fd, SHUT_RDWR)) < 0) {
+                    rb_syserr_fail(errno, "shutdown(2)");
+                }
+            }
             close(connection_attempt_fd);
        }
     }
@@ -929,8 +955,6 @@ fast_fallback_inetsock_cleanup(VALUE v)
 
     return Qnil;
 }
-
-
 
 VALUE
 rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
