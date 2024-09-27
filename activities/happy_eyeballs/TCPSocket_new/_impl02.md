@@ -449,15 +449,14 @@ init_fast_fallback_inetsock_internal(VALUE v)
         getaddrinfo_shared->cancelled = &arg->cancelled;
         wait_arg.cancelled = &arg->cancelled;
 
-        for (int i = 0; i < arg->family_size; i++) {
+        for (int i = 0; i < family_size; i++) {
             arg->getaddrinfo_entries[i] = allocate_fast_fallback_getaddrinfo_entry();
             if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(errno, "calloc(3)");
             arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
-        }
 
-        struct addrinfo getaddrinfo_hints[family_size];
+            struct addrinfo getaddrinfo_hints[family_size];
 
-        for (int i = 0; i < family_size; i++) {
+            allocate_fast_fallback_getaddrinfo_hints(
             allocate_fast_fallback_getaddrinfo_hints(
                 &getaddrinfo_hints[i],
                 arg->families[i],
