@@ -1,18 +1,51 @@
 require 'socket'
 require 'benchmark'
 
-HOSTNAME = "localhost"
-PORT = 9292
+# remote host
+
+hostname = "www.ruby-lang.org"
+port = 80
+
+n = 100
+
+Benchmark.bmbm do |x|
+  x.report("fast_fallback: true") do
+    n.times { TCPSocket.new(hostname, port).close }
+  end
+
+  x.report("fast_fallback: false") do
+    n.times { TCPSocket.new(hostname, port, fast_fallback: false).close }
+  end
+end
+
+__END__
+
+~/s/build ❯❯❯ ../install/bin/ruby ../ruby/test.rb
+Rehearsal --------------------------------------------------------
+fast_fallback: true    0.017588   0.097045   0.114633 (  1.460664)
+fast_fallback: false   0.014033   0.078984   0.093017 (  1.413951)
+----------------------------------------------- total: 0.207650sec
+
+                           user     system      total        real
+fast_fallback: true    0.020891   0.124054   0.144945 (  1.473816)
+fast_fallback: false   0.018392   0.110852   0.129244 (  1.466014)
+
+__END__
+
+# localhost
+
+hostname = "localhost"
+port = 9292
 
 n = 1000
 
 Benchmark.bmbm do |x|
   x.report("fast_fallback: true") do
-    n.times { TCPSocket.new(HOSTNAME, PORT).close }
+    n.times { TCPSocket.new(hostname, port).close }
   end
 
   x.report("fast_fallback: false") do
-    n.times { TCPSocket.new(HOSTNAME, PORT, fast_fallback: false).close }
+    n.times { TCPSocket.new(hostname, port, fast_fallback: false).close }
   end
 end
 
