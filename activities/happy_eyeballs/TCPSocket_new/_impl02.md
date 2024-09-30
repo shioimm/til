@@ -55,7 +55,6 @@ struct fast_fallback_inetsock_arg
         struct rb_addrinfo *res;
     } remote, local;
     int type;
-    int fd;
     VALUE resolv_timeout;
     VALUE connect_timeout;
 
@@ -941,9 +940,6 @@ fast_fallback_inetsock_cleanup(VALUE v)
         rb_freeaddrinfo(arg->local.res);
         arg->local.res = 0;
     }
-    if (arg->fd >= 0) {
-        close(arg->fd);
-    }
 
     if (getaddrinfo_shared) {
         int shared_need_free = 0;
@@ -1065,7 +1061,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             fast_fallback_arg.local.serv = arg.local.serv;
             fast_fallback_arg.local.res = arg.local.res;
             fast_fallback_arg.type = arg.type;
-            fast_fallback_arg.fd = arg.fd;
             fast_fallback_arg.resolv_timeout = arg.resolv_timeout;
             fast_fallback_arg.connect_timeout = arg.connect_timeout;
             fast_fallback_arg.hostp = hostp;
