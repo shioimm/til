@@ -55,7 +55,6 @@ struct fast_fallback_inetsock_arg
         struct rb_addrinfo *res;
     } remote, local;
     int type;
-    int fd;
     VALUE resolv_timeout;
     VALUE connect_timeout;
 
@@ -941,9 +940,6 @@ fast_fallback_inetsock_cleanup(VALUE v)
         rb_freeaddrinfo(arg->local.res);
         arg->local.res = 0;
     }
-    if (arg->fd >= 0) {
-        close(arg->fd);
-    }
 
     if (getaddrinfo_shared) {
         int shared_need_free = 0;
@@ -969,20 +965,15 @@ fast_fallback_inetsock_cleanup(VALUE v)
     }
 
     int connection_attempt_fd;
-    int error = 0;
-    socklen_t len = sizeof(error);
 
     for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
         connection_attempt_fd = arg->connection_attempt_fds[i];
+
         if (connection_attempt_fd >= 0) {
-            if ((getsockopt(connection_attempt_fd, SOL_SOCKET, SO_ERROR, &error, &len)) < 0) {
-                rb_syserr_fail(errno, "getsockopt(2)");
-            }
-            if (error == 0) {
-                if ((shutdown(connection_attempt_fd, SHUT_RDWR)) < 0) {
-                    rb_syserr_fail(errno, "shutdown(2)");
-                }
-            }
+            int error = 0;
+            socklen_t len = sizeof(error);
+            getsockopt(connection_attempt_fd, SOL_SOCKET, SO_ERROR, &error, &len);
+            if (error == 0) shutdown(connection_attempt_fd, SHUT_RDWR);
             close(connection_attempt_fd);
        }
     }
@@ -1065,7 +1056,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             fast_fallback_arg.local.serv = arg.local.serv;
             fast_fallback_arg.local.res = arg.local.res;
             fast_fallback_arg.type = arg.type;
-            fast_fallback_arg.fd = arg.fd;
             fast_fallback_arg.resolv_timeout = arg.resolv_timeout;
             fast_fallback_arg.connect_timeout = arg.connect_timeout;
             fast_fallback_arg.hostp = hostp;
