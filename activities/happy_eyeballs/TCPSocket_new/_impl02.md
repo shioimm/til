@@ -729,6 +729,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             cancel_fast_fallback,
             arg->getaddrinfo_shared
         );
+        if (errno == EINTR) break;
         rb_thread_check_ints();
 
         status = wait_arg.status;
@@ -919,6 +920,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
         }
     }
+
+    rb_thread_check_ints();
 
     /* create new instance */
     return rsock_init_sock(arg->sock, connected_fd);
