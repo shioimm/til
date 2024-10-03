@@ -341,7 +341,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     VALUE connect_timeout = arg->connect_timeout;
     VALUE test_mode_settings = arg->test_mode_settings;
     struct addrinfo *remote_ai = NULL, *local_ai = NULL;
-    int fd = -1, connected_fd = -1, status = 0, local_status = 0;
+    int connected_fd = -1, status = 0, local_status = 0;
     int remote_addrinfo_hints = 0;
     struct fast_fallback_error last_error = { 0, 0 };
     const char *syscall = 0;
@@ -506,7 +506,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             !resolution_delay_expires_at &&
             !connection_attempt_delay_expires_at) {
             while ((remote_ai = pick_addrinfo(&resolution_store, last_family))) {
-                fd = -1;
+                int fd = -1;
 
                 #if !defined(INET6) && defined(AF_INET6)
                 if (remote_ai->ai_family == AF_INET6) {
@@ -548,12 +548,10 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
                 status = rsock_socket(remote_ai->ai_family, remote_ai->ai_socktype, remote_ai->ai_protocol);
                 syscall = "socket(2)";
-                fd = status;
 
                 if (status < 0) {
                     last_error.type = SYSCALL_ERROR;
                     last_error.ecode = errno;
-                    fd = -1;
 
                     if (any_addrinfos(&resolution_store)) continue;
                     if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
@@ -573,6 +571,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     }
                 }
 
+                fd = status;
+
                 if (local_ai) {
                     #if !defined(_WIN32) && !defined(__CYGWIN__)
                     status = 1;
@@ -588,7 +588,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         last_error.type = SYSCALL_ERROR;
                         last_error.ecode = errno;
                         close(fd);
-                        fd = -1;
 
                         if (any_addrinfos(&resolution_store)) continue;
                         if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
@@ -667,7 +666,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 last_error.type = SYSCALL_ERROR;
                 last_error.ecode = errno;
                 close(fd);
-                fd = -1;
 
                 if (any_addrinfos(&resolution_store)) continue;
                 if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
@@ -731,6 +729,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             cancel_fast_fallback,
             arg->getaddrinfo_shared
         );
+        if (errno == EINTR) break;
         rb_thread_check_ints();
 
         status = wait_arg.status;
@@ -749,7 +748,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         if (status > 0) {
             /* check for connection */
             for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
-                fd = arg->connection_attempt_fds[i];
+                int fd = arg->connection_attempt_fds[i];
                 if (fd < 0 || !FD_ISSET(fd, wait_arg.writefds)) continue;
 
                 int err;
@@ -921,6 +920,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
         }
     }
+
+    rb_thread_check_ints();
 
     /* create new instance */
     return rsock_init_sock(arg->sock, connected_fd);
