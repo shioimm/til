@@ -15,6 +15,24 @@ Resolv::DNS.new.getresources("www.ruby-lang.org", Resolv::DNS::Resource::IN::AAA
 Resolv::DNS.open do |dns|
   dns.getresources "www.ruby-lang.org", Resolv::DNS::Resource::IN::AAAA
 end
+
+Resolv.new
+# =>
+#<Resolv:0x000000010d313bf8
+ @resolvers=
+  [#<Resolv::Hosts:0x000000010d41baa0
+    @filename="/etc/hosts",
+    @initialized=nil,
+    @mutex=#<Thread::Mutex:0x000000010d313bd0>>,
+   #<Resolv::DNS:0x000000010d312fa0
+    @config=
+     #<Resolv::DNS::Config:0x000000010bec8220
+      @config_info={:nameserver=>["***.***.***.***"], :search=>["sms.local"], :ndots=>1, :use_ipv6=>nil},
+      @initialized=nil,
+      @mutex=#<Thread::Mutex:0x000000010d312f50>,
+      @timeouts=nil>,
+    @initialized=nil,
+    @mutex=#<Thread::Mutex:0x000000010d312f78>>]>
 ```
 
 ## 構成クラス
