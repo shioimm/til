@@ -1,5 +1,6 @@
-# 9/21-
+# 10/16-
 - (参照先: `getaddrinfo/_impl02`)
+- masterで`rsock_connect`のシグネチャが変更されているのに対応する
 
 ```c
 // ext/socket/ipsocket.c
