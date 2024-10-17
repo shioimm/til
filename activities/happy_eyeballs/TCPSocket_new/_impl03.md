@@ -8,13 +8,11 @@
 #if FAST_FALLBACK_INIT_INETSOCK_IMPL == 0
 
 VALUE
-rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
-                    VALUE local_host, VALUE local_serv, int type,
-                    VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback,
-                    VALUE test_mode_settings)
+rsock_init_inetsock(VALUE self, VALUE remote_host, VALUE remote_serv, VALUE local_host, VALUE local_serv, int type, VALUE resolv_timeout, VALUE connect_timeout, VALUE _fast_fallback, VALUE _test_mode_settings)
 {
     struct inetsock_arg arg;
-    arg.sock = sock;
+    arg.self = self;
+    arg.io = Qnil;
     arg.remote.host = remote_host;
     arg.remote.serv = remote_serv;
     arg.remote.res = 0;
@@ -22,7 +20,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.local.serv = local_serv;
     arg.local.res = 0;
     arg.type = type;
-    arg.fd = -1;
     arg.resolv_timeout = resolv_timeout;
     arg.connect_timeout = connect_timeout;
     return rb_ensure(init_inetsock_internal, (VALUE)&arg,
@@ -50,7 +47,9 @@ is_specified_ip_address(const char *hostname)
 
 struct fast_fallback_inetsock_arg
 {
-    VALUE sock;
+    VALUE self;
+    VALUE io;
+
     struct {
         VALUE host, serv;
         struct rb_addrinfo *res;
@@ -205,6 +204,14 @@ add_ts_to_tv(struct timeval tv, struct timespec ts)
     return tv;
 }
 
+VALUE tv_to_seconds(struct timeval *timeout) {
+    if (timeout == NULL) return Qnil;
+
+    double seconds = (double)timeout->tv_sec + (double)timeout->tv_usec / 1000000.0;
+
+    return DBL2NUM(seconds);
+}
+
 static int
 is_infinity(struct timeval tv)
 {
@@ -338,6 +345,7 @@ static VALUE
 init_fast_fallback_inetsock_internal(VALUE v)
 {
     struct fast_fallback_inetsock_arg *arg = (void *)v;
+    VALUE io = arg->io;
     VALUE resolv_timeout = arg->resolv_timeout;
     VALUE connect_timeout = arg->connect_timeout;
     VALUE test_mode_settings = arg->test_mode_settings;
@@ -623,10 +631,11 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         user_specified_connect_timeout_at = &user_specified_connect_timeout_storage;
                     }
 
-                    struct timeval *timeout =
+                    VALUE timeout =
                         (user_specified_connect_timeout_at && is_infinity(*user_specified_connect_timeout_at)) ?
-                        NULL : user_specified_connect_timeout_at;
-                    status = rsock_connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen, 0, timeout);
+                        Qnil : tv_to_seconds(user_specified_connect_timeout_at);
+                    io = arg->io = rsock_init_sock(arg->self, fd);
+                    status = rsock_connect(io, remote_ai->ai_addr, remote_ai->ai_addrlen, 0, timeout);
                 }
 
                 if (status == 0) {
@@ -666,7 +675,12 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
                 last_error.type = SYSCALL_ERROR;
                 last_error.ecode = errno;
-                close(fd);
+
+                if (NIL_P(io)) {
+                    close(fd);
+                } else {
+                    rb_io_close(io);
+                }
 
                 if (any_addrinfos(&resolution_store)) continue;
                 if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
@@ -728,7 +742,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
             cancel_fast_fallback,
             arg->getaddrinfo_shared
         );
-
         rb_thread_check_ints();
         if (errno == EINTR || arg->cancelled) break;
 
@@ -922,8 +935,12 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
     rb_thread_check_ints();
 
-    /* create new instance */
-    return rsock_init_sock(arg->sock, connected_fd);
+    if (NIL_P(arg->io)) {
+        /* create new instance */
+        arg->io = rsock_init_sock(arg->self, connected_fd);
+    }
+
+    return arg->io;
 }
 
 static VALUE
@@ -987,13 +1004,11 @@ fast_fallback_inetsock_cleanup(VALUE v)
 }
 
 VALUE
-rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
-                    VALUE local_host, VALUE local_serv, int type,
-                    VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback,
-                    VALUE test_mode_settings)
+rsock_init_inetsock(VALUE self, VALUE remote_host, VALUE remote_serv, VALUE local_host, VALUE local_serv, int type, VALUE resolv_timeout, VALUE connect_timeout, VALUE fast_fallback, VALUE test_mode_settings)
 {
     struct inetsock_arg arg;
-    arg.sock = sock;
+    arg.self = self;
+    arg.io = Qnil;
     arg.remote.host = remote_host;
     arg.remote.serv = remote_serv;
     arg.remote.res = 0;
@@ -1001,7 +1016,6 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
     arg.local.serv = local_serv;
     arg.local.res = 0;
     arg.type = type;
-    arg.fd = -1;
     arg.resolv_timeout = resolv_timeout;
     arg.connect_timeout = connect_timeout;
 
@@ -1048,7 +1062,8 @@ rsock_init_inetsock(VALUE sock, VALUE remote_host, VALUE remote_serv,
             struct fast_fallback_inetsock_arg fast_fallback_arg;
             memset(&fast_fallback_arg, 0, sizeof(fast_fallback_arg));
 
-            fast_fallback_arg.sock = arg.sock;
+            fast_fallback_arg.self = arg.self;
+            fast_fallback_arg.io = arg.io;
             fast_fallback_arg.remote.host = arg.remote.host;
             fast_fallback_arg.remote.serv = arg.remote.serv;
             fast_fallback_arg.remote.res = arg.remote.res;
@@ -1135,30 +1150,30 @@ tcp_init(int argc, VALUE *argv, VALUE sock)
     VALUE kwargs[4];
     VALUE resolv_timeout = Qnil;
     VALUE connect_timeout = Qnil;
-    VALUE fast_fallback = Qtrue; // 追加
-    VALUE test_mode_settings = Qnil; // 追加
+    VALUE fast_fallback = Qtrue;
+    VALUE test_mode_settings = Qnil;
 
     if (!keyword_ids[0]) {
         CONST_ID(keyword_ids[0], "resolv_timeout");
         CONST_ID(keyword_ids[1], "connect_timeout");
-        CONST_ID(keyword_ids[2], "fast_fallback"); // 追加
-        CONST_ID(keyword_ids[3], "test_mode_settings"); // 追加
+        CONST_ID(keyword_ids[2], "fast_fallback");
+        CONST_ID(keyword_ids[3], "test_mode_settings");
     }
 
     rb_scan_args(argc, argv, "22:", &remote_host, &remote_serv,
                         &local_host, &local_serv, &opt);
 
     if (!NIL_P(opt)) {
-        rb_get_kwargs(opt, keyword_ids, 0, 4, kwargs); // 変更
+        rb_get_kwargs(opt, keyword_ids, 0, 4, kwargs);
         if (kwargs[0] != Qundef) { resolv_timeout = kwargs[0]; }
         if (kwargs[1] != Qundef) { connect_timeout = kwargs[1]; }
-        if (kwargs[2] != Qundef) { fast_fallback = kwargs[2]; } // 追加
-        if (kwargs[3] != Qundef) { test_mode_settings = kwargs[3]; } // 追加
+        if (kwargs[2] != Qundef) { fast_fallback = kwargs[2]; }
+        if (kwargs[3] != Qundef) { test_mode_settings = kwargs[3]; }
     }
 
     return rsock_init_inetsock(sock, remote_host, remote_serv,
                                local_host, local_serv, INET_CLIENT,
                                resolv_timeout, connect_timeout, fast_fallback,
-                               test_mode_settings); // 追加
+                               test_mode_settings);
 }
 ```
