@@ -14,6 +14,8 @@
 ### Viewのためのキャッシュ
 - フラグメントキャッシュ
   - ページを構成するコンポーネントを個別にキャッシュする
+  - `AbstractController::Caching::Fragments`でキャッシュを操作できる
+    - e.g. `expire_fragment(<キャッシュキー>)`
 - コレクションキャッシュ
   - `render`ヘルパーで`collection`を指定し個別のテンプレートに対してキャッシュする
 - ロシアンドールキャッシュ
