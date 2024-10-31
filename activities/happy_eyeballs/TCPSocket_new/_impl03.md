@@ -204,7 +204,8 @@ add_ts_to_tv(struct timeval tv, struct timespec ts)
     return tv;
 }
 
-VALUE tv_to_seconds(struct timeval *timeout) {
+static VALUE
+tv_to_seconds(struct timeval *timeout) {
     if (timeout == NULL) return Qnil;
 
     double seconds = (double)timeout->tv_sec + (double)timeout->tv_usec / 1000000.0;
