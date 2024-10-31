@@ -137,7 +137,8 @@ cancel_fast_fallback(void *ptr)
     rb_nativethread_lock_lock(arg->lock);
     {
         *arg->cancelled = true;
-        if ((write(arg->notify, SELECT_CANCELLED, strlen(SELECT_CANCELLED))) < 0) {
+        char notification = SELECT_CANCELLED;
+        if ((write(arg->notify, &notification, 1)) < 0) {
             rb_syserr_fail(errno, "write(2)");
         }
     }
@@ -820,7 +821,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     if (resolved_type_size > 0) {
                         resolved_type[resolved_type_size] = '\0';
 
-                        if (strcmp(resolved_type, IPV6_HOSTNAME_RESOLVED) == 0) {
+                        if (resolved_type[0] == IPV6_HOSTNAME_RESOLVED) {
                             resolution_store.v6.finished = true;
 
                             if (arg->getaddrinfo_entries[IPV6_ENTRY_POS]->err &&
@@ -838,7 +839,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                                 user_specified_resolv_timeout_at = NULL;
                                 break;
                             }
-                        } else if (strcmp(resolved_type, IPV4_HOSTNAME_RESOLVED) == 0) {
+                        } else if (resolved_type[0] == IPV4_HOSTNAME_RESOLVED) {
                             resolution_store.v4.finished = true;
 
                             if (arg->getaddrinfo_entries[IPV4_ENTRY_POS]->err) {
