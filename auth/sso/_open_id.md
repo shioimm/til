@@ -3,13 +3,13 @@
 - OpenID Foundationによって推進される
 
 ## 構成概念
-#### OP(OpenID Provider)
+#### OP (OpenID Provider)
 - OpenIDで利用する識別子を発行し、利用者の認証を行う主体
 - 利用者のアカウントの管理、Claimed Identifierの発行も行う
 - RPからの認証要求に対して利用者の認証情報を渡す
 - 拡張仕様の利用によって属性情報の提供を行うことができる
 
-#### RP(Relyiny Party)
+#### RP (Relyiny Party)
 - OPへ認証要求を送信し、OpenIDの識別子を使った認証結果をOPから受け取ってサービスを提供する主体
 - 拡張仕様の利用によってOPに利用者の属性情報を要求・取得することができる
 
