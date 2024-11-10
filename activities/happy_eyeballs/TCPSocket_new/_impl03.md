@@ -108,6 +108,28 @@ allocate_fast_fallback_getaddrinfo_hints(struct addrinfo *hints, int family, int
     hints->ai_flags |= additional_flags;
 }
 
+static int*
+allocate_connection_attempt_fds(int additional_capacity)
+{
+    int *fds = (int *)malloc(additional_capacity * sizeof(int));
+    if (!fds) rb_syserr_fail(errno, "malloc(3)");
+    for (int i = 0; i < additional_capacity; i++) fds[i] = -1;
+    return fds;
+}
+
+static int
+reallocate_connection_attempt_fds(int *fds, int current_capacity, int additional_capacity)
+{
+    int new_capacity = current_capacity + additional_capacity;
+
+    if (realloc(fds, new_capacity * sizeof(int)) == NULL) {
+        rb_syserr_fail(errno, "realloc(3)");
+    }
+
+    for (int i = current_capacity; i < new_capacity; i++) fds[i] = -1;
+    return new_capacity;
+}
+
 struct wait_fast_fallback_arg
 {
     int status, nfds;
@@ -401,13 +423,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
     int last_family = 0;
 
-    int initial_capacity = 10;
-    int current_capacity = initial_capacity;
-    arg->connection_attempt_fds = (int *)malloc(initial_capacity * sizeof(int));
-    for (int i = 0; i < initial_capacity; i++) {
-        arg->connection_attempt_fds[i] = -1;
-    }
-    if (!arg->connection_attempt_fds) rb_syserr_fail(errno, "malloc(3)");
+    int additional_capacity = 10;
+    int current_capacity = additional_capacity;
+    arg->connection_attempt_fds = allocate_connection_attempt_fds(additional_capacity);
     arg->connection_attempt_fds_size = 0;
 
     struct timeval resolution_delay_storage;
@@ -664,16 +682,11 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
                 if (errno == EINPROGRESS) {
                     if (current_capacity == arg->connection_attempt_fds_size) {
-                        int new_capacity = current_capacity + initial_capacity;
-                        arg->connection_attempt_fds = (int*)realloc(
+                        current_capacity = reallocate_connection_attempt_fds(
                             arg->connection_attempt_fds,
-                            new_capacity * sizeof(int)
+                            current_capacity,
+                            additional_capacity
                         );
-                        if (!arg->connection_attempt_fds) rb_syserr_fail(errno, "realloc(3)");
-                        for (int i = current_capacity; i < new_capacity; i++) {
-                            arg->connection_attempt_fds[i] = -1;
-                        }
-                        current_capacity = new_capacity;
                     }
                     arg->connection_attempt_fds[arg->connection_attempt_fds_size] = fd;
                     (arg->connection_attempt_fds_size)++;
@@ -750,6 +763,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
             }
             if (n > 0) n++;
             wait_arg.nfds = n;
+        } else {
+            wait_arg.writefds = NULL;
         }
 
         FD_ZERO(wait_arg.readfds);
