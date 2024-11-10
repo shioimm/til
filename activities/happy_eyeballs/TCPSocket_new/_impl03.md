@@ -329,12 +329,26 @@ socket_nonblock_set(int fd)
 }
 
 static int
-in_progress_fds(const int *fds, int fds_size)
+in_progress_fds(int fds_size)
 {
-    for (int i = 0; i < fds_size; i++) {
-        if (fds[i] > 0) return true;
+    return fds_size > 0;
+}
+
+static void
+remove_connection_attempt_fd(int *fds, int *fds_size, int removing_fd) {
+    int i, j;
+
+    for (i = 0; i < *fds_size; i++) {
+        if (fds[i] != removing_fd) continue;
+
+        for (j = i; j < *fds_size - 1; j++) {
+            fds[j] = fds[j + 1];
+        }
+
+        (*fds_size)--;
+        fds[*fds_size] = -1;
+        break;
     }
-    return false;
 }
 
 struct fast_fallback_error
@@ -525,7 +539,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 #if !defined(INET6) && defined(AF_INET6)
                 if (remote_ai->ai_family == AF_INET6) {
                     if (any_addrinfos(&resolution_store)) continue;
-                    if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                    if (!in_progress_fds(arg->connection_attempt_fds_size)) break;
                     if (resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
@@ -551,7 +565,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     }
                     if (!local_ai) {
                         if (any_addrinfos(&resolution_store)) continue;
-                        if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                        if (in_progress_fds(arg->connection_attempt_fds_size)) break;
                         if (!resolution_store.is_all_finised) break;
 
                         /* Use a different family local address if no choice, this
@@ -568,7 +582,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     last_error.ecode = errno;
 
                     if (any_addrinfos(&resolution_store)) continue;
-                    if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                    if (in_progress_fds(arg->connection_attempt_fds_size)) break;
                     if (!resolution_store.is_all_finised) break;
 
                     if (local_status < 0) {
@@ -604,7 +618,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                         close(fd);
 
                         if (any_addrinfos(&resolution_store)) continue;
-                        if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                        if (in_progress_fds(arg->connection_attempt_fds_size)) break;
                         if (!resolution_store.is_all_finised) break;
 
                         if (local_status < 0) {
@@ -625,7 +639,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 syscall = "connect(2)";
 
                 if (any_addrinfos(&resolution_store) ||
-                    in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
+                    in_progress_fds(arg->connection_attempt_fds_size) ||
                     !resolution_store.is_all_finised) {
                     socket_nonblock_set(fd);
                     status = connect(fd, remote_ai->ai_addr, remote_ai->ai_addrlen);
@@ -691,7 +705,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
                 }
 
                 if (any_addrinfos(&resolution_store)) continue;
-                if (in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) break;
+                if (in_progress_fds(arg->connection_attempt_fds_size)) break;
                 if (!resolution_store.is_all_finised) break;
 
                 if (local_status < 0) {
@@ -777,7 +791,11 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
                 if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0) {
                     if (err == 0) { /* success */
-                        arg->connection_attempt_fds[i] = -1;
+                        remove_connection_attempt_fd(
+                            arg->connection_attempt_fds,
+                            &arg->connection_attempt_fds_size,
+                            fd
+                        );
                         connected_fd = fd;
                         break;
                     }
@@ -785,7 +803,11 @@ init_fast_fallback_inetsock_internal(VALUE v)
                     /* fail */
                     errno = err;
                     close(fd);
-                    arg->connection_attempt_fds[i] = -1;
+                    remove_connection_attempt_fd(
+                        arg->connection_attempt_fds,
+                        &arg->connection_attempt_fds_size,
+                        fd
+                    );
                     continue;
                 }
             }
@@ -795,9 +817,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
             last_error.ecode = errno;
 
             if (any_addrinfos(&resolution_store) ||
-                in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) ||
+                in_progress_fds(arg->connection_attempt_fds_size) ||
                 !resolution_store.is_all_finised) {
-                if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size)) {
+                if (!in_progress_fds(arg->connection_attempt_fds_size)) {
                     user_specified_connect_timeout_at = NULL;
                 }
             } else {
@@ -886,7 +908,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         }
 
         if (!any_addrinfos(&resolution_store)) {
-            if (!in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size) &&
+            if (!in_progress_fds(arg->connection_attempt_fds_size) &&
                 resolution_store.is_all_finised) {
                 if (local_status < 0) {
                     host = arg->local.host;
@@ -905,7 +927,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             if ((is_timeout_tv(user_specified_resolv_timeout_at, now) ||
                 resolution_store.is_all_finised) &&
                 (is_timeout_tv(user_specified_connect_timeout_at, now) ||
-                !in_progress_fds(arg->connection_attempt_fds, arg->connection_attempt_fds_size))) {
+                !in_progress_fds(arg->connection_attempt_fds_size))) {
                 VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
                 VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
                 rb_raise(etimedout_error, "user specified timeout");
