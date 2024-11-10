@@ -390,6 +390,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
     int initial_capacity = 10;
     int current_capacity = initial_capacity;
     arg->connection_attempt_fds = (int *)malloc(initial_capacity * sizeof(int));
+    for (int i = 0; i < initial_capacity; i++) {
+        arg->connection_attempt_fds[i] = -1;
+    }
     if (!arg->connection_attempt_fds) rb_syserr_fail(errno, "malloc(3)");
     arg->connection_attempt_fds_size = 0;
 
@@ -440,8 +443,8 @@ init_fast_fallback_inetsock_internal(VALUE v)
         arg->getaddrinfo_shared = allocate_fast_fallback_getaddrinfo_shared();
         if (!arg->getaddrinfo_shared) rb_syserr_fail(errno, "calloc(3)");
 
-        arg->getaddrinfo_shared->lock = malloc(sizeof(rb_nativethread_lock_t));
-        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(errno, "malloc(3)");
+        arg->getaddrinfo_shared->lock = calloc(1, sizeof(rb_nativethread_lock_t));
+        if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(errno, "calloc(3)");
         rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
         arg->getaddrinfo_shared->node = arg->hostp ? strdup(arg->hostp) : NULL;
@@ -653,6 +656,9 @@ init_fast_fallback_inetsock_internal(VALUE v)
                             new_capacity * sizeof(int)
                         );
                         if (!arg->connection_attempt_fds) rb_syserr_fail(errno, "realloc(3)");
+                        for (int i = current_capacity; i < new_capacity; i++) {
+                            arg->connection_attempt_fds[i] = -1;
+                        }
                         current_capacity = new_capacity;
                     }
                     arg->connection_attempt_fds[arg->connection_attempt_fds_size] = fd;
