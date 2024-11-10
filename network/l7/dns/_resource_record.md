@@ -12,12 +12,41 @@ OWNER TTL CLASS TYPE RDATA
 - TYPE  - リソースレコードタイプ
 - RDATA - リソースレコードのデータ
 
-#### e.g. リソースレコードのリクエスト / レスポンス
+### e.g.
+#### リソースレコードの設定
+
+```
+// ns1.example.net. (example.com.の権威サーバ) の設定
+
+example.com.     IN    SOA    ns1.example.net. admin.example.com. (
+                              2024110901  ; シリアル番号
+                              7200        ; リフレッシュ間隔
+                              3600        ; リトライ間隔
+                              1209600     ; 有効期限
+                              86400       ; 最小TTL
+                              )
+
+example.com.     IN    NS    ns1.example.net. // 自分自身 (NSレコードの問い合わせの回答のため)
+example.com.     IN    NS    ns2.example.net. // 冗長化
+
+example.com.     IN    A     192.0.2.1        // Aレコード
+www.example.com. IN    CNAME example.com.     // www.example.com.の問い合わせに対してexample.com.を返す
+
+example.com.     IN    MX    10 mail.example.com. // MXレコード
+example.com.     IN    TXT   "v=spf1 include:_spf.example.net ~all" // ドメイン所有権の証明など
+
+```
+
+#### リソースレコードのリクエスト
 
 ```
 // Question (リクエスト: ドメイン名jprs.jpのAレコードを要求)
 jprs.jp       IN  A
+```
 
+#### リソースレコードのレスポンス
+
+```
 // Answer (レスポンス: ドメイン名jprs.jpのAレコードを回答)
 jprs.jp  300  IN  A  117.***.***.***
 ```
