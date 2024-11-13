@@ -408,7 +408,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
     struct wait_fast_fallback_arg wait_arg;
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
-    wait_arg.nfds = 0;
     wait_arg.writefds = NULL;
     wait_arg.status = 0;
 
@@ -752,6 +751,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             wait_arg.delay = NULL;
         }
 
+        wait_arg.nfds = 0;
         if (arg->connection_attempt_fds_size) {
             FD_ZERO(wait_arg.writefds);
             int n = 0;
