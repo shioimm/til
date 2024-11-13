@@ -1,7 +1,16 @@
 ```
 $ ssh #{username}@#{ログインしたいrubyci}
-$ sudo su chkbuild
-$ cd
-```
 
-- `$ ruby start-rubyci`でCIを実行できる...??
+# Rubyのビルド
+$ mkdir dev & cd dev
+
+$ git clone https://github.com/ruby/ruby.git
+$ .autoconf
+
+$ cd ../
+$ mkdir ~/.rubies
+$ mkdir build & cd build
+
+$ ../ruby/configure --prefix="${HOME}/.rubies/ruby-master" --with-baseruby=/home/chkbuild/.rbenv/shims/ruby
+$ make
+```
