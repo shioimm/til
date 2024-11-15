@@ -831,25 +831,24 @@ init_fast_fallback_inetsock_internal(VALUE v)
             last_error.type = SYSCALL_ERROR;
             last_error.ecode = errno;
 
-            if (any_addrinfos(&resolution_store) ||
-                in_progress_fds(arg->connection_attempt_fds_size) ||
-                !resolution_store.is_all_finised) {
-                if (!in_progress_fds(arg->connection_attempt_fds_size)) {
-                    user_specified_connect_timeout_at = NULL;
+            if (!in_progress_fds(arg->connection_attempt_fds_size)) {
+                if (any_addrinfos(&resolution_store)) {
+                    connection_attempt_delay_expires_at = NULL;
+                } else if (resolution_store.is_all_finised) {
+                    if (local_status < 0) {
+                        host = arg->local.host;
+                        serv = arg->local.serv;
+                    } else {
+                        host = arg->remote.host;
+                        serv = arg->remote.serv;
+                    }
+                    if (last_error.type == RESOLUTION_ERROR) {
+                        rsock_raise_resolution_error(syscall, last_error.ecode);
+                    } else {
+                        rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                    }
                 }
-            } else {
-                if (local_status < 0) {
-                    host = arg->local.host;
-                    serv = arg->local.serv;
-                } else {
-                    host = arg->remote.host;
-                    serv = arg->remote.serv;
-                }
-                if (last_error.type == RESOLUTION_ERROR) {
-                    rsock_raise_resolution_error(syscall, last_error.ecode);
-                } else {
-                    rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
-                }
+                user_specified_connect_timeout_at = NULL;
             }
 
             /* check for hostname resolution */
