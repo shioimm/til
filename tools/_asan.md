@@ -90,3 +90,13 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
 ==784184==ABORTING
 [1]    784184 IOT instruction (core dumped)  ./test
 ```
+
+## ビルドしたRubyで実行
+
+```
+$ ./configure --prefix=$PWD/install --enable-shared --disable-install-doc 'CC=clang' 'CFLAGS=-fsanitize=address -fno-omit-frame-pointer -g' 'LDFLAGS=-fsanitize=address'
+$ make -j
+$ make install-nodoc
+
+$ LD_PRELOAD=#{findで確認したlibclang_rt.asanのパス} ./ruby -e 'puts "test"'
+```
