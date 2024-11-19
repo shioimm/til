@@ -181,18 +181,10 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   def test_initialize_with_hostname_resolution_failure_after_connection_failure
     return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
 
-    begin
-      server = TCPServer.new("::1", 0)
-    rescue Errno::EADDRNOTAVAIL # IPv6 is not supported
-      exit
-    end
-    port = server.connect_address.ip_port
-    server.close
-
     assert_raise(Socket::ResolutionError) do
       TCPSocket.new(
         "localhost",
-        port,
+        0,
         fast_fallback: true,
         test_mode_settings: { delay: { ipv4: 100 }, error: { ipv4: Socket::EAI_FAIL } }
       )
@@ -203,14 +195,10 @@ class TestSocket_TCPSocket < Test::Unit::TestCase
   def test_initialize_with_connection_failure_after_hostname_resolution_failure
     return if RUBY_PLATFORM =~ /mswin|mingw|cygwin/
 
-    server = TCPServer.new("127.0.0.1", 0)
-    port = server.connect_address.ip_port
-    server.close
-
     assert_raise(Errno::ECONNREFUSED) do
       TCPSocket.new(
         "localhost",
-        port,
+        0,
         fast_fallback: true,
         test_mode_settings: { delay: { ipv4: 100 }, error: { ipv6: Socket::EAI_FAIL } }
       )
