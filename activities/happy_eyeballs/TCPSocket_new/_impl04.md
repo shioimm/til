@@ -1044,6 +1044,9 @@ fast_fallback_inetsock_cleanup(VALUE v)
     }
 
     if (getaddrinfo_shared) {
+        close(getaddrinfo_shared->notify);
+        close(getaddrinfo_shared->wait);
+
         int shared_need_free = 0;
         int need_free[2] = { 0, 0 };
 
