@@ -84,7 +84,7 @@ do_fast_fallback_getaddrinfo(void *ptr)
             const char notification = entry->family == AF_INET6 ?
             IPV6_HOSTNAME_RESOLVED : IPV4_HOSTNAME_RESOLVED;
 
-            if ((write(shared->notify, &notification, strlen(&notification))) < 0) {
+            if (shared->notify != -1 && (write(shared->notify, &notification, 1)) < 0) {
                 entry->err = errno;
                 entry->has_syserr = true;
             }
@@ -127,7 +127,7 @@ char *port_str(VALUE port, char *pbuf, size_t pbuflen, int *flags_ptr);
 
 struct fast_fallback_getaddrinfo_shared
 {
-    int wait, notify, refcount, connection_attempt_fds_size;
+    int notify, refcount, connection_attempt_fds_size;
     int *connection_attempt_fds, *cancelled;
     char *node, *service;
     rb_nativethread_lock_t *lock;
