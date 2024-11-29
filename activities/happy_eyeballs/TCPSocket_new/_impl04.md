@@ -66,6 +66,7 @@ struct fast_fallback_inetsock_arg
     rb_nativethread_lock_t *lock;
     struct fast_fallback_getaddrinfo_entry *getaddrinfo_entries[2];
     struct fast_fallback_getaddrinfo_shared *getaddrinfo_shared;
+    int wait;
     int connection_attempt_fds_size;
     int *connection_attempt_fds;
     VALUE test_mode_settings;
@@ -163,7 +164,7 @@ cancel_fast_fallback(void *ptr)
     {
         *arg->cancelled = true;
         char notification = SELECT_CANCELLED;
-        if ((write(arg->notify, &notification, 1)) < 0) {
+        if (arg->notify != -1 && (write(arg->notify, &notification, 1)) < 0) {
             rb_syserr_fail(errno, "write(2)");
         }
     }
@@ -404,7 +405,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     pthread_t threads[arg->family_size];
     char resolved_type[2];
     ssize_t resolved_type_size;
-    int hostname_resolution_waiter = 0, hostname_resolution_notifier = 0;
+    int hostname_resolution_waiter = -1, hostname_resolution_notifier = -1;
     int pipefd[2];
     fd_set readfds, writefds;
 
@@ -437,6 +438,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     if ((fcntl(hostname_resolution_waiter, F_SETFL, waiter_flags | O_NONBLOCK)) < 0) {
         rb_syserr_fail(errno, "fcntl(2)");
     }
+    arg->wait = hostname_resolution_waiter;
 
     hostname_resolution_notifier = pipefd[1];
     wait_arg.readfds = &readfds;
@@ -449,7 +451,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
     rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
 
     arg->getaddrinfo_shared->notify = hostname_resolution_notifier;
-    arg->getaddrinfo_shared->wait = hostname_resolution_waiter;
     arg->getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
     arg->getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
     arg->getaddrinfo_shared->cancelled = false;
@@ -1043,10 +1044,11 @@ fast_fallback_inetsock_cleanup(VALUE v)
         arg->local.res = 0;
     }
 
-    if (getaddrinfo_shared) {
-        close(getaddrinfo_shared->notify);
-        close(getaddrinfo_shared->wait);
+    if (arg->wait != -1) close(arg->wait);
+    if (arg->notify != -1) close(getaddrinfo_shared->notify);
+    getaddrinfo_shared->notify = -1;
 
+    if (getaddrinfo_shared) {
         int shared_need_free = 0;
         int need_free[2] = { 0, 0 };
 
