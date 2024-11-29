@@ -5,7 +5,7 @@ $ ssh #{username}@#{ログインしたいrubyci}
 $ mkdir dev & cd dev
 
 $ git clone https://github.com/ruby/ruby.git
-$ .autoconf
+$ ./autogen.sh
 
 $ cd ../
 $ mkdir ~/.rubies
