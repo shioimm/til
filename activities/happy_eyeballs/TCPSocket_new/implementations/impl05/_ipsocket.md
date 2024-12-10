@@ -697,6 +697,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         }
 
         nfds = 0;
+        rb_fd_zero(&arg->writefds);
         if (in_progress_fds(arg->connection_attempt_fds_size)) {
             int n = 0;
             for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
@@ -709,6 +710,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
             nfds = n;
         }
 
+        rb_fd_zero(&arg->readfds);
         rb_fd_set(hostname_resolution_waiter, &arg->readfds);
 
         if ((hostname_resolution_waiter + 1) > nfds) {
