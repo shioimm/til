@@ -395,7 +395,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
     rb_nativethread_lock_initialize(&arg->getaddrinfo_shared->lock);
 
     arg->getaddrinfo_shared->notify = hostname_resolution_notifier;
-    arg->getaddrinfo_shared->cancelled = false;
 
     struct timeval resolution_delay_storage;
     struct timeval *resolution_delay_expires_at = NULL;
