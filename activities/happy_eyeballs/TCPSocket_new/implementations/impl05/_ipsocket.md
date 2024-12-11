@@ -62,41 +62,26 @@ struct fast_fallback_inetsock_arg
     int *families;
     int family_size;
     int additional_flags;
-    int cancelled;
-    rb_nativethread_lock_t *lock;
     struct fast_fallback_getaddrinfo_entry *getaddrinfo_entries[2];
     struct fast_fallback_getaddrinfo_shared *getaddrinfo_shared;
+    rb_fdset_t readfds, writefds;
     int wait;
-    rb_fdset_t *readfds, *writefds;
     int connection_attempt_fds_size;
     int *connection_attempt_fds;
     VALUE test_mode_settings;
 };
 
 static struct fast_fallback_getaddrinfo_shared *
-allocate_fast_fallback_getaddrinfo_shared(void)
+allocate_fast_fallback_getaddrinfo_shared(int family_size)
 {
     struct fast_fallback_getaddrinfo_shared *shared;
 
     shared = (struct fast_fallback_getaddrinfo_shared *)calloc(
         1,
-        sizeof(struct fast_fallback_getaddrinfo_shared)
+        sizeof(struct fast_fallback_getaddrinfo_shared) + (family_size == 1 ? 0 : 2) * sizeof(struct fast_fallback_getaddrinfo_entry)
     );
 
     return shared;
-}
-
-static struct fast_fallback_getaddrinfo_entry *
-allocate_fast_fallback_getaddrinfo_entry(void)
-{
-    struct fast_fallback_getaddrinfo_entry *entry;
-
-    entry = (struct fast_fallback_getaddrinfo_entry *)calloc(
-        1,
-        sizeof(struct fast_fallback_getaddrinfo_entry)
-    );
-
-    return entry;
 }
 
 static void
@@ -372,6 +357,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     int hostname_resolution_waiter = -1, hostname_resolution_notifier = -1;
     int pipefd[2];
 
+    int nfds = 0;
     struct timeval *ends_at = NULL;
     struct timeval delay = (struct timeval){ -1, -1 };
     struct timeval *delay_p = NULL;
@@ -403,17 +389,12 @@ init_fast_fallback_inetsock_internal(VALUE v)
 
     hostname_resolution_notifier = pipefd[1];
 
-    arg->getaddrinfo_shared = allocate_fast_fallback_getaddrinfo_shared();
+    arg->getaddrinfo_shared = allocate_fast_fallback_getaddrinfo_shared(arg->family_size);
     if (!arg->getaddrinfo_shared) rb_syserr_fail(errno, "calloc(3)");
 
-    arg->getaddrinfo_shared->lock = calloc(1, sizeof(rb_nativethread_lock_t));
-    if (!arg->getaddrinfo_shared->lock) rb_syserr_fail(errno, "calloc(3)");
-    rb_nativethread_lock_initialize(arg->getaddrinfo_shared->lock);
+    rb_nativethread_lock_initialize(&arg->getaddrinfo_shared->lock);
 
     arg->getaddrinfo_shared->notify = hostname_resolution_notifier;
-    arg->getaddrinfo_shared->connection_attempt_fds = arg->connection_attempt_fds;
-    arg->getaddrinfo_shared->connection_attempt_fds_size = arg->connection_attempt_fds_size;
-    arg->getaddrinfo_shared->cancelled = false;
 
     struct timeval resolution_delay_storage;
     struct timeval *resolution_delay_expires_at = NULL;
@@ -429,7 +410,6 @@ init_fast_fallback_inetsock_internal(VALUE v)
     if (arg->family_size == 1) {
         arg->getaddrinfo_shared->node = NULL;
         arg->getaddrinfo_shared->service = NULL;
-        arg->getaddrinfo_shared->refcount = 1;
 
         int family = arg->families[0];
         arg->remote.res = rsock_addrinfo(
@@ -456,8 +436,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
         arg->getaddrinfo_shared->refcount = arg->family_size + 1;
 
         for (int i = 0; i < arg->family_size; i++) {
-            arg->getaddrinfo_entries[i] = allocate_fast_fallback_getaddrinfo_entry();
-            if (!(arg->getaddrinfo_entries[i])) rb_syserr_fail(errno, "calloc(3)");
+            arg->getaddrinfo_entries[i] = &arg->getaddrinfo_shared->getaddrinfo_entries[i];
             arg->getaddrinfo_entries[i]->shared = arg->getaddrinfo_shared;
 
             struct addrinfo getaddrinfo_hints[arg->family_size];
@@ -718,24 +697,27 @@ init_fast_fallback_inetsock_internal(VALUE v)
         }
 
         nfds = 0;
+        rb_fd_zero(&arg->writefds);
         if (in_progress_fds(arg->connection_attempt_fds_size)) {
             int n = 0;
             for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
                 int cfd = arg->connection_attempt_fds[i];
                 if (cfd < 0) continue;
                 if (cfd > n) n = cfd;
-                rb_fd_set(cfd, arg->writefds);
+                rb_fd_set(cfd, &arg->writefds);
             }
             if (n > 0) n++;
             nfds = n;
         }
 
-        rb_fd_set(hostname_resolution_waiter, arg->readfds);
+        rb_fd_zero(&arg->readfds);
+        rb_fd_set(hostname_resolution_waiter, &arg->readfds);
+
         if ((hostname_resolution_waiter + 1) > nfds) {
             nfds = hostname_resolution_waiter + 1;
         }
 
-        status = rb_thread_fd_select(nfds, arg->readfds, arg->writefds, NULL, delay_p);
+        status = rb_thread_fd_select(nfds, &arg->readfds, &arg->writefds, NULL, delay_p);
         syscall = "select(2)";
 
         now = current_clocktime_ts();
@@ -751,83 +733,82 @@ init_fast_fallback_inetsock_internal(VALUE v)
         if (status > 0) {
             /* check for connection */
             if (in_progress_fds(arg->connection_attempt_fds_size)) {
-              for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
-                  int fd = arg->connection_attempt_fds[i];
-                  if (fd < 0 || !rb_fd_isset(fd, arg->writefds)) continue;
+                for (int i = 0; i < arg->connection_attempt_fds_size; i++) {
+                    int fd = arg->connection_attempt_fds[i];
+                    if (fd < 0 || !rb_fd_isset(fd, &arg->writefds)) continue;
 
-                  int err;
-                  socklen_t len = sizeof(err);
+                    int err;
+                    socklen_t len = sizeof(err);
 
-                  status = getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
+                    status = getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
 
-                  if (status < 0) {
-                      last_error.type = SYSCALL_ERROR;
-                      last_error.ecode = errno;
-                      close(fd);
+                    if (status < 0) {
+                        last_error.type = SYSCALL_ERROR;
+                        last_error.ecode = errno;
+                        close(fd);
 
-                      if (any_addrinfos(&resolution_store)) continue;
-                      if (in_progress_fds(arg->connection_attempt_fds_size)) break;
-                      if (!resolution_store.is_all_finised) break;
+                        if (any_addrinfos(&resolution_store)) continue;
+                        if (in_progress_fds(arg->connection_attempt_fds_size)) break;
+                        if (!resolution_store.is_all_finised) break;
 
-                      if (local_status < 0) {
-                          host = arg->local.host;
-                          serv = arg->local.serv;
-                      } else {
-                          host = arg->remote.host;
-                          serv = arg->remote.serv;
-                      }
-                      if (last_error.type == RESOLUTION_ERROR) {
-                          rsock_raise_resolution_error(syscall, last_error.ecode);
-                      } else {
-                          rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
-                      }
-                  }
+                        if (local_status < 0) {
+                            host = arg->local.host;
+                            serv = arg->local.serv;
+                        } else {
+                            host = arg->remote.host;
+                            serv = arg->remote.serv;
+                        }
+                        if (last_error.type == RESOLUTION_ERROR) {
+                            rsock_raise_resolution_error(syscall, last_error.ecode);
+                        } else {
+                            rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                        }
+                    }
 
-                  if (err == 0) { /* success */
-                      remove_connection_attempt_fd(
-                          arg->connection_attempt_fds,
-                          &arg->connection_attempt_fds_size,
-                          fd
-                      );
-                      connected_fd = fd;
-                      break;
-                  } else { /* fail */
-                      errno = err;
-                      close(fd);
-                      remove_connection_attempt_fd(
-                          arg->connection_attempt_fds,
-                          &arg->connection_attempt_fds_size,
-                          fd
-                      );
-                      last_error.type = SYSCALL_ERROR;
-                      last_error.ecode = errno;
-                  }
-              }
+                    if (err == 0) { /* success */
+                        remove_connection_attempt_fd(
+                            arg->connection_attempt_fds,
+                            &arg->connection_attempt_fds_size,
+                            fd
+                        );
+                        connected_fd = fd;
+                        break;
+                    } else { /* fail */
+                        close(fd);
+                        remove_connection_attempt_fd(
+                            arg->connection_attempt_fds,
+                            &arg->connection_attempt_fds_size,
+                            fd
+                        );
+                        last_error.type = SYSCALL_ERROR;
+                        last_error.ecode = err;
+                    }
+                }
 
-              if (connected_fd >= 0) break;
+                if (connected_fd >= 0) break;
 
-              if (!in_progress_fds(arg->connection_attempt_fds_size)) {
-                  if (!any_addrinfos(&resolution_store) && resolution_store.is_all_finised) {
-                      if (local_status < 0) {
-                          host = arg->local.host;
-                          serv = arg->local.serv;
-                      } else {
-                          host = arg->remote.host;
-                          serv = arg->remote.serv;
-                      }
-                      if (last_error.type == RESOLUTION_ERROR) {
-                          rsock_raise_resolution_error(syscall, last_error.ecode);
-                      } else {
-                          rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
-                      }
-                  }
-                  connection_attempt_delay_expires_at = NULL;
-                  user_specified_connect_timeout_at = NULL;
-              }
+                if (!in_progress_fds(arg->connection_attempt_fds_size)) {
+                    if (!any_addrinfos(&resolution_store) && resolution_store.is_all_finised) {
+                        if (local_status < 0) {
+                            host = arg->local.host;
+                            serv = arg->local.serv;
+                        } else {
+                            host = arg->remote.host;
+                            serv = arg->remote.serv;
+                        }
+                        if (last_error.type == RESOLUTION_ERROR) {
+                            rsock_raise_resolution_error(syscall, last_error.ecode);
+                        } else {
+                            rsock_syserr_fail_host_port(last_error.ecode, syscall, host, serv);
+                        }
+                    }
+                    connection_attempt_delay_expires_at = NULL;
+                    user_specified_connect_timeout_at = NULL;
+                }
             }
 
             /* check for hostname resolution */
-            if (!resolution_store.is_all_finised && rb_fd_isset(hostname_resolution_waiter, arg->readfds)) {
+            if (!resolution_store.is_all_finised && rb_fd_isset(hostname_resolution_waiter, &arg->readfds)) {
                 while (true) {
                     resolved_type_size = read(
                         hostname_resolution_waiter,
@@ -994,26 +975,30 @@ fast_fallback_inetsock_cleanup(VALUE v)
     getaddrinfo_shared->notify = -1;
 
     if (getaddrinfo_shared) {
-        int shared_need_free = 0;
-        int need_free[2] = { 0, 0 };
+        if (arg->family_size == 1) {
+            free_fast_fallback_getaddrinfo_shared(&getaddrinfo_shared);
+        } else {
+            int shared_need_free = 0;
+            int need_free[2] = { 0, 0 };
 
-        rb_nativethread_lock_lock(getaddrinfo_shared->lock);
-        {
-            for (int i = 0; i < arg->family_size; i++) {
-                if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
-                    need_free[i] = 1;
+            rb_nativethread_lock_lock(&getaddrinfo_shared->lock);
+            {
+                for (int i = 0; i < arg->family_size; i++) {
+                    if (arg->getaddrinfo_entries[i] && --(arg->getaddrinfo_entries[i]->refcount) == 0) {
+                        need_free[i] = 1;
+                    }
+                }
+                if (--(getaddrinfo_shared->refcount) == 0) {
+                    shared_need_free = 1;
                 }
             }
-            if (--(getaddrinfo_shared->refcount) == 0) {
-                shared_need_free = 1;
-            }
-        }
-        rb_nativethread_lock_unlock(getaddrinfo_shared->lock);
+            rb_nativethread_lock_unlock(&getaddrinfo_shared->lock);
 
-        for (int i = 0; i < arg->family_size; i++) {
-            if (need_free[i]) free_fast_fallback_getaddrinfo_entry(&arg->getaddrinfo_entries[i]);
+            for (int i = 0; i < arg->family_size; i++) {
+                if (need_free[i]) free_fast_fallback_getaddrinfo_entry(&arg->getaddrinfo_entries[i]);
+            }
+            if (shared_need_free) free_fast_fallback_getaddrinfo_shared(&getaddrinfo_shared);
         }
-        if (shared_need_free) free_fast_fallback_getaddrinfo_shared(&getaddrinfo_shared);
     }
 
     int connection_attempt_fd;
@@ -1030,8 +1015,8 @@ fast_fallback_inetsock_cleanup(VALUE v)
        }
     }
 
-    if (arg->readfds) rb_fd_term(arg->readfds);
-    if (arg->writefds) rb_fd_term(arg->writefds);
+    rb_fd_term(&arg->readfds);
+    rb_fd_term(&arg->writefds);
 
     if (arg->connection_attempt_fds) {
         free(arg->connection_attempt_fds);
@@ -1102,7 +1087,6 @@ rsock_init_inetsock(VALUE self, VALUE remote_host, VALUE remote_serv, VALUE loca
             fast_fallback_arg.hostp = hostp;
             fast_fallback_arg.portp = portp;
             fast_fallback_arg.additional_flags = additional_flags;
-            fast_fallback_arg.cancelled = false;
 
             int resolving_families[resolving_family_size];
             int resolving_family_index = 0;
@@ -1116,11 +1100,8 @@ rsock_init_inetsock(VALUE self, VALUE remote_host, VALUE remote_serv, VALUE loca
             fast_fallback_arg.family_size = resolving_family_size;
             fast_fallback_arg.test_mode_settings = test_mode_settings;
 
-            rb_fdset_t readfds, writefds;
-            rb_fd_init(&readfds);
-            rb_fd_init(&writefds);
-            fast_fallback_arg.readfds = &readfds;
-            fast_fallback_arg.writefds = &writefds;
+            rb_fd_init(&fast_fallback_arg.readfds);
+            rb_fd_init(&fast_fallback_arg.writefds);
 
             return rb_ensure(init_fast_fallback_inetsock_internal, (VALUE)&fast_fallback_arg,
                              fast_fallback_inetsock_cleanup, (VALUE)&fast_fallback_arg);
@@ -1143,7 +1124,6 @@ rsock_init_inetsock(VALUE self, VALUE remote_host, VALUE remote_serv, VALUE loca
     return rb_ensure(init_inetsock_internal, (VALUE)&arg,
                      inetsock_cleanup, (VALUE)&arg);
 }
-
 #endif
 ```
 
