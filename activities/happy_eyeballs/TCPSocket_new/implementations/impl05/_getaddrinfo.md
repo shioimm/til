@@ -27,7 +27,7 @@ free_fast_fallback_getaddrinfo_entry(struct fast_fallback_getaddrinfo_entry **en
     *entry = NULL;
 }
 
-void *
+static void *
 do_fast_fallback_getaddrinfo(void *ptr)
 {
     struct fast_fallback_getaddrinfo_entry *entry = (struct fast_fallback_getaddrinfo_entry *)ptr;
@@ -94,6 +94,12 @@ do_fast_fallback_getaddrinfo(void *ptr)
     }
 
     return 0;
+}
+
+void *
+fork_safe_do_fast_fallback_getaddrinfo(void *ptr)
+{
+    return rb_thread_prevent_fork(do_fast_fallback_getaddrinfo, ptr);
 }
 
 #endif
