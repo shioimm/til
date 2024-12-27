@@ -150,3 +150,14 @@ void free_fast_fallback_getaddrinfo_shared(struct fast_fallback_getaddrinfo_shar
 #  endif
 #endif
 ```
+
+## メモ
+
+- 書き込み先のパイプがすでに終了している場合に異常終了しないようにする
+
+```c
+sigset_t set;
+sigemptyset(&set);
+sigaddset(&set, SIGPIPE);
+pthread_sigmask(SIG_BLOCK, &set, NULL);
+```
