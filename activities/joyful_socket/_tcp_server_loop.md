@@ -37,7 +37,6 @@ def self.tcp_server_sockets(host=nil, port)
     sockets = []
 
     begin
-      # WIP: Addrinfo.foreach
       Addrinfo.foreach(host, port, nil, :STREAM, nil, Socket::AI_PASSIVE) {|ai|
         begin
           s = ai.listen # s = Socket
@@ -67,6 +66,159 @@ def self.tcp_server_sockets(host=nil, port)
     sockets
   end
 end
+```
+
+```ruby
+# Addrinfo.foreach
+
+def self.foreach(nodename, service, family=nil, socktype=nil, protocol=nil, flags=nil, timeout: nil, &block)
+  Addrinfo.getaddrinfo(nodename, service, family, socktype, protocol, flags, timeout: timeout).each(&block)
+end
+
+# Addrinfo.getaddrinfo
+#   addrinfo_s_getaddrinfo
+#   -> addrinfo_list_new
+#   -> call_getaddrinfo
+#   -> rsock_getaddrinfo
+#   -> rb_getaddrinfo
+#   -> fork_safe_do_getaddrinfo
+#   -> getaddrinfo(2)
+```
+
+```ruby
+# Addrinfo#listen
+
+def listen(backlog=Socket::SOMAXCONN)
+  sock = Socket.new(self.pfamily, self.socktype, self.protocol)
+  begin
+    sock.ipv6only! if self.ipv6?
+    sock.setsockopt(:SOCKET, :REUSEADDR, 1) unless self.pfamily == Socket::PF_UNIX
+    sock.bind(self)
+    sock.listen(backlog)
+  rescue Exception
+    sock.close
+    raise
+  end
+  if block_given?
+    begin
+      yield sock
+    ensure
+      sock.close
+    end
+  else
+    sock
+  end
+end
+```
+
+```c
+// ext/socket/socket.c
+// Socket#listen
+void
+init_socket(void)
+{
+    //...
+    rb_define_method(rb_cSocket, "initialize", sock_initialize, -1);
+    //...
+    rb_define_method(rb_cSocket, "bind", sock_bind, 1);
+    rb_define_method(rb_cSocket, "listen", rsock_sock_listen, 1);
+    //...
+}
+```
+
+```c
+static VALUE
+sock_initialize(int argc, VALUE *argv, VALUE sock)
+{
+    VALUE domain, type, protocol;
+    int fd;
+    int d, t;
+
+    rb_scan_args(argc, argv, "21", &domain, &type, &protocol);
+    if (NIL_P(protocol))
+        protocol = INT2FIX(0);
+
+    setup_domain_and_type(domain, &d, type, &t);
+    fd = rsock_socket(d, t, NUM2INT(protocol));
+    if (fd < 0) rb_sys_fail("socket(2)");
+
+    return rsock_init_sock(sock, fd);
+}
+```
+
+```c
+int
+rsock_socket(int domain, int type, int proto)
+{
+    int fd;
+
+    fd = rsock_socket0(domain, type, proto);
+    if (fd < 0) {
+        if (rb_gc_for_fd(errno)) {
+            fd = rsock_socket0(domain, type, proto);
+        }
+    }
+    if (0 <= fd)
+        rb_update_max_fd(fd);
+    return fd;
+}
+
+static int
+rsock_socket0(int domain, int type, int proto)
+{
+    #ifdef SOCK_CLOEXEC
+    type |= SOCK_CLOEXEC;
+    #endif
+
+    #ifdef SOCK_NONBLOCK
+    type |= SOCK_NONBLOCK;
+    #endif
+
+    int result = socket(domain, type, proto); // socket(2)
+
+    if (result == -1)
+        return -1;
+
+    rb_fd_fix_cloexec(result);
+
+    #ifndef SOCK_NONBLOCK
+    rsock_make_fd_nonblock(result);
+    #endif
+
+    return result;
+}
+```
+
+```c
+static VALUE
+sock_bind(VALUE sock, VALUE addr)
+{
+    VALUE rai;
+    rb_io_t *fptr;
+
+    SockAddrStringValueWithAddrinfo(addr, rai);
+    GetOpenFile(sock, fptr);
+    if (bind(fptr->fd, (struct sockaddr*)RSTRING_PTR(addr), RSTRING_SOCKLEN(addr)) < 0) // bind(2)
+        rsock_sys_fail_raddrinfo_or_sockaddr("bind(2)", addr, rai);
+
+    return INT2FIX(0);
+}
+```
+
+```c
+VALUE
+rsock_sock_listen(VALUE sock, VALUE log)
+{
+    rb_io_t *fptr;
+    int backlog;
+
+    backlog = NUM2INT(log);
+    GetOpenFile(sock, fptr);
+    if (listen(fptr->fd, backlog) < 0) // listen(2)
+        rb_sys_fail("listen(2)");
+
+    return INT2FIX(0);
+}
 ```
 
 ```ruby
@@ -151,7 +303,7 @@ rsock_s_accept_nonblock(VALUE klass, VALUE ex, rb_io_t *fptr,
     int fd2;
 
     rb_io_set_nonblock(fptr);
-    fd2 = cloexec_accept(fptr->fd, (struct sockaddr*)sockaddr, len);
+    fd2 = cloexec_accept(fptr->fd, (struct sockaddr*)sockaddr, len); // accept(2)
 
     if (fd2 < 0) {
         int e = errno;
