@@ -39,12 +39,12 @@ def self.tcp_server_sockets(host=nil, port)
     begin
       Addrinfo.foreach(host, port, nil, :STREAM, nil, Socket::AI_PASSIVE) {|ai|
         begin
-          s = ai.listen # s = Socket
+          s = ai.listen # Socket.new -> aiをbind(2) -> listen(2)
         rescue SystemCallError
           last_error = $!
           next
         end
-        sockets << s
+        sockets << s # bindしたaiごとにSocketオブジェクトを収集
       }
 
       if sockets.empty?
@@ -113,7 +113,10 @@ end
 
 ```c
 // ext/socket/socket.c
+// Socket#initialize
+// Socket#bind
 // Socket#listen
+
 void
 init_socket(void)
 {
@@ -124,9 +127,9 @@ init_socket(void)
     rb_define_method(rb_cSocket, "listen", rsock_sock_listen, 1);
     //...
 }
-```
 
-```c
+// Socket#initialize ---
+
 static VALUE
 sock_initialize(int argc, VALUE *argv, VALUE sock)
 {
@@ -142,11 +145,9 @@ sock_initialize(int argc, VALUE *argv, VALUE sock)
     fd = rsock_socket(d, t, NUM2INT(protocol));
     if (fd < 0) rb_sys_fail("socket(2)");
 
-    return rsock_init_sock(sock, fd);
+    return rsock_init_sock(sock, fd); // ソケットをSocketオブジェクトにする
 }
-```
 
-```c
 int
 rsock_socket(int domain, int type, int proto)
 {
@@ -187,9 +188,9 @@ rsock_socket0(int domain, int type, int proto)
 
     return result;
 }
-```
 
-```c
+// Socket#bind ---
+
 static VALUE
 sock_bind(VALUE sock, VALUE addr)
 {
@@ -203,9 +204,9 @@ sock_bind(VALUE sock, VALUE addr)
 
     return INT2FIX(0);
 }
-```
 
-```c
+// Socket#listen ---
+
 VALUE
 rsock_sock_listen(VALUE sock, VALUE log)
 {
@@ -221,6 +222,31 @@ rsock_sock_listen(VALUE sock, VALUE log)
 }
 ```
 
+```c
+// ext/socket/init.c
+
+VALUE
+rsock_init_sock(VALUE sock, int fd)
+{
+    rb_io_t *fp;
+
+    rb_update_max_fd(fd);
+    MakeOpenFile(sock, fp);
+
+    fp->fd = fd;
+    fp->mode = FMODE_READWRITE|FMODE_DUPLEX;
+    rb_io_ascii8bit_binmode(sock);
+
+    if (rsock_do_not_reverse_lookup) {
+        fp->mode |= FMODE_NOREVLOOKUP;
+    }
+
+    rb_io_synchronized(fp);
+
+    return sock;
+}
+```
+
 ```ruby
 # Socket.accept_loop
 
@@ -232,9 +258,9 @@ def self.accept_loop(*sockets) # :yield: socket, client_addrinfo
   end
 
   loop {
-    readable, _, _ = IO.select(sockets)
+    readable, _, _ = IO.select(sockets) # socketsが読み込み可能になるまで待機
 
-    readable.each {|r|
+    readable.each {|r| # 読み込み可能になったSocketオブジェクトごとにaccept
       sock, addr = r.accept_nonblock(exception: false)
 
       next if sock == :wait_readable
@@ -268,10 +294,8 @@ Init_socket(void)
 
     // ...
 }
-```
 
-```c
-// ext/socket/socket.c
+// Socket#accept_nonblock
 
 static VALUE
 sock_accept_nonblock(VALUE sock, VALUE ex)
@@ -291,10 +315,6 @@ sock_accept_nonblock(VALUE sock, VALUE ex)
     // VALUE rb_assoc_new(VALUE a, VALUE b) -> [a,b]
     return rb_assoc_new(sock2, rsock_io_socket_addrinfo(sock2, &buf.addr, len));
 }
-```
-
-```c
-// ext/socket/init.c
 
 VALUE
 rsock_s_accept_nonblock(VALUE klass, VALUE ex, rb_io_t *fptr,
@@ -327,7 +347,7 @@ rsock_s_accept_nonblock(VALUE klass, VALUE ex, rb_io_t *fptr,
     }
 
     rb_update_max_fd(fd2);
-    return rsock_init_sock(rb_obj_alloc(klass), fd2);
+    return rsock_init_sock(rb_obj_alloc(klass), fd2); // ソケットをSocketオブジェクトにする
 }
 ```
 
@@ -364,31 +384,6 @@ cloexec_accept(int socket, struct sockaddr *address, socklen_t *address_len)
 
     if (address_len && len0 < *address_len) *address_len = len0;
     return result;
-}
-```
-
-```c
-// ext/socket/init.c
-
-VALUE
-rsock_init_sock(VALUE sock, int fd)
-{
-    rb_io_t *fp;
-
-    rb_update_max_fd(fd);
-    MakeOpenFile(sock, fp);
-
-    fp->fd = fd;
-    fp->mode = FMODE_READWRITE|FMODE_DUPLEX;
-    rb_io_ascii8bit_binmode(sock);
-
-    if (rsock_do_not_reverse_lookup) {
-        fp->mode |= FMODE_NOREVLOOKUP;
-    }
-
-    rb_io_synchronized(fp);
-
-    return sock;
 }
 ```
 
