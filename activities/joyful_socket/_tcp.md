@@ -1,5 +1,15 @@
 # `Socker.tcp`
 
+```ruby
+require "socket"
+
+Socket.tcp("localhost", 4567) do |sock|
+  sock.print "Hi"
+  sock.close_write
+  puts sock.read
+end
+```
+
 #### 名前解決
 - `Addrinfo.foreach` -> `Addrinfo.getaddrinfo`
   - `addrinfo_s_getaddrinfo`
