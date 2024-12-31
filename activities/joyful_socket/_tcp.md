@@ -449,6 +449,28 @@ sock_initialize(int argc, VALUE *argv, VALUE sock)
     if (fd < 0) rb_sys_fail("socket(2)");
 
     return rsock_init_sock(sock, fd); // ソケットをSocketオブジェクトにする
+
+    // ext/socket/init.c
+    // VALUE
+    // rsock_init_sock(VALUE sock, int fd)
+    // {
+    //     rb_io_t *fp;
+    //
+    //     rb_update_max_fd(fd);
+    //     MakeOpenFile(sock, fp);
+    //
+    //     fp->fd = fd;
+    //     fp->mode = FMODE_READWRITE|FMODE_DUPLEX;
+    //     rb_io_ascii8bit_binmode(sock);
+    //
+    //     if (rsock_do_not_reverse_lookup) {
+    //         fp->mode |= FMODE_NOREVLOOKUP;
+    //     }
+    //
+    //     rb_io_synchronized(fp);
+    //
+    //     return sock;
+    // }
 }
 
 int

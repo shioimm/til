@@ -3,13 +3,35 @@
 ```ruby
 require "socket"
 
-Socket.tcp_server_loop(4567) do |sock, _ai|
+Socket.tcp_server_loop("localhost", 4567) do |sock, _ai|
   message = sock.recv 1000
   sock.sendmsg message
 ensure
   sock.close
 end
 ```
+
+#### 名前解決
+- `Addrinfo.foreach` -> `Addrinfo.getaddrinfo`
+  - クライアントと同じ
+
+#### ソケット (Socketオブジェクト) の作成
+- (`Addrinfo#listen` ->) `Socket.new`
+  - クライアントと同じ
+
+#### ソケットをアドレスにバインド
+- (`Addrinfo#listen` ->) `Socket#bind`
+  - `sock_bind`
+
+#### 接続待機
+- (`Addrinfo#listen` ->) `Socket#listen`
+  - `rsock_sock_listen`
+
+#### 接続受付
+- `Socket#accept_nonblock`
+  - `sock_accept_nonblock`
+    - `rsock_s_accept_nonblock`
+      - `cloexec_accept`
 
 ---
 
@@ -69,23 +91,6 @@ end
 ```
 
 ```ruby
-# Addrinfo.foreach
-
-def self.foreach(nodename, service, family=nil, socktype=nil, protocol=nil, flags=nil, timeout: nil, &block)
-  Addrinfo.getaddrinfo(nodename, service, family, socktype, protocol, flags, timeout: timeout).each(&block)
-end
-
-# Addrinfo.getaddrinfo
-#   addrinfo_s_getaddrinfo
-#   -> addrinfo_list_new
-#   -> call_getaddrinfo
-#   -> rsock_getaddrinfo
-#   -> rb_getaddrinfo
-#   -> fork_safe_do_getaddrinfo
-#   -> getaddrinfo(2)
-```
-
-```ruby
 # Addrinfo#listen
 
 def listen(backlog=Socket::SOMAXCONN)
@@ -113,7 +118,6 @@ end
 
 ```c
 // ext/socket/socket.c
-// Socket#initialize
 // Socket#bind
 // Socket#listen
 
@@ -121,72 +125,9 @@ void
 init_socket(void)
 {
     //...
-    rb_define_method(rb_cSocket, "initialize", sock_initialize, -1);
-    //...
     rb_define_method(rb_cSocket, "bind", sock_bind, 1);
     rb_define_method(rb_cSocket, "listen", rsock_sock_listen, 1);
     //...
-}
-
-// Socket#initialize ---
-
-static VALUE
-sock_initialize(int argc, VALUE *argv, VALUE sock)
-{
-    VALUE domain, type, protocol;
-    int fd;
-    int d, t;
-
-    rb_scan_args(argc, argv, "21", &domain, &type, &protocol);
-    if (NIL_P(protocol))
-        protocol = INT2FIX(0);
-
-    setup_domain_and_type(domain, &d, type, &t);
-    fd = rsock_socket(d, t, NUM2INT(protocol));
-    if (fd < 0) rb_sys_fail("socket(2)");
-
-    return rsock_init_sock(sock, fd); // ソケットをSocketオブジェクトにする
-}
-
-int
-rsock_socket(int domain, int type, int proto)
-{
-    int fd;
-
-    fd = rsock_socket0(domain, type, proto);
-    if (fd < 0) {
-        if (rb_gc_for_fd(errno)) {
-            fd = rsock_socket0(domain, type, proto);
-        }
-    }
-    if (0 <= fd)
-        rb_update_max_fd(fd);
-    return fd;
-}
-
-static int
-rsock_socket0(int domain, int type, int proto)
-{
-    #ifdef SOCK_CLOEXEC
-    type |= SOCK_CLOEXEC;
-    #endif
-
-    #ifdef SOCK_NONBLOCK
-    type |= SOCK_NONBLOCK;
-    #endif
-
-    int result = socket(domain, type, proto); // socket(2)
-
-    if (result == -1)
-        return -1;
-
-    rb_fd_fix_cloexec(result);
-
-    #ifndef SOCK_NONBLOCK
-    rsock_make_fd_nonblock(result);
-    #endif
-
-    return result;
 }
 
 // Socket#bind ---
@@ -222,30 +163,6 @@ rsock_sock_listen(VALUE sock, VALUE log)
 }
 ```
 
-```c
-// ext/socket/init.c
-
-VALUE
-rsock_init_sock(VALUE sock, int fd)
-{
-    rb_io_t *fp;
-
-    rb_update_max_fd(fd);
-    MakeOpenFile(sock, fp);
-
-    fp->fd = fd;
-    fp->mode = FMODE_READWRITE|FMODE_DUPLEX;
-    rb_io_ascii8bit_binmode(sock);
-
-    if (rsock_do_not_reverse_lookup) {
-        fp->mode |= FMODE_NOREVLOOKUP;
-    }
-
-    rb_io_synchronized(fp);
-
-    return sock;
-}
-```
 
 ```ruby
 # Socket.accept_loop
@@ -279,9 +196,9 @@ def accept_nonblock(exception: true)
 end
 ```
 
-
 ```c
 // ext/socket/socket.c
+// Socket#accept_nonblock
 
 void
 Init_socket(void)
@@ -294,8 +211,6 @@ Init_socket(void)
 
     // ...
 }
-
-// Socket#accept_nonblock
 
 static VALUE
 sock_accept_nonblock(VALUE sock, VALUE ex)
@@ -314,6 +229,30 @@ sock_accept_nonblock(VALUE sock, VALUE ex)
 
     // VALUE rb_assoc_new(VALUE a, VALUE b) -> [a,b]
     return rb_assoc_new(sock2, rsock_io_socket_addrinfo(sock2, &buf.addr, len));
+
+    // ext/socket/raddrinfo.c
+    // VALUE
+    // rsock_io_socket_addrinfo(VALUE io, struct sockaddr *addr, socklen_t len)
+    // {
+    //     rb_io_t *fptr;
+    //
+    //     switch (TYPE(io)) {
+    //       case T_FIXNUM:
+    //         return rsock_fd_socket_addrinfo(FIX2INT(io), addr, len);
+    //
+    //       case T_BIGNUM:
+    //         return rsock_fd_socket_addrinfo(NUM2INT(io), addr, len);
+    //
+    //       case T_FILE:
+    //         GetOpenFile(io, fptr);
+    //         return rsock_fd_socket_addrinfo(fptr->fd, addr, len);
+    //
+    //       default:
+    //         rb_raise(rb_eTypeError, "neither IO nor file descriptor");
+    //     }
+    //
+    //     UNREACHABLE_RETURN(Qnil);
+    // }
 }
 
 VALUE
@@ -384,32 +323,5 @@ cloexec_accept(int socket, struct sockaddr *address, socklen_t *address_len)
 
     if (address_len && len0 < *address_len) *address_len = len0;
     return result;
-}
-```
-
-```c
-// ext/socket/raddrinfo.c
-
-VALUE
-rsock_io_socket_addrinfo(VALUE io, struct sockaddr *addr, socklen_t len)
-{
-    rb_io_t *fptr;
-
-    switch (TYPE(io)) {
-      case T_FIXNUM:
-        return rsock_fd_socket_addrinfo(FIX2INT(io), addr, len);
-
-      case T_BIGNUM:
-        return rsock_fd_socket_addrinfo(NUM2INT(io), addr, len);
-
-      case T_FILE:
-        GetOpenFile(io, fptr);
-        return rsock_fd_socket_addrinfo(fptr->fd, addr, len);
-
-      default:
-        rb_raise(rb_eTypeError, "neither IO nor file descriptor");
-    }
-
-    UNREACHABLE_RETURN(Qnil);
 }
 ```
