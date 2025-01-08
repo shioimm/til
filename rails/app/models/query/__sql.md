@@ -45,9 +45,13 @@ ActiveRecord::Base.connection.select_one(sql)
 - `ActiveRecord::Base.sanitize_sql_array`
 
 ```ruby
-sql = "role in (:roles)"
-query = ActiveRecord::Base.sanitize_sql_for_conditions([sql, roles: [:admin, :seller]])
-User.where(query)
+sql = "name in (:names)"
+query = ActiveRecord::Base.sanitize_sql_for_conditions([sql, names: ["ruby", "python"]])
+Language.where(query) # => ActiveRecord_Relation
+
+sql = "select * from languages where name in (:names)"
+query = ActiveRecord::Base.sanitize_sql_for_conditions([sql, names: ["ruby", "python"]])
+ActiveRecord::Base.connection.select_all(query) # => ActiveRecord::Result (eachで各レコードにアクセスできる)
 ```
 
 ```ruby
@@ -58,4 +62,9 @@ sql       = ActiveRecord::Base.sanitize_sql_array(query, title, new_title)
 
 ActiveRecord::Base.connection.execute(sql)
 # => #<PG::Result: ...
+```
+
+```ruby
+qu
+ActiveRecord::Base.connection.select_all(ActiveRecord::Base.sanitize_sql_for_conditions([sql, values]))
 ```
