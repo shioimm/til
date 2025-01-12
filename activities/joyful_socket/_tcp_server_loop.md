@@ -306,6 +306,9 @@ cloexec_accept(int socket, struct sockaddr *address, socklen_t *address_len)
             flags |= SOCK_NONBLOCK;
         #endif
 
+        // int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
+        //   flagsにはSOCK_NONBLOCK / SOCK_CLOEXECを指定できる
+        //   Linux 2.6.28~
         int result = accept4(socket, address, address_len, flags);
         if (result == -1) return -1;
 
@@ -314,11 +317,13 @@ cloexec_accept(int socket, struct sockaddr *address, socklen_t *address_len)
         #endif
 
     #else
+        // int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
         int result = accept(socket, address, address_len);
         if (result == -1) return -1;
 
         rb_maygvl_fd_fix_cloexec(result);
         rsock_make_fd_nonblock(result);
+
     #endif
 
     if (address_len && len0 < *address_len) *address_len = len0;
