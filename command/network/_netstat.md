@@ -26,6 +26,23 @@
 - Foreign Address - ピアソケットがバインドしたアドレス
 - State - ソケットの現在の状態
 
+```
+$ netstat -ni
+Name  Mtu   Network    Address        Ipkts  Ierrs  Opkts  Oerrs  Coll
+en0   1500  192.168.1  192.168.1.100  12345      0  12340      0     0
+```
+
+- Name: インターフェース名
+- Mtu: MTU
+- Network: インターフェースが属するネットワーク
+- Address: インターフェースに割り当てられているIPアドレス
+- Ipkts: 受信パケット数 (Input Packets)
+- Ierrs: 受信エラーパケット数 (Input Errors)
+- Opkts: 送信パケット数 (Output Packets)
+- Oerrs: 受信エラーパケット数 (Output Errors)
+- Coll: 衝突数 (collisions)
+
+
 ## [Linux]`/proc/net`
 - `netstat(1)`が表示する情報を格納するファイル
 
