@@ -22,3 +22,7 @@
 ### 用途
 - 厳密に文字を区別して統一する -> NFC or NFD
 - 見た目や幅の差異をなくして一律に比較・検索する -> NFKC or NFKD
+
+```ruby
+"a\u0300".unicode_normalize(:nfkc)
+```
