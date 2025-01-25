@@ -17,6 +17,24 @@
 - カレントファイルオフセット
 - 当該ファイルのvノードテーブルエントリへのポインタ
 
+```c
+// UNIXカーネルにおいてファイルテーブルエントリはfile構造体として保持される
+// file構造体はopen file discriptionとも呼ばれる
+// 実際の実装では必ずしもstruct file型を持っているとは限らない
+
+// Linux
+struct file {
+  struct path                   f_path;       // ファイルのパス情報
+  struct inode                 *f_inode;      // 対応するinode構造体
+  const struct file_operations *f_op;         // ファイル操作関数ポインタ
+  loff_t                        f_pos;        // ファイルの現在位置
+  unsigned int                  f_flags;      // ファイルフラグ
+  fmode_t                       f_mode;       // アクセスモード
+  void                         *private_data; // ドライバ固有データ
+  // ...
+};
+```
+
 ### vノードテーブル
 - ファイルの種類とファイル操作関数へのポインタ、iノードテーブルエントリへのポインタを保持する
 - vノードテーブルには一つのオープンしているファイルごとに一つのエントリが保存される
