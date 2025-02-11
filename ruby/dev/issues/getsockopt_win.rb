@@ -21,6 +21,9 @@ code = excepts.last.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR).int
 SystemCallError.new("Error", code)
 # => #<SystemCallError: No connection could be made because the target machine actively refused id. - connect(2) for 127.0.0.1:50306>
 
+SystemCallError.new(Errno::ECONNREFUSED::Errno)
+# => <Errno::ECONNREFUSED: No connection could be made because the target machine actively refused id.>
+
 TCPSocket.new("127.0.0.1", 9999)
 # => No connection could be made because the target machine actively refused id. - connect(2) for "127.0.0.1" port 9999 (Errno::ECONNREFUSED)
 
@@ -35,8 +38,18 @@ code = writables.last.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR).int
 SystemCallError.new("Error", code)
 # => #<Errno::ECONNREFUSED: Connection refused - Error>
 
+---
+
+Socket#getsockopt
 - ext/socket/basicsocket.c
   - bsock_getsockopt
 - ext/socket/option.c
   - rsock_sockopt_new
     - VALUE dataをintに変換 -> intをDWORDに変換するとrb_w32_map_errnoが使えるかもしれない
+
+SystemCallError
+- error.c
+  - syserr_initialize
+    - `st_lookup(syserr_tbl, NUM2LONG(error), &data)`
+  - setup_syserr (テーブルのセットアップ)
+    - `st_add_direct(syserr_tbl, n, (st_data_t)error)`
