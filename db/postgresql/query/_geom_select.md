@@ -1,5 +1,5 @@
-# geometory (緯度経度) をhexでエンコードした値をhuman readableに表示する
-Well-Known Binary (WKB) 形式のgeometoryデータ
+# WKB形式のgeometory型の値 (緯度経度) をhuman readableに表示する
+Well-Known Binary (WKB) 形式 = geometory型の値をhexでエンコード
 
 ```
 0101000020E6100000977B58DA************************
