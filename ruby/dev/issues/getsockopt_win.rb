@@ -43,9 +43,27 @@ SystemCallError.new("Error", code)
 Socket#getsockopt
 - ext/socket/basicsocket.c
   - bsock_getsockopt
+    - `getsockopt(fptr->fd, level, option, buf, &len)` -> WSAから始まるエラーコード (WSAECONNREFUSEDなど) を取得
+    - `rsock_sockopt_new(family, level, option, rb_str_new(buf, len))`
 - ext/socket/option.c
   - rsock_sockopt_new
-    - VALUE dataをintに変換 -> intをDWORDに変換するとrb_w32_map_errnoが使えるかもしれない
+    - `sockopt_initialize(obj, INT2NUM(family), INT2NUM(level), INT2NUM(optname), data);`
+    - VALUE data をintに変換 -> intをDWORDに変換するとrb_w32_map_errnoが使えるかもしれない
+
+```c
+getsockopt(fptr->fd, level, option, buf, &len)
+
+DWORD winerr = (DWORD)buf;
+int perrno = rb_w32_map_errno(winerr);
+
+char err[16];
+snprintf(err, sizeof(err), "%d", perrno);
+rb_str_new(err, (long)strlen(err))
+```
+
+- win32/win32.c
+  - rb_w32_map_errno
+    - DWORD winerrを引数に渡すと、static const struct errmap[] テーブルからキーで値を検索して返す
 
 SystemCallError
 - error.c
