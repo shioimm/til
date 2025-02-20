@@ -8,5 +8,7 @@ digest    = OpenSSL::Digest.new("sha256") # SHA256ハッシュアルゴリズム
 hmac      = OpenSSL::HMAC.digest(digest, secret, body) # HMACを計算
 signature = Base64.strict_encode64(hmac) # HMACの結果のバイナリデータをBase64エンコードし、可読な形式に変換
 
+# 単に signature = OpenSSL::HMAC.base64digest("sha1", secret, body) でもいい
+
 ActiveSupport::SecurityUtils.secure_compare("検証したい署名", signature)
 ```
