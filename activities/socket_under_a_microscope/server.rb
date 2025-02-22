@@ -10,6 +10,7 @@ Socket.tcp_server_loop("localhost", 4567) do |sock|
   puts "Received: \"#{message}\" (from #{address}:#{port})"
 
   sock.write message
+  puts "Send: \"#{message}\" (to #{address}:#{port})"
 ensure
   sock.close
 end
