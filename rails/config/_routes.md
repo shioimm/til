@@ -54,5 +54,20 @@ end
 
 - `contact_form_url(user_id: ...)`のような形式で呼び出した際にクエリパラメータに`?user_id=...`を付与する
 
+#### `concern`
+- 異なるリソース内にそれぞれ共通のルーティングをconcernで抽出する
+
+```ruby
+concern :commentable do
+  resources :comments
+end
+resources :messages, concerns: :commentable
+
+# 以下と同じ
+# resources :messages do
+#   resources :comments
+# end
+```
+
 ## 参照
 - [Railsのルーティング](https://railsguides.jp/routing.html)
