@@ -3,11 +3,12 @@
 # ActiveStorage::Blob/ActiveStorage::Attachmentのマイグレーションファイルを生成
 $ rails active_storage:install
 
-$ rails g scaffold Xxx 画像用カラム:attachment
+$ rails g scaffold Foo avatar:attachment
 $ rails db:migrate
 ```
 
 ### ストレージの設定
+
 ```yml
 # config/storage.yml
 # デフォルトでS3、GCS、AzureStorageに対応
@@ -35,9 +36,11 @@ config.active_storage.service = :local
 - ImageProccessing(gem)とImageMagic(brew)が必要
 - リソースに対し`variant`メソッドを呼び出し、引数でサイズを指定
   - 指定できるサイズのオプションはImageProccessing::MiniMagic(or ImageMagic)に依存する
-```haml
+
+```
 = @record.image.variant(resize_to_limit: [100, 100])
 ```
+
 - variantは返り値としてBlobのidと変換形式を含んだURLを生成する
 - URLはサーバー側で検証される
   - 変換後の画像がストレージに存在する場合は画像のURLにリダイレクトする
