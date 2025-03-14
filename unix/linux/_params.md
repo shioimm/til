@@ -18,6 +18,16 @@ net.core.somaxconn=8192
 $ sudo sysctl -p
 ```
 
+#### `net.ipv4.tcp_fastopen`
+- TCP Fast Openを有効にするかどうか
+  - 0 = TFO を無効化 (デフォルト)
+  - 1 = クライアントとしてTFOを有効化 (サーバ側のサポートが必要)
+  - 2 = サーバとしてTFO を有効化 (クライアント側のサポートが必要)
+  - 3 = クライアント・サーバとしてTFO を有効化
+
+#### `net.ipv4.tcp_fin_timeout`
+- FIN送信後、カーネルがTIME-WAIT状態を維持する時間 (秒)
+
 #### `net.ipv4.ip_local_port_range`
 - ユーザ空間プロセスが動的に割り当てられるローカルポートの範囲
 
@@ -36,11 +46,11 @@ net.ipv4.ip_local_port_range=1024 65535
 $ sudo sysctl -p
 ```
 
-#### `net.ipv4.tcp_fin_timeout`
-- FIN送信後、カーネルがTIME-WAIT状態を維持する時間 (秒)
-
 #### `net.ipv4.tcp_max_tw_buckets`
 - TIME-WAIT 状態のソケットの最大数
+
+#### `net.ipv4.tcp_max_syn_backlog`
+- サーバとして受け付けるSYNキューのサイズ
 
 #### `net.ipv4.tcp_syn_retries`
 - TCPハンドシェイクの最初のSYN送信後、SYN-ACKを受信できない場合にSYNを再送する最大回数
