@@ -1,4 +1,7 @@
 # systemd
+- Linuxシステムの起動プロセスやサービス管理を包括的に担うソフトウェア群
+- 従来のSystem V initに代わって導入された
+
 #### systemd-resolved
 - スタブリゾルバ (DNSクライアント) としての機能をローカルアプリケーションに提供するsystemdコンポーネント
 - D-Bus API、NSS、Local DNS Stub Listener (127.0.0.53:53) に対応
