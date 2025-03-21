@@ -14,3 +14,5 @@ Writer.left_outer_joins(:posts).where(posts: { id: nil })
 Post.where.missing(:writer)
 Post.left_joins(:writer).where(writers: { id: nil })
 ```
+
+- 逆 (関連先レコードを持つレコード一式を取得する) は`associated`
