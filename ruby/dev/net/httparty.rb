@@ -10,4 +10,5 @@ response = HTTParty.get("https://github.com/ruby")
 puts response.body
 p response.headers
 
-# ref: https://www.rubydoc.info/github/jnunemaker/httparty/HTTParty/ClassMethods
+# https://github.com/jnunemaker/httparty
+# https://www.rubydoc.info/github/jnunemaker/httparty/HTTParty/
