@@ -1,13 +1,13 @@
 require "faraday"
 
 connection = Faraday.new(url: "http://example.com")
-response = connection.get "/index.html"
-p response.headers
-puts response.body
-
-connection = Faraday.new(url: "https://github.com")
-response = connection.get "/ruby"
-p response.headers
-puts response.body
+res = connection.get "/index.html"
+puts res.body
+puts("---")
+p res.class
+p res.status
+pp res.headers
+p res.headers["content-type"]
+p res.headers["last-modified"]
 
 # ref https://nekorails.hatenablog.com/entry/2018/09/28/152745

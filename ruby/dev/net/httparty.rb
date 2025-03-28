@@ -1,14 +1,14 @@
 require "httparty"
 
-response = HTTParty.get("http://example.com")
+res = HTTParty.get("https://example.com/")
 
-puts response.body
-p response.headers
-
-response = HTTParty.get("https://github.com/ruby")
-
-puts response.body
-p response.headers
+puts res.body
+puts "---"
+p res.class
+pp res.headers
+p res.code
+p res.content_type
+p res.headers["last-modified"]
 
 # https://github.com/jnunemaker/httparty
 # https://www.rubydoc.info/github/jnunemaker/httparty/HTTParty/
