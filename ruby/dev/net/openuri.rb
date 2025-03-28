@@ -5,13 +5,16 @@ f.each_line { puts it }
 puts "---"
 p f.class
 p f.status
-p f.base_uri
+p f.base_uri # => <URI::HTTPS https://example.com/>
 p f.content_type
 p f.charset
 p f.content_encoding
 p f.last_modified
 
 __END__
+- 標準添付
+- StringIOまたはTempfileとして扱う
+
 require 'uri'
 require 'stringio'
 require 'time'

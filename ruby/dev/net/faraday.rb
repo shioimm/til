@@ -1,12 +1,13 @@
 require "faraday"
 
-connection = Faraday.new(url: "http://example.com")
-res = connection.get "/index.html"
+client = Faraday.new(url: "http://example.com")
+res = client.get "/index.html"
 puts res.body
 puts("---")
-p res.class
+p client.class # Faraday::Connection
+p res.class # Faraday::Response
 p res.status
-pp res.headers
+pp res.headers # Faraday::Utils::Headers
 p res.headers["content-type"]
 p res.headers["last-modified"]
 
