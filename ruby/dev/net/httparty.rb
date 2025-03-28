@@ -4,8 +4,8 @@ res = HTTParty.get("https://example.com/")
 
 puts res.body
 puts "---"
-p res.class
-pp res.headers
+p res.class # HTTParty::Response
+pp res.headers # HTTParty::Response::Headers
 p res.code
 p res.content_type
 p res.headers["last-modified"]

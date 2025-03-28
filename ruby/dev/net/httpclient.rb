@@ -7,9 +7,9 @@ res = client.get("http://example.com")
 puts res.body
 puts("---")
 
-p res.class
+p res.class # HTTP::Message
 p res.status
-pp res.headers
+pp res.headers # Hash
 p res.content_type
 p res.headers["Last-Modified"]
 
