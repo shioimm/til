@@ -1,21 +1,17 @@
-require 'rubydns'
+require "rubydns"
 
 INTERFACES = [
   [:udp, "0.0.0.0", 53],
-  [:udp, "::1",     53],
-  [:tcp, "0.0.0.0", 53],
-  [:tcp, "::1",     53],
+  [:udp, "::",      53],
 ]
 
-IN = Resolv::DNS::Resource::IN
-
 RubyDNS::run_server(INTERFACES) do
-  match("www.ruby-lang.org", IN::A) do |transaction|
+  match("www.ruby-lang.org", Resolv::DNS::Resource::IN::A) do |transaction|
     puts "IN::A matched"
     transaction.respond!("127.0.0.1")
   end
 
-  match("www.ruby-lang.org", IN::AAAA) do |transaction|
+  match("www.ruby-lang.org", Resolv::DNS::Resource::IN::AAAA) do |transaction|
     # ここでsleepすると調整できる
     puts "IN::AAAA matched"
     transaction.respond!("::1")
