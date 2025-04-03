@@ -13,3 +13,33 @@ http = Curl::Easy.new("https://example.com/")
 p http # #<Curl::Easy https://example.com/>
 http.perform
 p http.code
+p http.method(:code).source_location
+
+__END__
+# https://github.com/taf2/curb/blob/master/lib/curl.rb
+
+def self.get(url, params={}, &block)
+  http :GET, urlalize(url, params), nil, nil, &block
+end
+
+def self.http(verb, url, post_body=nil, put_data=nil, &block)
+  if Thread.current[:curb_curl_yielding]
+    handle = Curl::Easy.new # we can't reuse this
+  else
+    handle = Thread.current[:curb_curl] ||= Curl::Easy.new
+    handle.reset
+  end
+
+  handle.url = url
+  handle.post_body = post_body if post_body
+  handle.put_data = put_data if put_data
+
+  if block_given?
+    Thread.current[:curb_curl_yielding] = true
+    yield handle
+    Thread.current[:curb_curl_yielding] = false
+  end
+
+  handle.http(verb)
+  handle
+end
