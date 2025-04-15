@@ -21,3 +21,21 @@ p session
 #   @force_ipv4=false,
 #   @base_url="http://example.com"
 # >
+__END__
+def get(url, headers = {})
+  request(:get, url, headers)
+end
+
+def request(action, url, headers, options = {})
+  req = build_request(action, url, headers, options)
+  handle_request(req) # 実装が見つからない self.method(:handle_request).source_locationがnilになる
+end
+
+def build_request(action, url, headers, options = {})
+  # If the Expect header isn't set uploads are really slow
+  headers['Expect'] ||= ''
+
+  Request.new.tap do |req|
+    # ...
+  end
+end
