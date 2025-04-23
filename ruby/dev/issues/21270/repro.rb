@@ -206,9 +206,9 @@ Fiber.schedule do # 新しいFiberを生成してスケジューラへ登録、�
   puts "#{Fiber.current.object_id}: Creating socket"
 
   # connectで処理をブロック中、スケジューラのio_waitが呼ばれる
-  TCPSocket.new("example.com", 12345, fast_fallback: false) # works
+  # TCPSocket.new("example.com", 12345, fast_fallback: false) # works
   # TCPSocket.new("example.com", 12345, fast_fallback: true) # does not work
-  # Socket.tcp("example.com", 12345, fast_fallback: true) # works
+  Socket.tcp("example.com", 12345, fast_fallback: true) # does not work
 
   puts "#{Fiber.current.object_id}: Connected" # 接続が成功したタイミングで実行される
 end
