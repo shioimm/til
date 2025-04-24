@@ -35,10 +35,32 @@ func mathF(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(writer, result, 30.0, rad30)
 }
 
+func array(writer http.ResponseWriter, req *http.Request) {
+	ar1 := [5]int{1, 2, 3, 4, 5}
+	fmt.Fprintln(writer, ar1)
+
+	ar2 := [5]int{1, 2, 3}
+	fmt.Fprintln(writer, ar2) // => [1 2 3 0 0]
+
+	ar2[4] = 99
+	fmt.Fprintln(writer, ar2) //  => [1 2 3 0 99]
+
+	sl1 := ar1[0:2]
+	fmt.Fprintln(writer, sl1) // => [1 2]
+
+	sl2 := ar2[3:]
+	fmt.Fprintln(writer, sl2) // => [0 99]
+
+	sl2[1] = 100
+	fmt.Fprintln(writer, sl2) // => [0 100]
+	fmt.Fprintln(writer, ar2) // => [1 2 3 0 100]
+}
+
 func main() {
 	http.HandleFunc("/hello", hello)
 	http.HandleFunc("/algebra", algebra)
 	http.HandleFunc("/math", mathF)
+	http.HandleFunc("/array", array)
 	http.ListenAndServe(":8090", nil)
 }
 
