@@ -13,3 +13,5 @@ func main() {
 	http.HandleFunc("/hello", hello)
 	http.ListenAndServe(":8090", nil)
 }
+
+// $ go build server -> ./server
