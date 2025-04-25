@@ -1,5 +1,5 @@
 // https://www.kohgakusha.co.jp/books/detail/978-4-7775-2239-2
-
+// $ go build server.go
 package main
 
 import (
