@@ -9,3 +9,19 @@ func Add(x int, y int) int {
 func Sub(x int, y int) (int, float64) {
 	return x, float64(y)
 }
+
+func AddAll(sl []int, x int) {
+	for i := 0; i < len(sl); i++ {
+		sl[i] += x
+	}
+}
+
+func AddAndCopy(sl []int, x int) []int {
+	cp := []int{}
+
+	for i := 0; i < len(sl); i++ {
+		cp = append(cp, sl[i] + x)
+	}
+
+	return cp
+}
