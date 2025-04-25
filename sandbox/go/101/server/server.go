@@ -56,11 +56,28 @@ func array(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, ar2) // => [1 2 3 0 100]
 }
 
+func slice(writer http.ResponseWriter, req *http.Request) {
+	sl1 := []int{1, 2, 3, 4, 5} // スライスリテラル
+	var rad float64
+
+	for _, v := range sl1 {
+		rad = float64(v) * math.Pi / 180.0
+		fmt.Fprintf(writer, "sin %d = %.3f\n", v, math.Sin(rad))
+	}
+
+	sl1 = append(sl1, 10, 20, 30)
+	fmt.Fprintln(writer, sl1) // => [1 2 3 4 5 10 20 30]
+
+	sl2 := sl1[0:2]
+	fmt.Fprintln(writer, sl2) // =>
+}
+
 func main() {
 	http.HandleFunc("/hello", hello)
 	http.HandleFunc("/algebra", algebra)
 	http.HandleFunc("/math", mathF)
 	http.HandleFunc("/array", array)
+	http.HandleFunc("/slice", slice)
 	http.ListenAndServe(":8090", nil)
 }
 
