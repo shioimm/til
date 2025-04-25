@@ -68,8 +68,38 @@ func slice(writer http.ResponseWriter, req *http.Request) {
 	sl1 = append(sl1, 10, 20, 30)
 	fmt.Fprintln(writer, sl1) // => [1 2 3 4 5 10 20 30]
 
-	sl2 := sl1[0:2]
-	fmt.Fprintln(writer, sl2) // =>
+	sl2 := sl1[0:3]
+	fmt.Fprintln(writer, sl2) // => [1 2 3]
+}
+
+type premium_member struct {
+	member
+	point int
+}
+
+type member struct {
+	name string
+	point int
+	coeff float64
+}
+
+func members(writer http.ResponseWriter, req *http.Request) {
+	foo := member{"foo", 123, 1.23}
+
+	bar := member{}
+	bar.name = "bar"
+	bar.point = 789
+	bar.coeff = 7.89
+
+	members := []member{foo, bar}
+	format := "%s: %.2f pt\n"
+
+	for _, member := range members {
+		fmt.Fprintf(writer, format, member.name, float64(member.point) * member.coeff)
+	}
+
+	pfoo := premium_member{foo, 100}
+	fmt.Fprintf(writer, "%s (premium) : %d pt\n", pfoo.member.name, foo.point + pfoo.point)
 }
 
 func main() {
@@ -78,6 +108,7 @@ func main() {
 	http.HandleFunc("/math", mathF)
 	http.HandleFunc("/array", array)
 	http.HandleFunc("/slice", slice)
+	http.HandleFunc("/members", members)
 	http.ListenAndServe(":8090", nil)
 }
 
