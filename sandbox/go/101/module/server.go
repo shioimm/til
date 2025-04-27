@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"server/functions"
+	"server/data"
 )
 
 func add(writer http.ResponseWriter, req *http.Request) {
@@ -21,9 +22,36 @@ func sub(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(writer, "x = %d, y = %.1f\n", x, y)
 }
 
+func slices(writer http.ResponseWriter, req *http.Request) {
+	sl1 := []int{1, 2, 3}
+
+	fmt.Fprintln(writer, "(AddAll) Before: ")
+	fmt.Fprintln(writer, sl1)
+
+	functions.AddAll(sl1, 100)
+
+	fmt.Fprintln(writer, "(AddAll) After: ")
+	fmt.Fprintln(writer, sl1)
+
+	sl2 := functions.AddAndCopy(sl1, 1000)
+	fmt.Fprintln(writer, "(AddAndCopy)")
+	fmt.Fprintln(writer, sl2)
+}
+
+func structs(writer http.ResponseWriter, req *http.Request) {
+	members := []data.Member {
+		data.Member{ "foo", 123, 1.23 },
+		data.Member{ "bar", 456, 4.56 },
+	}
+
+	fmt.Fprintln(writer, functions.DescribeAll(members))
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
+	http.HandleFunc("/slices", slices)
+	http.HandleFunc("/structs", structs)
 
 	http.ListenAndServe(":8090", nil)
 }
