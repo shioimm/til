@@ -1,3 +1,4 @@
+// https://www.kohgakusha.co.jp/books/detail/978-4-7775-2239-2
 // $ go mod init data
 package data
 
@@ -9,10 +10,22 @@ type Member struct {
 	Coeff float64
 }
 
-func Effective(m Member) float64 {
-	return float64(m.Point) * m.Coeff
+func Effective(member Member) float64 {
+	return float64(member.Point) * member.Coeff
 }
 
-func Describe(m Member) string {
-	return fmt.Sprintf("%s: %d pt, %.2f pt (effective)", m.Name, m.Point, Effective(m))
+func Describe(member Member) string {
+	return fmt.Sprintf("%s: %d pt, %.2f pt (effective)", member.Name, member.Point, Effective(member))
+}
+
+func HighestPointMember(members[] Member) Member {
+	temp := members[0]
+
+	for _, member := range members {
+		if Effective(member) > Effective(temp) {
+			temp = member
+		}
+	}
+
+	return temp
 }

@@ -47,6 +47,17 @@ func structs(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	fmt.Fprintln(writer, functions.DescribeAll(members))
+	fmt.Fprintln(writer, functions.DescribeHighest(members))
+}
+
+func pointers(writer http.ResponseWriter, req *http.Request) {
+	mockmemory := []int{1, 23, 45, 6, 78, 99}
+	fmt.Fprintln(writer, functions.DescribeMockStruct(mockmemory, 0))
+	fmt.Fprintln(writer, functions.DescribeMockStruct(mockmemory, 3))
+
+	x, y := 1, 2
+	result := functions.UpdateOrCopy(x, &y)
+	fmt.Fprintf(writer, "x = %d, y = %d, result = %d\n", x, y, result)
 }
 
 func main() {
@@ -54,6 +65,7 @@ func main() {
 	http.HandleFunc("/sub", sub)
 	http.HandleFunc("/slices", slices)
 	http.HandleFunc("/structs", structs)
+	http.HandleFunc("/pointers", pointers)
 
 	http.ListenAndServe(":8090", nil)
 }
