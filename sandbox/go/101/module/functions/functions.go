@@ -59,6 +59,20 @@ func DescribeHighest(members []data.Member) string {
 	return str
 }
 
+func AddMemberPoint(member **data.Member, pt int) string {
+	data.AddPoint(member, pt)
+	str := ""
+	str += fmt.Sprintf("Add %d pt for %s\n", pt, (**member).Name)
+	return str
+}
+
+func ReferAFriend(member data.Member, name string) (data.Member, string) {
+	newMember := data.NewMember(member, name)
+	str := ""
+	str += fmt.Sprintf("Join %s refered from %s\n", name, member.Name)
+	return newMember, str
+}
+
 func DescribeMockStruct(mockmemory []int, mockaddress int) string {
 	str := fmt.Sprintf("no.%d: ", mockmemory[mockaddress])
 	str += fmt.Sprintf("%d pt ", mockmemory[mockaddress + 1])

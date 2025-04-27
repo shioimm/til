@@ -29,3 +29,12 @@ func HighestPointMember(members[] Member) Member {
 
 	return temp
 }
+
+func AddPoint(member **Member, pt int) {
+	(**member).Point += pt
+}
+
+func NewMember(member Member, name string) Member {
+	member.Name = name
+	return member
+}

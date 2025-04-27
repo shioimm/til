@@ -48,6 +48,15 @@ func structs(writer http.ResponseWriter, req *http.Request) {
 
 	fmt.Fprintln(writer, functions.DescribeAll(members))
 	fmt.Fprintln(writer, functions.DescribeHighest(members))
+
+	member := &members[0]
+	fmt.Fprintln(writer, functions.AddMemberPoint(&member, 12))
+	fmt.Fprintln(writer, functions.DescribeAll(members))
+
+	newMember, str := functions.ReferAFriend(members[0], "baz")
+	fmt.Fprintln(writer, str)
+	fmt.Fprintln(writer, functions.Describe(newMember))
+	fmt.Fprintln(writer, functions.DescribeAll(members))
 }
 
 func pointers(writer http.ResponseWriter, req *http.Request) {
