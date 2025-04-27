@@ -2,6 +2,8 @@
 // $ go mod init server
 // $ go mod edit -replace server/functions=./functions
 // $ go mod tidy
+// $ go mod edit -replace server/data=./data
+// $ go mod tidy
 // $ go build server.go
 package main
 
