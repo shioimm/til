@@ -77,6 +77,22 @@ func methods(writer http.ResponseWriter, req *http.Request) {
 	c := data.CreateCoodinate("a", 0, 0)
 	c = c.Move(2, 3).Move(4, 5).Move(6, 7).Terminate()
 	fmt.Fprintln(writer, c.Record)
+
+	fractions := []data.Fraction{
+		data.Half(1.5),
+		data.Full(2),
+		data.Half(2.5),
+		data.Full(3),
+		data.Half(3.5),
+	}
+	fmt.Fprintln(writer, functions.DescribeFraction(fractions))
+
+	counters := []data.Counter {
+		data.Char{"12345"},
+		data.Char{"一二三四五"},
+		data.Digit{12345},
+	}
+	fmt.Fprintln(writer, functions.CountAll(counters))
 }
 
 func main() {

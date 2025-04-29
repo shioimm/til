@@ -103,3 +103,25 @@ func AnotherAddMemberPoint(member *data.Member, pt int) string {
 	str += fmt.Sprintf("Add %d pt for %s\n", pt, member.Name)
 	return str
 }
+
+func DescribeFraction(fractions []data.Fraction) string {
+	str := ""
+
+	for _, fraction := range fractions {
+		str += fmt.Sprintf("%s, ", fraction.Value())
+	}
+
+	str += "\n"
+	return str
+}
+
+func CountAll(counters []data.Counter) string {
+	str := ""
+
+	for _, counter := range counters {
+		str += counter.Count()
+	}
+
+	str += "\n"
+	return str
+}
