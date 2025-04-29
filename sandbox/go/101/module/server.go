@@ -93,6 +93,17 @@ func methods(writer http.ResponseWriter, req *http.Request) {
 		data.Digit{12345},
 	}
 	fmt.Fprintln(writer, functions.CountAll(counters))
+
+	var reader data.MockReader
+	reader = &data.TextReader{}
+	reader.Read("12345")
+	reader.Read("一二三四五")
+	fmt.Fprintln(writer, reader.Write())
+
+	reader = &data.NumberReader{}
+	reader.Read("12345")
+	reader.Read("一二三四五")
+	fmt.Fprintln(writer, reader.Write())
 }
 
 func main() {

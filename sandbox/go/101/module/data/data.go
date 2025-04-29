@@ -120,3 +120,47 @@ func (counter Digit)Count() string {
 	str += fmt.Sprintf("%d characters\n", len([]rune(value_s)))
 	return str
 }
+
+type MockReader interface {
+	Read(content string)
+	Write() string
+}
+
+type TextReader struct {
+	Memory string
+}
+
+type NumberReader struct {
+	Memory []int
+}
+
+func (reader *TextReader)Read(content string) {
+	reader.Memory += content
+	reader.Memory += "\n"
+}
+
+func (reader *NumberReader)Read(content string) {
+	digits := "0123456789"
+
+	for _, v := range content {
+		for i, c := range digits {
+			if v == c {
+				reader.Memory = append(reader.Memory, i)
+			}
+		}
+	}
+}
+
+func (reader TextReader)Write() string {
+	str := reader.Memory
+	return str
+}
+
+func (reader NumberReader)Write() string {
+	str := ""
+	for _, number := range reader.Memory {
+		str += fmt.Sprintf("%d ", number)
+	}
+	str += "\n"
+	return str
+}
