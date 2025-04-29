@@ -38,3 +38,11 @@ func NewMember(member Member, name string) Member {
 	member.Name = name
 	return member
 }
+
+func (member Member)AnotherEffective() float64 {
+	return float64(member.Point) * member.Coeff
+}
+
+func (member Member)AnotherDescribe() string {
+	return fmt.Sprintf("%s: %d pt, %.2f pt (effective)", member.Name, member.Point, member.AnotherEffective())
+}

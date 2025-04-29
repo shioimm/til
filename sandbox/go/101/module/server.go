@@ -57,6 +57,8 @@ func structs(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, str)
 	fmt.Fprintln(writer, functions.Describe(newMember))
 	fmt.Fprintln(writer, functions.DescribeAll(members))
+
+	fmt.Fprintln(writer, functions.AnotherDescribeAll(members))
 }
 
 func pointers(writer http.ResponseWriter, req *http.Request) {

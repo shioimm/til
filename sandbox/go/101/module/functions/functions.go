@@ -85,3 +85,14 @@ func UpdateOrCopy(x int, y *int) int {
 	*y += 1
 	return x
 }
+
+func AnotherDescribeAll(members []data.Member) string {
+	str := ""
+
+	for _, member := range(members) {
+		str += member.AnotherDescribe()
+		str += "\n"
+	}
+
+	return str
+}
