@@ -96,3 +96,10 @@ func AnotherDescribeAll(members []data.Member) string {
 
 	return str
 }
+
+func AnotherAddMemberPoint(member *data.Member, pt int) string {
+	member.AnotherAddPoint(pt)
+	str := ""
+	str += fmt.Sprintf("Add %d pt for %s\n", pt, member.Name)
+	return str
+}

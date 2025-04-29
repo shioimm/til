@@ -46,3 +46,7 @@ func (member Member)AnotherEffective() float64 {
 func (member Member)AnotherDescribe() string {
 	return fmt.Sprintf("%s: %d pt, %.2f pt (effective)", member.Name, member.Point, member.AnotherEffective())
 }
+
+func (member *Member)AnotherAddPoint(pt int) {
+	member.Point += pt
+}
