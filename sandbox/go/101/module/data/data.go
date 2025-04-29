@@ -50,3 +50,31 @@ func (member Member)AnotherDescribe() string {
 func (member *Member)AnotherAddPoint(pt int) {
 	member.Point += pt
 }
+
+type Coordinate struct {
+	Name string
+	X int
+	Y int
+	Record string
+}
+
+func CreateCoodinate(name string, x int, y int) Coordinate {
+	c := Coordinate{}
+	c.Name = name
+	c.X = x
+	c.Y = y
+	c.Record = fmt.Sprintf("%s started at (%d, %d)\n", c.Name, c.Y, c.Y)
+	return c
+}
+
+func (c Coordinate)Move(x int, y int) Coordinate {
+	c.X = x
+	c.Y = y
+	c.Record += fmt.Sprintf("-> (%d, %d)\n", x, y)
+	return c
+}
+
+func (c Coordinate)Terminate() Coordinate {
+	c.Record += fmt.Sprintf("%s terminated at (%d, %d)\n", c.Name, c.X, c.Y)
+	return c
+}

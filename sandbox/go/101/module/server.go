@@ -73,12 +73,19 @@ func pointers(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(writer, "x = %d, y = %d, result = %d\n", x, y, result)
 }
 
+func methods(writer http.ResponseWriter, req *http.Request) {
+	c := data.CreateCoodinate("a", 0, 0)
+	c = c.Move(2, 3).Move(4, 5).Move(6, 7).Terminate()
+	fmt.Fprintln(writer, c.Record)
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
 	http.HandleFunc("/slices", slices)
 	http.HandleFunc("/structs", structs)
 	http.HandleFunc("/pointers", pointers)
+	http.HandleFunc("/methods", methods)
 
 	http.ListenAndServe(":8090", nil)
 }
