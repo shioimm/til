@@ -125,3 +125,9 @@ func CountAll(counters []data.Counter) string {
 	str += "\n"
 	return str
 }
+
+func NumReaderToPow(reader data.NumberReader) string {
+	str := fmt.Sprintf("%d", reader.ReaderToPow())
+	str += "\n"
+	return str
+}

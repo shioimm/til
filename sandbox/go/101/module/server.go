@@ -104,6 +104,9 @@ func methods(writer http.ResponseWriter, req *http.Request) {
 	reader.Read("12345")
 	reader.Read("一二三四五")
 	fmt.Fprintln(writer, reader.Write())
+
+	num_reader := reader.(*data.NumberReader)
+	fmt.Fprintln(writer, functions.NumReaderToPow(*num_reader))
 }
 
 func main() {

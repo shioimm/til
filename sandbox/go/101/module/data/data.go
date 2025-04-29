@@ -2,7 +2,10 @@
 // $ go mod init data
 package data
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 type Member struct {
 	Name string
@@ -163,4 +166,17 @@ func (reader NumberReader)Write() string {
 	}
 	str += "\n"
 	return str
+}
+
+func (reader NumberReader)ReaderToPow() int {
+	sum := 0
+	memory := reader.Memory
+	lm := len(memory)
+
+	for i := 0; i < lm; i++ {
+		mag := math.Pow10(lm -i)
+		sum += memory[i] * int(mag)
+	}
+
+	return sum / 10
 }
