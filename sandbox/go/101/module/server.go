@@ -119,6 +119,20 @@ func flows(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, functions.FizzBuzz(30))
 }
 
+func generics(writer http.ResponseWriter, req *http.Request) {
+	sl_int := []int{ 1, 2, 3, 4, 5 }
+	sl_str := []string{ "一", "二", "三", "四", "五" }
+
+	fmt.Fprintln(writer, sl_int)
+	fmt.Fprintln(writer, sl_str)
+
+	new_sl_int := functions.RemoveByIndex(sl_int, 0)
+	fmt.Fprintln(writer, new_sl_int)
+
+	new_sl_str := functions.RemoveByIndex(sl_str, 2)
+	fmt.Fprintln(writer, new_sl_str)
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
@@ -127,6 +141,7 @@ func main() {
 	http.HandleFunc("/pointers", pointers)
 	http.HandleFunc("/methods", methods)
 	http.HandleFunc("/flows", flows)
+	http.HandleFunc("/generics", generics)
 
 	http.ListenAndServe(":8090", nil)
 }

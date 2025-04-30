@@ -175,3 +175,15 @@ func FizzBuzz(limit int) string {
 	}
 	return str
 }
+
+func RemoveByIndex[T any](sl []T, idx int) []T {
+	rest := []T{}
+
+	for i, value := range sl {
+		if i != idx {
+			rest = append(rest, value)
+		}
+	}
+
+	return rest
+}
