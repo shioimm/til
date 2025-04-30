@@ -59,6 +59,8 @@ func structs(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, functions.DescribeAll(members))
 
 	fmt.Fprintln(writer, functions.AnotherDescribeAll(members))
+	fmt.Fprintln(writer, functions.AnotherAddMemberPoint(&members[0], 99))
+	fmt.Fprintln(writer, functions.Describe(members[0]))
 }
 
 func pointers(writer http.ResponseWriter, req *http.Request) {
@@ -71,12 +73,49 @@ func pointers(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(writer, "x = %d, y = %d, result = %d\n", x, y, result)
 }
 
+func methods(writer http.ResponseWriter, req *http.Request) {
+	c := data.CreateCoodinate("a", 0, 0)
+	c = c.Move(2, 3).Move(4, 5).Move(6, 7).Terminate()
+	fmt.Fprintln(writer, c.Record)
+
+	fractions := []data.Fraction{
+		data.Half(1.5),
+		data.Full(2),
+		data.Half(2.5),
+		data.Full(3),
+		data.Half(3.5),
+	}
+	fmt.Fprintln(writer, functions.DescribeFraction(fractions))
+
+	counters := []data.Counter {
+		data.Char{"12345"},
+		data.Char{"一二三四五"},
+		data.Digit{12345},
+	}
+	fmt.Fprintln(writer, functions.CountAll(counters))
+
+	var reader data.MockReader
+	reader = &data.TextReader{}
+	reader.Read("12345")
+	reader.Read("一二三四五")
+	fmt.Fprintln(writer, reader.Write())
+
+	reader = &data.NumberReader{}
+	reader.Read("12345")
+	reader.Read("一二三四五")
+	fmt.Fprintln(writer, reader.Write())
+
+	num_reader := reader.(*data.NumberReader)
+	fmt.Fprintln(writer, functions.NumReaderToPow(*num_reader))
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
 	http.HandleFunc("/slices", slices)
 	http.HandleFunc("/structs", structs)
 	http.HandleFunc("/pointers", pointers)
+	http.HandleFunc("/methods", methods)
 
 	http.ListenAndServe(":8090", nil)
 }
