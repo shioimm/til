@@ -7,6 +7,7 @@ package functions
 import (
 	"fmt"
 	"server/data"
+	"time"
 )
 
 func Add(x int, y int) int {
@@ -186,4 +187,9 @@ func RemoveByIndex[T any](sl []T, idx int) []T {
 	}
 
 	return rest
+}
+
+func Record(s string, times int, interval int) string {
+	time.Sleep(time.Duration(interval) * time.Millisecond)
+	return fmt.Sprintf("%s_%d", s, times)
 }

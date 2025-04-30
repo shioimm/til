@@ -133,6 +133,18 @@ func generics(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, new_sl_str)
 }
 
+func goroutine(writer http.ResponseWriter, req *http.Request) {
+	go func() {
+		for i := 0; i < 3; i++ {
+			fmt.Fprintln(writer, functions.Record("Hello", i, 100))
+		}
+	}()
+
+	for i := 0; i < 3; i++ {
+		fmt.Fprintln(writer, functions.Record("World", i, 100))
+	}
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
@@ -142,6 +154,7 @@ func main() {
 	http.HandleFunc("/methods", methods)
 	http.HandleFunc("/flows", flows)
 	http.HandleFunc("/generics", generics)
+	http.HandleFunc("/goroutine", goroutine)
 
 	http.ListenAndServe(":8090", nil)
 }
