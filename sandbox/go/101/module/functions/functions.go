@@ -131,3 +131,47 @@ func NumReaderToPow(reader data.NumberReader) string {
 	str += "\n"
 	return str
 }
+
+func TenTimes(num int) string {
+	if num < 10 {
+		for num < 10 {
+			num++
+		}
+	} else if num > 10 {
+		for num > 10 {
+			num--
+		}
+	}
+
+	return fmt.Sprintf("%d", num)
+}
+
+func Endless(limit int) string {
+	i := 0
+
+	for {
+		i++
+		if i > limit {
+			return fmt.Sprintf("Stopped at %d\n", i)
+		}
+	}
+}
+
+func FizzBuzz(limit int) string {
+	i := 1
+	str := ""
+	for limit >= i {
+		switch {
+			case i % 15 == 0:
+				str += "FizzBuzz\n"
+			case i % 5 == 0:
+				str += "Buzz\n"
+			case i % 3 == 0:
+				str += "Fizz\n"
+			default:
+				str += fmt.Sprintf("%d\n", i)
+		}
+		i++
+	}
+	return str
+}

@@ -109,6 +109,16 @@ func methods(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, functions.NumReaderToPow(*num_reader))
 }
 
+func flows(writer http.ResponseWriter, req *http.Request) {
+	fmt.Fprintln(writer, functions.TenTimes(6))
+	fmt.Fprintln(writer, functions.TenTimes(13))
+	fmt.Fprintln(writer, functions.TenTimes(10))
+
+	fmt.Fprintln(writer, functions.Endless(10))
+
+	fmt.Fprintln(writer, functions.FizzBuzz(30))
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
@@ -116,6 +126,7 @@ func main() {
 	http.HandleFunc("/structs", structs)
 	http.HandleFunc("/pointers", pointers)
 	http.HandleFunc("/methods", methods)
+	http.HandleFunc("/flows", flows)
 
 	http.ListenAndServe(":8090", nil)
 }
