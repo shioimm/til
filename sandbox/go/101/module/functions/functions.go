@@ -7,6 +7,7 @@ package functions
 import (
 	"fmt"
 	"server/data"
+	"time"
 )
 
 func Add(x int, y int) int {
@@ -130,4 +131,65 @@ func NumReaderToPow(reader data.NumberReader) string {
 	str := fmt.Sprintf("%d", reader.ReaderToPow())
 	str += "\n"
 	return str
+}
+
+func TenTimes(num int) string {
+	if num < 10 {
+		for num < 10 {
+			num++
+		}
+	} else if num > 10 {
+		for num > 10 {
+			num--
+		}
+	}
+
+	return fmt.Sprintf("%d", num)
+}
+
+func Endless(limit int) string {
+	i := 0
+
+	for {
+		i++
+		if i > limit {
+			return fmt.Sprintf("Stopped at %d\n", i)
+		}
+	}
+}
+
+func FizzBuzz(limit int) string {
+	i := 1
+	str := ""
+	for limit >= i {
+		switch {
+			case i % 15 == 0:
+				str += "FizzBuzz\n"
+			case i % 5 == 0:
+				str += "Buzz\n"
+			case i % 3 == 0:
+				str += "Fizz\n"
+			default:
+				str += fmt.Sprintf("%d\n", i)
+		}
+		i++
+	}
+	return str
+}
+
+func RemoveByIndex[T any](sl []T, idx int) []T {
+	rest := []T{}
+
+	for i, value := range sl {
+		if i != idx {
+			rest = append(rest, value)
+		}
+	}
+
+	return rest
+}
+
+func Record(s string, times int, interval int) string {
+	time.Sleep(time.Duration(interval) * time.Millisecond)
+	return fmt.Sprintf("%s_%d", s, times)
 }

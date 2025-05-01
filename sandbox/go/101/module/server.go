@@ -109,6 +109,42 @@ func methods(writer http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(writer, functions.NumReaderToPow(*num_reader))
 }
 
+func flows(writer http.ResponseWriter, req *http.Request) {
+	fmt.Fprintln(writer, functions.TenTimes(6))
+	fmt.Fprintln(writer, functions.TenTimes(13))
+	fmt.Fprintln(writer, functions.TenTimes(10))
+
+	fmt.Fprintln(writer, functions.Endless(10))
+
+	fmt.Fprintln(writer, functions.FizzBuzz(30))
+}
+
+func generics(writer http.ResponseWriter, req *http.Request) {
+	sl_int := []int{ 1, 2, 3, 4, 5 }
+	sl_str := []string{ "一", "二", "三", "四", "五" }
+
+	fmt.Fprintln(writer, sl_int)
+	fmt.Fprintln(writer, sl_str)
+
+	new_sl_int := functions.RemoveByIndex(sl_int, 0)
+	fmt.Fprintln(writer, new_sl_int)
+
+	new_sl_str := functions.RemoveByIndex(sl_str, 2)
+	fmt.Fprintln(writer, new_sl_str)
+}
+
+func goroutine(writer http.ResponseWriter, req *http.Request) {
+	go func() {
+		for i := 0; i < 3; i++ {
+			fmt.Fprintln(writer, functions.Record("Hello", i, 100))
+		}
+	}()
+
+	for i := 0; i < 3; i++ {
+		fmt.Fprintln(writer, functions.Record("World", i, 100))
+	}
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
@@ -116,6 +152,9 @@ func main() {
 	http.HandleFunc("/structs", structs)
 	http.HandleFunc("/pointers", pointers)
 	http.HandleFunc("/methods", methods)
+	http.HandleFunc("/flows", flows)
+	http.HandleFunc("/generics", generics)
+	http.HandleFunc("/goroutine", goroutine)
 
 	http.ListenAndServe(":8090", nil)
 }
