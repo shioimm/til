@@ -6,8 +6,10 @@ package functions
 
 import (
 	"fmt"
-	"server/data"
 	"time"
+	"os"
+	"strings"
+	"server/data"
 )
 
 func Add(x int, y int) int {
@@ -196,4 +198,28 @@ func Record(s string, times int, interval int) string {
 
 func InChannel(s string, times int, interval int, ch chan string) {
 	ch<-Record(s, times, interval)
+}
+
+func ReadMyFile(filepath string) string {
+	data, err := os.ReadFile(filepath)
+
+	if err != nil {
+		return "Error"
+	}
+
+	return string(data)
+}
+
+func SplitByLine(data string) []string {
+	return strings.Split(data, "\n")
+}
+
+func WriteMyFile(filepath string, body string) string {
+	err := os.WriteFile(filepath, []byte(body), 0666)
+
+	if err != nil {
+		return "Error"
+	}
+
+	return fmt.Sprintf("wrote in %s\n", filepath)
 }

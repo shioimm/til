@@ -178,6 +178,22 @@ func channel2(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func files(writer http.ResponseWriter, req *http.Request) {
+	readdata := functions.ReadMyFile("data/read.text")
+	fmt.Fprintln(writer, readdata)
+
+	lines := functions.SplitByLine(readdata)
+
+	for i, v := range lines {
+		if len(v) > 0 {
+			fmt.Fprintf(writer, "%d: %s\n", i + 1, v)
+		}
+	}
+
+	writedata := readdata + "40,2.4\n"
+	fmt.Fprintln(writer, functions.WriteMyFile("data/write.text", writedata))
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
@@ -190,6 +206,7 @@ func main() {
 	http.HandleFunc("/goroutine", goroutine)
 	http.HandleFunc("/channel1", channel1)
 	http.HandleFunc("/channel2", channel2)
+	http.HandleFunc("/files", files)
 
 	http.ListenAndServe(":8090", nil)
 }
