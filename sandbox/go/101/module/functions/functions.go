@@ -193,3 +193,7 @@ func Record(s string, times int, interval int) string {
 	time.Sleep(time.Duration(interval) * time.Millisecond)
 	return fmt.Sprintf("%s_%d", s, times)
 }
+
+func InChannel(s string, times int, interval int, ch chan string) {
+	ch<-Record(s, times, interval)
+}
