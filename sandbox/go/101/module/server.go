@@ -145,6 +145,55 @@ func goroutine(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func channel1(writer http.ResponseWriter, req *http.Request) {
+	ch := make(chan string)
+
+	go functions.InChannel("a", 0, 200, ch)
+	go functions.InChannel("b", 0, 100, ch)
+
+	x1 := <-ch
+	x2 := <-ch
+
+	fmt.Fprintln(writer, x1)
+	fmt.Fprintln(writer, x2)
+}
+
+func channel2(writer http.ResponseWriter, req *http.Request) {
+	ch := make(chan string, 4)
+
+	go func() {
+		for i := 0; i < 3; i++ {
+			functions.InChannel("hello", i, 200, ch)
+		}
+		ch <- "done"
+	}()
+
+	for i := 0; i < 3; i++ {
+		fmt.Fprintf(writer, "hello_%d\n", i)
+	}
+
+	for i := 0; i < 4; i++ {
+		x := <-ch
+		fmt.Fprintln(writer, x)
+	}
+}
+
+func files(writer http.ResponseWriter, req *http.Request) {
+	readdata := functions.ReadMyFile("data/read.text")
+	fmt.Fprintln(writer, readdata)
+
+	lines := functions.SplitByLine(readdata)
+
+	for i, v := range lines {
+		if len(v) > 0 {
+			fmt.Fprintf(writer, "%d: %s\n", i + 1, v)
+		}
+	}
+
+	writedata := readdata + "40,2.4\n"
+	fmt.Fprintln(writer, functions.WriteMyFile("data/write.text", writedata))
+}
+
 func main() {
 	http.HandleFunc("/add", add)
 	http.HandleFunc("/sub", sub)
@@ -155,6 +204,9 @@ func main() {
 	http.HandleFunc("/flows", flows)
 	http.HandleFunc("/generics", generics)
 	http.HandleFunc("/goroutine", goroutine)
+	http.HandleFunc("/channel1", channel1)
+	http.HandleFunc("/channel2", channel2)
+	http.HandleFunc("/files", files)
 
 	http.ListenAndServe(":8090", nil)
 }
