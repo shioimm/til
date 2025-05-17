@@ -99,3 +99,18 @@ index 165990dd64..9bd1056185 100644
 +    RUBY
 +  end
 ```
+
+`Addrinfo.getaddrnfo`を直さないと期待通りに動作しないテスト
+
+```ruby
+  def test_tcp_socket_open_timeout_without_fast_fallback
+    opts = %w[-rsocket -W1]
+    assert_separately opts, <<~RUBY
+    Addrinfo.define_singleton_method(:getaddrinfo) { |*_| sleep }
+
+    assert_raise(Errno::ETIMEDOUT) do
+      Socket.tcp("localhost", 12345, open_timeout: 0.01, fast_fallback: false)
+    end
+    RUBY
+  end
+```
