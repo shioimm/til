@@ -1,5 +1,5 @@
 `open_timeout-TCPSocket_new`
-- TODO `init_fast_fallback_inetsock_internal` / `init_inetsock_internal`に`open_timeout`を実装する
+- TODO `init_inetsock_internal`に`open_timeout`を実装する
 
 ```c
 // ext/socket/ipsocket.c
@@ -82,9 +82,74 @@ rsock_init_inetsock(
 
 }
 
+static struct timeval *
+select_expires_at(
+    struct hostname_resolution_store *resolution_store,
+    struct timeval *resolution_delay,
+    struct timeval *connection_attempt_delay,
+    struct timeval *user_specified_resolv_timeout_at,
+    struct timeval *user_specified_connect_timeout_at,
+    struct timeval *user_specified_open_timeout_at
+) {
+    if (any_addrinfos(resolution_store)) {
+        struct timeval *delay;
+        delay = resolution_delay ? resolution_delay : connection_attempt_delay;
+
+        if (user_specified_open_timeout_at &&
+            timercmp(user_specified_open_timeout_at, delay, <)) {
+            return user_specified_open_timeout_at;
+        }
+        return delay;
+    }
+
+    if (user_specified_open_timeout_at) return user_specified_open_timeout_at;
+    // ...
+}
+
 static VALUE
 init_fast_fallback_inetsock_internal(VALUE v)
 {
+    // ...
+    VALUE resolv_timeout = arg->resolv_timeout;
+    VALUE connect_timeout = arg->connect_timeout;
+    VALUE open_timeout = arg->connect_timeout;
+    // ...
+    struct timeval user_specified_resolv_timeout_storage;
+    struct timeval *user_specified_resolv_timeout_at = NULL;
+    struct timeval user_specified_connect_timeout_storage;
+    struct timeval *user_specified_connect_timeout_at = NULL;
+    struct timeval user_specified_open_timeout_storage;
+    struct timeval *user_specified_open_timeout_at = NULL;
+    struct timespec now = current_clocktime_ts();
+
+    if (!NIL_P(open_timeout)) {
+        struct timeval open_timeout_tv = rb_time_interval(open_timeout);
+        user_specified_open_timeout_storage = add_ts_to_tv(open_timeout_tv, now);
+        user_specified_open_timeout_at = &user_specified_open_timeout_storage;
+    }
+
+    while (true) {
+        // ...
+        ends_at = select_expires_at(
+            &resolution_store,
+            resolution_delay_expires_at,
+            connection_attempt_delay_expires_at,
+            user_specified_resolv_timeout_at,
+            user_specified_connect_timeout_at,
+            user_specified_open_timeout_at
+        );
+        // ...
+
+        if (is_timeout_tv(user_specified_open_timeout_at, now)) {
+            VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
+            VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
+            rb_raise(etimedout_error, "user specified timeout");
+        }
+
+        if (!any_addrinfos(&resolution_store)) {
+            // ...
+        }
+    }
     // ...
 }
 
