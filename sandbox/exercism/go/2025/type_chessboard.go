@@ -29,3 +29,27 @@ func CountInRank(cb Chessboard, rank int) int {
 
 	return count
 }
+
+func CountAll(cb Chessboard) int {
+	count := 0
+
+	for _, row := range cb {
+		for range row {
+			count++
+		}
+	}
+
+	return count
+}
+
+func CountOccupied(cb Chessboard) int {
+	count := 0
+
+	for _, row := range cb {
+		for _, cell := range row {
+			if cell { count++ }
+		}
+	}
+
+	return count
+}

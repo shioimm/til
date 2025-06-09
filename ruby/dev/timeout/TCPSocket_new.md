@@ -1,5 +1,6 @@
 `open_timeout-TCPSocket_new`
 - TODO `init_inetsock_internal`に`open_timeout`を実装する
+- `connect_timeout`のdocがなんかおかしいので直す(別PR)
 
 ```c
 // ext/socket/ipsocket.c
@@ -46,6 +47,34 @@ struct fast_fallback_inetsock_arg
     VALUE test_mode_settings;
 };
 
+#if FAST_FALLBACK_INIT_INETSOCK_IMPL == 0
+
+VALUE
+rsock_init_inetsock(
+    VALUE self, VALUE remote_host, VALUE remote_serv,
+    VALUE local_host, VALUE local_serv, int type,
+    VALUE resolv_timeout, VALUE connect_timeout, VALUE open_timeout,
+    VALUE _fast_fallback, VALUE _test_mode_settings
+) {
+    struct inetsock_arg arg;
+    arg.self = self;
+    arg.io = Qnil;
+    arg.remote.host = remote_host;
+    arg.remote.serv = remote_serv;
+    arg.remote.res = 0;
+    arg.local.host = local_host;
+    arg.local.serv = local_serv;
+    arg.local.res = 0;
+    arg.type = type;
+    arg.resolv_timeout = resolv_timeout;
+    arg.connect_timeout = connect_timeout;
+    arg.open_timeout = open_timeout;
+    return rb_ensure(init_inetsock_internal, (VALUE)&arg,
+                     inetsock_cleanup, (VALUE)&arg);
+}
+
+#elif FAST_FALLBACK_INIT_INETSOCK_IMPL == 1
+
 VALUE
 rsock_init_inetsock(
     VALUE self, VALUE remote_host, VALUE remote_serv,
@@ -82,6 +111,8 @@ rsock_init_inetsock(
 
 }
 
+#endif
+
 static struct timeval *
 select_expires_at(
     struct hostname_resolution_store *resolution_store,
@@ -112,7 +143,7 @@ init_fast_fallback_inetsock_internal(VALUE v)
     // ...
     VALUE resolv_timeout = arg->resolv_timeout;
     VALUE connect_timeout = arg->connect_timeout;
-    VALUE open_timeout = arg->connect_timeout;
+    VALUE open_timeout = arg->open_timeout;
     // ...
     struct timeval user_specified_resolv_timeout_storage;
     struct timeval *user_specified_resolv_timeout_at = NULL;
@@ -154,8 +185,48 @@ init_fast_fallback_inetsock_internal(VALUE v)
 }
 
 static VALUE
+current_clocktime()
+{
+    VALUE clock_monotnic_const = rb_const_get(rb_mProcess, rb_intern("CLOCK_MONOTONIC"));
+    return rb_funcall(rb_mProcess, rb_intern("clock_gettime"), 1, clock_monotnic_const);
+}
+
+static VALUE
 init_inetsock_internal(VALUE v)
 {
+    // ...
+    VALUE resolv_timeout = arg->resolv_timeout;
+    VALUE connect_timeout = arg->connect_timeout;
+    VALUE open_timeout = arg->open_timeout;
+
+    VALUE timeout = NIL_P(open_timeout) ? resolv_timeout : open_timeout;
+    VALUE starts_at = current_clocktime();
+
+    // TODO rsock_addrinfoにtimeoutを渡せるようにする
+    arg->remote.res = rsock_addrinfo(arg->remote.host, arg->remote.serv,
+                                     family, SOCK_STREAM,
+                                     (type == INET_SERVER) ? AI_PASSIVE : 0);
+
+    // ...
+    for (res = arg->remote.res->ai; res; res = res->ai_next) {
+        // ...
+        if (type == INET_SERVER) {
+            // ...
+        } else {
+            if (NIL_P(open_timeout)) {
+                timeout = connect_timeout;
+            } else {
+                VALUE elapsed = rb_funcall(current_clocktime(), '-', 1, starts_at);
+                timeout = rb_funcall(open_timeout, '-', 1, elapsed);
+            }
+
+            if (status >= 0) {
+                status = rsock_connect(io, res->ai_addr, res->ai_addrlen, (type == INET_SOCKS), timeout);
+                syscall = "connect(2)";
+            }
+         }
+        // ...
+    }
     // ...
 }
 ```
