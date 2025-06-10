@@ -20,3 +20,13 @@ func Replace(log string, oldRune, newRune rune) string {
 
 	return string(runes)
 }
+
+func WithinLimit(log string, limit int) bool {
+	count := 0
+
+	for range log {
+		count++
+	}
+
+	return limit >= count
+}
