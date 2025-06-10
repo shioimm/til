@@ -302,6 +302,19 @@ nogvl_getaddrinfo(void *arg)
 static void *
 fork_safe_getaddrinfo(void *arg)
 {
+    // thread_pthread.c
+    // void *
+    // rb_thread_prevent_fork(void *(*func)(void *), void *data)
+    // {
+    //     int r;
+    //     if ((r = pthread_rwlock_rdlock(&rb_thread_fork_rw_lock))) {
+    //         rb_bug_errno("pthread_rwlock_rdlock", r);
+    //     }
+    //     void *result = func(data);
+    //     rb_thread_release_fork_lock();
+    //     return result;
+    // }
+
     return rb_thread_prevent_fork(nogvl_getaddrinfo, arg);
 }
 
@@ -330,6 +343,69 @@ struct getaddrinfo_arg
     rb_nativethread_lock_t lock;
     rb_nativethread_cond_t cond;
 };
+
+static int
+rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
+{
+    int retry;
+    struct getaddrinfo_arg *arg;
+    int err = 0, gai_errno = 0;
+
+start:
+    retry = 0;
+
+    // struct getaddrinfo_arg にいろいろ詰める
+    arg = allocate_getaddrinfo_arg(hostp, portp, hints);
+    if (!arg) return EAI_MEMORY;
+
+    // pthreadを作成してfork_safe_do_getaddrinfoを呼ぶ
+    // fork_safe_do_getaddrinfoはrb_thread_prevent_forkの中でdo_getaddrinfoを呼ぶ
+    pthread_t th;
+    if (raddrinfo_pthread_create(&th, fork_safe_do_getaddrinfo, arg) != 0) {
+        int err = errno;
+        free_getaddrinfo_arg(arg);
+        errno = err;
+        return EAI_SYSTEM;
+    }
+    pthread_detach(th);
+
+    // WIP
+    rb_thread_call_without_gvl2(wait_getaddrinfo, arg, cancel_getaddrinfo, arg);
+
+    int need_free = 0;
+    rb_nativethread_lock_lock(&arg->lock);
+    {
+        if (arg->done) {
+            err = arg->err;
+            gai_errno = arg->gai_errno;
+            if (err == 0) *ai = arg->ai;
+        }
+        else if (arg->cancelled) {
+            retry = 1;
+        }
+        else {
+            // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
+            // In this case, it could be !arg->done && !arg->cancelled.
+            arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
+            retry = 1;
+        }
+        if (--arg->refcount == 0) need_free = 1;
+    }
+    rb_nativethread_lock_unlock(&arg->lock);
+
+    if (need_free) free_getaddrinfo_arg(arg);
+
+    // If the current thread is interrupted by asynchronous exception, the following raises the exception.
+    // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
+    rb_thread_check_ints();
+    if (retry) goto start;
+
+    /* Because errno is threadlocal, the errno value we got from the call to getaddrinfo() in the thread
+     * (in case of EAI_SYSTEM return value) is not propagated to the caller of _this_ function. Set errno
+     * explicitly, as round-tripped through struct getaddrinfo_arg, to deal with that */
+    if (gai_errno) errno = gai_errno;
+    return err;
+}
 
 static struct getaddrinfo_arg *
 allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addrinfo *hints)
@@ -421,6 +497,26 @@ do_getaddrinfo(void *ptr)
     return 0;
 }
 
+int
+raddrinfo_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg)
+{
+    int limit = 3, ret;
+    do {
+        // It is said that pthread_create may fail spuriously, so we follow the JDK and retry several times.
+        //
+        // https://bugs.openjdk.org/browse/JDK-8268605
+        // https://github.com/openjdk/jdk/commit/e35005d5ce383ddd108096a3079b17cb0bcf76f1
+        ret = pthread_create(th, 0, start_routine, arg);
+    } while (ret == EAGAIN && limit-- > 0);
+    return ret;
+}
+
+static void *
+fork_safe_do_getaddrinfo(void *ptr)
+{
+    return rb_thread_prevent_fork(do_getaddrinfo, ptr);
+}
+
 static void *
 wait_getaddrinfo(void *ptr)
 {
@@ -443,87 +539,6 @@ cancel_getaddrinfo(void *ptr)
         rb_native_cond_signal(&arg->cond);
     }
     rb_nativethread_lock_unlock(&arg->lock);
-}
-
-int
-raddrinfo_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg)
-{
-    int limit = 3, ret;
-    do {
-        // It is said that pthread_create may fail spuriously, so we follow the JDK and retry several times.
-        //
-        // https://bugs.openjdk.org/browse/JDK-8268605
-        // https://github.com/openjdk/jdk/commit/e35005d5ce383ddd108096a3079b17cb0bcf76f1
-        ret = pthread_create(th, 0, start_routine, arg);
-    } while (ret == EAGAIN && limit-- > 0);
-    return ret;
-}
-
-static void *
-fork_safe_do_getaddrinfo(void *ptr)
-{
-    return rb_thread_prevent_fork(do_getaddrinfo, ptr);
-}
-
-static int
-rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
-{
-    int retry;
-    struct getaddrinfo_arg *arg;
-    int err = 0, gai_errno = 0;
-
-start:
-    retry = 0;
-
-    arg = allocate_getaddrinfo_arg(hostp, portp, hints);
-    if (!arg) {
-        return EAI_MEMORY;
-    }
-
-    pthread_t th;
-    if (raddrinfo_pthread_create(&th, fork_safe_do_getaddrinfo, arg) != 0) {
-        int err = errno;
-        free_getaddrinfo_arg(arg);
-        errno = err;
-        return EAI_SYSTEM;
-    }
-    pthread_detach(th);
-
-    rb_thread_call_without_gvl2(wait_getaddrinfo, arg, cancel_getaddrinfo, arg);
-
-    int need_free = 0;
-    rb_nativethread_lock_lock(&arg->lock);
-    {
-        if (arg->done) {
-            err = arg->err;
-            gai_errno = arg->gai_errno;
-            if (err == 0) *ai = arg->ai;
-        }
-        else if (arg->cancelled) {
-            retry = 1;
-        }
-        else {
-            // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
-            // In this case, it could be !arg->done && !arg->cancelled.
-            arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
-            retry = 1;
-        }
-        if (--arg->refcount == 0) need_free = 1;
-    }
-    rb_nativethread_lock_unlock(&arg->lock);
-
-    if (need_free) free_getaddrinfo_arg(arg);
-
-    // If the current thread is interrupted by asynchronous exception, the following raises the exception.
-    // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
-    rb_thread_check_ints();
-    if (retry) goto start;
-
-    /* Because errno is threadlocal, the errno value we got from the call to getaddrinfo() in the thread
-     * (in case of EAI_SYSTEM return value) is not propagated to the caller of _this_ function. Set errno
-     * explicitly, as round-tripped through struct getaddrinfo_arg, to deal with that */
-    if (gai_errno) errno = gai_errno;
-    return err;
 }
 ```
 
