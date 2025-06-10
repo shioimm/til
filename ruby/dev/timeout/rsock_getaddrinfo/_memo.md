@@ -641,6 +641,21 @@ ruby_getaddrinfo__darwin(const char *nodename, const char *servname,
 }
 ```
 
+```ruby
+# ext/socket/extconf.rb
+
+case with_config("lookup-order-hack", "UNSPEC")
+when "INET"
+  $defs << "-DLOOKUP_ORDER_HACK_INET"
+when "INET6"
+  $defs << "-DLOOKUP_ORDER_HACK_INET6"
+when "UNSPEC"
+  # nothing special
+else
+  # ...
+end
+```
+
 ## 呼び出し側
 - `rsock_getaddrinfo` <変更対象>
   - `rsock_addrinfo` <変更対象>
