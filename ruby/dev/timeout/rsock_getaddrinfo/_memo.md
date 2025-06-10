@@ -91,7 +91,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 }
 ```
 
-#### `numeric_getaddrinfo`
+### `numeric_getaddrinfo`
 
 ```c
 static int
@@ -175,7 +175,7 @@ numeric_getaddrinfo(
 }
 ```
 
-#### `rb_scheduler_getaddrinfo`
+### `rb_scheduler_getaddrinfo`
 
 ```c
 static int
@@ -233,6 +233,411 @@ rb_scheduler_getaddrinfo(
     } else {
         return EAI_NONAME;
     }
+}
+```
+
+### `rb_getaddrinfo`
+
+```c
+// GETADDRINFO_IMPL == 0 : call getaddrinfo/getnameinfo directly
+// GETADDRINFO_IMPL == 1 : call getaddrinfo/getnameinfo without gvl (but uncancellable)
+// GETADDRINFO_IMPL == 2 : call getaddrinfo/getnameinfo in a dedicated pthread
+//                         (and if the call is interrupted, the pthread is detached)
+
+#ifndef GETADDRINFO_IMPL
+#  ifdef GETADDRINFO_EMU
+#    define GETADDRINFO_IMPL 0
+#  elif !defined(HAVE_PTHREAD_CREATE) || !defined(HAVE_PTHREAD_DETACH) || defined(__MINGW32__) || defined(__MINGW64__)
+#    define GETADDRINFO_IMPL 1
+#  else
+#    define GETADDRINFO_IMPL 2
+#    include "ruby/thread_native.h"
+#  endif
+#endif
+```
+
+#### `GETADDRINFO_IMPL` 0 の場合
+- getaddrinfo(2) を直接呼んでいるのでタイムアウトできない
+
+```c
+static int
+rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
+{
+    return getaddrinfo(hostp, portp, hints, ai);
+}
+```
+
+#### `GETADDRINFO_IMPL` 1 の場合 (Win)
+- `rb_thread_call_without_gvl`をタイムアウトさせる方法がないので今の実装だとタイムアウトできない
+- 中断可能なgetaddrinfoのWin対応が進めば...?
+
+```c
+struct getaddrinfo_arg
+{
+    const char *node;
+    const char *service;
+    const struct addrinfo *hints;
+    struct addrinfo **res;
+};
+
+static void *
+nogvl_getaddrinfo(void *arg)
+{
+    int ret;
+    struct getaddrinfo_arg *ptr = arg;
+    ret = getaddrinfo(ptr->node, ptr->service, ptr->hints, ptr->res);
+
+    #ifdef __linux__ // これはdo_getaddrinfoの中にある定義のコピー?
+    /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
+     * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
+     */
+    if (ret == EAI_SYSTEM && errno == ENOENT) {
+        ret = EAI_NONAME;
+    }
+    #endif
+
+    return (void *)(VALUE)ret;
+}
+
+static void *
+fork_safe_getaddrinfo(void *arg)
+{
+    return rb_thread_prevent_fork(nogvl_getaddrinfo, arg);
+}
+
+static int
+rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
+{
+    struct getaddrinfo_arg arg;
+    MEMZERO(&arg, struct getaddrinfo_arg, 1);
+    arg.node = hostp;
+    arg.service = portp;
+    arg.hints = hints;
+    arg.res = ai;
+    return (int)(VALUE)rb_thread_call_without_gvl(fork_safe_getaddrinfo, &arg, RUBY_UBF_IO, 0);
+}
+```
+
+#### `GETADDRINFO_IMPL` 2 の場合
+
+```c
+struct getaddrinfo_arg
+{
+    char *node, *service;
+    struct addrinfo hints;
+    struct addrinfo *ai;
+    int err, gai_errno, refcount, done, cancelled;
+    rb_nativethread_lock_t lock;
+    rb_nativethread_cond_t cond;
+};
+
+static struct getaddrinfo_arg *
+allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addrinfo *hints)
+{
+    size_t hostp_offset = sizeof(struct getaddrinfo_arg);
+    size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
+    size_t bufsize = portp_offset + (portp ? strlen(portp) + 1 : 0);
+
+    char *buf = malloc(bufsize);
+    if (!buf) {
+        rb_gc();
+        buf = malloc(bufsize);
+        if (!buf) return NULL;
+    }
+    struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)buf;
+
+    if (hostp) {
+        arg->node = buf + hostp_offset;
+        strcpy(arg->node, hostp);
+    }
+    else {
+        arg->node = NULL;
+    }
+
+    if (portp) {
+        arg->service = buf + portp_offset;
+        strcpy(arg->service, portp);
+    }
+    else {
+        arg->service = NULL;
+    }
+
+    arg->hints = *hints;
+    arg->ai = NULL;
+
+    arg->refcount = 2;
+    arg->done = arg->cancelled = 0;
+
+    rb_nativethread_lock_initialize(&arg->lock);
+    rb_native_cond_initialize(&arg->cond);
+
+    return arg;
+}
+
+static void
+free_getaddrinfo_arg(struct getaddrinfo_arg *arg)
+{
+    rb_native_cond_destroy(&arg->cond);
+    rb_nativethread_lock_destroy(&arg->lock);
+    free(arg);
+}
+
+static void *
+do_getaddrinfo(void *ptr)
+{
+    struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
+
+    int err, gai_errno;
+    err = getaddrinfo(arg->node, arg->service, &arg->hints, &arg->ai);
+    gai_errno = errno;
+
+    #ifdef __linux__
+    /* On Linux (mainly Ubuntu 13.04) /etc/nsswitch.conf has mdns4 and
+     * it cause getaddrinfo to return EAI_SYSTEM/ENOENT. [ruby-list:49420]
+     */
+    if (err == EAI_SYSTEM && errno == ENOENT) {
+        err = EAI_NONAME;
+    }
+    #endif
+
+    int need_free = 0;
+    rb_nativethread_lock_lock(&arg->lock);
+    {
+        arg->err = err;
+        arg->gai_errno = gai_errno;
+        if (arg->cancelled) {
+            if (arg->ai) freeaddrinfo(arg->ai);
+        }
+        else {
+            arg->done = 1;
+            rb_native_cond_signal(&arg->cond);
+        }
+        if (--arg->refcount == 0) need_free = 1;
+    }
+    rb_nativethread_lock_unlock(&arg->lock);
+
+    if (need_free) free_getaddrinfo_arg(arg);
+
+    return 0;
+}
+
+static void *
+wait_getaddrinfo(void *ptr)
+{
+    struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
+    rb_nativethread_lock_lock(&arg->lock);
+    while (!arg->done && !arg->cancelled) {
+        rb_native_cond_wait(&arg->cond, &arg->lock);
+    }
+    rb_nativethread_lock_unlock(&arg->lock);
+    return 0;
+}
+
+static void
+cancel_getaddrinfo(void *ptr)
+{
+    struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
+    rb_nativethread_lock_lock(&arg->lock);
+    {
+        arg->cancelled = 1;
+        rb_native_cond_signal(&arg->cond);
+    }
+    rb_nativethread_lock_unlock(&arg->lock);
+}
+
+int
+raddrinfo_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg)
+{
+    int limit = 3, ret;
+    do {
+        // It is said that pthread_create may fail spuriously, so we follow the JDK and retry several times.
+        //
+        // https://bugs.openjdk.org/browse/JDK-8268605
+        // https://github.com/openjdk/jdk/commit/e35005d5ce383ddd108096a3079b17cb0bcf76f1
+        ret = pthread_create(th, 0, start_routine, arg);
+    } while (ret == EAGAIN && limit-- > 0);
+    return ret;
+}
+
+static void *
+fork_safe_do_getaddrinfo(void *ptr)
+{
+    return rb_thread_prevent_fork(do_getaddrinfo, ptr);
+}
+
+static int
+rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
+{
+    int retry;
+    struct getaddrinfo_arg *arg;
+    int err = 0, gai_errno = 0;
+
+start:
+    retry = 0;
+
+    arg = allocate_getaddrinfo_arg(hostp, portp, hints);
+    if (!arg) {
+        return EAI_MEMORY;
+    }
+
+    pthread_t th;
+    if (raddrinfo_pthread_create(&th, fork_safe_do_getaddrinfo, arg) != 0) {
+        int err = errno;
+        free_getaddrinfo_arg(arg);
+        errno = err;
+        return EAI_SYSTEM;
+    }
+    pthread_detach(th);
+
+    rb_thread_call_without_gvl2(wait_getaddrinfo, arg, cancel_getaddrinfo, arg);
+
+    int need_free = 0;
+    rb_nativethread_lock_lock(&arg->lock);
+    {
+        if (arg->done) {
+            err = arg->err;
+            gai_errno = arg->gai_errno;
+            if (err == 0) *ai = arg->ai;
+        }
+        else if (arg->cancelled) {
+            retry = 1;
+        }
+        else {
+            // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
+            // In this case, it could be !arg->done && !arg->cancelled.
+            arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
+            retry = 1;
+        }
+        if (--arg->refcount == 0) need_free = 1;
+    }
+    rb_nativethread_lock_unlock(&arg->lock);
+
+    if (need_free) free_getaddrinfo_arg(arg);
+
+    // If the current thread is interrupted by asynchronous exception, the following raises the exception.
+    // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
+    rb_thread_check_ints();
+    if (retry) goto start;
+
+    /* Because errno is threadlocal, the errno value we got from the call to getaddrinfo() in the thread
+     * (in case of EAI_SYSTEM return value) is not propagated to the caller of _this_ function. Set errno
+     * explicitly, as round-tripped through struct getaddrinfo_arg, to deal with that */
+    if (gai_errno) errno = gai_errno;
+    return err;
+}
+```
+
+#### `getaddrinfo`の実装
+- `macOS` / `AIX` > `INET6` && `LOOKUP_ORDER_HACK`
+
+```c
+// INET6 が定義されている
+// かつ LOOKUP_ORDER_HACK_INET または LOOKUP_ORDER_HACK_INET6 が定義されている
+#if defined(INET6) && (defined(LOOKUP_ORDER_HACK_INET) || defined(LOOKUP_ORDER_HACK_INET6))
+  #define getaddrinfo(node,serv,hints,res) ruby_getaddrinfo((node),(serv),(hints),(res))
+#endif
+
+// AIX系OS
+#if defined(_AIX)
+  #undef getaddrinfo
+  #define getaddrinfo(node,serv,hints,res) ruby_getaddrinfo__aix((node),(serv),(hints),(res))
+#endif
+
+// macOSの場合
+#if defined(__APPLE__)
+  #undef getaddrinfo
+  #define getaddrinfo(node,serv,hints,res) ruby_getaddrinfo__darwin((node),(serv),(hints),(res))
+#endif
+
+// ------- ruby_getaddrinfo -------
+static int
+ruby_getaddrinfo(const char *nodename, const char *servname,
+                 const struct addrinfo *hints, struct addrinfo **res)
+{
+    struct addrinfo tmp_hints;
+    int i, af, error;
+
+    if (hints->ai_family != PF_UNSPEC) {
+        return getaddrinfo(nodename, servname, hints, res);
+    }
+
+    for (i = 0; i < LOOKUP_ORDERS; i++) {
+        af = lookup_order_table[i];
+        MEMCPY(&tmp_hints, hints, struct addrinfo, 1);
+        tmp_hints.ai_family = af;
+        error = getaddrinfo(nodename, servname, &tmp_hints, res);
+        if (error) {
+            if (tmp_hints.ai_family == PF_UNSPEC) {
+                break;
+            }
+        }
+        else {
+            break;
+        }
+    }
+
+    return error;
+}
+
+// ------- ruby_getaddrinfo__aix -------
+static int
+ruby_getaddrinfo__aix(const char *nodename, const char *servname,
+                      const struct addrinfo *hints, struct addrinfo **res)
+{
+    int error = getaddrinfo(nodename, servname, hints, res);
+    struct addrinfo *r;
+    if (error)
+        return error;
+    for (r = *res; r != NULL; r = r->ai_next) {
+        if (r->ai_addr->sa_family == 0)
+            r->ai_addr->sa_family = r->ai_family;
+        if (r->ai_addr->sa_len == 0)
+            r->ai_addr->sa_len = r->ai_addrlen;
+    }
+    return 0;
+}
+
+// ------- ruby_getaddrinfo__darwin -------
+static int
+ruby_getaddrinfo__darwin(const char *nodename, const char *servname,
+                         const struct addrinfo *hints, struct addrinfo **res)
+{
+    /* fix [ruby-core:29427] */
+    const char *tmp_servname;
+    struct addrinfo tmp_hints;
+    int error;
+
+    tmp_servname = servname;
+    MEMCPY(&tmp_hints, hints, struct addrinfo, 1);
+    if (nodename && servname) {
+        if (str_is_number(tmp_servname) && atoi(servname) == 0) {
+            tmp_servname = NULL;
+            #ifdef AI_NUMERICSERV
+            if (tmp_hints.ai_flags) tmp_hints.ai_flags &= ~AI_NUMERICSERV;
+            #endif
+        }
+    }
+
+    error = getaddrinfo(nodename, tmp_servname, &tmp_hints, res);
+    if (error == 0) {
+        /* [ruby-dev:23164] */
+        struct addrinfo *r;
+        r = *res;
+        while (r) {
+            if (! r->ai_socktype) r->ai_socktype = hints->ai_socktype;
+            if (! r->ai_protocol) {
+                if (r->ai_socktype == SOCK_DGRAM) {
+                    r->ai_protocol = IPPROTO_UDP;
+                }
+                else if (r->ai_socktype == SOCK_STREAM) {
+                    r->ai_protocol = IPPROTO_TCP;
+                }
+            }
+            r = r->ai_next;
+        }
+    }
+
+    return error;
 }
 ```
 
