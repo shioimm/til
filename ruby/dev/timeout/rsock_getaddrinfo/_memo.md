@@ -599,6 +599,24 @@ cancel_getaddrinfo(void *ptr)
 }
 ```
 
+#### `rb_native_cond_timedwait`
+
+- `thread_pthread.c`
+- `thread_win32.c`
+- `thread_none.c`
+
+```c
+// thread_pthread.c
+
+// WIP
+void
+rb_native_cond_timedwait(rb_nativethread_cond_t *cond, pthread_mutex_t *mutex, unsigned long msec)
+{
+    rb_hrtime_t hrmsec = native_cond_timeout(cond, RB_HRTIME_PER_MSEC * msec);
+    native_cond_timedwait(cond, mutex, &hrmsec);
+}
+```
+
 #### `getaddrinfo`の実装
 - `macOS` / `AIX` > `INET6` && `LOOKUP_ORDER_HACK`
 
