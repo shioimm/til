@@ -68,6 +68,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 
         // ------- rb_getaddrinfo -------
         if (!resolved) {
+            // TODO timeoutを渡す
             error = rb_getaddrinfo(hostp, portp, hints, &ai);
             if (error == 0) {
                 res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
@@ -344,6 +345,7 @@ struct getaddrinfo_arg
     rb_nativethread_cond_t cond;
 };
 
+// TODO timeoutを受け取れるように引数を増やす
 static int
 rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
 {
@@ -355,6 +357,7 @@ start:
     retry = 0;
 
     // struct getaddrinfo_arg にいろいろ詰める
+    // TODO timeoutをセットする
     arg = allocate_getaddrinfo_arg(hostp, portp, hints);
     if (!arg) return EAI_MEMORY;
 
@@ -372,6 +375,9 @@ start:
 
     pthread_detach(th);
 
+    // TODO wait_getaddrinfo をタイムアウトさせる方法を考えないといけない。rb_native_cond_timedwait を使う...?
+    // と、タイムアウトさせたときにarg->cancelled = 1をセットする必要あり (子スレッドで資源を解放するため)
+    // もちろん retry = 1 は不要
     rb_thread_call_without_gvl2(
         // GVLを解放して wait_getaddrinfo を呼ぶ
         // arg->done か arg->cancelled いずれかにフラグがセットされるまで条件変数で待機
@@ -394,16 +400,14 @@ start:
             err = arg->err;
             gai_errno = arg->gai_errno;
             if (err == 0) *ai = arg->ai;
-        } else if (arg->cancelled) { // 途中で中断した
+        } else if (arg->cancelled) { // cancel_getaddrinfoが呼ばれた (= 待機中に中断された)
             retry = 1;
         } else { // rb_thread_call_without_gvl2 を呼ぶ前に中断されていた
             // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
             // In this case, it could be !arg->done && !arg->cancelled.
-
             arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
             retry = 1;
         }
-        // WIP retryがどう動作するか調査する (特に明示的に中断された場合)
 
         if (--arg->refcount == 0) need_free = 1;
     }
@@ -417,14 +421,27 @@ start:
     // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
     // (ただし現在のスレッドがタイマースレッドによって割り込まれた場合、 rb_thread_check_ints は例外を発生させずに
     //  戻る。手動で再試行する必要がある。
+
+    // - 明示的にキャンセルされた場合 -> rb_thread_check_ints() で例外が発生
+    // - タイマースレッドに割り込まれた場合 -> retry = 1 にセットして do_getaddrinfo を呼び直す
+    // このときいずれも、前に do_getaddrinfo を呼んだ時のスレッドの中ではまだ getaddrinfo が続いており、
+    // その getaddrinfo から返ってきた後で freeaddrinfo しないといけない。
+    // そのために arg->cancelledにフラグをセットしておく。
+
+    // 明示的に中断された場合はここで例外が発生
     rb_thread_check_ints();
+
+    // タイマースレッドによる中断の場合はここでstartに戻る
     if (retry) goto start;
 
-    // WIP
     /* Because errno is threadlocal, the errno value we got from the call to getaddrinfo() in the thread
      * (in case of EAI_SYSTEM return value) is not propagated to the caller of _this_ function. Set errno
      * explicitly, as round-tripped through struct getaddrinfo_arg, to deal with that */
+    // (errnoはスレッドローカル。
+    //  子スレッド内で getaddrinfo() を呼び出して取得したerrnoの値 (EAI_SYSTEM の場合) は、呼び出し元に伝播しない。
+    //  struct getaddrinfo_arg を介して受け渡された値を使って、errno を明示的に設定する必要がある)
     if (gai_errno) errno = gai_errno;
+
     return err;
 }
 
@@ -528,17 +545,19 @@ do_getaddrinfo(void *ptr) // WIP
     {
         arg->err = err;
         arg->gai_errno = gai_errno;
-        if (arg->cancelled) {
+
+        if (arg->cancelled) { // getaddrinfo から返ってきたものの、もうこの資源は使えない場合 (何らかの理由で中断)
             if (arg->ai) freeaddrinfo(arg->ai);
+        } else {
+            arg->done = 1; // 実行済みフラグにセット
+            rb_native_cond_signal(&arg->cond); // 条件変数に通知
         }
-        else {
-            arg->done = 1;
-            rb_native_cond_signal(&arg->cond);
-        }
+
         if (--arg->refcount == 0) need_free = 1;
     }
     rb_nativethread_lock_unlock(&arg->lock);
 
+    // メインスレッドがすでに終了している場合はここで free_getaddrinfo_arg が呼ばれる
     if (need_free) free_getaddrinfo_arg(arg);
 
     return 0;
