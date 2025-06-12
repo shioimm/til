@@ -25,3 +25,7 @@ func NewElectionResult(candidateName string, votes int) *ElectionResult {
 func DisplayResult(result *ElectionResult) string {
 	return fmt.Sprintf("%s (%d)", result.Name, result.Votes)
 }
+
+func DecrementVotesOfCandidate(results map[string]int, candidate string) {
+	results[candidate]--
+}
