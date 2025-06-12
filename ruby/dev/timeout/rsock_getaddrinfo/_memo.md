@@ -68,6 +68,7 @@ rsock_getaddrinfo(VALUE host, VALUE port, struct addrinfo *hints, int socktype_h
 
         // ------- rb_getaddrinfo -------
         if (!resolved) {
+            // TODO timeoutを渡す
             error = rb_getaddrinfo(hostp, portp, hints, &ai);
             if (error == 0) {
                 res = (struct rb_addrinfo *)xmalloc(sizeof(struct rb_addrinfo));
@@ -344,6 +345,7 @@ struct getaddrinfo_arg
     rb_nativethread_cond_t cond;
 };
 
+// TODO timeoutを受け取れるように引数を増やす
 static int
 rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hints, struct addrinfo **ai)
 {
@@ -355,55 +357,91 @@ start:
     retry = 0;
 
     // struct getaddrinfo_arg にいろいろ詰める
+    // TODO timeoutをセットする
     arg = allocate_getaddrinfo_arg(hostp, portp, hints);
     if (!arg) return EAI_MEMORY;
 
-    // pthreadを作成してfork_safe_do_getaddrinfoを呼ぶ
-    // fork_safe_do_getaddrinfoはrb_thread_prevent_forkの中でdo_getaddrinfoを呼ぶ
     pthread_t th;
+
+    // pthread を作成して fork_safe_do_getaddrinfo を呼ぶ
+    // fork_safe_do_getaddrinfo は rb_thread_prevent_fork の中で do_getaddrinfo を呼ぶ
     if (raddrinfo_pthread_create(&th, fork_safe_do_getaddrinfo, arg) != 0) {
         int err = errno;
+        // 条件変数とロックの削除、argのメモリ解放
         free_getaddrinfo_arg(arg);
         errno = err;
         return EAI_SYSTEM;
     }
+
     pthread_detach(th);
 
-    // WIP
-    rb_thread_call_without_gvl2(wait_getaddrinfo, arg, cancel_getaddrinfo, arg);
+    // TODO wait_getaddrinfo をタイムアウトさせる方法を考えないといけない。rb_native_cond_timedwait を使う...?
+    // と、タイムアウトさせたときにarg->cancelled = 1をセットする必要あり (子スレッドで資源を解放するため)
+    // もちろん retry = 1 は不要
+    rb_thread_call_without_gvl2(
+        // GVLを解放して wait_getaddrinfo を呼ぶ
+        // arg->done か arg->cancelled いずれかにフラグがセットされるまで条件変数で待機
+        wait_getaddrinfo,
+        arg,
+
+        // 待機中に中断を検知した際に呼ぶ (シグナル、Thread#raise、タイマースレッド)
+        // arg->cancelled にフラグをセット、arg->cond に通知
+        cancel_getaddrinfo,
+        arg
+    );
+
+    // ここに来た時点で待機が終わっている
+    // arg->done か arg->cancelled にフラグが立っている状況
 
     int need_free = 0;
     rb_nativethread_lock_lock(&arg->lock);
     {
-        if (arg->done) {
+        if (arg->done) { // 正常に名前解決でた
             err = arg->err;
             gai_errno = arg->gai_errno;
             if (err == 0) *ai = arg->ai;
-        }
-        else if (arg->cancelled) {
+        } else if (arg->cancelled) { // cancel_getaddrinfoが呼ばれた (= 待機中に中断された)
             retry = 1;
-        }
-        else {
+        } else { // rb_thread_call_without_gvl2 を呼ぶ前に中断されていた
             // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
             // In this case, it could be !arg->done && !arg->cancelled.
             arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
             retry = 1;
         }
+
         if (--arg->refcount == 0) need_free = 1;
     }
     rb_nativethread_lock_unlock(&arg->lock);
 
+    // 子スレッドがすでに終了している場合はここで free_getaddrinfo_arg が呼ばれる
     if (need_free) free_getaddrinfo_arg(arg);
 
     // If the current thread is interrupted by asynchronous exception, the following raises the exception.
+    // (現在のスレッドが非同期例外によって割り込まれた場合、 rb_thread_check_ints は例外を発生させる
     // But if the current thread is interrupted by timer thread, the following returns; we need to manually retry.
+    // (ただし現在のスレッドがタイマースレッドによって割り込まれた場合、 rb_thread_check_ints は例外を発生させずに
+    //  戻る。手動で再試行する必要がある。
+
+    // - 明示的にキャンセルされた場合 -> rb_thread_check_ints() で例外が発生
+    // - タイマースレッドに割り込まれた場合 -> retry = 1 にセットして do_getaddrinfo を呼び直す
+    // このときいずれも、前に do_getaddrinfo を呼んだ時のスレッドの中ではまだ getaddrinfo が続いており、
+    // その getaddrinfo から返ってきた後で freeaddrinfo しないといけない。
+    // そのために arg->cancelledにフラグをセットしておく。
+
+    // 明示的に中断された場合はここで例外が発生
     rb_thread_check_ints();
+
+    // タイマースレッドによる中断の場合はここでstartに戻る
     if (retry) goto start;
 
     /* Because errno is threadlocal, the errno value we got from the call to getaddrinfo() in the thread
      * (in case of EAI_SYSTEM return value) is not propagated to the caller of _this_ function. Set errno
      * explicitly, as round-tripped through struct getaddrinfo_arg, to deal with that */
+    // (errnoはスレッドローカル。
+    //  子スレッド内で getaddrinfo() を呼び出して取得したerrnoの値 (EAI_SYSTEM の場合) は、呼び出し元に伝播しない。
+    //  struct getaddrinfo_arg を介して受け渡された値を使って、errno を明示的に設定する必要がある)
     if (gai_errno) errno = gai_errno;
+
     return err;
 }
 
@@ -413,28 +451,27 @@ allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addr
     size_t hostp_offset = sizeof(struct getaddrinfo_arg);
     size_t portp_offset = hostp_offset + (hostp ? strlen(hostp) + 1 : 0);
     size_t bufsize = portp_offset + (portp ? strlen(portp) + 1 : 0);
-
     char *buf = malloc(bufsize);
+
     if (!buf) {
         rb_gc();
         buf = malloc(bufsize);
         if (!buf) return NULL;
     }
+
     struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)buf;
 
     if (hostp) {
         arg->node = buf + hostp_offset;
         strcpy(arg->node, hostp);
-    }
-    else {
+    } else {
         arg->node = NULL;
     }
 
     if (portp) {
         arg->service = buf + portp_offset;
         strcpy(arg->service, portp);
-    }
-    else {
+    } else {
         arg->service = NULL;
     }
 
@@ -450,16 +487,43 @@ allocate_getaddrinfo_arg(const char *hostp, const char *portp, const struct addr
     return arg;
 }
 
-static void
-free_getaddrinfo_arg(struct getaddrinfo_arg *arg)
+int
+raddrinfo_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg)
 {
-    rb_native_cond_destroy(&arg->cond);
-    rb_nativethread_lock_destroy(&arg->lock);
-    free(arg);
+    int limit = 3, ret;
+
+    do {
+        // It is said that pthread_create may fail spuriously, so we follow the JDK and retry several times.
+        //
+        // https://bugs.openjdk.org/browse/JDK-8268605
+        // https://github.com/openjdk/jdk/commit/e35005d5ce383ddd108096a3079b17cb0bcf76f1
+        ret = pthread_create(th, 0, start_routine, arg);
+    } while (ret == EAGAIN && limit-- > 0);
+
+    return ret;
 }
 
 static void *
-do_getaddrinfo(void *ptr)
+fork_safe_do_getaddrinfo(void *ptr)
+{
+    // thread_pthread.c
+    // void *
+    // rb_thread_prevent_fork(void *(*func)(void *), void *data)
+    // {
+    //     int r;
+    //     if ((r = pthread_rwlock_rdlock(&rb_thread_fork_rw_lock))) {
+    //         rb_bug_errno("pthread_rwlock_rdlock", r);
+    //     }
+    //     void *result = func(data);
+    //     rb_thread_release_fork_lock();
+    //     return result;
+    // }
+
+    return rb_thread_prevent_fork(do_getaddrinfo, ptr);
+}
+
+static void *
+do_getaddrinfo(void *ptr) // WIP
 {
     struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
 
@@ -481,51 +545,43 @@ do_getaddrinfo(void *ptr)
     {
         arg->err = err;
         arg->gai_errno = gai_errno;
-        if (arg->cancelled) {
+
+        if (arg->cancelled) { // getaddrinfo から返ってきたものの、もうこの資源は使えない場合 (何らかの理由で中断)
             if (arg->ai) freeaddrinfo(arg->ai);
+        } else {
+            arg->done = 1; // 実行済みフラグにセット
+            rb_native_cond_signal(&arg->cond); // 条件変数に通知
         }
-        else {
-            arg->done = 1;
-            rb_native_cond_signal(&arg->cond);
-        }
+
         if (--arg->refcount == 0) need_free = 1;
     }
     rb_nativethread_lock_unlock(&arg->lock);
 
+    // メインスレッドがすでに終了している場合はここで free_getaddrinfo_arg が呼ばれる
     if (need_free) free_getaddrinfo_arg(arg);
 
     return 0;
 }
 
-int
-raddrinfo_pthread_create(pthread_t *th, void *(*start_routine) (void *), void *arg)
+static void
+free_getaddrinfo_arg(struct getaddrinfo_arg *arg)
 {
-    int limit = 3, ret;
-    do {
-        // It is said that pthread_create may fail spuriously, so we follow the JDK and retry several times.
-        //
-        // https://bugs.openjdk.org/browse/JDK-8268605
-        // https://github.com/openjdk/jdk/commit/e35005d5ce383ddd108096a3079b17cb0bcf76f1
-        ret = pthread_create(th, 0, start_routine, arg);
-    } while (ret == EAGAIN && limit-- > 0);
-    return ret;
-}
-
-static void *
-fork_safe_do_getaddrinfo(void *ptr)
-{
-    return rb_thread_prevent_fork(do_getaddrinfo, ptr);
+    rb_native_cond_destroy(&arg->cond);
+    rb_nativethread_lock_destroy(&arg->lock);
+    free(arg);
 }
 
 static void *
 wait_getaddrinfo(void *ptr)
 {
     struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
+
     rb_nativethread_lock_lock(&arg->lock);
     while (!arg->done && !arg->cancelled) {
         rb_native_cond_wait(&arg->cond, &arg->lock);
     }
     rb_nativethread_lock_unlock(&arg->lock);
+
     return 0;
 }
 
@@ -533,12 +589,31 @@ static void
 cancel_getaddrinfo(void *ptr)
 {
     struct getaddrinfo_arg *arg = (struct getaddrinfo_arg *)ptr;
+
     rb_nativethread_lock_lock(&arg->lock);
     {
-        arg->cancelled = 1;
-        rb_native_cond_signal(&arg->cond);
+        arg->cancelled = 1; // キャンセルフラグのセット
+        rb_native_cond_signal(&arg->cond); // 条件変数に通知
     }
     rb_nativethread_lock_unlock(&arg->lock);
+}
+```
+
+#### `rb_native_cond_timedwait`
+
+- `thread_pthread.c`
+- `thread_win32.c`
+- `thread_none.c`
+
+```c
+// thread_pthread.c
+
+// WIP
+void
+rb_native_cond_timedwait(rb_nativethread_cond_t *cond, pthread_mutex_t *mutex, unsigned long msec)
+{
+    rb_hrtime_t hrmsec = native_cond_timeout(cond, RB_HRTIME_PER_MSEC * msec);
+    native_cond_timedwait(cond, mutex, &hrmsec);
 }
 ```
 
