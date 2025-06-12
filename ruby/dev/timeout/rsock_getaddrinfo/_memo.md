@@ -375,9 +375,11 @@ start:
 
     pthread_detach(th);
 
-    // TODO wait_getaddrinfo をタイムアウトさせる方法を考えないといけない。rb_native_cond_timedwait を使う...?
-    // と、タイムアウトさせたときにarg->cancelled = 1をセットする必要あり (子スレッドで資源を解放するため)
-    // もちろん retry = 1 は不要
+    // TODO wait_getaddrinfo をタイムアウトさせる方法を考える
+    // - rb_native_cond_timedwait を使う場合、タイムアウトすると wait_getaddrinfo から返ってくる
+    // - arg->cancelled = 1をセットする必要あり (子スレッドで資源を解放するため)
+    // - もちろん retry = 1 は不要
+    // - rb_thread_check_intsで例外は発生する? そうでない場合は何らかの方法で発生させないといけない
     rb_thread_call_without_gvl2(
         // GVLを解放して wait_getaddrinfo を呼ぶ
         // arg->done か arg->cancelled いずれかにフラグがセットされるまで条件変数で待機
@@ -578,7 +580,7 @@ wait_getaddrinfo(void *ptr)
 
     rb_nativethread_lock_lock(&arg->lock);
     while (!arg->done && !arg->cancelled) {
-        rb_native_cond_wait(&arg->cond, &arg->lock);
+        rb_native_cond_wait(&arg->cond, &arg->lock); // -> TODO rb_native_cond_timedwait を使いたい
     }
     rb_nativethread_lock_unlock(&arg->lock);
 
@@ -608,12 +610,55 @@ cancel_getaddrinfo(void *ptr)
 ```c
 // thread_pthread.c
 
-// WIP
 void
 rb_native_cond_timedwait(rb_nativethread_cond_t *cond, pthread_mutex_t *mutex, unsigned long msec)
 {
+    // タイムアウトする絶対時刻を返す
     rb_hrtime_t hrmsec = native_cond_timeout(cond, RB_HRTIME_PER_MSEC * msec);
     native_cond_timedwait(cond, mutex, &hrmsec);
+}
+
+static rb_hrtime_t
+native_cond_timeout(
+    rb_nativethread_cond_t *cond, // 条件変数 ... 使ってない?
+    const rb_hrtime_t rel // 相対タイムアウト時間
+) {
+    // rb_hrtime_add = システムの単調クロックをnsec単位で加算する
+    if (condattr_monotonic) { // 単調クロックが使えるプラットフォームの場合
+        // 現在の単調クロック + rel
+        return rb_hrtime_add(rb_hrtime_now(), rel);
+    } else {
+        struct timespec ts;
+        rb_timespec_now(&ts);
+
+        // 現在時刻 + rel
+        return rb_hrtime_add(rb_timespec2hrtime(&ts), rel);
+    }
+}
+
+static int
+native_cond_timedwait(
+    rb_nativethread_cond_t *cond,
+    pthread_mutex_t *mutex,
+    const rb_hrtime_t *abs // タイムアウトする絶対時刻
+) {
+    int r;
+    struct timespec ts;
+
+    /*
+     * An old Linux may return EINTR. Even though POSIX says
+     *   "These functions shall not return an error code of [EINTR]".
+     *   http://pubs.opengroup.org/onlinepubs/009695399/functions/pthread_cond_timedwait.html
+     * Let's hide it from arch generic code.
+     */
+    do {
+        rb_hrtime2timespec(&ts, abs); // abs をstruct timespec にセット
+        r = pthread_cond_timedwait(cond, mutex, &ts); // 条件が通知されるかタイムアウトするまで待機
+    } while (r == EINTR); // EINTRで中断した場合は再試行
+
+    if (r != 0 && r != ETIMEDOUT) rb_bug_errno("pthread_cond_timedwait", r); // エラー処理
+
+    return r;
 }
 ```
 
