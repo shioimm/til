@@ -46,3 +46,24 @@ func ExtractFancyNumber(fnb FancyNumberBox) int {
 
 	return value
 }
+
+func DescribeFancyNumberBox(fnb FancyNumberBox) string {
+	return fmt.Sprintf(
+		"This is a fancy box containing the number %.1f",
+		float64(ExtractFancyNumber(fnb)),
+	)
+}
+
+func DescribeAnything(i interface{}) string {
+	if n, ok := i.(int); ok {
+		return DescribeNumber(float64(n))
+	} else if f, ok := i.(float64); ok {
+		return DescribeNumber(f)
+	} else if nb, ok := i.(NumberBox); ok {
+		return DescribeNumberBox(nb)
+	} else if fnb, ok := i.(FancyNumberBox); ok {
+		return DescribeFancyNumberBox(fnb)
+	} else {
+		return "Return to sender"
+	}
+}
