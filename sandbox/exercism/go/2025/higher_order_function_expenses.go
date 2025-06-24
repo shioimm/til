@@ -47,3 +47,11 @@ func TotalByPeriod(in []Record, p DaysPeriod) float64 {
 
 	return total
 }
+
+func CategoryExpenses(in []Record, p DaysPeriod, c string) (float64, error) {
+	filteredRecords := Filter(in, ByCategory(c))
+
+	if len(filteredRecords) == 0 { return 0, errors.New("") }
+
+	return TotalByPeriod(filteredRecords, p), nil
+}
