@@ -11,3 +11,19 @@ func SplitLogLine(text string) []string {
 	re := regexp.MustCompile(`\<[-=~*]*\>`)
 	return re.Split(text, -1)
 }
+
+func CountQuotedPasswords(lines []string) int {
+	count := 0
+	re := regexp.MustCompile(`".*(?i)password.*"`)
+
+	for _, l := range lines {
+		if re.MatchString(l) { count++ }
+	}
+
+	return count
+}
+
+func RemoveEndOfLineText(text string) string {
+	re := regexp.MustCompile(`end-of-line\w*`)
+	return re.ReplaceAllString(text, "")
+}
