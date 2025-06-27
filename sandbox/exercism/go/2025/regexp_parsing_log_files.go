@@ -1,3 +1,5 @@
+// https://exercism.org/tracks/go/exercises/parsing-log-files
+
 package parsinglogfiles
 
 import "regexp"
@@ -26,4 +28,21 @@ func CountQuotedPasswords(lines []string) int {
 func RemoveEndOfLineText(text string) string {
 	re := regexp.MustCompile(`end-of-line\w*`)
 	return re.ReplaceAllString(text, "")
+}
+
+func RemoveEndOfLineText(text string) string {
+	re := regexp.MustCompile(`end-of-line\w*`)
+	return re.ReplaceAllString(text, "")
+}
+
+func TagWithUserName(lines []string) []string {
+	user := regexp.MustCompile(`User +(\S+)`)
+
+	for i, line := range lines {
+		if matched := user.FindStringSubmatch(line); matched != nil {
+			lines[i] = "[USR] " + matched[1] + " " + line
+		}
+	}
+
+	return lines
 }
