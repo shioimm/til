@@ -335,6 +335,7 @@ rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hint
 #### `GETADDRINFO_IMPL` 2 の場合
 
 ```c
+// TODO timeout値と実際にタイムアウトしたかどうかを管理する値を保持する
 struct getaddrinfo_arg
 {
     char *node, *service;
@@ -353,11 +354,11 @@ rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hint
     struct getaddrinfo_arg *arg;
     int err = 0, gai_errno = 0;
 
-start:
+start: // タイマースレッドによる中断の場合のみここに戻って以下再実行
     retry = 0;
 
     // struct getaddrinfo_arg にいろいろ詰める
-    // TODO timeoutをセットする
+    // TODO timeout値と実際にタイムアウトしたかどうかを管理する値をセットする
     arg = allocate_getaddrinfo_arg(hostp, portp, hints);
     if (!arg) return EAI_MEMORY;
 
@@ -375,11 +376,6 @@ start:
 
     pthread_detach(th);
 
-    // TODO wait_getaddrinfo をタイムアウトさせる方法を考える
-    // - rb_native_cond_timedwait を使う場合、タイムアウトすると wait_getaddrinfo から返ってくる
-    // - arg->cancelled = 1をセットする必要あり (子スレッドで資源を解放するため)
-    // - もちろん retry = 1 は不要
-    // - rb_thread_check_intsで例外は発生する? そうでない場合は何らかの方法で発生させないといけない
     rb_thread_call_without_gvl2(
         // GVLを解放して wait_getaddrinfo を呼ぶ
         // arg->done か arg->cancelled いずれかにフラグがセットされるまで条件変数で待機
@@ -402,13 +398,13 @@ start:
             err = arg->err;
             gai_errno = arg->gai_errno;
             if (err == 0) *ai = arg->ai;
-        } else if (arg->cancelled) { // cancel_getaddrinfoが呼ばれた (= 待機中に中断された)
-            retry = 1;
+        } else if (arg->cancelled) { // cancel_getaddrinfo が呼ばれた (= 待機中に中断された)
+            retry = 1; // 中断理由がタイマースレッドだったとき用
         } else { // rb_thread_call_without_gvl2 を呼ぶ前に中断されていた
             // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
             // In this case, it could be !arg->done && !arg->cancelled.
             arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
-            retry = 1;
+            retry = 1; // 中断理由がタイマースレッドだったとき用
         }
 
         if (--arg->refcount == 0) need_free = 1;
@@ -428,10 +424,19 @@ start:
     // - タイマースレッドに割り込まれた場合 -> retry = 1 にセットして do_getaddrinfo を呼び直す
     // このときいずれも、前に do_getaddrinfo を呼んだ時のスレッドの中ではまだ getaddrinfo が続いており、
     // その getaddrinfo から返ってきた後で freeaddrinfo しないといけない。
-    // そのために arg->cancelledにフラグをセットしておく。
+    // そのために arg->cancelled にフラグをセットしておく。
 
     // 明示的に中断された場合はここで例外が発生
     rb_thread_check_ints();
+
+    // TODO wait_getaddrinfo をタイムアウトさせる方法を考える
+    // - rb_native_cond_timedwait を使う場合、タイムアウトすると wait_getaddrinfo から返ってくる
+    // - arg->cancelled = 1 をセットする必要あり (子スレッドで資源を解放するため)
+    // - もちろん retry = 1 は不要だけど既存の中断と区別する必要はない
+    // - rb_thread_check_intsで例外は発生しない
+    //
+    // こんな感じ?
+    // if (arg->timedout) rb_raise(etimedout_error, "user specified timeout");
 
     // タイマースレッドによる中断の場合はここでstartに戻る
     if (retry) goto start;
@@ -548,12 +553,15 @@ do_getaddrinfo(void *ptr) // WIP
         arg->err = err;
         arg->gai_errno = gai_errno;
 
-        if (arg->cancelled) { // getaddrinfo から返ってきたものの、もうこの資源は使えない場合 (何らかの理由で中断)
+        if (arg->cancelled) {
+            // getaddrinfo から返ってきたものの、メインスレッドが何らかの理由で中断されており、
+            // もうこの資源が使えない場合はここの分岐に入る
             if (arg->ai) freeaddrinfo(arg->ai);
         } else {
             arg->done = 1; // 実行済みフラグにセット
             rb_native_cond_signal(&arg->cond); // 条件変数に通知
         }
+        // timeoutの場合は子スレッド側の追加の処理は不要。メインスレッドで例外を送出しないといけない
 
         if (--arg->refcount == 0) need_free = 1;
     }
