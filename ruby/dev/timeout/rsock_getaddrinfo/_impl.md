@@ -66,6 +66,3 @@ rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hint
     // ...
 }
 ```
-
-TODO
-- `rb_getaddrinfo`側でタイムアウトによるキャンセルを検出する仕組みが必要
