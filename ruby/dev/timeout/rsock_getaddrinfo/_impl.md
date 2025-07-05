@@ -1,6 +1,9 @@
-# `ext/socket/raddrinfo.c`
+# 実装
+## タイムアウトの実装
 
 ```c
+// ext/socket/raddrinfo.c
+
 struct getaddrinfo_arg
 {
     char *node, *service;
@@ -63,6 +66,48 @@ rb_getaddrinfo(const char *hostp, const char *portp, const struct addrinfo *hint
     rb_thread_check_ints();
     if (retry) goto start;
 
+    // ...
+}
+```
+
+## 呼び出し側の実装
+#### VALUE -> unsigned int
+
+```c
+// ext/socket/rubysocket.h
+
+unsigned int rsock_value_timeout_to_msec(VALUE);
+```
+
+```c
+// ext/socket/raddrinfo.c
+
+unsigned int
+rsock_value_timeout_to_msec(VALUE timeout)
+{
+    double seconds = NUM2DBL(timeout);
+    if (seconds < 0) rb_raise(rb_eArgError, "timeout must not be negative");
+
+    double msec = seconds * 1000.0;
+    if (msec > UINT_MAX) rb_raise(rb_eArgError, "timeout too large");
+
+    return (unsigned int)(msec + 0.5);
+}
+```
+
+#### `call_getaddrinfo`
+
+```c
+// ext/socket/raddrinfo.c
+
+static struct rb_addrinfo *
+call_getaddrinfo(VALUE node, VALUE service,
+                 VALUE family, VALUE socktype, VALUE protocol, VALUE flags,
+                 int socktype_hack, VALUE timeout)
+{
+    // ...
+    unsigned int t = rsock_value_timeout_to_msec(timeout);
+    res = rsock_getaddrinfo(node, service, &hints, socktype_hack); // ここにtを渡す
     // ...
 }
 ```
