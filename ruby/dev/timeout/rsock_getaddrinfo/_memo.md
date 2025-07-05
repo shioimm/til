@@ -1,4 +1,6 @@
-# 2025/6/8時点
+# `rsock_addrinfo`のタイムアウトを有効化する
+
+#### 実装 (2024/6/8時点)
 
 ```c
 // TODO timeoutを受け取れるように引数を増やす
@@ -799,28 +801,56 @@ else
 end
 ```
 
-## 呼び出し側
-- `rsock_getaddrinfo` <変更対象>
-  - `rsock_addrinfo` <変更対象>
-    - (なし) `sock_s_gethostbyname` (`Socket.gethostbyname`) [ext/socket/socket.c]
-    - (なし) `sock_s_pack_sockaddr_in` (`Socket.sockaddr_in` / `Socket.pack_sockaddr_in`) [ext/socket/socket.c]
-    -  `init_inetsock_internal` / `init_fast_fallback_inetsock_internal` [ext/socket/ipsocket.c] <対応中>
-      - `rsock_init_inetsock` [ext/socket/ipsocket.c]
-        - (なし -> あり) `tcp_init` (`TCPSocket#initialize`) [ext/socket/tcpsocket.c]
-        - (なし) `socks_init` (`SOCKSSocket#initialize`) [ext/socket/sockssocket.c]
-        - (なし) `tcp_svr_init` (`TCPServer#initialize`) [ext/socket/tcpserver.c]
-    - (なし) `ip_s_getaddress` (`IPSocket.getaddress`) [ext/socket/ipsocket.c]
-    - (なし) `tcp_s_gethostbyname` (`TCPSocket.gethostbyname`) (ext/socket/tcpsocket.c) [ext/socket/tcpsocket.c]
-    - (なし) `udp_connect` (`UDPSocket#connect`) [ext/socket/udpsocket.c]
-    - (なし) `udp_bind` (`UDPSocket#bind`) [ext/socket/udpsocket.c]
-    - (なし) `udp_send` (`UDPSocket#send`) [ext/socket/udpsocket.c]
-  - `call_getaddrinfo`
-    - `init_addrinfo_getaddrinfo`
-      - (なし) `addrinfo_initialize` (`Addrinfo#initialize`) [ext/socket/raddrinfo.c]
-    - `addrinfo_firstonly_new`
-      - (なし) `addrinfo_s_ip` (`Addrinfo.ip`) [ext/socket/raddrinfo.c]
-      - (なし) `addrinfo_s_tcp` (`Addrinfo.tcp`) [ext/socket/raddrinfo.c]
-      - (なし) `addrinfo_s_udp` (`Addrinfo.udp`) [ext/socket/raddrinfo.c]
-    - `addrinfo_list_new`
-      - (あり) `addrinfo_s_getaddrinfo` (`Addrinfo.getaddrinfo`) [ext/socket/raddrinfo.c]
-    - (なし) `addrinfo_mload` (`Addrinfo.marshal_load`) [ext/socket/raddrinfo.c]
+## コールグラフ
+- `Socket.gethostbyname` (`sock_s_gethostbyname`) [ext/socket/socket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Socket.gethostbyname` (`sock_s_gethostbyname`) [ext/socket/socket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Socket.sockaddr_in` / `Socket.pack_sockaddr_in` (`sock_s_pack_sockaddr_in`) [ext/socket/socket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `IPSocket.getaddress` (`ip_s_getaddress`) [ext/socket/ipsocket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `TCPSocket.gethostbyname` (`tcp_s_gethostbyname`) (ext/socket/tcpsocket.c) [ext/socket/tcpsocket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `UDPSocket#connect` (`udp_connect`) [ext/socket/udpsocket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `UDPSocket#bind` (`udp_bind`) [ext/socket/udpsocket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `UDPSocket#send` (`udp_send`) [ext/socket/udpsocket.c]
+  - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `TCPServer#initialize` (`tcp_svr_init`) [ext/socket/tcpserver.c]
+  - `rsock_init_inetsock` -> `init_inetsock_internal` -> `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `SOCKSSocket#initialize` (`socks_init`) [ext/socket/sockssocket.c]
+  - `rsock_init_inetsock` -> `init_inetsock_internal` -> `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `TCPSocket#initialize` (`tcp_init`) [ext/socket/tcpsocket.c] <変更対象>
+  - `rsock_init_inetsock` -> `init_inetsock_internal` -> `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Addrinfo#initialize` (`addrinfo_initialize`) [ext/socket/raddrinfo.c]
+  - `init_addrinfo_getaddrinfo` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Addrinfo.getaddrinfo` (`addrinfo_s_getaddrinfo`) [ext/socket/raddrinfo.c] <変更対象>
+  - `addrinfo_list_new` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Addrinfo.marshal_load` (`addrinfo_mload`) [ext/socket/raddrinfo.c]
+  - `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Addrinfo.ip` (`addrinfo_s_ip`) [ext/socket/raddrinfo.c]
+  - `addrinfo_firstonly_new` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Addrinfo.tcp` (`addrinfo_s_tcp`) [ext/socket/raddrinfo.c]
+  - `addrinfo_firstonly_new` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Addrinfo.udp` (`addrinfo_s_udp`) [ext/socket/raddrinfo.c]
+  - `addrinfo_firstonly_new` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+
+## 変更対象
+- `rb_getaddrinfo`
+  - 引数timeoutを追加する
+  - タイムアウトの処理を追加する
+- `rsock_getaddrinfo`
+  - 引数timeoutを追加する
+  - `rb_getaddrinfo`の呼び出しに引数timeoutを追加する
+- `rsock_addrinfo`
+  - 引数timeoutを追加する
+  - `rsock_getaddrinfo`の呼び出しに引数timeoutを追加する
+- `init_inetsock_internal`
+  - タイムアウトを表す引数を`rsock_addrinfo`に渡せていないので`rsock_getaddrinfo`の呼び出しに引数timeoutを追加する
+- `TCPServer`のリモートホストの名前解決は何を行なっているんだ...
+- `rsock_addrinfo`を直接呼び出している関数群
+  - `rsock_addrinfo`の呼び出しに引数timeout (null) を追加する
+- `call_getaddrinfo`
+  - タイムアウトを表す引数を`rsock_addrinfo`に渡せていないので`rsock_getaddrinfo`の呼び出しに引数timeoutを追加する
