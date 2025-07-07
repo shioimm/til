@@ -801,7 +801,11 @@ else
 end
 ```
 
-## コールグラフ
+## コールスタック
+- `Socket.getaddrinfo` (`sock_s_getaddrinfo`) [ext/socket/socket.c]
+  - `rsock_getaddrinfo` -> `rb_getaddrinfo`
+- `Socket.getnameinfo` (`sock_s_getnameinfo`) [ext/socket/socket.c]
+  - `rsock_getaddrinfo` -> `rb_getaddrinfo`
 - `Socket.gethostbyname` (`sock_s_gethostbyname`) [ext/socket/socket.c]
   - `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
 - `Socket.gethostbyname` (`sock_s_gethostbyname`) [ext/socket/socket.c]
@@ -824,6 +828,7 @@ end
   - `rsock_init_inetsock` -> `init_inetsock_internal` -> `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
 - `TCPSocket#initialize` (`tcp_init`) [ext/socket/tcpsocket.c] <変更対象>
   - `rsock_init_inetsock` -> `init_inetsock_internal` -> `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
+  - `rsock_init_inetsock` -> `init_inetsock_fastfallback_internal` -> `rsock_addrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
 - `Addrinfo#initialize` (`addrinfo_initialize`) [ext/socket/raddrinfo.c]
   - `init_addrinfo_getaddrinfo` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
 - `Addrinfo.getaddrinfo` (`addrinfo_s_getaddrinfo`) [ext/socket/raddrinfo.c] <変更対象>
@@ -838,19 +843,23 @@ end
   - `addrinfo_firstonly_new` -> `call_getaddrinfo` -> `rsock_getaddrinfo` -> `rb_getaddrinfo`
 
 ## 変更対象
-- `rb_getaddrinfo`
+- [x] `rb_getaddrinfo`
   - 引数timeoutを追加する
   - タイムアウトの処理を追加する
-- `rsock_getaddrinfo`
+- [x] `rsock_getaddrinfo`
   - 引数timeoutを追加する
   - `rb_getaddrinfo`の呼び出しに引数timeoutを追加する
-- `rsock_addrinfo`
+- [x] `rsock_getaddrinfo`を直接呼び出している関数群
+  - `rsock_getaddrinfo`の呼び出しに引数timeout (0) を追加する
+- [x] `rsock_addrinfo`
   - 引数timeoutを追加する
   - `rsock_getaddrinfo`の呼び出しに引数timeoutを追加する
-- `init_inetsock_internal`
+- [x] `rsock_addrinfo`を直接呼び出している関数群
+  - `rsock_addrinfo`の呼び出しに引数timeout (0) を追加する
+- [x] `init_inetsock_internal`
   - タイムアウトを表す引数を`rsock_addrinfo`に渡せていないので`rsock_getaddrinfo`の呼び出しに引数timeoutを追加する
-- `TCPServer`のリモートホストの名前解決は何を行なっているんだ...
-- `rsock_addrinfo`を直接呼び出している関数群
-  - `rsock_addrinfo`の呼び出しに引数timeout (null) を追加する
-- `call_getaddrinfo`
+  - `tcpserver`のリモートホストの名前解決は何を行なっているんだ...
+- [x] `init_inetsock_fastfallback_internal` (IPアドレスを指定した場合)
+  - タイムアウトを表す引数を`rsock_addrinfo`に渡せていないので`rsock_getaddrinfo`の呼び出しに引数timeoutを追加する
+- [x] `call_getaddrinfo`
   - タイムアウトを表す引数を`rsock_addrinfo`に渡せていないので`rsock_getaddrinfo`の呼び出しに引数timeoutを追加する

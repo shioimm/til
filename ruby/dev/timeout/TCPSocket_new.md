@@ -1,6 +1,5 @@
 `open_timeout-TCPSocket_new`
 - TODO `init_inetsock_internal`に`open_timeout`を実装する
-- `connect_timeout`のdocがなんかおかしいので直す(別PR)
 
 ```c
 // ext/socket/ipsocket.c
