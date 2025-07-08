@@ -4,10 +4,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 func main() {
-	res, err := http.Get("http://localhost:18888")
+	values := url.Values{
+		"query": { "hello" },
+	}
+
+	res, err := http.Get("http://localhost:18888" + "?" + values.Encode())
 
 	if err != nil { panic(err) }
 
