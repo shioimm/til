@@ -400,12 +400,12 @@ start: // タイマースレッドによる中断の場合のみここに戻っ�
             err = arg->err;
             gai_errno = arg->gai_errno;
             if (err == 0) *ai = arg->ai;
-        } else if (arg->cancelled) { // cancel_getaddrinfo が呼ばれた (= 待機中に中断された)
+        } else if (arg->cancelled) { // cancel_getaddrinfo が呼ばれた (= 待機中に中断された) 場合
             retry = 1; // 中断理由がタイマースレッドだったとき用
-        } else { // rb_thread_call_without_gvl2 を呼ぶ前に中断されていた
+        } else { // rb_thread_call_without_gvl2 を呼ぶ前に中断されていた場合
             // If already interrupted, rb_thread_call_without_gvl2 may return without calling wait_getaddrinfo.
             // In this case, it could be !arg->done && !arg->cancelled.
-            arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo
+            arg->cancelled = 1; // to make do_getaddrinfo call freeaddrinfo (= 子スレッド側で freeaddrinfo を呼ぶ用)
             retry = 1; // 中断理由がタイマースレッドだったとき用
         }
 
