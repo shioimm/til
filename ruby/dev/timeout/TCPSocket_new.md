@@ -28,6 +28,14 @@ struct inetsock_arg
     VALUE open_timeout; // 追加
 };
 
+void
+rsock_raise_user_specified_timeout() // 追加
+{
+    VALUE errno_module = rb_const_get(rb_cObject, rb_intern("Errno"));
+    VALUE etimedout_error = rb_const_get(errno_module, rb_intern("ETIMEDOUT"));
+    rb_raise(etimedout_error, "user specified timeout");
+}
+
 struct fast_fallback_inetsock_arg
 {
     VALUE self;
@@ -212,21 +220,17 @@ init_inetsock_internal(VALUE v)
     VALUE resolv_timeout = arg->resolv_timeout;
     VALUE connect_timeout = arg->connect_timeout;
     VALUE open_timeout = arg->open_timeout; // 追加
+    VALUE timeout;
+    VALUE starts_at;
+    unsigned int timeout_msec;
 
-    // WIP この行はrsock_addrinfoの修正で追加したもの
-    unsigned int t = NIL_P(resolv_timeout) ? 0 : rsock_value_timeout_to_msec(resolv_timeout);
+    timeout = NIL_P(open_timeout) ? resolv_timeout : open_timeout;
+    timeout_msec = NIL_P(timeout) ? 0 : rsock_value_timeout_to_msec(timeout);
+    starts_at = current_clocktime();
 
-    // WIP この行はこの変更で追加したもの
-    VALUE timeout = NIL_P(open_timeout) ? resolv_timeout : open_timeout;
-    VALUE starts_at = current_clocktime();
-
-    // WIP rsock_addrinfoへの修正を適用済みの状態 (t)
-    // resolv_timeout でタイムアウトできるようになっている
     arg->remote.res = rsock_addrinfo(arg->remote.host, arg->remote.serv,
                                      family, SOCK_STREAM,
-                                     (type == INET_SERVER) ? AI_PASSIVE : 0, t);
-
-    // WIP ...というのを踏まえて全体を整理する。がんばる。
+                                     (type == INET_SERVER) ? AI_PASSIVE : 0, timeout_msec);
 
     // ...
     for (res = arg->remote.res->ai; res; res = res->ai_next) {
@@ -240,6 +244,7 @@ init_inetsock_internal(VALUE v)
             } else {
                 VALUE elapsed = rb_funcall(current_clocktime(), '-', 1, starts_at);
                 timeout = rb_funcall(open_timeout, '-', 1, elapsed);
+                if (rb_funcall(timeout, '<', 1, INT2FIX(0)) == Qtrue) rsock_raise_user_specified_timeout();
             }
 
             if (status >= 0) {
@@ -285,6 +290,8 @@ VALUE rsock_init_inetsock(
     VALUE resolv_timeout, VALUE connect_timeout, VALUE open_timeout, // open_timeout を追加
     VALUE _fast_fallback, VALUE _test_mode_settings
 )
+
+void rsock_raise_user_specified_timeout(void);
 ```
 
 ```c
