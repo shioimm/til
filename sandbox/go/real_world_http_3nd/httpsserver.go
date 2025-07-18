@@ -22,8 +22,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	server := &httpServer{
+		TLSConfig: &tls.Config{
+			ClientAuth: tls.RequireAndVerifyClientCert,
+			MinVersion: tls.VersionTLS12,
+		},
+		Addr: ":18443"
+	}
+
 	http.HandleFunc("/", handler)
 	log.Println("start http listening :18443")
-	err := http.ListenAndServeTLS(":18443", "server.crt", "server.key", nil)
+	err := server.ListenAndServeTLS("server.crt", "server.key", nil)
 	log.Println(err)
 }
