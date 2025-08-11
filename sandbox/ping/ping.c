@@ -17,6 +17,30 @@ struct round_trip {
     int count;
 };
 
+static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
+{
+    struct hostent *host;
+    struct sockaddr_in *dest_addr;
+    struct sockaddr dest_addr_storage;
+
+    dest_addr = (struct sockaddr_in *)&dest_addr_storage;
+    dest_addr->sin_family = AF_INET;
+    dest_addr->sin_addr.s_addr = inet_addr(hostname);
+
+    if (dest_addr->sin_addr.s_addr == INADDR_NONE) {
+        host = gethostbyname(hostname);
+        if (host == NULL) return -100;
+
+        dest_addr->sin_family = host->h_addrtype;
+        struct in_addr *addrp = &dest_addr->sin_addr;
+        memcpy(addrp, host->h_addr, host->h_length);
+    }
+
+    gettimeofday(sends_at, NULL);
+
+    return 0; // WIP
+}
+
 int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 {
     int sock;
@@ -29,9 +53,11 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
 
     int total_round_trip_time = 0;
     int total_round_trip_count = 0;
+    struct timeval sends_at;
 
     for (int i = 0; i < times; i++) {
-        ret = 0; // TODO Send ICMP Echo Request
+        // static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at);
+        ret = send_ping(sock, hostname, len, i + 1, &sends_at);
 
         if (ret == 0) {
             ret = 1; // TODO Receive ICMP Echo Reply
