@@ -12,7 +12,12 @@
 #include <unistd.h>
 #include <poll.h>
 
-int ping(char *hostname, int len, int times, int timeout)
+struct round_trip {
+    int time;
+    int count;
+};
+
+int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 {
     int sock;
     int ret;
@@ -42,31 +47,33 @@ int ping(char *hostname, int len, int times, int timeout)
 
     if (total_round_trip_count == 0) return -1;
 
-    // TODO
-    // total_round_trip_timeとtotal_round_trip_countの値を構造体に持たせる
-    // 往復時間はmainで計算する
-    // 返り値は成功・失敗の結果のみ返すようにする
-    return total_round_trip_time / total_round_trip_count;
+    rtt->time = total_round_trip_time;
+    rtt->count = total_round_trip_count;
+
+    return 0;
 }
 
 
 int main(int argc,char *argv[])
 {
     int ret;
+    struct round_trip rtt;
 
     if (argc < 2) {
         fprintf(stderr, "Error! Missing ping target\n");
         return EXIT_FAILURE;
     }
 
-    // ping(char *name, int len, int times, int timeout)
-    ret = ping(argv[1], 64, 5, 1);
+    // int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt);
+    ret = ping(argv[1], 64, 5, 1, &rtt);
 
     if (ret < 0) {
         printf("Error! %d\n", ret);
         return(EXIT_FAILURE);
     }
 
-    printf("RTT: %dms\n", ret);
+    double agv_rtt = (double)rtt.time / (double)rtt.count;
+
+    printf("RTT: %.2fms\n", agv_rtt);
     return EXIT_SUCCESS;
 }
