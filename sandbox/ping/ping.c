@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include <poll.h>
 
+#define BUFSIZE 1500
+#define ECHO_HEADER_SIZE sizeof(struct icmp)
+
 struct round_trip {
     int time;
     int count;
@@ -37,6 +40,31 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     }
 
     gettimeofday(sends_at, NULL);
+
+    struct icmp *icmp_header;
+    unsigned char icmp_message[BUFSIZE];
+    unsigned char *icmp_payload;
+    int icmp_payload_size;
+
+    memset(icmp_message, 0, BUFSIZE);
+    icmp_header = (struct icmp *)icmp_message;
+    icmp_header->icmp_type = ICMP_ECHO;
+    icmp_header->icmp_code = 0;
+    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
+    icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
+    icmp_header->icmp_cksum = 0;
+
+    icmp_payload = icmp_message + ECHO_HEADER_SIZE;
+    icmp_payload_size = len - ECHO_HEADER_SIZE; // ICMPヘッダの直後を指すポインタをセット
+
+    if (icmp_payload_size < (int)sizeof(struct timeval)) return -1;
+
+    memcpy(icmp_payload, sends_at, sizeof(struct timeval));
+    unsigned char *pads_at = icmp_payload + sizeof(struct timeval);
+    int padding_size = icmp_payload_size - sizeof(struct timeval);
+    memset(pads_at, 0xA5, padding_size);
+
+    // WIP
 
     return 0; // WIP
 }
