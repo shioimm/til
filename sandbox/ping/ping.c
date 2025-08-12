@@ -20,6 +20,31 @@ struct round_trip {
     int count;
 };
 
+static int calc_checksum(const void *icmp_header, size_t len)
+{
+    const uint8_t *p = (const uint8_t *)icmp_header;
+    uint32_t sum = 0;
+
+    while (len >= 2) {
+        uint8_t hi = p[0];
+        uint8_t lo = p[1];
+        uint16_t word = ((uint16_t)hi << 8) | (uint16_t)lo;
+        sum += word;
+        p += 2;
+        len -= 2;
+    }
+
+    if (len == 1) {
+        sum += (uint16_t)p[0] << 8;
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    return (uint16_t)~sum;
+}
+
 static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
     struct hostent *host;
@@ -63,6 +88,8 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     unsigned char *pads_at = icmp_payload + sizeof(struct timeval);
     int padding_size = icmp_payload_size - sizeof(struct timeval);
     memset(pads_at, 0xA5, padding_size);
+
+    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
 
     // WIP
 
