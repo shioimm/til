@@ -20,7 +20,7 @@ struct round_trip {
     int count;
 };
 
-static int calc_checksum(const void *icmp_header, size_t len)
+static uint16_t calc_checksum(const void *icmp_header, size_t len)
 {
     const uint8_t *p = (const uint8_t *)icmp_header;
     uint32_t sum = 0;
@@ -47,24 +47,24 @@ static int calc_checksum(const void *icmp_header, size_t len)
 
 static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
-    struct hostent *host;
-    struct sockaddr_in *dest_addr;
-    struct sockaddr dest_addr_storage;
+    if (len > BUFSIZE) return -100;
+    if (len < (int)sizeof(struct icmp)) return -100;
 
-    dest_addr = (struct sockaddr_in *)&dest_addr_storage;
-    dest_addr->sin_family = AF_INET;
-    dest_addr->sin_addr.s_addr = inet_addr(hostname);
+    struct sockaddr_in dest_addr;
+    memset(&dest_addr, 0, sizeof(dest_addr));
+    dest_addr.sin_family = AF_INET;
 
-    if (dest_addr->sin_addr.s_addr == INADDR_NONE) {
-        host = gethostbyname(hostname);
-        if (host == NULL) return -100;
-
-        dest_addr->sin_family = host->h_addrtype;
-        struct in_addr *addrp = &dest_addr->sin_addr;
-        memcpy(addrp, host->h_addr, host->h_length);
+    if (inet_pton(AF_INET, hostname, &dest_addr.sin_addr) != 1) {
+        struct addrinfo hints, *res = NULL;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_flags = AI_ADDRCONFIG;
+        if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -200;
+        memcpy(&dest_addr, res->ai_addr, sizeof(dest_addr));
+        freeaddrinfo(res);
     }
 
-    gettimeofday(sends_at, NULL);
+    if (gettimeofday(sends_at, NULL) != 0) return -200;
 
     struct icmp *icmp_header;
     unsigned char icmp_message[BUFSIZE];
@@ -91,15 +91,15 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
 
     icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
 
-    int n = sendto(
+    int ret = sendto(
         sock,
         icmp_message,
         len,
         0,
-        (struct sockaddr *)dest_addr,
-        sizeof(struct sockaddr)
+        (struct sockaddr *)&dest_addr,
+        sizeof(dest_addr)
     );
-    if (n != len) return -1000;
+    if (ret != len) return -1000;
 
     return 0;
 }
