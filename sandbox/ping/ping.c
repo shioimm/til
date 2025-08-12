@@ -91,9 +91,17 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
 
     icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
 
-    // WIP
+    int n = sendto(
+        sock,
+        icmp_message,
+        len,
+        0,
+        (struct sockaddr *)dest_addr,
+        sizeof(struct sockaddr)
+    );
+    if (n != len) return -1000;
 
-    return 0; // WIP
+    return 0;
 }
 
 int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
