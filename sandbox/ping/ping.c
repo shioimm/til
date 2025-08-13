@@ -20,26 +20,51 @@ struct round_trip {
     int count;
 };
 
-static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
+static uint16_t calc_checksum(const void *icmp_header, size_t len)
 {
-    struct hostent *host;
-    struct sockaddr_in *dest_addr;
-    struct sockaddr dest_addr_storage;
+    const uint8_t *p = (const uint8_t *)icmp_header;
+    uint32_t sum = 0;
 
-    dest_addr = (struct sockaddr_in *)&dest_addr_storage;
-    dest_addr->sin_family = AF_INET;
-    dest_addr->sin_addr.s_addr = inet_addr(hostname);
-
-    if (dest_addr->sin_addr.s_addr == INADDR_NONE) {
-        host = gethostbyname(hostname);
-        if (host == NULL) return -100;
-
-        dest_addr->sin_family = host->h_addrtype;
-        struct in_addr *addrp = &dest_addr->sin_addr;
-        memcpy(addrp, host->h_addr, host->h_length);
+    while (len >= 2) {
+        uint8_t hi = p[0];
+        uint8_t lo = p[1];
+        uint16_t word = ((uint16_t)hi << 8) | (uint16_t)lo;
+        sum += word;
+        p += 2;
+        len -= 2;
     }
 
-    gettimeofday(sends_at, NULL);
+    if (len == 1) {
+        sum += (uint16_t)p[0] << 8;
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    return (uint16_t)~sum;
+}
+
+static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
+{
+    if (len > BUFSIZE) return -100;
+    if (len < (int)sizeof(struct icmp)) return -100;
+
+    struct sockaddr_in dest_addr;
+    memset(&dest_addr, 0, sizeof(dest_addr));
+    dest_addr.sin_family = AF_INET;
+
+    if (inet_pton(AF_INET, hostname, &dest_addr.sin_addr) != 1) {
+        struct addrinfo hints, *res = NULL;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_flags = AI_ADDRCONFIG;
+        if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -200;
+        memcpy(&dest_addr, res->ai_addr, sizeof(dest_addr));
+        freeaddrinfo(res);
+    }
+
+    if (gettimeofday(sends_at, NULL) != 0) return -200;
 
     struct icmp *icmp_header;
     unsigned char icmp_message[BUFSIZE];
@@ -64,9 +89,19 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     int padding_size = icmp_payload_size - sizeof(struct timeval);
     memset(pads_at, 0xA5, padding_size);
 
-    // WIP
+    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
 
-    return 0; // WIP
+    int ret = sendto(
+        sock,
+        icmp_message,
+        len,
+        0,
+        (struct sockaddr *)&dest_addr,
+        sizeof(dest_addr)
+    );
+    if (ret != len) return -1000;
+
+    return 0;
 }
 
 int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
