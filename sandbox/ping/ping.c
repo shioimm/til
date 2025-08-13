@@ -16,7 +16,7 @@
 #define ECHO_HEADER_SIZE sizeof(struct icmp)
 
 struct round_trip {
-    int time;
+    double time;
     int count;
 };
 
@@ -122,6 +122,29 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     return 0;
 }
 
+static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout)
+{
+    char received_message[BUFSIZE];
+    memset(received_message, 0, BUFSIZE);
+
+    int ret = 0; // WIP
+    double past = 0.001; // WIP
+
+    for (;;) {
+        switch(ret) {
+            case 0: // 自プロセス宛のREPLYを正常に受信
+                return past * 1000.0;
+            case 1: // 他プロセス宛のREPLYを受信
+                // TODO タイムアウトしている場合はreturn -2000
+                break;
+            default: // 自プロセス宛のREPLYだが内容が異常
+                ;
+      }
+    }
+
+    return 0; // WIP
+}
+
 int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 {
     int sock;
@@ -132,7 +155,7 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
         return -300;
     }
 
-    int total_round_trip_time = 0;
+    double total_round_trip_time = 0.0;
     int total_round_trip_count = 0;
     struct timeval sends_at;
 
@@ -141,7 +164,7 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
         ret = send_ping(sock, hostname, len, i + 1, &sends_at);
 
         if (ret == 0) {
-            ret = 1; // TODO Receive ICMP Echo Reply
+            ret = recv_ping(sock, len, i + 1, &sends_at, timeout);
             if (ret >= 0) {
                 total_round_trip_time += ret;
                 total_round_trip_count++;
@@ -179,7 +202,7 @@ int main(int argc,char *argv[])
         return(EXIT_FAILURE);
     }
 
-    double agv_rtt = (double)rtt.time / (double)rtt.count;
+    double agv_rtt = rtt.time / (double)rtt.count;
 
     printf("RTT: %.2fms\n", agv_rtt);
     return EXIT_SUCCESS;
