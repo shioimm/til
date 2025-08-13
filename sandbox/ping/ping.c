@@ -65,6 +65,30 @@ static int prepare_dest_addr(struct sockaddr_in *dest_addr, char *hostname)
     return 0;
 }
 
+static void prepare_icmp_header(struct icmp *icmp_header, unsigned short seq, int len)
+{
+    icmp_header->icmp_type = ICMP_ECHO;
+    icmp_header->icmp_code = 0;
+    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
+    icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
+    icmp_header->icmp_cksum = 0;
+    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
+}
+
+static int prepare_icmp_payload(unsigned char *icmp_payload, int len, struct timeval *sends_at)
+{
+    int icmp_payload_size = len - ECHO_HEADER_SIZE; // ICMPヘッダの直後を指すポインタをセット
+    if (icmp_payload_size < (int)sizeof(struct timeval)) return -1;
+
+    memcpy(icmp_payload, sends_at, sizeof(struct timeval));
+
+    unsigned char *pads_at = icmp_payload + sizeof(struct timeval);
+    int padding_size = icmp_payload_size - sizeof(struct timeval);
+    memset(pads_at, 0xA5, padding_size);
+
+    return 0;
+}
+
 static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
     if (len > BUFSIZE) return -100;
@@ -74,30 +98,16 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     if (prepare_dest_addr(&dest_addr, hostname) != 0) return -200;
     if (gettimeofday(sends_at, NULL) != 0) return -200;
 
-    struct icmp *icmp_header;
     unsigned char icmp_message[BUFSIZE];
-    unsigned char *icmp_payload;
-    int icmp_payload_size;
-
     memset(icmp_message, 0, BUFSIZE);
+
+    struct icmp *icmp_header;
     icmp_header = (struct icmp *)icmp_message;
-    icmp_header->icmp_type = ICMP_ECHO;
-    icmp_header->icmp_code = 0;
-    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
-    icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
-    icmp_header->icmp_cksum = 0;
+    prepare_icmp_header(icmp_header, seq, len);
 
+    unsigned char *icmp_payload;
     icmp_payload = icmp_message + ECHO_HEADER_SIZE;
-    icmp_payload_size = len - ECHO_HEADER_SIZE; // ICMPヘッダの直後を指すポインタをセット
-
-    if (icmp_payload_size < (int)sizeof(struct timeval)) return -1;
-
-    memcpy(icmp_payload, sends_at, sizeof(struct timeval));
-    unsigned char *pads_at = icmp_payload + sizeof(struct timeval);
-    int padding_size = icmp_payload_size - sizeof(struct timeval);
-    memset(pads_at, 0xA5, padding_size);
-
-    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
+    if (prepare_icmp_payload(icmp_payload, len, sends_at) != 0) return -1;
 
     int ret = sendto(
         sock,
