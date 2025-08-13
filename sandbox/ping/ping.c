@@ -45,25 +45,33 @@ static uint16_t calc_checksum(const void *icmp_header, size_t len)
     return (uint16_t)~sum;
 }
 
+static int prepare_dest_addr(struct sockaddr_in *dest_addr, char *hostname)
+{
+    memset(dest_addr, 0, sizeof(struct sockaddr_in));
+    dest_addr->sin_family = AF_INET;
+
+    if (inet_pton(AF_INET, hostname, &dest_addr->sin_addr) == 1) return 0;
+
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_flags = AI_ADDRCONFIG;
+
+    if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -1;
+
+    memcpy(dest_addr, res->ai_addr, sizeof(struct sockaddr_in));
+    freeaddrinfo(res);
+
+    return 0;
+}
+
 static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
     if (len > BUFSIZE) return -100;
     if (len < (int)sizeof(struct icmp)) return -100;
 
     struct sockaddr_in dest_addr;
-    memset(&dest_addr, 0, sizeof(dest_addr));
-    dest_addr.sin_family = AF_INET;
-
-    if (inet_pton(AF_INET, hostname, &dest_addr.sin_addr) != 1) {
-        struct addrinfo hints, *res = NULL;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_INET;
-        hints.ai_flags = AI_ADDRCONFIG;
-        if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -200;
-        memcpy(&dest_addr, res->ai_addr, sizeof(dest_addr));
-        freeaddrinfo(res);
-    }
-
+    if (prepare_dest_addr(&dest_addr, hostname) != 0) return -200;
     if (gettimeofday(sends_at, NULL) != 0) return -200;
 
     struct icmp *icmp_header;
