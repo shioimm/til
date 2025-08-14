@@ -126,11 +126,44 @@ static int recv_ping(int sock, int len, unsigned short seq, struct timeval *send
 {
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
+    struct pollfd fds[1];
+    int result;
 
-    int ret = 0; // WIP
-    double past = 0.001; // WIP
+    struct sockaddr_in remote_addr;
+    socklen_t remote_addr_len = sizeof(remote_addr);
+
+    int read_bytes;
+    struct timeval received_at;
+
+    int ret;
+    double past;
 
     for (;;) {
+        fds[0].fd = sock;
+        fds[0].events = POLLIN|POLLERR;
+        result = poll(fds, 1, timeout * 1000);
+
+        if (result == 0) return -2000; // タイムアウト
+
+        if (result == -1) {
+            if (errno == EINTR) continue;
+            return -2010;
+        }
+
+        read_bytes = recvfrom(
+            sock,
+            received_message,
+            sizeof(received_message),
+            0,
+            (struct sockaddr *)&remote_addr,
+            &remote_addr_len
+        );
+
+        if (gettimeofday(&received_at, NULL) != 0) return -200;
+
+        ret = 0; // WIP
+        past = 0.001; // WIP
+
         switch(ret) {
             case 0: // 自プロセス宛のREPLYを正常に受信
                 return past * 1000.0;
