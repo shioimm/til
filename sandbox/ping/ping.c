@@ -16,7 +16,7 @@
 #define ECHO_HEADER_SIZE sizeof(struct icmp)
 
 struct round_trip {
-    int time;
+    double time;
     int count;
 };
 
@@ -45,51 +45,69 @@ static uint16_t calc_checksum(const void *icmp_header, size_t len)
     return (uint16_t)~sum;
 }
 
+static int prepare_dest_addr(struct sockaddr_in *dest_addr, char *hostname)
+{
+    memset(dest_addr, 0, sizeof(struct sockaddr_in));
+    dest_addr->sin_family = AF_INET;
+
+    if (inet_pton(AF_INET, hostname, &dest_addr->sin_addr) == 1) return 0;
+
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_flags = AI_ADDRCONFIG;
+
+    if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -1;
+
+    memcpy(dest_addr, res->ai_addr, sizeof(struct sockaddr_in));
+    freeaddrinfo(res);
+
+    return 0;
+}
+
+static void prepare_icmp_header(struct icmp *icmp_header, unsigned short seq, int len)
+{
+    icmp_header->icmp_type = ICMP_ECHO;
+    icmp_header->icmp_code = 0;
+    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
+    icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
+    icmp_header->icmp_cksum = 0;
+    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
+}
+
+static int prepare_icmp_payload(unsigned char *icmp_payload, int len, struct timeval *sends_at)
+{
+    int icmp_payload_size = len - ECHO_HEADER_SIZE; // ICMPヘッダの直後を指すポインタをセット
+    if (icmp_payload_size < (int)sizeof(struct timeval)) return -1;
+
+    memcpy(icmp_payload, sends_at, sizeof(struct timeval));
+
+    unsigned char *pads_at = icmp_payload + sizeof(struct timeval);
+    int padding_size = icmp_payload_size - sizeof(struct timeval);
+    memset(pads_at, 0xA5, padding_size);
+
+    return 0;
+}
+
 static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
     if (len > BUFSIZE) return -100;
     if (len < (int)sizeof(struct icmp)) return -100;
 
     struct sockaddr_in dest_addr;
-    memset(&dest_addr, 0, sizeof(dest_addr));
-    dest_addr.sin_family = AF_INET;
-
-    if (inet_pton(AF_INET, hostname, &dest_addr.sin_addr) != 1) {
-        struct addrinfo hints, *res = NULL;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_INET;
-        hints.ai_flags = AI_ADDRCONFIG;
-        if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -200;
-        memcpy(&dest_addr, res->ai_addr, sizeof(dest_addr));
-        freeaddrinfo(res);
-    }
-
+    if (prepare_dest_addr(&dest_addr, hostname) != 0) return -200;
     if (gettimeofday(sends_at, NULL) != 0) return -200;
 
-    struct icmp *icmp_header;
     unsigned char icmp_message[BUFSIZE];
-    unsigned char *icmp_payload;
-    int icmp_payload_size;
-
     memset(icmp_message, 0, BUFSIZE);
+
+    struct icmp *icmp_header;
     icmp_header = (struct icmp *)icmp_message;
-    icmp_header->icmp_type = ICMP_ECHO;
-    icmp_header->icmp_code = 0;
-    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
-    icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
-    icmp_header->icmp_cksum = 0;
+    prepare_icmp_header(icmp_header, seq, len);
 
+    unsigned char *icmp_payload;
     icmp_payload = icmp_message + ECHO_HEADER_SIZE;
-    icmp_payload_size = len - ECHO_HEADER_SIZE; // ICMPヘッダの直後を指すポインタをセット
-
-    if (icmp_payload_size < (int)sizeof(struct timeval)) return -1;
-
-    memcpy(icmp_payload, sends_at, sizeof(struct timeval));
-    unsigned char *pads_at = icmp_payload + sizeof(struct timeval);
-    int padding_size = icmp_payload_size - sizeof(struct timeval);
-    memset(pads_at, 0xA5, padding_size);
-
-    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
+    if (prepare_icmp_payload(icmp_payload, len, sends_at) != 0) return -1;
 
     int ret = sendto(
         sock,
@@ -104,6 +122,29 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     return 0;
 }
 
+static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout)
+{
+    char received_message[BUFSIZE];
+    memset(received_message, 0, BUFSIZE);
+
+    int ret = 0; // WIP
+    double past = 0.001; // WIP
+
+    for (;;) {
+        switch(ret) {
+            case 0: // 自プロセス宛のREPLYを正常に受信
+                return past * 1000.0;
+            case 1: // 他プロセス宛のREPLYを受信
+                // TODO タイムアウトしている場合はreturn -2000
+                break;
+            default: // 自プロセス宛のREPLYだが内容が異常
+                ;
+      }
+    }
+
+    return 0; // WIP
+}
+
 int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 {
     int sock;
@@ -114,7 +155,7 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
         return -300;
     }
 
-    int total_round_trip_time = 0;
+    double total_round_trip_time = 0.0;
     int total_round_trip_count = 0;
     struct timeval sends_at;
 
@@ -123,7 +164,7 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
         ret = send_ping(sock, hostname, len, i + 1, &sends_at);
 
         if (ret == 0) {
-            ret = 1; // TODO Receive ICMP Echo Reply
+            ret = recv_ping(sock, len, i + 1, &sends_at, timeout);
             if (ret >= 0) {
                 total_round_trip_time += ret;
                 total_round_trip_count++;
@@ -161,7 +202,7 @@ int main(int argc,char *argv[])
         return(EXIT_FAILURE);
     }
 
-    double agv_rtt = (double)rtt.time / (double)rtt.count;
+    double agv_rtt = rtt.time / (double)rtt.count;
 
     printf("RTT: %.2fms\n", agv_rtt);
     return EXIT_SUCCESS;
