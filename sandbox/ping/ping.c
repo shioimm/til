@@ -65,14 +65,13 @@ static int prepare_dest_addr(struct sockaddr_in *dest_addr, char *hostname)
     return 0;
 }
 
-static void prepare_icmp_header(struct icmp *icmp_header, unsigned short seq, int len)
+static void prepare_icmp_header(struct icmp *icmp_header, unsigned short seq)
 {
     icmp_header->icmp_type = ICMP_ECHO;
     icmp_header->icmp_code = 0;
     icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
     icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
     icmp_header->icmp_cksum = 0;
-    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
 }
 
 static int prepare_icmp_payload(unsigned char *icmp_payload, int len, struct timeval *sends_at)
@@ -103,11 +102,13 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
 
     struct icmp *icmp_header;
     icmp_header = (struct icmp *)icmp_message;
-    prepare_icmp_header(icmp_header, seq, len);
+    prepare_icmp_header(icmp_header, seq);
 
     unsigned char *icmp_payload;
     icmp_payload = icmp_message + ECHO_HEADER_SIZE;
     if (prepare_icmp_payload(icmp_payload, len, sends_at) != 0) return -1;
+
+    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
 
     int ret = sendto(
         sock,
@@ -126,11 +127,46 @@ static int recv_ping(int sock, int len, unsigned short seq, struct timeval *send
 {
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
+    struct pollfd fds[1];
+    int result;
 
-    int ret = 0; // WIP
-    double past = 0.001; // WIP
+    struct sockaddr_in remote_addr;
+    socklen_t remote_addr_len = sizeof(remote_addr);
+
+    int read_bytes;
+    struct timeval received_at;
+
+    int ret;
+    double past;
 
     for (;;) {
+        fds[0].fd = sock;
+        fds[0].events = POLLIN|POLLERR;
+        result = poll(fds, 1, timeout * 1000);
+
+        if (result == 0) {
+            return -2000; // タイムアウト
+        }
+
+        if (result == -1) {
+            if (errno == EINTR) continue;
+            return -2010;
+        }
+
+        read_bytes = recvfrom(
+            sock,
+            received_message,
+            sizeof(received_message),
+            0,
+            (struct sockaddr *)&remote_addr,
+            &remote_addr_len
+        );
+
+        if (gettimeofday(&received_at, NULL) != 0) return -200;
+
+        ret = 0; // WIP
+        past = 0.001; // WIP
+
         switch(ret) {
             case 0: // 自プロセス宛のREPLYを正常に受信
                 return past * 1000.0;
