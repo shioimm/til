@@ -109,7 +109,8 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     icmp_payload = icmp_message + ECHO_HEADER_SIZE;
     if (prepare_icmp_payload(icmp_payload, len, sends_at) != 0) return -1;
 
-    icmp_header->icmp_cksum = calc_checksum(icmp_message, (size_t)len);
+    uint16_t checksum = calc_checksum(icmp_message, (size_t)len);
+    icmp_header->icmp_cksum = htons(checksum); 
 
     int ret = sendto(
         sock,
