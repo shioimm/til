@@ -13,7 +13,7 @@
 #include <poll.h>
 
 #define BUFSIZE 1500
-#define ECHO_HEADER_SIZE sizeof(struct icmp)
+#define ECHO_HEADER_SIZE 8
 
 struct round_trip {
     double time;
@@ -45,12 +45,13 @@ static uint16_t calc_checksum(const void *icmp_header, size_t len)
     return (uint16_t)~sum;
 }
 
-static int prepare_dest_addr(struct sockaddr_in *dest_addr, char *hostname)
+static int prepare_dest(struct sockaddr_in *dest, char *hostname)
 {
-    memset(dest_addr, 0, sizeof(struct sockaddr_in));
-    dest_addr->sin_family = AF_INET;
+    memset(dest, 0, sizeof(struct sockaddr_in));
+    dest->sin_family = AF_INET;
+    dest->sin_len = sizeof(*dest);
 
-    if (inet_pton(AF_INET, hostname, &dest_addr->sin_addr) == 1) return 0;
+    if (inet_pton(AF_INET, hostname, &dest->sin_addr) == 1) return 0;
 
     struct addrinfo hints, *res = NULL;
     memset(&hints, 0, sizeof(hints));
@@ -59,7 +60,7 @@ static int prepare_dest_addr(struct sockaddr_in *dest_addr, char *hostname)
 
     if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -1;
 
-    memcpy(dest_addr, res->ai_addr, sizeof(struct sockaddr_in));
+    memcpy(dest, res->ai_addr, sizeof(struct sockaddr_in));
     freeaddrinfo(res);
 
     return 0;
@@ -91,14 +92,14 @@ static int prepare_icmp_payload(unsigned char *icmp_payload, int len, struct tim
 static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
     if (len > BUFSIZE) return -100;
-    if (len < (int)sizeof(struct icmp)) return -100;
+    if (len < ECHO_HEADER_SIZE) return -100;
 
-    struct sockaddr_in dest_addr;
-    if (prepare_dest_addr(&dest_addr, hostname) != 0) return -200;
+    struct sockaddr_in dest;
+    if (prepare_dest(&dest, hostname) != 0) return -200;
     if (gettimeofday(sends_at, NULL) != 0) return -200;
 
     unsigned char icmp_message[BUFSIZE];
-    memset(icmp_message, 0, BUFSIZE);
+    memset(icmp_message, 0, (size_t)len);
 
     struct icmp *icmp_header;
     icmp_header = (struct icmp *)icmp_message;
@@ -108,18 +109,25 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     icmp_payload = icmp_message + ECHO_HEADER_SIZE;
     if (prepare_icmp_payload(icmp_payload, len, sends_at) != 0) return -1;
 
-    icmp_header->icmp_cksum = calc_checksum(icmp_header, (size_t)len);
+    icmp_header->icmp_cksum = calc_checksum(icmp_message, (size_t)len);
 
     int ret = sendto(
         sock,
         icmp_message,
         len,
         0,
-        (struct sockaddr *)&dest_addr,
-        sizeof(dest_addr)
+        (struct sockaddr *)&dest,
+        sizeof(dest)
     );
     if (ret != len) return -1000;
 
+    return 0;
+}
+
+static int check_packet(char *received_message, int read_bytes, int len, struct sockaddr_in *from, unsigned short seq, int *ttl, struct timeval *sends_at, struct timeval *received_at, double *past)
+{
+    // WIP
+    *past = 0.001;
     return 0;
 }
 
@@ -130,13 +138,13 @@ static int recv_ping(int sock, int len, unsigned short seq, struct timeval *send
     struct pollfd fds[1];
     int result;
 
-    struct sockaddr_in remote_addr;
-    socklen_t remote_addr_len = sizeof(remote_addr);
+    struct sockaddr_in from;
+    socklen_t from_len = sizeof(from);
 
     int read_bytes;
     struct timeval received_at;
 
-    int ret;
+    int ret, ttl;
     double past;
 
     for (;;) {
@@ -158,14 +166,23 @@ static int recv_ping(int sock, int len, unsigned short seq, struct timeval *send
             received_message,
             sizeof(received_message),
             0,
-            (struct sockaddr *)&remote_addr,
-            &remote_addr_len
+            (struct sockaddr *)&from,
+            &from_len
         );
 
         if (gettimeofday(&received_at, NULL) != 0) return -200;
 
-        ret = 0; // WIP
-        past = 0.001; // WIP
+        ret = check_packet(
+            received_message,
+            read_bytes,
+            len,
+            &from,
+            seq,
+            &ttl,
+            sends_at,
+            &received_at,
+            &past
+        );
 
         switch(ret) {
             case 0: // 自プロセス宛のREPLYを正常に受信
@@ -220,7 +237,7 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
 }
 
 
-int main(int argc,char *argv[])
+int main(int argc, char *argv[])
 {
     int ret;
     struct round_trip rtt;
