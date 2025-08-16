@@ -168,7 +168,7 @@ recv_ping(
 ) {
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
-    struct pollfd fds[1];
+    struct pollfd pfd = { .fd = sock, .events = POLLIN | POLLERR };
     int nready;
 
     struct sockaddr_in from;
@@ -181,9 +181,7 @@ recv_ping(
     double past;
 
     for (;;) {
-        fds[0].fd = sock;
-        fds[0].events = POLLIN|POLLERR;
-        nready = poll(fds, 1, timeout * 1000);
+        nready = poll(&pfd, 1, timeout * 1000);
 
         if (nready == 0) {
             return -2000; // タイムアウト
@@ -193,6 +191,8 @@ recv_ping(
             if (errno == EINTR) continue;
             return -2010;
         }
+
+        if (!(pfd.revents & POLLIN)) continue;
 
         read_bytes = recvfrom(
             sock,
