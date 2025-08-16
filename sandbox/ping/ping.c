@@ -20,6 +20,14 @@ struct round_trip {
     int count;
 };
 
+struct ping_result {
+    int received_bytes;
+    struct in_addr *from;
+    int seq;
+    int ttl;
+    double time;
+};
+
 static uint16_t
 calc_checksum(const void *icmp_header, size_t len)
 {
@@ -130,6 +138,7 @@ send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval 
     return 0;
 }
 
+// TOOD ping_result経由で渡せそうな引数を整理する
 static int
 check_packet(
     char *received_message,
@@ -140,7 +149,8 @@ check_packet(
     int *ttl,
     struct timeval *sends_at,
     struct timeval *received_at,
-    double *past
+    double *past,
+    struct ping_result *result
 ) {
     // WIP
     *past = 0.001;
@@ -148,12 +158,18 @@ check_packet(
 }
 
 static int
-recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout)
-{
+recv_ping(
+    int sock,
+    int len,
+    unsigned short seq,
+    struct timeval *sends_at,
+    int timeout,
+    struct ping_result *result
+) {
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
     struct pollfd fds[1];
-    int result;
+    int nready;
 
     struct sockaddr_in from;
     socklen_t from_len = sizeof(from);
@@ -167,13 +183,13 @@ recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int t
     for (;;) {
         fds[0].fd = sock;
         fds[0].events = POLLIN|POLLERR;
-        result = poll(fds, 1, timeout * 1000);
+        nready = poll(fds, 1, timeout * 1000);
 
-        if (result == 0) {
+        if (nready == 0) {
             return -2000; // タイムアウト
         }
 
-        if (result == -1) {
+        if (nready == -1) {
             if (errno == EINTR) continue;
             return -2010;
         }
@@ -198,7 +214,8 @@ recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int t
             &ttl,
             sends_at,
             &received_at,
-            &past
+            &past,
+            result
         );
 
         switch(ret) {
@@ -229,14 +246,15 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
     double total_round_trip_time = 0.0;
     int total_round_trip_count = 0;
     struct timeval sends_at;
+    struct ping_result result;
 
     for (int i = 0; i < times; i++) {
         // static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at);
         ret = send_ping(sock, hostname, len, i + 1, &sends_at);
 
         if (ret == 0) {
-            // static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout);
-            ret = recv_ping(sock, len, i + 1, &sends_at, timeout);
+            // static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout, struct ping_result *result);
+            ret = recv_ping(sock, len, i + 1, &sends_at, timeout, &result);
             if (ret >= 0) {
                 total_round_trip_time += ret;
                 total_round_trip_count++;
