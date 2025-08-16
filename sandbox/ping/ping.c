@@ -20,7 +20,8 @@ struct round_trip {
     int count;
 };
 
-static uint16_t calc_checksum(const void *icmp_header, size_t len)
+static uint16_t
+calc_checksum(const void *icmp_header, size_t len)
 {
     const uint8_t *p = (const uint8_t *)icmp_header;
     uint32_t sum = 0;
@@ -45,7 +46,8 @@ static uint16_t calc_checksum(const void *icmp_header, size_t len)
     return (uint16_t)~sum;
 }
 
-static int prepare_dest(struct sockaddr_in *dest, char *hostname)
+static int
+prepare_dest(struct sockaddr_in *dest, char *hostname)
 {
     memset(dest, 0, sizeof(struct sockaddr_in));
     dest->sin_family = AF_INET;
@@ -66,7 +68,8 @@ static int prepare_dest(struct sockaddr_in *dest, char *hostname)
     return 0;
 }
 
-static void prepare_icmp_header(struct icmp *icmp_header, unsigned short seq)
+static void
+prepare_icmp_header(struct icmp *icmp_header, unsigned short seq)
 {
     icmp_header->icmp_type = ICMP_ECHO;
     icmp_header->icmp_code = 0;
@@ -75,7 +78,8 @@ static void prepare_icmp_header(struct icmp *icmp_header, unsigned short seq)
     icmp_header->icmp_cksum = 0;
 }
 
-static int prepare_icmp_payload(unsigned char *icmp_payload, int len, struct timeval *sends_at)
+static int
+prepare_icmp_payload(unsigned char *icmp_payload, int len, struct timeval *sends_at)
 {
     int icmp_payload_size = len - ECHO_HEADER_SIZE; // ICMPヘッダの直後を指すポインタをセット
     if (icmp_payload_size < (int)sizeof(struct timeval)) return -1;
@@ -89,7 +93,8 @@ static int prepare_icmp_payload(unsigned char *icmp_payload, int len, struct tim
     return 0;
 }
 
-static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
+static int
+send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
 {
     if (len > BUFSIZE) return -100;
     if (len < ECHO_HEADER_SIZE) return -100;
@@ -125,14 +130,25 @@ static int send_ping(int sock, char *hostname, int len, unsigned short seq, stru
     return 0;
 }
 
-static int check_packet(char *received_message, int read_bytes, int len, struct sockaddr_in *from, unsigned short seq, int *ttl, struct timeval *sends_at, struct timeval *received_at, double *past)
-{
+static int
+check_packet(
+    char *received_message,
+    int read_bytes,
+    int len,
+    struct sockaddr_in *from,
+    unsigned short seq,
+    int *ttl,
+    struct timeval *sends_at,
+    struct timeval *received_at,
+    double *past
+) {
     // WIP
     *past = 0.001;
     return 0;
 }
 
-static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout)
+static int
+recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout)
 {
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
@@ -199,7 +215,8 @@ static int recv_ping(int sock, int len, unsigned short seq, struct timeval *send
     return 0; // WIP
 }
 
-int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
+int
+ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 {
     int sock;
     int ret;
@@ -218,6 +235,7 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
         ret = send_ping(sock, hostname, len, i + 1, &sends_at);
 
         if (ret == 0) {
+            // static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout);
             ret = recv_ping(sock, len, i + 1, &sends_at, timeout);
             if (ret >= 0) {
                 total_round_trip_time += ret;
@@ -238,7 +256,8 @@ int ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt
 }
 
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
     int ret;
     struct round_trip rtt;
