@@ -140,7 +140,7 @@ send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval 
 
 // TOOD ping_result経由で渡せそうな引数を整理する
 static int
-check_packet(
+parse_icmp_reply(
     char *received_message,
     int read_bytes,
     int len,
@@ -205,7 +205,7 @@ recv_ping(
 
         if (gettimeofday(&received_at, NULL) != 0) return -200;
 
-        ret = check_packet(
+        ret = parse_icmp_reply(
             received_message,
             read_bytes,
             len,
