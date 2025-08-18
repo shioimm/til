@@ -23,9 +23,9 @@ struct round_trip {
 struct ping_record {
     int received_bytes;
     struct sockaddr_in *from;
-    socklen_t *from_len;
+    socklen_t from_len;
     int seq;
-    int *ttl;
+    unsigned int ttl;
     double time;
 };
 
@@ -149,8 +149,20 @@ parse_icmp_reply(
     double *past,
     struct ping_record *record
 ) {
+    // RTTを計算(ms)
+    double past_sec = (double)(received_at->tv_sec - sends_at->tv_sec);
+    double past_usec = (double)(received_at->tv_usec - sends_at->tv_usec);
+    *past = past_sec + past_usec / 1000000.0;
+
+    struct ip *ip_header;
+
+    // 受信バッファにはIPヘッダも含まれている
+    ip_header = (struct ip *)received_message;
+    record->ttl = (unsigned int)ip_header->ip_ttl;
+
+    struct icmp *icmp_header;
+
     // WIP
-    *past = 0.001;
     record->received_bytes = 10;
     record->time = 1.0;
 
@@ -197,7 +209,7 @@ recv_ping(
             sizeof(received_message),
             0,
             (struct sockaddr *)record->from,
-            record->from_len
+            &record->from_len
         );
 
         if (gettimeofday(&received_at, NULL) != 0) return -200;
@@ -248,7 +260,7 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 
         record.from = &from;
         socklen_t from_len = sizeof(from);
-        record.from_len = &from_len;
+        record.from_len = from_len;
         record.seq = seq;
 
         // static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at);
@@ -268,7 +280,7 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
             record.received_bytes,
             inet_ntoa(record.from->sin_addr),
             record.seq,
-            *record.ttl,
+            record.ttl,
             record.time
         );
 
