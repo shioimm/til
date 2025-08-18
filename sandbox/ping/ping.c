@@ -161,6 +161,12 @@ parse_icmp_reply(
     record->ttl = (unsigned int)ip_header->ip_ttl;
 
     struct icmp *icmp_header;
+    icmp_header = (struct icmp *)(received_message + ip_header->ip_hl * 4);
+    
+    if(ntohs(icmp_header->icmp_id) != (unsigned short)getpid()) return 1;
+    if(read_bytes < len + ip_header->ip_hl * 4) return -3000;
+	if(icmp_header->icmp_type != ICMP_ECHOREPLY) return -3010;
+	if(ntohs(icmp_header->icmp_seq) != record->seq) return -3030;
 
     // WIP
     record->received_bytes = 10;
