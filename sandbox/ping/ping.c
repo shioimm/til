@@ -20,12 +20,12 @@ struct round_trip {
     int count;
 };
 
-struct ping_result {
+struct ping_record {
     int received_bytes;
     struct sockaddr_in *from;
-    socklen_t *from_len;
+    socklen_t from_len;
     int seq;
-    int *ttl;
+    unsigned int ttl;
     double time;
 };
 
@@ -147,12 +147,30 @@ parse_icmp_reply(
     struct timeval *sends_at,
     struct timeval *received_at,
     double *past,
-    struct ping_result *result
+    struct ping_record *record
 ) {
+    // RTTを計算(ms)
+    double past_sec = (double)(received_at->tv_sec - sends_at->tv_sec);
+    double past_usec = (double)(received_at->tv_usec - sends_at->tv_usec);
+    *past = past_sec + past_usec / 1000000.0;
+
+    struct ip *ip_header;
+
+    // 受信バッファにはIPヘッダも含まれている
+    ip_header = (struct ip *)received_message;
+    record->ttl = (unsigned int)ip_header->ip_ttl;
+
+    struct icmp *icmp_header;
+    icmp_header = (struct icmp *)(received_message + ip_header->ip_hl * 4);
+    
+    if(ntohs(icmp_header->icmp_id) != (unsigned short)getpid()) return 1;
+    if(read_bytes < len + ip_header->ip_hl * 4) return -3000;
+	if(icmp_header->icmp_type != ICMP_ECHOREPLY) return -3010;
+	if(ntohs(icmp_header->icmp_seq) != record->seq) return -3030;
+
     // WIP
-    *past = 0.001;
-    result->received_bytes = 10;
-    result->time = 1.0;
+    record->received_bytes = 10;
+    record->time = 1.0;
 
     return 0;
 }
@@ -164,7 +182,7 @@ recv_ping(
     unsigned short seq,
     struct timeval *sends_at,
     int timeout,
-    struct ping_result *result
+    struct ping_record *record
 ) {
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
@@ -196,8 +214,8 @@ recv_ping(
             received_message,
             sizeof(received_message),
             0,
-            (struct sockaddr *)result->from,
-            result->from_len
+            (struct sockaddr *)record->from,
+            &record->from_len
         );
 
         if (gettimeofday(&received_at, NULL) != 0) return -200;
@@ -209,7 +227,7 @@ recv_ping(
             sends_at,
             &received_at,
             &past,
-            result
+            record
         );
 
         switch(ret) {
@@ -242,21 +260,21 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
     struct timeval sends_at;
 
     for (int i = 0; i < times; i++) {
-        struct ping_result result;
+        struct ping_record record;
         struct sockaddr_in from;
         int seq = i + 1;
 
-        result.from = &from;
+        record.from = &from;
         socklen_t from_len = sizeof(from);
-        result.from_len = &from_len;
-        result.seq = seq;
+        record.from_len = from_len;
+        record.seq = seq;
 
         // static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at);
         ret = send_ping(sock, hostname, len, seq, &sends_at);
 
         if (ret == 0) {
-            // static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout, struct ping_result *result);
-            ret = recv_ping(sock, len, seq, &sends_at, timeout, &result);
+            // static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout, struct ping_record *record);
+            ret = recv_ping(sock, len, seq, &sends_at, timeout, &record);
             if (ret >= 0) {
                 total_round_trip_time += ret;
                 total_round_trip_count++;
@@ -265,11 +283,11 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
 
         printf(
             "%d bytes from %s: icmp_seq=%d ttl=%d time=%.2f ms\n",
-            result.received_bytes,
-            inet_ntoa(result.from->sin_addr),
-            result.seq,
-            *result.ttl,
-            result.time
+            record.received_bytes,
+            inet_ntoa(record.from->sin_addr),
+            record.seq,
+            record.ttl,
+            record.time
         );
 
         sleep(1);
