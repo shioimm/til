@@ -20,6 +20,16 @@ class Ping
 
     puts "RTT (Avg): #{@total_time / @total_count}ms"
   end
+
+  private
+
+  def send
+    # WIP
+  end
+
+  def recv
+    # WIP
+  end
 end
 
 dest = ARGV.first
