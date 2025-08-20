@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/ip_icmp.h>
+#include <netinet/ip.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,9 +61,8 @@ calc_checksum(const void *icmp_header, size_t len)
 static int
 prepare_dest(struct sockaddr_in *dest, char *hostname)
 {
-    memset(dest, 0, sizeof(struct sockaddr_in));
+    memset(dest, 0, sizeof(*dest));
     dest->sin_family = AF_INET;
-    dest->sin_len = sizeof(*dest);
 
     if (inet_pton(AF_INET, hostname, &dest->sin_addr) == 1) return 0;
 
@@ -70,6 +70,7 @@ prepare_dest(struct sockaddr_in *dest, char *hostname)
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_flags = AI_ADDRCONFIG;
+    hints.ai_socktype = SOCK_RAW;
 
     if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -1;
 
@@ -84,7 +85,7 @@ prepare_icmp_header(struct icmp *icmp_header, unsigned short seq)
 {
     icmp_header->icmp_type = ICMP_ECHO;
     icmp_header->icmp_code = 0;
-    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
+    icmp_header->icmp_id = htons((uint16_t)(getpid() & 0xFFFF)); // 識別子にPIDを使用
     icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
     icmp_header->icmp_cksum = 0;
 }
@@ -128,15 +129,22 @@ send_ping(int sock, char *hostname, int len, struct ping_record *record)
     uint16_t checksum = calc_checksum(icmp_message, (size_t)len);
     icmp_header->icmp_cksum = htons(checksum); 
 
-    int ret = sendto(
-        sock,
-        icmp_message,
-        len,
-        0,
-        (struct sockaddr *)&dest,
-        sizeof(dest)
-    );
-    if (ret != len) return -1000;
+    while (1) {
+      int ret = sendto(
+          sock,
+          icmp_message,
+          len,
+          0,
+          (struct sockaddr *)&dest,
+          sizeof(dest)
+      );
+
+      if (ret != len) {
+        if (errno == EINTR) continue;
+        return -1000;
+      }
+      break;
+    }
 
     return 0;
 }
