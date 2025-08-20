@@ -168,9 +168,25 @@ parse_icmp_reply(
 	if(icmp_header->icmp_type != ICMP_ECHOREPLY) return -3010;
 	if(ntohs(icmp_header->icmp_seq) != record->seq) return -3030;
 
-    // WIP
-    record->received_bytes = 10;
-    record->time = 1.0;
+    // ICMPペイロードの先頭を取得
+    unsigned char *ptr;
+    ptr = (unsigned char *)(received_message + ip_header->ip_hl * 4 + ECHO_HEADER_SIZE);
+    // 送信時刻をsends_atにコピー
+    memcpy(sends_at, ptr, sizeof(struct timeval));
+    // ICMPペイロードの先頭を際取得
+    ptr += sizeof(struct timeval);
+
+    int received_bytes;
+    received_bytes = read_bytes - ip_header->ip_hl * 4;
+    unsigned char *padding = ptr;
+    size_t padding_len = received_bytes - ECHO_HEADER_SIZE - sizeof(struct timeval);
+
+    for (size_t i = 0; i < padding_len; i++) {
+        if (padding[i] != 0xA5) return -3040;
+    }
+
+    record->received_bytes = received_bytes;
+    record->time = *past * 1000.0;
 
     return 0;
 }
