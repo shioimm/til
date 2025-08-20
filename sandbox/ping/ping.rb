@@ -13,8 +13,12 @@ class Ping
   end
 
   def execute!
-    agv = 1 / 1 # WIP
-    puts "RTT (Avg): #{agv}ms"
+    @count.times do |i|
+      @total_time += 1 # WIP
+      @total_count += 1 # WIP
+    end
+
+    puts "RTT (Avg): #{@total_time / @total_count}ms"
   end
 end
 
