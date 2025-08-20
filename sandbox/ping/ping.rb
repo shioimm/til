@@ -5,6 +5,11 @@ class Ping
 
   def initialize(dest)
     @dest = dest
+    @size = 64
+    @count = 5
+    @timeout = 1
+    @total_time = 0
+    @total_count = 0
   end
 
   def execute!
