@@ -244,7 +244,7 @@ recv_ping(int sock, int len, int timeout, struct ping_record *record)
 
         switch(ret) {
             case 0: // 自プロセス宛のREPLYを正常に受信
-                return record->time;
+                return 0;
             case 1: // 他プロセス宛のREPLYを受信
                 if(past > timeout) return -2000;
                 break;
@@ -288,8 +288,8 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
         if (ret == 0) {
             // static int recv_ping(int sock, int len, int timeout, struct ping_record *record);
             ret = recv_ping(sock, len, timeout, &record);
-            if (ret >= 0) {
-                total_round_trip_time += ret;
+            if (ret == 0) {
+                total_round_trip_time += record.time;
                 total_round_trip_count++;
             }
         }
@@ -338,6 +338,6 @@ main(int argc, char *argv[])
 
     double agv_rtt = rtt.time / (double)rtt.count;
 
-    printf("RTT: %.2fms\n", agv_rtt);
+    printf("RTT (Avg): %.2fms\n", agv_rtt);
     return EXIT_SUCCESS;
 }
