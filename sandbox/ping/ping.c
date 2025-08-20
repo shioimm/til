@@ -162,8 +162,10 @@ parse_icmp_reply(
 
     struct icmp *icmp_header;
     icmp_header = (struct icmp *)(received_message + ip_header->ip_hl * 4);
-    
+
+    // 他プロセス宛のREPLYを受信
     if(ntohs(icmp_header->icmp_id) != (unsigned short)getpid()) return 1;
+
     if(read_bytes < len + ip_header->ip_hl * 4) return -3000;
 	if(icmp_header->icmp_type != ICMP_ECHOREPLY) return -3010;
 	if(ntohs(icmp_header->icmp_seq) != record->seq) return -3030;
@@ -242,9 +244,9 @@ recv_ping(int sock, int len, int timeout, struct ping_record *record)
 
         switch(ret) {
             case 0: // 自プロセス宛のREPLYを正常に受信
-                return past * 1000.0;
+                return record->time;
             case 1: // 他プロセス宛のREPLYを受信
-                // TODO タイムアウトしている場合はreturn -2000
+                if(past > timeout) return -2000;
                 break;
             default: // 自プロセス宛のREPLYだが内容が異常
                 ;
