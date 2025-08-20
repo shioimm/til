@@ -341,7 +341,7 @@ main(int argc, char *argv[])
 
     if (ret < 0) {
         printf("Error! %d\n", ret);
-        return(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     double agv_rtt = rtt.time / (double)rtt.count;
