@@ -3,6 +3,27 @@ require "socket"
 ECHO_HEADER_SIZE = 8
 
 class Ping
+  class ICMPPacket
+    TYPE = { request: 8, reply: 0 }
+
+    def initialize(type, seq)
+      @type = TYPE(type)
+      @code = 0
+      @id = Process.pid & 0xffff
+      @seq = seq
+    end
+
+    def message
+      # WIP
+    end
+
+    private
+
+    def calc_checksum
+      # WIP
+    end
+  end
+
   def self.execute!(dest)
     new(dest).execute!
   end
@@ -20,7 +41,7 @@ class Ping
 
   def execute!
     @count.times.each.with_index(1) do |seq|
-      sent_at = send_echo
+      sent_at = send_echo(seq)
       receive_reply(sent_at)
       @total_time += 1 # WIP
       @total_count += 1 # WIP
@@ -33,15 +54,11 @@ class Ping
 
   private
 
-  def send_echo
+  def send_request(seq)
     # WIP
-    sent_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    header = ""
-    payload = ""
-    echo_message = header + payload
-
+    echo_message = ICMPPacket.new(:request, seq).message
     @sock.send(echo_message, 0, @addr)
-    sent_at
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
   def receive_reply(sent_at)
