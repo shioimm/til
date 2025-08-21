@@ -8,8 +8,8 @@ class Ping
     WORD_MASK = 0xFFFF
     PAD_OCTET = "\x00".b
 
-    def initialize(seq, sends_at)
-      @id = Process.pid & WORD_MASK
+    def initialize(id, seq, sends_at)
+      @id = id & WORD_MASK
       @seq = seq & WORD_MASK
       @sends_at = sends_at
     end
@@ -50,14 +50,17 @@ class Ping
     end
   end
 
+  ICMP_PACKET_SIZE = 64
+
   def self.execute!(dest)
     new(dest).execute!
   end
 
-  def initialize(dest)
-    @size = 64
-    @count = 5
-    @timeout = 1
+  def initialize(dest, count: 5, timeout: 1)
+    @size = ICMP_PACKET_SIZE
+    @count = count
+    @timeout = timeout
+    @id = Process.pid
     @total_time = 0
     @total_count = 0
 
@@ -82,7 +85,7 @@ class Ping
   private
 
   def send_request!(seq, sends_at)
-    message = ICMPRequestPacket.new(seq, sends_at).message
+    message = ICMPRequestPacket.new(@id, seq, sends_at).message
     @sock.send(message, 0, @addr)
   end
 
