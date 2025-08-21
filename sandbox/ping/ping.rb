@@ -1,3 +1,7 @@
+require "socket"
+
+ECHO_HEADER_SIZE = 8
+
 class Ping
   def self.execute!(dest)
     new(dest).execute!
@@ -14,8 +18,12 @@ class Ping
 
   def execute!
     @count.times.each.with_index(1) do |seq|
+      send_echo
+      receive_reply
       @total_time += 1 # WIP
       @total_count += 1 # WIP
+
+      sleep 1
     end
 
     puts "RTT (Avg): #{@total_time / @total_count}ms"
@@ -23,11 +31,11 @@ class Ping
 
   private
 
-  def send
+  def send_echo
     # WIP
   end
 
-  def recv
+  def receive_reply
     # WIP
   end
 end
