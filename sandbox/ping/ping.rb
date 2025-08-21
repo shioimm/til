@@ -13,7 +13,7 @@ class Ping
   end
 
   def execute!
-    @count.times do |i|
+    @count.times.each.with_index(1) do |seq|
       @total_time += 1 # WIP
       @total_count += 1 # WIP
     end
