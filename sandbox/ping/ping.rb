@@ -8,18 +8,20 @@ class Ping
   end
 
   def initialize(dest)
-    @dest = dest
     @size = 64
     @count = 5
     @timeout = 1
     @total_time = 0
     @total_count = 0
+
+    @sock = Socket.new(Socket::AF_INET, Socket::SOCK_RAW, Socket::IPPROTO_ICMP)
+    @addr = Socket.sockaddr_in(0, dest)
   end
 
   def execute!
     @count.times.each.with_index(1) do |seq|
-      send_echo
-      receive_reply
+      sent_at = send_echo
+      receive_reply(sent_at)
       @total_time += 1 # WIP
       @total_count += 1 # WIP
 
@@ -33,9 +35,16 @@ class Ping
 
   def send_echo
     # WIP
+    sent_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    header = ""
+    payload = ""
+    echo_message = header + payload
+
+    @sock.send(echo_message, 0, @addr)
+    sent_at
   end
 
-  def receive_reply
+  def receive_reply(sent_at)
     # WIP
   end
 end
