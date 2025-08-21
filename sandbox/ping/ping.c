@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/ip_icmp.h>
+#include <netinet/ip.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,8 @@ struct round_trip {
 
 struct ping_record {
     int received_bytes;
+    struct timeval *sends_at;
+    struct timeval *received_at;
     struct sockaddr_in *from;
     socklen_t from_len;
     int seq;
@@ -58,9 +61,8 @@ calc_checksum(const void *icmp_header, size_t len)
 static int
 prepare_dest(struct sockaddr_in *dest, char *hostname)
 {
-    memset(dest, 0, sizeof(struct sockaddr_in));
+    memset(dest, 0, sizeof(*dest));
     dest->sin_family = AF_INET;
-    dest->sin_len = sizeof(*dest);
 
     if (inet_pton(AF_INET, hostname, &dest->sin_addr) == 1) return 0;
 
@@ -68,6 +70,7 @@ prepare_dest(struct sockaddr_in *dest, char *hostname)
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_flags = AI_ADDRCONFIG;
+    hints.ai_socktype = SOCK_RAW;
 
     if (getaddrinfo(hostname, NULL, &hints, &res) != 0) return -1;
 
@@ -82,7 +85,7 @@ prepare_icmp_header(struct icmp *icmp_header, unsigned short seq)
 {
     icmp_header->icmp_type = ICMP_ECHO;
     icmp_header->icmp_code = 0;
-    icmp_header->icmp_id = htons((uint16_t)getpid()); // 識別子にPIDを使用
+    icmp_header->icmp_id = htons((uint16_t)(getpid() & 0xFFFF)); // 識別子にPIDを使用
     icmp_header->icmp_seq = htons(seq); // シーケンス番号を設定
     icmp_header->icmp_cksum = 0;
 }
@@ -103,38 +106,45 @@ prepare_icmp_payload(unsigned char *icmp_payload, int len, struct timeval *sends
 }
 
 static int
-send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at)
+send_ping(int sock, char *hostname, int len, struct ping_record *record)
 {
     if (len > BUFSIZE) return -100;
     if (len < ECHO_HEADER_SIZE) return -100;
 
     struct sockaddr_in dest;
     if (prepare_dest(&dest, hostname) != 0) return -200;
-    if (gettimeofday(sends_at, NULL) != 0) return -200;
+    if (gettimeofday(record->sends_at, NULL) != 0) return -200;
 
     unsigned char icmp_message[BUFSIZE];
     memset(icmp_message, 0, (size_t)len);
 
     struct icmp *icmp_header;
     icmp_header = (struct icmp *)icmp_message;
-    prepare_icmp_header(icmp_header, seq);
+    prepare_icmp_header(icmp_header, record->seq);
 
     unsigned char *icmp_payload;
     icmp_payload = icmp_message + ECHO_HEADER_SIZE;
-    if (prepare_icmp_payload(icmp_payload, len, sends_at) != 0) return -1;
+    if (prepare_icmp_payload(icmp_payload, len, record->sends_at) != 0) return -1;
 
     uint16_t checksum = calc_checksum(icmp_message, (size_t)len);
     icmp_header->icmp_cksum = htons(checksum); 
 
-    int ret = sendto(
-        sock,
-        icmp_message,
-        len,
-        0,
-        (struct sockaddr *)&dest,
-        sizeof(dest)
-    );
-    if (ret != len) return -1000;
+    while (1) {
+      int ret = sendto(
+          sock,
+          icmp_message,
+          len,
+          0,
+          (struct sockaddr *)&dest,
+          sizeof(dest)
+      );
+
+      if (ret != len) {
+        if (errno == EINTR) continue;
+        return -1000;
+      }
+      break;
+    }
 
     return 0;
 }
@@ -144,14 +154,12 @@ parse_icmp_reply(
     char *received_message,
     int read_bytes,
     int len,
-    struct timeval *sends_at,
-    struct timeval *received_at,
     double *past,
     struct ping_record *record
 ) {
     // RTTを計算(ms)
-    double past_sec = (double)(received_at->tv_sec - sends_at->tv_sec);
-    double past_usec = (double)(received_at->tv_usec - sends_at->tv_usec);
+    double past_sec = (double)(record->received_at->tv_sec - record->sends_at->tv_sec);
+    double past_usec = (double)(record->received_at->tv_usec - record->sends_at->tv_usec);
     *past = past_sec + past_usec / 1000000.0;
 
     struct ip *ip_header;
@@ -162,28 +170,41 @@ parse_icmp_reply(
 
     struct icmp *icmp_header;
     icmp_header = (struct icmp *)(received_message + ip_header->ip_hl * 4);
-    
+
+    // 他プロセス宛のREPLYを受信
     if(ntohs(icmp_header->icmp_id) != (unsigned short)getpid()) return 1;
+
     if(read_bytes < len + ip_header->ip_hl * 4) return -3000;
 	if(icmp_header->icmp_type != ICMP_ECHOREPLY) return -3010;
 	if(ntohs(icmp_header->icmp_seq) != record->seq) return -3030;
 
-    // WIP
-    record->received_bytes = 10;
-    record->time = 1.0;
+    // ICMPペイロードの先頭を取得
+    int header_bytes = ip_header->ip_hl * 4;
+    unsigned char *ptr = (unsigned char *)(received_message + header_bytes + ECHO_HEADER_SIZE);
+
+    // 送信時刻をsends_atにコピー
+    memcpy(record->sends_at, ptr, sizeof(struct timeval));
+
+    // ICMPペイロードの先頭を際取得
+    ptr += sizeof(struct timeval);
+
+    int received_bytes = read_bytes - header_bytes;
+    unsigned char *padding = ptr;
+    size_t padding_len = received_bytes - ECHO_HEADER_SIZE - sizeof(struct timeval);
+
+    for (size_t i = 0; i < padding_len; i++) {
+        if (padding[i] != 0xA5) return -3040;
+    }
+
+    record->received_bytes = received_bytes;
+    record->time = *past * 1000.0;
 
     return 0;
 }
 
 static int
-recv_ping(
-    int sock,
-    int len,
-    unsigned short seq,
-    struct timeval *sends_at,
-    int timeout,
-    struct ping_record *record
-) {
+recv_ping(int sock, int len, int timeout, struct ping_record *record)
+{
     char received_message[BUFSIZE];
     memset(received_message, 0, BUFSIZE);
     struct pollfd pfd = { .fd = sock, .events = POLLIN | POLLERR };
@@ -191,6 +212,7 @@ recv_ping(
 
     int read_bytes;
     struct timeval received_at;
+    record->received_at = &received_at;
 
     int ret;
     double past;
@@ -224,17 +246,15 @@ recv_ping(
             received_message,
             read_bytes,
             len,
-            sends_at,
-            &received_at,
             &past,
             record
         );
 
         switch(ret) {
             case 0: // 自プロセス宛のREPLYを正常に受信
-                return past * 1000.0;
+                return 0;
             case 1: // 他プロセス宛のREPLYを受信
-                // TODO タイムアウトしている場合はreturn -2000
+                if(past > timeout) return -2000;
                 break;
             default: // 自プロセス宛のREPLYだが内容が異常
                 ;
@@ -265,18 +285,19 @@ ping(char *hostname, int len, int times, int timeout, struct round_trip *rtt)
         int seq = i + 1;
 
         record.from = &from;
+        record.sends_at = &sends_at;
         socklen_t from_len = sizeof(from);
         record.from_len = from_len;
         record.seq = seq;
 
-        // static int send_ping(int sock, char *hostname, int len, unsigned short seq, struct timeval *sends_at);
-        ret = send_ping(sock, hostname, len, seq, &sends_at);
+        // static int send_ping(int sock, char *hostname, int len, struct ping_record *record);
+        ret = send_ping(sock, hostname, len, &record);
 
         if (ret == 0) {
-            // static int recv_ping(int sock, int len, unsigned short seq, struct timeval *sends_at, int timeout, struct ping_record *record);
-            ret = recv_ping(sock, len, seq, &sends_at, timeout, &record);
-            if (ret >= 0) {
-                total_round_trip_time += ret;
+            // static int recv_ping(int sock, int len, int timeout, struct ping_record *record);
+            ret = recv_ping(sock, len, timeout, &record);
+            if (ret == 0) {
+                total_round_trip_time += record.time;
                 total_round_trip_count++;
             }
         }
@@ -320,11 +341,11 @@ main(int argc, char *argv[])
 
     if (ret < 0) {
         printf("Error! %d\n", ret);
-        return(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     double agv_rtt = rtt.time / (double)rtt.count;
 
-    printf("RTT: %.2fms\n", agv_rtt);
+    printf("RTT (Avg): %.2fms\n", agv_rtt);
     return EXIT_SUCCESS;
 }
