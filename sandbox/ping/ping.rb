@@ -50,14 +50,28 @@ class Ping
     end
   end
 
-  ICMP_PACKET_SIZE = 64
+  class ICMPReplyPacket
+    attr_reader :message, :from, :ttl, :time
+
+    def initialize(raw_message, addr, sent_at, received_at)
+      @raw_message = raw_message
+      @from = addr.ip_address
+      @sent_at = sent_at
+      @received_at = received_at
+      @time = ((@received_at - @sent_at) * 1000).round(2)
+      @message = "" # TEMP
+    end
+  end
+
+  ICMP_MESSAGE_SIZE = 64
+  MAX_PACKET_SIZE = 2048
 
   def self.execute!(dest)
     new(dest).execute!
   end
 
   def initialize(dest, count: 5, timeout: 1)
-    @size = ICMP_PACKET_SIZE
+    @size = ICMP_MESSAGE_SIZE
     @count = count
     @timeout = timeout
     @id = Process.pid
@@ -69,10 +83,15 @@ class Ping
   end
 
   def execute!
-    @count.times.each.with_index(1) do |seq|
+    @count.times do |i|
       sends_at = Time.now
+      seq = i + 1
+
       send_request!(seq, sends_at)
-      receive_reply!(sends_at)
+      reply = receive_reply!(sends_at)
+
+      puts "#{reply.message.size} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} time=#{reply.time} ms"
+
       @total_time += 1 # WIP
       @total_count += 1 # WIP
 
@@ -90,7 +109,9 @@ class Ping
   end
 
   def receive_reply!(sent_at)
-    # WIP
+    message, addr = @sock.recvfrom(MAX_PACKET_SIZE)
+    received_at = Time.now
+    ICMPReplyPacket.new(message, addr, sent_at, received_at)
   end
 end
 
