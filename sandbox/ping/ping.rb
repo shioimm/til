@@ -50,14 +50,88 @@ class Ping
     end
   end
 
-  ICMP_PACKET_SIZE = 64
+  class ICMPReplyPacket
+    attr_reader :message, :from, :ttl, :time
+
+    def initialize(raw_message, addr, sent_at, received_at)
+      @raw_message = raw_message
+      @from = addr.ip_address
+      @sent_at = sent_at
+      @received_at = received_at
+      @time = ((@received_at - @sent_at) * 1000).round(2)
+      @message = "" # TEMP
+
+      parse_reply_message!
+    end
+
+    private
+
+    def parse_reply_message!
+      ip_header = parse_ip_header!
+      @ttl = ip_header.ttl
+
+      icmp_offset = ip_header.ihl
+      icmp = @raw_message.byteslice(offset, 8)
+      parse_icmp_header!(icmp)
+    end
+
+    IPHeader = Data.define(
+      :version,
+      :ihl,
+      :tos,
+      :total_length,
+      :id,
+      :flags,
+      :frag_offset,
+      :ttl,
+      :protocol,
+      :checksum,
+      :src,
+      :dst,
+    )
+
+    def parse_ip_header!
+      raw_vihl,
+      tos,
+      total_length,
+      id,
+      raw_flags,
+      ttl,
+      protocol,
+      checksum,
+      raw_src,
+      raw_dst = @raw_message.unpack("C C n n n C C n N N")
+
+      IPHeader.new(
+        version: (raw_vihl >> 4) & 0xF,
+        ihl: (raw_vihl & 0xF) * 4,
+        tos:,
+        total_length:,
+        id:,
+        flags: (raw_flags >> 13) & 0x7,
+        frag_offset: raw_flags & 0x1FFF,
+        ttl:,
+        protocol:,
+        checksum:,
+        src: [raw_src].pack("N").unpack("C4").join("."),
+        dst: [raw_dst].pack("N").unpack("C4").join("."),
+      )
+    end
+
+    def parse_icmp_header!(icmp)
+      # WIP
+    end
+  end
+
+  ICMP_MESSAGE_SIZE = 64
+  MAX_PACKET_SIZE = 2048
 
   def self.execute!(dest)
     new(dest).execute!
   end
 
   def initialize(dest, count: 5, timeout: 1)
-    @size = ICMP_PACKET_SIZE
+    @size = ICMP_MESSAGE_SIZE
     @count = count
     @timeout = timeout
     @id = Process.pid
@@ -69,10 +143,15 @@ class Ping
   end
 
   def execute!
-    @count.times.each.with_index(1) do |seq|
+    @count.times do |i|
       sends_at = Time.now
+      seq = i + 1
+
       send_request!(seq, sends_at)
-      receive_reply!(sends_at)
+      reply = receive_reply!(sends_at)
+
+      puts "#{reply.message.size} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} time=#{reply.time} ms"
+
       @total_time += 1 # WIP
       @total_count += 1 # WIP
 
@@ -90,7 +169,9 @@ class Ping
   end
 
   def receive_reply!(sent_at)
-    # WIP
+    message, addr = @sock.recvfrom(MAX_PACKET_SIZE)
+    received_at = Time.now
+    ICMPReplyPacket.new(message, addr, sent_at, received_at)
   end
 end
 
