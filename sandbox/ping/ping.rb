@@ -71,8 +71,12 @@ class Ping
       @ttl = ip_header.ttl
 
       icmp_offset = ip_header.ihl
-      icmp = @raw_message.byteslice(offset, 8)
-      parse_icmp_header!(icmp)
+      icmp = @raw_message.byteslice(icmp_offset, 8)
+      icmp_header = parse_icmp_header!(icmp)
+
+      # WIP
+      # #<data Ping::ICMPReplyPacket::IPHeader version=4, ihl=20, tos=0, total_length=14336, id=58204, flags=0, frag_offset=0, ttl=64, protocol=1, checksum=0, src="127.0.0.1", dst="127.0.0.1">
+      # #<data Ping::ICMPReplyPacket::ICMPHeader type=0, code=0, checksum=29722, id=65436, seq=1>
     end
 
     IPHeader = Data.define(
@@ -118,8 +122,10 @@ class Ping
       )
     end
 
+    ICMPHeader = Data.define(:type, :code, :checksum, :id, :seq)
+
     def parse_icmp_header!(icmp)
-      # WIP
+      ICMPHeader.new(*icmp.unpack("C C n n n"))
     end
   end
 
