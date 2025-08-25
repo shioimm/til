@@ -61,7 +61,6 @@ class Ping
       @sent_at = sent_at
       @received_at = received_at
       @time = ((@received_at - @sent_at) * 1000).round(2)
-      @message = "" # TEMP
 
       parse_reply_message!
     end
@@ -159,13 +158,13 @@ class Ping
 
       puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} time=#{reply.time} ms"
 
-      @total_time += 1 # WIP
-      @total_count += 1 # WIP
+      @total_time += reply.time
+      @total_count += 1
 
       sleep 1
     end
 
-    puts "RTT (Avg): #{@total_time / @total_count}ms"
+    puts "RTT (Avg): #{(@total_time / @total_count).round(2)}ms"
   end
 
   private
