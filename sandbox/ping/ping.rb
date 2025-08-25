@@ -4,7 +4,6 @@ class Ping
   class ICMPRequestPacket
     TYPE = 8
     CODE = 0
-    HEADER_SIZE = 8
     WORD_MASK = 0xFFFF
     PAD_OCTET = "\x00".b
 
@@ -27,7 +26,7 @@ class Ping
     def payload
       @payload ||= (
         timestamp = [@sends_at.to_i, @sends_at.usec].pack("N N")
-        payload_size = @message_size - HEADER_SIZE
+        payload_size = @message_size - Ping::ICMP_HEADER_SIZE
         pad = PAD_OCTET * (payload_size - timestamp.bytesize)
         timestamp + pad
       )
@@ -69,14 +68,18 @@ class Ping
 
     def parse_reply_message!
       ip_header = parse_ip_header!
+      raise "Not ICMP packet (#{ip.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
+
       @ttl = ip_header.ttl
 
       icmp_offset = ip_header.ihl
-      icmp = @raw_message.byteslice(icmp_offset, 8)
+      raise "Too short packet" if @raw_message.bytesize < icmp_offset + Ping::ICMP_HEADER_SIZE
+
+      icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
       icmp_header = parse_icmp_header!(icmp)
 
-      @received_bytes = @raw_message.size - icmp_offset
       @seq = icmp_header.seq
+      @received_bytes = @raw_message.size - icmp_offset
     end
 
     IPHeader = Data.define(
@@ -130,6 +133,7 @@ class Ping
   end
 
   ICMP_MESSAGE_SIZE = 64
+  ICMP_HEADER_SIZE = 8
   MAX_PACKET_SIZE = 2048
 
   def self.execute!(dest)
