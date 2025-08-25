@@ -188,6 +188,10 @@ class Ping
   end
 
   def receive_reply!(sent_at)
+    r, _ = IO.select([@sock], nil, nil, @timeout)
+
+    raise "Receive timeout (#{@timeout}s)" if r.none?
+
     message, addr = @sock.recvfrom(MAX_PACKET_SIZE)
     received_at = Time.now
     ICMPReplyPacket.new(message, addr, sent_at, received_at)
