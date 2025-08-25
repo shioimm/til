@@ -52,14 +52,14 @@ class Ping
   end
 
   class ICMPReplyPacket
-    attr_reader :received_bytes, :from, :ttl, :time
+    attr_reader :received_bytes, :from, :ttl, :rtt, :id, :seq, :type, :code
 
     def initialize(raw_message, addr, sent_at, received_at)
       @raw_message = raw_message
       @from = addr.ip_address
       @sent_at = sent_at
       @received_at = received_at
-      @time = ((@received_at - @sent_at) * 1000).round(2)
+      @rtt = ((@received_at - @sent_at) * 1000).round(2)
 
       parse_reply_message!
     end
@@ -78,7 +78,11 @@ class Ping
       icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
       icmp_header = parse_icmp_header!(icmp)
 
+      @type = icmp_header.type
+      @code = icmp_header.code
+      @id = icmp_header.id
       @seq = icmp_header.seq
+
       @received_bytes = @raw_message.size - icmp_offset
     end
 
@@ -160,9 +164,14 @@ class Ping
       send_request!(seq, sends_at)
       reply = receive_reply!(sends_at)
 
-      puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} time=#{reply.time} ms"
+      if !reply.type.zero? || !reply.code.zero? || reply.id != (@id & 0xFFFF) || reply.seq != (seq & 0xFFFF)
+        warn "Skip unrelated ICMP: type=#{reply.type}, code=#{reply.code}, id=#{reply.id}, seq=#{reply.seq}"
+        redo
+      end
 
-      @total_time += reply.time
+      puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} rtt=#{reply.rtt} ms"
+
+      @total_time += reply.rtt
       @total_count += 1
 
       sleep 1
