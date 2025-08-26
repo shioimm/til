@@ -67,7 +67,7 @@ class Ping
     private
 
     def parse_reply_message!
-      ip_header = parse_ip_header!
+      ip_header = parse_ip_header
       raise "Not ICMP packet (#{ip_header.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
 
       @ttl = ip_header.ttl
@@ -76,7 +76,7 @@ class Ping
       raise "Too short packet" if @raw_message.bytesize < icmp_offset + Ping::ICMP_HEADER_SIZE
 
       icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
-      icmp_header = parse_icmp_header!(icmp)
+      icmp_header = parse_icmp_header(icmp)
 
       @type = icmp_header.type
       @code = icmp_header.code
@@ -101,7 +101,7 @@ class Ping
       :dst,
     )
 
-    def parse_ip_header!
+    def parse_ip_header
       raw_vihl,
       tos,
       total_length,
@@ -131,7 +131,7 @@ class Ping
 
     ICMPHeader = Data.define(:type, :code, :checksum, :id, :seq)
 
-    def parse_icmp_header!(icmp)
+    def parse_icmp_header(icmp)
       ICMPHeader.new(*icmp.unpack("C C n n n"))
     end
   end
