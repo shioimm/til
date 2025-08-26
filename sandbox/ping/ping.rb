@@ -26,8 +26,13 @@ class Ping
     def payload
       @payload ||= (
         timestamp = [@sends_at.to_i, @sends_at.usec].pack("N N")
-        payload_size = @message_size - Ping::ICMP_HEADER_SIZE
-        pad = PAD_OCTET * (payload_size - timestamp.bytesize)
+        payload_length = @message_size - Ping::ICMP_HEADER_SIZE
+        pad = PAD_OCTET * (payload_length - timestamp.bytesize)
+
+        if (payload_length - timestamp.bytesize).negative?
+          raise ArgumentError, "#{self.class}: Too small request payload (#{payload_length} < #{timestamp.bytesize})"
+        end
+
         timestamp + pad
       )
     end
