@@ -100,18 +100,18 @@ class Ping
     end
 
     IPHeader = Data.define(
-      :version,
-      :ihl,
-      :tos,
-      :total_length,
-      :id,
-      :flags,
-      :frag_offset,
-      :ttl,
-      :protocol,
-      :checksum,
-      :src,
-      :dst,
+      :version,         # バージョン
+      :ihl,             # ヘッダ長
+      :tos,             # TOS
+      :total_length,    # パケット長
+      :id,              # 識別子
+      :flags,           # フラグ
+      :fragment_offset, # フラグメントオフセット
+      :ttl,             # TTL
+      :protocol,        # トランスポート層のプロトコル
+      :checksum,        # IPヘッダのチェックサム
+      :src,             # 送信元IPアドレス
+      :dst,             # 宛先IPアドレス
     )
 
     def parse_ip_header
@@ -133,7 +133,7 @@ class Ping
         total_length:,
         id:,
         flags: (raw_flags >> 13) & 0x7,
-        frag_offset: raw_flags & 0x1FFF,
+        fragment_offset: raw_flags & 0x1FFF,
         ttl:,
         protocol:,
         checksum:,
@@ -142,7 +142,13 @@ class Ping
       )
     end
 
-    ICMPHeader = Data.define(:type, :code, :checksum, :id, :seq)
+    ICMPHeader = Data.define(
+      :type,     # タイプ
+      :code,     # コード (Echo Replyの場合は0)
+      :checksum, # ICMPヘッダのチェックサム
+      :id,       # 識別子 (Echo Replyの場合)
+      :seq       # シーケンス番号 (Echo Replyの場合)
+    )
 
     def parse_icmp_header(icmp)
       ICMPHeader.new(*icmp.unpack("C C n n n"))
