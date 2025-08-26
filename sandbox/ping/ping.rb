@@ -4,7 +4,6 @@ class Ping
   class ICMPRequestPacket
     TYPE = 8
     CODE = 0
-    HEADER_SIZE = 8
     WORD_MASK = 0xFFFF
     PAD_OCTET = "\x00".b
 
@@ -27,7 +26,7 @@ class Ping
     def payload
       @payload ||= (
         timestamp = [@sends_at.to_i, @sends_at.usec].pack("N N")
-        payload_size = @message_size - HEADER_SIZE
+        payload_size = @message_size - Ping::ICMP_HEADER_SIZE
         pad = PAD_OCTET * (payload_size - timestamp.bytesize)
         timestamp + pad
       )
@@ -53,15 +52,14 @@ class Ping
   end
 
   class ICMPReplyPacket
-    attr_reader :received_bytes, :from, :ttl, :time
+    attr_reader :received_bytes, :from, :ttl, :rtt, :id, :seq, :type, :code
 
     def initialize(raw_message, addr, sent_at, received_at)
       @raw_message = raw_message
       @from = addr.ip_address
       @sent_at = sent_at
       @received_at = received_at
-      @time = ((@received_at - @sent_at) * 1000).round(2)
-      @message = "" # TEMP
+      @rtt = ((@received_at - @sent_at) * 1000).round(2)
 
       parse_reply_message!
     end
@@ -70,14 +68,22 @@ class Ping
 
     def parse_reply_message!
       ip_header = parse_ip_header!
+      raise "Not ICMP packet (#{ip.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
+
       @ttl = ip_header.ttl
 
       icmp_offset = ip_header.ihl
-      icmp = @raw_message.byteslice(icmp_offset, 8)
+      raise "Too short packet" if @raw_message.bytesize < icmp_offset + Ping::ICMP_HEADER_SIZE
+
+      icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
       icmp_header = parse_icmp_header!(icmp)
 
-      @received_bytes = @raw_message.size - icmp_offset
+      @type = icmp_header.type
+      @code = icmp_header.code
+      @id = icmp_header.id
       @seq = icmp_header.seq
+
+      @received_bytes = @raw_message.size - icmp_offset
     end
 
     IPHeader = Data.define(
@@ -131,6 +137,7 @@ class Ping
   end
 
   ICMP_MESSAGE_SIZE = 64
+  ICMP_HEADER_SIZE = 8
   MAX_PACKET_SIZE = 2048
 
   def self.execute!(dest)
@@ -157,15 +164,20 @@ class Ping
       send_request!(seq, sends_at)
       reply = receive_reply!(sends_at)
 
-      puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} time=#{reply.time} ms"
+      if !reply.type.zero? || !reply.code.zero? || reply.id != (@id & 0xFFFF) || reply.seq != (seq & 0xFFFF)
+        warn "Skip unrelated ICMP: type=#{reply.type}, code=#{reply.code}, id=#{reply.id}, seq=#{reply.seq}"
+        redo
+      end
 
-      @total_time += 1 # WIP
-      @total_count += 1 # WIP
+      puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} rtt=#{reply.rtt} ms"
+
+      @total_time += reply.rtt
+      @total_count += 1
 
       sleep 1
     end
 
-    puts "RTT (Avg): #{@total_time / @total_count}ms"
+    puts "RTT (Avg): #{(@total_time / @total_count).round(2)}ms"
   end
 
   private
@@ -176,6 +188,10 @@ class Ping
   end
 
   def receive_reply!(sent_at)
+    r, _ = IO.select([@sock], nil, nil, @timeout)
+
+    raise "Receive timeout (#{@timeout}s)" if r.none?
+
     message, addr = @sock.recvfrom(MAX_PACKET_SIZE)
     received_at = Time.now
     ICMPReplyPacket.new(message, addr, sent_at, received_at)
