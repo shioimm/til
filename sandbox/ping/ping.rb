@@ -178,6 +178,8 @@ class Ping
     end
 
     puts "RTT (Avg): #{(@total_time / @total_count).round(2)}ms"
+  ensure
+    @sock&.close
   end
 
   private
