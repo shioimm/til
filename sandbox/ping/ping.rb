@@ -68,7 +68,7 @@ class Ping
 
     def parse_reply_message!
       ip_header = parse_ip_header!
-      raise "Not ICMP packet (#{ip.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
+      raise "Not ICMP packet (#{ip_header.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
 
       @ttl = ip_header.ttl
 
