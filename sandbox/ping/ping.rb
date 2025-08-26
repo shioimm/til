@@ -90,7 +90,7 @@ class Ping
 
       icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
       icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
-      sent_at = icmp_payload.bytesize < Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
+      sent_at = icmp_payload.bytesize >= Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
       @rtt = ((@received_at - sent_at) * 1000).round(2)
     end
 
@@ -174,7 +174,7 @@ class Ping
 
       if !reply.type.zero? || !reply.code.zero? || reply.id != (@id & 0xFFFF) || reply.seq != (seq & 0xFFFF)
         warn "Skip unrelated ICMP: type=#{reply.type}, code=#{reply.code}, id=#{reply.id}, seq=#{reply.seq}"
-        redo
+        next
       end
 
       puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} rtt=#{reply.rtt} ms"
