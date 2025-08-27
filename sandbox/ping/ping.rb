@@ -57,6 +57,8 @@ class Ping
   end
 
   class ICMPReplyPacket
+    ICMP_TIMESTAMP_SIZE = 8
+
     attr_reader :received_bytes, :from, :ttl, :rtt, :id, :seq, :type, :code
 
     def initialize(raw_message, addr, sent_at, received_at)
@@ -157,7 +159,7 @@ class Ping
     def parse_rtt(icmp_payload_offset)
       icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
       icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
-      sent_at = icmp_payload.bytesize >= Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
+      sent_at = icmp_payload.bytesize >= ICMP_TIMESTAMP_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
       ((@received_at - sent_at) * 1000).round(2)
     end
   end
