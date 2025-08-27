@@ -67,7 +67,7 @@ class Ping
       @from = addr.ip_address
       @sent_at = sent_at
       @received_at = received_at
-      @rtt = ((@received_at - @sent_at) * 1000).round(2)
+      @rtt = ((@received_at - @sent_at) * 1000).round(3)
 
       parse_reply_message!
     end
@@ -161,7 +161,7 @@ class Ping
       icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
       icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
       sent_at = icmp_payload.bytesize >= ICMP_TIMESTAMP_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
-      ((@received_at - sent_at) * 1000).round(2)
+      ((@received_at - sent_at) * 1000).round(3)
     end
   end
 
@@ -174,9 +174,10 @@ class Ping
   end
 
   def initialize(dest, count, timeout)
-    @size = ICMP_MESSAGE_SIZE
+    @dest = dest
     @count = count
     @timeout = timeout
+    @size = ICMP_MESSAGE_SIZE
     @id = Process.pid
     @total_time = 0
     @total_count = 0
@@ -206,7 +207,9 @@ class Ping
       sleep 1
     end
 
-    puts "RTT (Avg): #{(@total_time / @total_count).round(2)}ms"
+    puts "--- #{@dest} ping statistics ---"
+    puts "#{@count} transmitted, #{@total_count} packets received, #{@total_count / @count.to_f}% packet loss"
+    puts "round-trip avg = #{(@total_time / @total_count).round(3)}ms"
   ensure
     @sock&.close
   end
@@ -221,7 +224,7 @@ class Ping
   def receive_reply!(sent_at)
     r, _ = IO.select([@sock], nil, nil, @timeout)
 
-    raise "Receive timeout (#{@timeout}s)" if r.none?
+    raise "Receive timeout (#{@timeout} s)" if r.none?
 
     message, addr = @sock.recvfrom(MAX_PACKET_SIZE)
     received_at = Time.now
