@@ -1,4 +1,5 @@
 require "socket"
+require "optparse"
 
 class Ping
   class ICMPRequestPacket
@@ -168,11 +169,11 @@ class Ping
   ICMP_HEADER_SIZE = 8
   MAX_PACKET_SIZE = 2048
 
-  def self.execute!(dest)
-    new(dest).execute!
+  def self.execute!(dest, count: 5, timeout: 1)
+    new(dest, count, timeout).execute!
   end
 
-  def initialize(dest, count: 5, timeout: 1)
+  def initialize(dest, count, timeout)
     @size = ICMP_MESSAGE_SIZE
     @count = count
     @timeout = timeout
@@ -228,15 +229,18 @@ class Ping
   end
 end
 
+params = {}
+
+opt = OptionParser.new
+opt.on("-c", "--count") { params[:count] = it }
+opt.on("-t", "--timeout") { params[:timeout] = it }
+
 dest = ARGV.first
 
-# TODO
-# 実行回数、タイムアウトを指定できるようにする
-# 指定がない場合デフォルトで無限回、1秒
 begin
   raise "Missing ping target" if dest.nil?
 
-  Ping.execute!(dest)
+  Ping.execute!(dest, **params)
 rescue => e
   puts e.full_message
 end
