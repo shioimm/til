@@ -230,6 +230,9 @@ end
 
 dest = ARGV.first
 
+# TODO
+# 実行回数、タイムアウトを指定できるようにする
+# 指定がない場合デフォルトで無限回、1秒
 begin
   raise "Missing ping target" if dest.nil?
 
