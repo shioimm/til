@@ -75,28 +75,22 @@ class Ping
       ip_header = parse_ip_header
       raise "Not ICMP packet (#{ip_header.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
 
-      @ttl = ip_header.ttl
-
       icmp_offset = ip_header.ihl
-      ip_payload_length = ip_header.total_length - icmp_offset
-      raw_tail_length = @raw_message.bytesize - icmp_offset
-      @received_bytes = ip_payload_length.between?(0, raw_tail_length) ? ip_payload_length : raw_tail_length
-
       icmp_payload_offset = icmp_offset + Ping::ICMP_HEADER_SIZE
       raise "Too short packet" if @raw_message.bytesize < icmp_payload_offset
 
       icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
       icmp_header = parse_icmp_header(icmp)
 
+      @ttl = ip_header.ttl
+
       @type = icmp_header.type
       @code = icmp_header.code
       @id = icmp_header.id
       @seq = icmp_header.seq
 
-      icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
-      icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
-      sent_at = icmp_payload.bytesize >= Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
-      @rtt = ((@received_at - sent_at) * 1000).round(2)
+      @received_bytes = parse_received_bytes(ip_header, icmp_offset)
+      @rtt = parse_rtt(icmp_payload_offset)
     end
 
     IPHeader = Data.define(
@@ -152,6 +146,19 @@ class Ping
 
     def parse_icmp_header(icmp)
       ICMPHeader.new(*icmp.unpack("C C n n n"))
+    end
+
+    def parse_received_bytes(ip_header, icmp_offset)
+      ip_payload_length = ip_header.total_length - icmp_offset
+      raw_tail_length = @raw_message.bytesize - icmp_offset
+      ip_payload_length.between?(0, raw_tail_length) ? ip_payload_length : raw_tail_length
+    end
+
+    def parse_rtt(icmp_payload_offset)
+      icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
+      icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
+      sent_at = icmp_payload.bytesize >= Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
+      ((@received_at - sent_at) * 1000).round(2)
     end
   end
 
