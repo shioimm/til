@@ -26,8 +26,13 @@ class Ping
     def payload
       @payload ||= (
         timestamp = [@sends_at.to_i, @sends_at.usec].pack("N N")
-        payload_size = @message_size - Ping::ICMP_HEADER_SIZE
-        pad = PAD_OCTET * (payload_size - timestamp.bytesize)
+        payload_length = @message_size - Ping::ICMP_HEADER_SIZE
+        pad = PAD_OCTET * (payload_length - timestamp.bytesize)
+
+        if (payload_length - timestamp.bytesize).negative?
+          raise ArgumentError, "#{self.class}: Too small request payload (#{payload_length} < #{timestamp.bytesize})"
+        end
+
         timestamp + pad
       )
     end
@@ -67,41 +72,49 @@ class Ping
     private
 
     def parse_reply_message!
-      ip_header = parse_ip_header!
-      raise "Not ICMP packet (#{ip.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
+      ip_header = parse_ip_header
+      raise "Not ICMP packet (#{ip_header.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
 
       @ttl = ip_header.ttl
 
       icmp_offset = ip_header.ihl
-      raise "Too short packet" if @raw_message.bytesize < icmp_offset + Ping::ICMP_HEADER_SIZE
+      ip_payload_length = ip_header.total_length - icmp_offset
+      raw_tail_length = @raw_message.bytesize - icmp_offset
+      @received_bytes = ip_payload_length.between?(0, raw_tail_length) ? ip_payload_length : raw_tail_length
+
+      icmp_payload_offset = icmp_offset + Ping::ICMP_HEADER_SIZE
+      raise "Too short packet" if @raw_message.bytesize < icmp_payload_offset
 
       icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
-      icmp_header = parse_icmp_header!(icmp)
+      icmp_header = parse_icmp_header(icmp)
 
       @type = icmp_header.type
       @code = icmp_header.code
       @id = icmp_header.id
       @seq = icmp_header.seq
 
-      @received_bytes = @raw_message.size - icmp_offset
+      icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
+      icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
+      sent_at = icmp_payload.bytesize >= Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
+      @rtt = ((@received_at - sent_at) * 1000).round(2)
     end
 
     IPHeader = Data.define(
-      :version,
-      :ihl,
-      :tos,
-      :total_length,
-      :id,
-      :flags,
-      :frag_offset,
-      :ttl,
-      :protocol,
-      :checksum,
-      :src,
-      :dst,
+      :version,         # バージョン
+      :ihl,             # ヘッダ長
+      :tos,             # TOS
+      :total_length,    # パケット長
+      :id,              # 識別子
+      :flags,           # フラグ
+      :fragment_offset, # フラグメントオフセット
+      :ttl,             # TTL
+      :protocol,        # トランスポート層のプロトコル
+      :checksum,        # IPヘッダのチェックサム
+      :src,             # 送信元IPアドレス
+      :dst,             # 宛先IPアドレス
     )
 
-    def parse_ip_header!
+    def parse_ip_header
       raw_vihl,
       tos,
       total_length,
@@ -120,7 +133,7 @@ class Ping
         total_length:,
         id:,
         flags: (raw_flags >> 13) & 0x7,
-        frag_offset: raw_flags & 0x1FFF,
+        fragment_offset: raw_flags & 0x1FFF,
         ttl:,
         protocol:,
         checksum:,
@@ -129,9 +142,15 @@ class Ping
       )
     end
 
-    ICMPHeader = Data.define(:type, :code, :checksum, :id, :seq)
+    ICMPHeader = Data.define(
+      :type,     # タイプ
+      :code,     # コード (Echo Replyの場合は0)
+      :checksum, # ICMPヘッダのチェックサム
+      :id,       # 識別子 (Echo Replyの場合)
+      :seq       # シーケンス番号 (Echo Replyの場合)
+    )
 
-    def parse_icmp_header!(icmp)
+    def parse_icmp_header(icmp)
       ICMPHeader.new(*icmp.unpack("C C n n n"))
     end
   end
@@ -166,7 +185,7 @@ class Ping
 
       if !reply.type.zero? || !reply.code.zero? || reply.id != (@id & 0xFFFF) || reply.seq != (seq & 0xFFFF)
         warn "Skip unrelated ICMP: type=#{reply.type}, code=#{reply.code}, id=#{reply.id}, seq=#{reply.seq}"
-        redo
+        next
       end
 
       puts "#{reply.received_bytes} bytes from #{reply.from}: seq=#{seq} ttl=#{reply.ttl} rtt=#{reply.rtt} ms"
@@ -178,6 +197,8 @@ class Ping
     end
 
     puts "RTT (Avg): #{(@total_time / @total_count).round(2)}ms"
+  ensure
+    @sock&.close
   end
 
   private
