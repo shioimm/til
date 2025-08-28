@@ -66,7 +66,6 @@ class Ping
       @from = addr.ip_address
       @sent_at = sent_at
       @received_at = received_at
-      @rtt = ((@received_at - @sent_at) * 1000).round(3)
 
       parse_reply_message!
     end
