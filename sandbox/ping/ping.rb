@@ -8,11 +8,10 @@ class Ping
     WORD_MASK = 0xFFFF
     PAD_OCTET = "\x00".b
 
-    def initialize(id, size, seq, sends_at)
+    def initialize(id, seq, sends_at)
       @id = id & WORD_MASK
       @seq = seq & WORD_MASK
       @sends_at = sends_at
-      @message_size = size
     end
 
     def message
@@ -27,7 +26,7 @@ class Ping
     def payload
       @payload ||= (
         timestamp = [@sends_at.to_i, @sends_at.usec].pack("N N")
-        payload_length = @message_size - Ping::ICMP_HEADER_SIZE
+        payload_length = Ping::ICMP_MESSAGE_SIZE - Ping::ICMP_HEADER_SIZE
         pad = PAD_OCTET * (payload_length - timestamp.bytesize)
 
         if (payload_length - timestamp.bytesize).negative?
@@ -177,7 +176,6 @@ class Ping
     @dest = dest
     @count = count
     @timeout = timeout
-    @size = ICMP_MESSAGE_SIZE
     @id = Process.pid
     @total_time = 0
     @total_count = 0
@@ -217,7 +215,7 @@ class Ping
   private
 
   def send_request!(seq, sends_at)
-    message = ICMPRequestPacket.new(@id, @size, seq, sends_at).message
+    message = ICMPRequestPacket.new(@id, seq, sends_at).message
     @sock.send(message, 0, @addr)
   end
 
