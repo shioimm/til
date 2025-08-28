@@ -1,4 +1,5 @@
 require "socket"
+require "optparse"
 
 class Ping
   class ICMPRequestPacket
@@ -57,6 +58,8 @@ class Ping
   end
 
   class ICMPReplyPacket
+    ICMP_TIMESTAMP_SIZE = 8
+
     attr_reader :received_bytes, :from, :ttl, :rtt, :id, :seq, :type, :code
 
     def initialize(raw_message, addr, sent_at, received_at)
@@ -64,7 +67,7 @@ class Ping
       @from = addr.ip_address
       @sent_at = sent_at
       @received_at = received_at
-      @rtt = ((@received_at - @sent_at) * 1000).round(2)
+      @rtt = ((@received_at - @sent_at) * 1000).round(3)
 
       parse_reply_message!
     end
@@ -75,28 +78,22 @@ class Ping
       ip_header = parse_ip_header
       raise "Not ICMP packet (#{ip_header.protocol})" if ip_header.protocol != Socket::IPPROTO_ICMP
 
-      @ttl = ip_header.ttl
-
       icmp_offset = ip_header.ihl
-      ip_payload_length = ip_header.total_length - icmp_offset
-      raw_tail_length = @raw_message.bytesize - icmp_offset
-      @received_bytes = ip_payload_length.between?(0, raw_tail_length) ? ip_payload_length : raw_tail_length
-
       icmp_payload_offset = icmp_offset + Ping::ICMP_HEADER_SIZE
       raise "Too short packet" if @raw_message.bytesize < icmp_payload_offset
 
       icmp = @raw_message.byteslice(icmp_offset, Ping::ICMP_HEADER_SIZE)
       icmp_header = parse_icmp_header(icmp)
 
+      @ttl = ip_header.ttl
+
       @type = icmp_header.type
       @code = icmp_header.code
       @id = icmp_header.id
       @seq = icmp_header.seq
 
-      icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
-      icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
-      sent_at = icmp_payload.bytesize >= Ping::ICMP_HEADER_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
-      @rtt = ((@received_at - sent_at) * 1000).round(2)
+      @received_bytes = parse_received_bytes(ip_header, icmp_offset)
+      @rtt = parse_rtt(icmp_payload_offset)
     end
 
     IPHeader = Data.define(
@@ -153,20 +150,34 @@ class Ping
     def parse_icmp_header(icmp)
       ICMPHeader.new(*icmp.unpack("C C n n n"))
     end
+
+    def parse_received_bytes(ip_header, icmp_offset)
+      ip_payload_length = ip_header.total_length - icmp_offset
+      raw_tail_length = @raw_message.bytesize - icmp_offset
+      ip_payload_length.between?(0, raw_tail_length) ? ip_payload_length : raw_tail_length
+    end
+
+    def parse_rtt(icmp_payload_offset)
+      icmp_payload_length = [@received_bytes - Ping::ICMP_HEADER_SIZE, 0].max
+      icmp_payload = @raw_message.byteslice(icmp_payload_offset, icmp_payload_length) || "".b
+      sent_at = icmp_payload.bytesize >= ICMP_TIMESTAMP_SIZE ? Time.at(*icmp_payload.unpack("N N")) : @sent_at
+      ((@received_at - sent_at) * 1000).round(3)
+    end
   end
 
   ICMP_MESSAGE_SIZE = 64
   ICMP_HEADER_SIZE = 8
   MAX_PACKET_SIZE = 2048
 
-  def self.execute!(dest)
-    new(dest).execute!
+  def self.execute!(dest, count: 5, timeout: 1)
+    new(dest, count, timeout).execute!
   end
 
-  def initialize(dest, count: 5, timeout: 1)
-    @size = ICMP_MESSAGE_SIZE
+  def initialize(dest, count, timeout)
+    @dest = dest
     @count = count
     @timeout = timeout
+    @size = ICMP_MESSAGE_SIZE
     @id = Process.pid
     @total_time = 0
     @total_count = 0
@@ -196,7 +207,9 @@ class Ping
       sleep 1
     end
 
-    puts "RTT (Avg): #{(@total_time / @total_count).round(2)}ms"
+    puts "--- #{@dest} ping statistics ---"
+    puts "#{@count} transmitted, #{@total_count} packets received, #{@total_count / @count.to_f}% packet loss"
+    puts "round-trip avg = #{(@total_time / @total_count).round(3)}ms"
   ensure
     @sock&.close
   end
@@ -211,7 +224,7 @@ class Ping
   def receive_reply!(sent_at)
     r, _ = IO.select([@sock], nil, nil, @timeout)
 
-    raise "Receive timeout (#{@timeout}s)" if r.none?
+    raise "Receive timeout (#{@timeout} s)" if r.none?
 
     message, addr = @sock.recvfrom(MAX_PACKET_SIZE)
     received_at = Time.now
@@ -219,12 +232,18 @@ class Ping
   end
 end
 
+params = {}
+
+opt = OptionParser.new
+opt.on("-c", "--count") { params[:count] = it }
+opt.on("-t", "--timeout") { params[:timeout] = it }
+
 dest = ARGV.first
 
 begin
   raise "Missing ping target" if dest.nil?
 
-  Ping.execute!(dest)
+  Ping.execute!(dest, **params)
 rescue => e
   puts e.full_message
 end
