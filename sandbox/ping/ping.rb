@@ -177,8 +177,8 @@ class Ping
   ICMP_MESSAGE_SIZE = 64
   MAX_PACKET_SIZE = 2048
 
-  def self.execute!(dest, count: 5, timeout: 1)
-    new(dest, count, timeout).execute!
+  def self.run!(dest, count: 5, timeout: 1)
+    new(dest, count, timeout).run!
   end
 
   def initialize(dest, count, timeout)
@@ -193,7 +193,7 @@ class Ping
     @addr = Socket.sockaddr_in(0, dest)
   end
 
-  def execute!
+  def run!
     @count.times do |i|
       sends_at = Time.now
       seq = i + 1
@@ -250,7 +250,7 @@ dest = ARGV.first
 begin
   raise "Missing ping target" if dest.nil?
 
-  Ping.execute!(dest, **params)
+  Ping.run!(dest, **params)
 rescue => e
   puts e.full_message
 end
