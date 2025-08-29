@@ -9,15 +9,18 @@ class Ping
     PAD_OCTET = "\x00".b
 
     def initialize(id, seq, sends_at)
-      @id = id & WORD_MASK
-      @seq = seq & WORD_MASK
+      @id = id & WORD_MASK   # 16bit内に収める
+      @seq = seq & WORD_MASK # 16bit内に収める
       @sends_at = sends_at
     end
 
     def message
       header = [TYPE, CODE, 0, @id, @seq].pack("C C n n n")
+
       checksum = calc_checksum(header + payload)
-      header = [TYPE, CODE, checksum, @id, @seq].pack("C C n n n")
+      checksum_size = 2 # 16bit
+      header[2, checksum_size] = [checksum].pack("n")
+
       header + payload
     end
 
@@ -26,14 +29,14 @@ class Ping
     def payload
       @payload ||= (
         timestamp = [@sends_at.to_i, @sends_at.usec].pack("N N")
-        payload_length = Ping::ICMP_MESSAGE_SIZE - Ping::ICMP_HEADER_SIZE
-        pad = PAD_OCTET * (payload_length - timestamp.bytesize)
+        payload_size = Ping::ICMP_MESSAGE_SIZE - Ping::ICMP_HEADER_SIZE
+        pad_size = payload_size - timestamp.bytesize
 
-        if (payload_length - timestamp.bytesize).negative?
-          raise ArgumentError, "#{self.class}: Too small request payload (#{payload_length} < #{timestamp.bytesize})"
+        if pad_size.negative?
+          raise ArgumentError, "#{self.class}: Too small request payload (#{payload_size} < #{timestamp.bytesize})"
         end
 
-        timestamp + pad
+        timestamp + (PAD_OCTET * pad_size)
       )
     end
 
@@ -52,7 +55,7 @@ class Ping
         sum = lower_16bit + carry # 16bitを超えた分を折り返す
       end
 
-      (~sum) & WORD_MASK # 1の補数を返す
+      (~sum) & WORD_MASK # sumをビット反転 -> 下位16bitを取得してチェックサム値とする
     end
   end
 
