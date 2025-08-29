@@ -43,16 +43,15 @@ class Ping
     def calc_checksum(bin)
       sum = 0
 
-      bin.bytes.each_slice(2) do |hi, lo|
-        higher = hi || 0
-        lower = lo || 0
-        word = (higher << 8) + lower
+      bin.bytes.each_slice(2) do |hi, lo| # 16bitごとに読み出す
+        high_order_8_bits = (hi || 0) << 8 # 左に8bitシフト
+        low_order_8_bits = lo || 0
 
-        sum += word
+        sum += (high_order_8_bits + low_order_8_bits)
 
-        lower_16bit = sum & WORD_MASK
-        carry = sum >> 16
-        sum = lower_16bit + carry # 16bitを超えた分を折り返す
+        lower_16_bits = sum & WORD_MASK # 下位16bitを取得
+        carry = sum >> 16 # 16bitを超えた部分を取得
+        sum = lower_16_bits + carry # 16bitを超えた分を折り返す
       end
 
       (~sum) & WORD_MASK # sumをビット反転 -> 下位16bitを取得してチェックサム値とする
