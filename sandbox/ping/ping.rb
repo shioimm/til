@@ -3,11 +3,6 @@ require "optparse"
 
 class Ping
   class ICMPRequestPacket
-    TYPE = 8
-    CODE = 0
-    WORD_MASK = 0xFFFF
-    PAD_OCTET = "\x00".b
-
     def initialize(id, seq, sends_at)
       @id = id & WORD_MASK   # 16bit内に収める
       @seq = seq & WORD_MASK # 16bit内に収める
@@ -25,6 +20,11 @@ class Ping
     end
 
     private
+
+    TYPE = 8
+    CODE = 0
+    WORD_MASK = 0xFFFF
+    PAD_OCTET = "\x00".b
 
     def payload
       @payload ||= (
@@ -59,8 +59,6 @@ class Ping
   end
 
   class ICMPReplyPacket
-    ICMP_TIMESTAMP_SIZE = 8
-
     attr_reader :received_bytes, :from, :ttl, :rtt, :id, :seq, :type, :code
 
     def initialize(raw_message, addr, sent_at, received_at)
@@ -73,6 +71,12 @@ class Ping
     end
 
     private
+
+    ICMP_TIMESTAMP_SIZE = 8
+    LOWER_4BIT_MASK = 0xF
+    FLAGS_MASK = 0x7 # 0000 0111
+    FRAGMENT_OFFSET_MASK = 0x1FFF # 0001 1111 1111 1111
+
 
     def parse_reply_message!
       ip_header = parse_ip_header
@@ -97,18 +101,18 @@ class Ping
     end
 
     IPHeader = Data.define(
-      :version,         # バージョン
-      :ihl,             # ヘッダ長
-      :tos,             # TOS
-      :total_length,    # パケット長
-      :id,              # 識別子
-      :flags,           # フラグ
-      :fragment_offset, # フラグメントオフセット
-      :ttl,             # TTL
-      :protocol,        # トランスポート層のプロトコル
-      :checksum,        # IPヘッダのチェックサム
-      :src,             # 送信元IPアドレス
-      :dst,             # 宛先IPアドレス
+      :version,         # バージョン (4bit)
+      :ihl,             # ヘッダ長 (4bit)
+      :tos,             # TOS (8bit)
+      :total_length,    # パケット長 (16bit)
+      :id,              # 識別子  (16bit)
+      :flags,           # フラグ (3bit)
+      :fragment_offset, # フラグメントオフセット (13bit)
+      :ttl,             # TTL (8bit)
+      :protocol,        # トランスポート層のプロトコル (8bit)
+      :checksum,        # IPヘッダのチェックサム (16bit)
+      :src,             # 送信元IPアドレス (32bit)
+      :dst,             # 宛先IPアドレス (32bit)
     )
 
     def parse_ip_header
@@ -124,27 +128,31 @@ class Ping
       raw_dst = @raw_message.unpack("C C n n n C C n N N")
 
       IPHeader.new(
-        version: (raw_vihl >> 4) & 0xF,
-        ihl: (raw_vihl & 0xF) * 4,
+        version: (raw_vihl >> 4) & LOWER_4BIT_MASK,
+        ihl: (raw_vihl & LOWER_4BIT_MASK) * 4,
         tos:,
         total_length:,
         id:,
-        flags: (raw_flags >> 13) & 0x7,
-        fragment_offset: raw_flags & 0x1FFF,
+        flags: (raw_flags >> 13) & FLAGS_MASK,
+        fragment_offset: raw_flags & FRAGMENT_OFFSET_MASK,
         ttl:,
         protocol:,
         checksum:,
-        src: [raw_src].pack("N").unpack("C4").join("."),
-        dst: [raw_dst].pack("N").unpack("C4").join("."),
+        src: bin_to_ipv4_address(raw_src),
+        dst: bin_to_ipv4_address(raw_dst),
       )
     end
 
+    def bin_to_ipv4_address(bin)
+      [bin].pack("N").unpack("C4").join(".")
+    end
+
     ICMPHeader = Data.define(
-      :type,     # タイプ
-      :code,     # コード (Echo Replyの場合は0)
-      :checksum, # ICMPヘッダのチェックサム
-      :id,       # 識別子 (Echo Replyの場合)
-      :seq       # シーケンス番号 (Echo Replyの場合)
+      :type,     # タイプ (8bit)
+      :code,     # コード (Echo Replyの場合は0) (8bit)
+      :checksum, # ICMPヘッダのチェックサム (16bit)
+      :id,       # 識別子 (Echo Replyの場合) (16bit)
+      :seq       # シーケンス番号 (Echo Replyの場合) (16bit)
     )
 
     def parse_icmp_header(icmp)
@@ -165,8 +173,8 @@ class Ping
     end
   end
 
-  ICMP_MESSAGE_SIZE = 64
   ICMP_HEADER_SIZE = 8
+  ICMP_MESSAGE_SIZE = 64
   MAX_PACKET_SIZE = 2048
 
   def self.execute!(dest, count: 5, timeout: 1)
