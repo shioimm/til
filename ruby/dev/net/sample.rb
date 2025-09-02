@@ -15,6 +15,11 @@ p res.header # #<Net::HTTPOK 200 OK readbody=true>
 res.each_key { p it }
 p res["Last-Modified"]
 
+p Net::HTTP.get("example.com", "/index.html", 80) # => String
+p Net::HTTP.get(uri) # => String
+
+p Net::HTTP.get_response(uri, { "Accept" => "text/html" }) # => Net::HTTPOK
+
 __END__
 # https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
