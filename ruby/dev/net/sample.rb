@@ -20,6 +20,9 @@ p Net::HTTP.get(uri) # => String
 
 p Net::HTTP.get_response(uri, { "Accept" => "text/html" }) # => Net::HTTPOK
 
+uri = URI("https://httpbin.org/post")
+data = '{ "foo": "bar" }'
+p Net::HTTP.post(uri, data, { "Content-Type": "application/json" }) # => #<Net::HTTPOK 200 OK readbody=true>
 __END__
 # https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
