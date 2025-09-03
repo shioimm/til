@@ -1,4 +1,4 @@
-# net-http 現地調査
+# net-http 現地調査 (202509時点)
 https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
 ### `HTTP.get`
