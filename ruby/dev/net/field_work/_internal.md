@@ -1,6 +1,15 @@
+# net-http 現地調査 (202509時点)
 https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
-## `Net::HTTP.get_response`
+### `HTTP.get`
+
+```ruby
+def HTTP.get(uri_or_host, path_or_headers = nil, port = nil)
+  get_response(uri_or_host, path_or_headers, port).body
+end
+```
+
+### `Net::HTTP.get_response`
 
 ```ruby
 module Net
@@ -31,7 +40,7 @@ module Net
 end
 ```
 
-## `Net::HTTP.start`
+### `Net::HTTP.start`
 
 ```ruby
 def HTTP.start(address, *arg, &block) # :yield: +http+
@@ -59,7 +68,7 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
 end
 ```
 
-## `Net::HTTP.start`
+### `Net::HTTP.start`
 
 ```ruby
 def start  # :yield: http
@@ -219,7 +228,7 @@ rescue => exception
 end
 ```
 
-## `HTTP#request_get`
+### `HTTP#request_get`
 
 ```ruby
 # path       = #<URI::HTTPS https://www.example.com/index.html>
@@ -229,7 +238,7 @@ def request_get(path, initheader = nil, &block) # :yield: +response+
   request(Get.new(path, initheader), &block)
 end
 ```
-## `HTTP#request`
+### `HTTP#request`
 
 ```
 # req = #<Net::HTTP::Get GET>
@@ -268,7 +277,7 @@ def request(req, body = nil, &block)  # :yield: +response+
 end
 ```
 
-## `HTTP#transport_request`
+### `HTTP#transport_request`
 
 ```ruby
 # req = #<Net::HTTP::Get GET>
@@ -440,3 +449,60 @@ rescue => exception
   raise exception
 end
 ```
+
+### `HTTP.post`
+
+```ruby
+# url    = URI("https://httpbin.org/post")
+# data   = '{ "foo": "bar" }'
+# header = { "Content-Type": "application/json" }
+def HTTP.post(url, data, header = nil)
+  start(url.hostname, url.port, :use_ssl => url.scheme == 'https' ) { |http|
+    http.post(url, data, header) # getと返り値の型が違うのか...
+  }
+end
+
+def post(path, data, initheader = nil, dest = nil, &block) # :yield: +body_segment+
+  send_entity(path, data, initheader, dest, Post, &block)
+end
+
+# path       = URI("https://httpbin.org/post")
+# data       = '{ "foo": "bar" }'
+# initheader = { "Content-Type": "application/json" }
+# dest       = nil
+# type       = Post
+def send_entity(path, data, initheader, dest, type, &block)
+  res = nil
+
+  request(type.new(path, initheader), data) {|r|
+    r.read_body dest, &block
+    res = r
+  }
+
+  res
+end
+```
+
+### `HTTP.post_form`
+
+```ruby
+def HTTP.post_form(url, params)
+  req = Post.new(url)
+  req.form_data = params
+  req.basic_auth url.user, url.password if url.user
+
+  start(url.hostname, url.port, :use_ssl => url.scheme == 'https' ) {|http|
+    http.request(req)
+  }
+end
+```
+
+---
+
+### わかったこと
+- `Net::HTTP#start` -> `Net::HTTP#do_start` -> `Net::HTTP#connect`で接続を行う
+- `Net::HTTP#do_start`実行後に`Net::HTTP#request`を呼び出す
+  - `Net::HTTP#request`にHTTPメソッドを表すクラスのオブジェクトを渡す
+  - `Net::HTTP#request` -> `Net::HTTP#transport_request` -> HTTPメソッドを表すオブジェクトに対して`#exec`
+- 基本的にはHTTPステータスを表すクラスのオブジェクトが返り値になる (`Net::HTTP.get`以外)
+- 毎リクエストごとに接続し、書き込みを行う
