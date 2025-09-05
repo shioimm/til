@@ -50,7 +50,7 @@ type Response struct {
     ProtoMajor int    // プロトコルメジャーバージョン e.g. 1
     ProtoMinor int    // プロトコルマイナーバージョン e.g. 0
 
-    Header             Header        // レスポンスヘッダ
+    Header             Header        // レスポンスヘッダ type Header map[string][]string (go/src/net/http/header.go)
     Body               io.ReadCloser // レスポンスボディ
     Close              bool          // Keep-Aliveしない = true
     ContentLength      int64         // Content-Length
@@ -142,33 +142,46 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
     }
 
     rc, ok := body.(io.ReadCloser)
+
     if !ok && body != nil {
         rc = io.NopCloser(body)
     }
+
     // The host's colon:port should be normalized. See Issue 14836.
     u.Host = removeEmptyPort(u.Host)
+
     req := &Request{
-        ctx:        ctx,
-        Method:     method,
-        URL:        u,
-        Proto:      "HTTP/1.1",
+        ctx:        ctx,          // context.Background()
+        Method:     method,       // "GET"
+        URL:        u,            // "https://example.com"を表すURL構造体
+        Proto:      "HTTP/1.1",   // デフォルト値ってこと?
         ProtoMajor: 1,
         ProtoMinor: 1,
-        Header:     make(Header),
-        Body:       rc,
-        Host:       u.Host,
+        Header:     make(Header), // Headerマップのメモリアロケーション
+        Body:       rc,           // nil のはず
+        Host:       u.Host,       // example.com
     }
+
+    // 以下GETの場合はスキップ
+    // ContentLengthとGetBody (ボディを複製する関数) を設定する処理
+    // HTTPリクエストは同じボディを何度も読み直す可能性がある (e.g. リダイレクト時の再送、認証チャレンジ後の再送)
+    // io.Readerは一度読むと消費されてしまうため、
+    // GetBodyを正しく実装できるのは巻き戻し可能な型*bytes.Buffer, *bytes.Reader, *strings.Reader に限定される
     if body != nil {
         switch v := body.(type) {
         case *bytes.Buffer:
             req.ContentLength = int64(v.Len())
             buf := v.Bytes()
+
+            // GetBodyが呼ばれるたびに毎回新しいbytes.Readerをつくる
             req.GetBody = func() (io.ReadCloser, error) {
                 r := bytes.NewReader(buf)
                 return io.NopCloser(r), nil
             }
         case *bytes.Reader:
             req.ContentLength = int64(v.Len())
+
+            // GetBodyが呼ばれるたびに*bytes.Readerをコピーして新しい *bytes.Reader を返す
             snapshot := *v
             req.GetBody = func() (io.ReadCloser, error) {
                 r := snapshot
@@ -176,26 +189,18 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
             }
         case *strings.Reader:
             req.ContentLength = int64(v.Len())
+
+            // GetBodyが呼ばれるたびに*bytes.Readerをコピーして新しい *bytes.Reader を返す
             snapshot := *v
             req.GetBody = func() (io.ReadCloser, error) {
                 r := snapshot
                 return io.NopCloser(&r), nil
             }
         default:
-            // This is where we'd set it to -1 (at least
-            // if body != NoBody) to mean unknown, but
-            // that broke people during the Go 1.8 testing
-            // period. People depend on it being 0 I
-            // guess. Maybe retry later. See Issue 18117.
+            // nothing
         }
-        // For client requests, Request.ContentLength of 0
-        // means either actually 0, or unknown. The only way
-        // to explicitly say that the ContentLength is zero is
-        // to set the Body to nil. But turns out too much code
-        // depends on NewRequest returning a non-nil Body,
-        // so we use a well-known ReadCloser variable instead
-        // and have the http package also treat that sentinel
-        // variable to mean explicitly zero.
+
+        // ContentLengthが0 == 本文なしリクエスト
         if req.GetBody != nil && req.ContentLength == 0 {
             req.Body = NoBody
             req.GetBody = func() (io.ReadCloser, error) { return NoBody, nil }
