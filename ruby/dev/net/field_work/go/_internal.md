@@ -1,6 +1,8 @@
 # net/http 現地調査 (202509時点)
 https://github.com/golang/go/tree/master/src/net/http
 
+### `type Request struct`
+
 ```go
 // go/src/net/http/request.go
 type Request struct {
@@ -9,6 +11,7 @@ type Request struct {
     Proto              string        // プロトコルのバージョン e.g. "HTTP/1.0"
     ProtoMajor         int           // プロトコルのメジャーバージョン e.g. 1
     ProtoMinor         int           // プロトコルのマイナーバージョン e.g. 0
+
     Header             Header        // HTTPヘッダの集合 go/src/net/http/header.go
     Body               io.ReadCloser // リクエストボディ go/src/io/io.go
     Close              bool          // Keep-Aliveしない = true
@@ -23,21 +26,45 @@ type Request struct {
     MultipartForm *multipart.Form // マルチパートフォーム go/src/mime/multipart/formdata.go
 
     Trailer    Header // HTTP Trailer
-    RemoteAddr string // サーバ: クライアントの "IP:port"
+    RemoteAddr string // クライアントの "IP:port"
     RequestURI string // クライアントが送信するリクエストラインのURI
 
-    TLS      *tls.ConnectionState // サーバ: TLSの暗号スイートや証明書を格納
+    TLS      *tls.ConnectionState // TLSの暗号スイートや証明書を格納
     Cancel <-chan struct{}        // リクエストキャンセル用 (廃止予定)
-    Response *Response            // クライアント: リダイレクトによって作られたリクエストが持つ元レスポンス
-    Pattern   string              // サーバ: ServeMuxがマッチしたパターン
+    Response *Response            // リダイレクトによって作られたリクエストが持つ元レスポンス
+    Pattern   string              // ServeMuxがマッチしたパターン
     ctx       context.Context     // 内部的に保持されるコンテキスト
     pat         *pattern          // the pattern that matched
     matches     []string          // values for the matching wildcards in pat
     otherValues map[string]string // for calls to SetPathValue that don't match a wildcard
 }
+```
 
+### `type Response struct`
+
+```ruby
+type Response struct {
+    Status     string // ステータス行 e.g. "200 OK"
+    StatusCode int    // ステータスコード
+    Proto      string // プロトコルバージョン e.g. "HTTP/1.0"
+    ProtoMajor int    // プロトコルメジャーバージョン e.g. 1
+    ProtoMinor int    // プロトコルマイナーバージョン e.g. 0
+
+    Header             Header        // レスポンスヘッダ
+    Body               io.ReadCloser // レスポンスボディ
+    Close              bool          // Keep-Aliveしない = true
+    ContentLength      int64         // Content-Length
+    TransferEncoding []string        // Transfer-Encoding
+    Uncompressed       bool          // Transportが自動でgzipなどを解凍した場合 = true
+
+    Trailer  Header  // HTTP Trailer
+    Request *Request // 元のリクエストへのポインタ
+
+    TLS *tls.ConnectionState // TLSの暗号スイートや証明書を格納
 }
 ```
+
+### `type Client struct`
 
 ```go
 // 単一のHTTPトランザクションを実行するためのインターフェース
