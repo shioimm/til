@@ -162,6 +162,9 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
         Host:       u.Host,       // example.com
     }
 
+    // 以下のような感じでヘッダがセットされる
+    // req.Header.Set("Accept", "text/html")
+
     // 以下GETの場合はスキップ
     // ContentLengthとGetBody (ボディを複製する関数) を設定する処理
     // HTTPリクエストは同じボディを何度も読み直す可能性がある (e.g. リダイレクト時の再送、認証チャレンジ後の再送)

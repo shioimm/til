@@ -28,4 +28,14 @@ func main() {
 	body, _ := io.ReadAll(res.Body)
 	fmt.Println("GET status:", res.Status)
 	fmt.Println("GET body:", string(body))
+
+	res, err = http.Get("https://example.com")
+
+	if err != nil {
+		panic(err)
+	}
+
+	body, _ = io.ReadAll(res.Body)
+	fmt.Println("GET status:", res.Status)
+	fmt.Println("GET body:", string(body))
 }
