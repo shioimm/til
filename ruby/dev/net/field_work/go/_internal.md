@@ -242,6 +242,7 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
         defer func() { testHookClientDoResult(retres, reterr) }()
     }
 
+    // URLがnilの場合はエラーを返す
     if req.URL == nil {
         req.closeBody()
         return nil, &url.Error{
@@ -263,49 +264,59 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
         includeBody           = true
         stripSensitiveHeaders = false
     )
+
+    // uerr = エラーをフォーマットするための関数
     uerr := func(err error) error {
-        // the body may have been closed already by c.send()
         if !reqBodyClosed {
-            req.closeBody()
+            req.closeBody() // リクエスト本文 (req.Body) がまだ閉じられていなければクローズ
         }
+
         var urlStr string
-        if resp != nil && resp.Request != nil {
+
+        if resp != nil && resp.Request != nil { // サーバからレスポンスがあり、リダイレクトしている場合など
             urlStr = stripPassword(resp.Request.URL)
         } else {
             urlStr = stripPassword(req.URL)
         }
+
         return &url.Error{
-            Op:  urlErrorOp(reqs[0].Method),
-            URL: urlStr,
-            Err: err,
+            Op:  urlErrorOp(reqs[0].Method), // HTTPメソッド
+            URL: urlStr, // URL
+            Err: err, // エラー内容
         }
     }
+
     for {
-        // For all but the first request, create the next
-        // request hop and replace req.
+        // For all but the first request, create the next request hop and replace req.
+        // 以下の処理は2回目以降のループ = リダイレクトが発生した場合のみ実行
         if len(reqs) > 0 {
             loc := resp.Header.Get("Location")
+
+            // Locationヘッダが無い3xxの場合は単にレスポンスを返す
             if loc == "" {
-                // While most 3xx responses include a Location, it is not
-                // required and 3xx responses without a Location have been
-                // observed in the wild. See issues #17773 and #49281.
                 return resp, nil
             }
+
+            // リクエストURL基準にしてLocationを取得
             u, err := req.URL.Parse(loc)
             if err != nil {
                 resp.closeBody()
                 return nil, uerr(fmt.Errorf("failed to parse Location header %q: %v", loc, err))
             }
+
             host := ""
+
+            // カスタムHostヘッダの指定ありかつ元のURLのホストと異なる
             if req.Host != "" && req.Host != req.URL.Host {
-                // If the caller specified a custom Host header and the
-                // redirect location is relative, preserve the Host header
-                // through the redirect. See issue #22233.
+                // Locationが相対URL場合、リダイレクト後のリクエストでもHostヘッダを維持する
                 if u, _ := url.Parse(loc); u != nil && !u.IsAbs() {
                     host = req.Host
                 }
             }
+
             ireq := reqs[0]
+
+            // ---- ここからWIP ----
             req = &Request{
                 Method:   redirectMethod,
                 Response: resp,
@@ -315,6 +326,7 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
                 Cancel:   ireq.Cancel,
                 ctx:      ireq.ctx,
             }
+
             if includeBody && ireq.GetBody != nil {
                 req.Body, err = ireq.GetBody()
                 if err != nil {
@@ -370,28 +382,61 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
                 ue.(*url.Error).URL = loc
                 return resp, ue
             }
+            // ---- ここまでWIP ----
         }
 
-        reqs = append(reqs, req)
+        // req, err := http.NewRequest("GET", "https://example.com", nil)
+        // res, err := http.DefaultClient.Do(req)
+        reqs = append(reqs, req) // reqsにreqを追加
         var err error
         var didTimeout func() bool
-        if resp, didTimeout, err = c.send(req, deadline); err != nil {
-            // c.send() always closes req.Body
-            reqBodyClosed = true
+
+        // c.send(req, deadline)でリクエストを送信
+        if resp, didTimeout, err = c.send(req, deadline);
+           err != nil { // エラー発生時
+            reqBodyClosed = true // c.send() always closes req.Body
+
             if !deadline.IsZero() && didTimeout() {
                 err = &timeoutError{err.Error() + " (Client.Timeout exceeded while awaiting headers)"}
             }
+
             return nil, uerr(err)
         }
 
         var shouldRedirect, includeBodyOnHop bool
         redirectMethod, shouldRedirect, includeBodyOnHop = redirectBehavior(req.Method, resp, reqs[0])
+
+        // func redirectBehavior(
+        //     reqMethod string,
+        //     resp *Response,
+        //     ireq *Request
+        // ) (redirectMethod string, shouldRedirect, includeBody bool) {
+        //     switch resp.StatusCode {
+        //     case 301, 302, 303:
+        //         redirectMethod = reqMethod
+        //         shouldRedirect = true
+        //         includeBody = false
+        //
+        //         if reqMethod != "GET" && reqMethod != "HEAD" {
+        //             redirectMethod = "GET"
+        //         }
+        //     case 307, 308:
+        //         redirectMethod = reqMethod
+        //         shouldRedirect = true
+        //         includeBody = true
+        //
+        //         if ireq.GetBody == nil && ireq.outgoingLength() != 0 {
+        //             shouldRedirect = false
+        //         }
+        //     }
+        //     return redirectMethod, shouldRedirect, includeBody
+        // }
+
         if !shouldRedirect {
-            return resp, nil
+            return resp, nil // 3xx以外ならそのままレスポンスを返して終了
         }
+
         if !includeBodyOnHop {
-            // Once a hop drops the body, we never send it again
-            // (because we're now handling a redirect for a request with no body).
             includeBody = false
         }
 
