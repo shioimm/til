@@ -316,73 +316,62 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
 
             ireq := reqs[0]
 
-            // ---- ここからWIP ----
             req = &Request{
                 Method:   redirectMethod,
-                Response: resp,
-                URL:      u,
+                Response: resp,         // 直前のレスポンス
+                URL:      u,            // Locationを解決した新しいURL
                 Header:   make(Header),
                 Host:     host,
                 Cancel:   ireq.Cancel,
-                ctx:      ireq.ctx,
+                ctx:      ireq.ctx,     // 元リクエストのキャンセルチャネルとコンテキストを引き継ぐ
             }
 
-            if includeBody && ireq.GetBody != nil {
+            // includeBody = bodyを維持するか落とすかの判定 (ステータスコード次第)
+            // ireq.GetBody = 巻き戻し可能なbody
+            if includeBody && ireq.GetBody != nil { // bodyを再送する場合
                 req.Body, err = ireq.GetBody()
+
                 if err != nil {
                     resp.closeBody()
                     return nil, uerr(err)
                 }
+
                 req.GetBody = ireq.GetBody
                 req.ContentLength = ireq.ContentLength
             }
 
-            // Copy original headers before setting the Referer,
-            // in case the user set Referer on their first request.
-            // If they really want to override, they can do it in
-            // their CheckRedirect func.
             if !stripSensitiveHeaders && reqs[0].URL.Host != req.URL.Host {
                 if !shouldCopyHeaderOnRedirect(reqs[0].URL, req.URL) {
                     stripSensitiveHeaders = true
                 }
             }
-            copyHeaders(req, stripSensitiveHeaders)
+            copyHeaders(req, stripSensitiveHeaders) // Sensitiveヘッダを除外しつつヘッダを複製
 
-            // Add the Referer header from the most recent
-            // request URL to the new one, if it's not https->http:
+            // 直前のURLを元にRefererを追加
             if ref := refererForURL(reqs[len(reqs)-1].URL, req.URL, req.Header.Get("Referer")); ref != "" {
                 req.Header.Set("Referer", ref)
             }
-            err = c.checkRedirect(req, reqs)
 
-            // Sentinel error to let users select the
-            // previous response, without closing its
-            // body. See Issue 10069.
+            err = c.checkRedirect(req, reqs) // Client.CheckRedirectの設定があれば実行
+
             if err == ErrUseLastResponse {
                 return resp, nil
             }
 
-            // Close the previous response's body. But
-            // read at least some of the body so if it's
-            // small the underlying TCP connection will be
-            // re-used. No need to check for errors: if it
-            // fails, the Transport won't reuse it anyway.
+            // 直前レスポンスボディを最大2KB読み捨ててからClose
             const maxBodySlurpSize = 2 << 10
+
             if resp.ContentLength == -1 || resp.ContentLength <= maxBodySlurpSize {
                 io.CopyN(io.Discard, resp.Body, maxBodySlurpSize)
             }
+
             resp.Body.Close()
 
             if err != nil {
-                // Special case for Go 1 compatibility: return both the response
-                // and an error if the CheckRedirect function failed.
-                // See https://golang.org/issue/3795
-                // The resp.Body has already been closed.
                 ue := uerr(err)
                 ue.(*url.Error).URL = loc
                 return resp, ue
             }
-            // ---- ここまでWIP ----
         }
 
         // req, err := http.NewRequest("GET", "https://example.com", nil)
@@ -444,3 +433,6 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
     }
 }
 ```
+
+TODO
+- `ForceAttemptHTTP2`の出番を調べる
