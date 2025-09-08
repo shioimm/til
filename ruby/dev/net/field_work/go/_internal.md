@@ -77,6 +77,7 @@ type Client struct {
     Transport RoundTripper // 実際にリクエストを送信する仕組みを指定する (デフォルトではDefaultTransport)
 
     // (go/src/net/http/transport.go)
+    // DefaultClientによって利用される
     // var DefaultTransport RoundTripper = &Transport{
     //     Proxy: ProxyFromEnvironment,             // 環境変数HTTP_PROXY、NO_PROXYを尊重
     //     DialContext: (&net.Dialer{               // ネットワーク接続にnet.Dialerを利用する
@@ -95,6 +96,10 @@ type Client struct {
 
     CheckRedirect func(req *Request, via []*Request) error // リダイレクト時に呼ばれるコールバック
 }
+
+// 再利用可能なHTTPクライアント
+// トップレベル関数から内部的に呼ばれる
+var DefaultClient = &Client{}
 ```
 
 ## `NewRequest`
@@ -211,5 +216,186 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
     }
 
     return req, nil
+}
+```
+
+```go
+// go/src/net/http/client.go
+
+// Transport (RoundTripper) はClientから内部的に利用される
+func (c *Client) transport() RoundTripper {
+    if c.Transport != nil {
+        return c.Transport
+    }
+    return DefaultTransport
+}
+
+// req, err := http.NewRequest("GET", "https://example.com", nil)
+// res, err := http.DefaultClient.Do(req)
+func (c *Client) Do(req *Request) (*Response, error) {
+    return c.do(req)
+}
+
+func (c *Client) do(req *Request) (retres *Response, reterr error) {
+    // go/src/net/http/export_test.goの中でtestHookClientDoResultを実装している
+    if testHookClientDoResult != nil {
+        defer func() { testHookClientDoResult(retres, reterr) }()
+    }
+
+    if req.URL == nil {
+        req.closeBody()
+        return nil, &url.Error{
+            Op:  urlErrorOp(req.Method),
+            Err: errors.New("http: nil Request.URL"),
+        }
+    }
+    _ = *c // panic early if c is nil; see go.dev/issue/53521
+
+    var (
+        deadline      = c.deadline()
+        reqs          []*Request
+        resp          *Response
+        copyHeaders   = c.makeHeadersCopier(req)
+        reqBodyClosed = false // have we closed the current req.Body?
+
+        // Redirect behavior:
+        redirectMethod        string
+        includeBody           = true
+        stripSensitiveHeaders = false
+    )
+    uerr := func(err error) error {
+        // the body may have been closed already by c.send()
+        if !reqBodyClosed {
+            req.closeBody()
+        }
+        var urlStr string
+        if resp != nil && resp.Request != nil {
+            urlStr = stripPassword(resp.Request.URL)
+        } else {
+            urlStr = stripPassword(req.URL)
+        }
+        return &url.Error{
+            Op:  urlErrorOp(reqs[0].Method),
+            URL: urlStr,
+            Err: err,
+        }
+    }
+    for {
+        // For all but the first request, create the next
+        // request hop and replace req.
+        if len(reqs) > 0 {
+            loc := resp.Header.Get("Location")
+            if loc == "" {
+                // While most 3xx responses include a Location, it is not
+                // required and 3xx responses without a Location have been
+                // observed in the wild. See issues #17773 and #49281.
+                return resp, nil
+            }
+            u, err := req.URL.Parse(loc)
+            if err != nil {
+                resp.closeBody()
+                return nil, uerr(fmt.Errorf("failed to parse Location header %q: %v", loc, err))
+            }
+            host := ""
+            if req.Host != "" && req.Host != req.URL.Host {
+                // If the caller specified a custom Host header and the
+                // redirect location is relative, preserve the Host header
+                // through the redirect. See issue #22233.
+                if u, _ := url.Parse(loc); u != nil && !u.IsAbs() {
+                    host = req.Host
+                }
+            }
+            ireq := reqs[0]
+            req = &Request{
+                Method:   redirectMethod,
+                Response: resp,
+                URL:      u,
+                Header:   make(Header),
+                Host:     host,
+                Cancel:   ireq.Cancel,
+                ctx:      ireq.ctx,
+            }
+            if includeBody && ireq.GetBody != nil {
+                req.Body, err = ireq.GetBody()
+                if err != nil {
+                    resp.closeBody()
+                    return nil, uerr(err)
+                }
+                req.GetBody = ireq.GetBody
+                req.ContentLength = ireq.ContentLength
+            }
+
+            // Copy original headers before setting the Referer,
+            // in case the user set Referer on their first request.
+            // If they really want to override, they can do it in
+            // their CheckRedirect func.
+            if !stripSensitiveHeaders && reqs[0].URL.Host != req.URL.Host {
+                if !shouldCopyHeaderOnRedirect(reqs[0].URL, req.URL) {
+                    stripSensitiveHeaders = true
+                }
+            }
+            copyHeaders(req, stripSensitiveHeaders)
+
+            // Add the Referer header from the most recent
+            // request URL to the new one, if it's not https->http:
+            if ref := refererForURL(reqs[len(reqs)-1].URL, req.URL, req.Header.Get("Referer")); ref != "" {
+                req.Header.Set("Referer", ref)
+            }
+            err = c.checkRedirect(req, reqs)
+
+            // Sentinel error to let users select the
+            // previous response, without closing its
+            // body. See Issue 10069.
+            if err == ErrUseLastResponse {
+                return resp, nil
+            }
+
+            // Close the previous response's body. But
+            // read at least some of the body so if it's
+            // small the underlying TCP connection will be
+            // re-used. No need to check for errors: if it
+            // fails, the Transport won't reuse it anyway.
+            const maxBodySlurpSize = 2 << 10
+            if resp.ContentLength == -1 || resp.ContentLength <= maxBodySlurpSize {
+                io.CopyN(io.Discard, resp.Body, maxBodySlurpSize)
+            }
+            resp.Body.Close()
+
+            if err != nil {
+                // Special case for Go 1 compatibility: return both the response
+                // and an error if the CheckRedirect function failed.
+                // See https://golang.org/issue/3795
+                // The resp.Body has already been closed.
+                ue := uerr(err)
+                ue.(*url.Error).URL = loc
+                return resp, ue
+            }
+        }
+
+        reqs = append(reqs, req)
+        var err error
+        var didTimeout func() bool
+        if resp, didTimeout, err = c.send(req, deadline); err != nil {
+            // c.send() always closes req.Body
+            reqBodyClosed = true
+            if !deadline.IsZero() && didTimeout() {
+                err = &timeoutError{err.Error() + " (Client.Timeout exceeded while awaiting headers)"}
+            }
+            return nil, uerr(err)
+        }
+
+        var shouldRedirect, includeBodyOnHop bool
+        redirectMethod, shouldRedirect, includeBodyOnHop = redirectBehavior(req.Method, resp, reqs[0])
+        if !shouldRedirect {
+            return resp, nil
+        }
+        if !includeBodyOnHop {
+            // Once a hop drops the body, we never send it again
+            // (because we're now handling a redirect for a request with no body).
+            includeBody = false
+        }
+
+        req.closeBody()
+    }
 }
 ```
