@@ -242,6 +242,7 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
         defer func() { testHookClientDoResult(retres, reterr) }()
     }
 
+    // URLがnilの場合はエラーを返す
     if req.URL == nil {
         req.closeBody()
         return nil, &url.Error{
@@ -263,135 +264,168 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
         includeBody           = true
         stripSensitiveHeaders = false
     )
+
+    // uerr = エラーをフォーマットするための関数
     uerr := func(err error) error {
-        // the body may have been closed already by c.send()
         if !reqBodyClosed {
-            req.closeBody()
+            req.closeBody() // リクエスト本文 (req.Body) がまだ閉じられていなければクローズ
         }
+
         var urlStr string
-        if resp != nil && resp.Request != nil {
+
+        if resp != nil && resp.Request != nil { // サーバからレスポンスがあり、リダイレクトしている場合など
             urlStr = stripPassword(resp.Request.URL)
         } else {
             urlStr = stripPassword(req.URL)
         }
+
         return &url.Error{
-            Op:  urlErrorOp(reqs[0].Method),
-            URL: urlStr,
-            Err: err,
+            Op:  urlErrorOp(reqs[0].Method), // HTTPメソッド
+            URL: urlStr, // URL
+            Err: err, // エラー内容
         }
     }
+
     for {
-        // For all but the first request, create the next
-        // request hop and replace req.
+        // For all but the first request, create the next request hop and replace req.
+        // 以下の処理は2回目以降のループ = リダイレクトが発生した場合のみ実行
         if len(reqs) > 0 {
             loc := resp.Header.Get("Location")
+
+            // Locationヘッダが無い3xxの場合は単にレスポンスを返す
             if loc == "" {
-                // While most 3xx responses include a Location, it is not
-                // required and 3xx responses without a Location have been
-                // observed in the wild. See issues #17773 and #49281.
                 return resp, nil
             }
+
+            // リクエストURL基準にしてLocationを取得
             u, err := req.URL.Parse(loc)
             if err != nil {
                 resp.closeBody()
                 return nil, uerr(fmt.Errorf("failed to parse Location header %q: %v", loc, err))
             }
+
             host := ""
+
+            // カスタムHostヘッダの指定ありかつ元のURLのホストと異なる
             if req.Host != "" && req.Host != req.URL.Host {
-                // If the caller specified a custom Host header and the
-                // redirect location is relative, preserve the Host header
-                // through the redirect. See issue #22233.
+                // Locationが相対URL場合、リダイレクト後のリクエストでもHostヘッダを維持する
                 if u, _ := url.Parse(loc); u != nil && !u.IsAbs() {
                     host = req.Host
                 }
             }
+
             ireq := reqs[0]
+
             req = &Request{
                 Method:   redirectMethod,
-                Response: resp,
-                URL:      u,
+                Response: resp,         // 直前のレスポンス
+                URL:      u,            // Locationを解決した新しいURL
                 Header:   make(Header),
                 Host:     host,
                 Cancel:   ireq.Cancel,
-                ctx:      ireq.ctx,
+                ctx:      ireq.ctx,     // 元リクエストのキャンセルチャネルとコンテキストを引き継ぐ
             }
-            if includeBody && ireq.GetBody != nil {
+
+            // includeBody = bodyを維持するか落とすかの判定 (ステータスコード次第)
+            // ireq.GetBody = 巻き戻し可能なbody
+            if includeBody && ireq.GetBody != nil { // bodyを再送する場合
                 req.Body, err = ireq.GetBody()
+
                 if err != nil {
                     resp.closeBody()
                     return nil, uerr(err)
                 }
+
                 req.GetBody = ireq.GetBody
                 req.ContentLength = ireq.ContentLength
             }
 
-            // Copy original headers before setting the Referer,
-            // in case the user set Referer on their first request.
-            // If they really want to override, they can do it in
-            // their CheckRedirect func.
             if !stripSensitiveHeaders && reqs[0].URL.Host != req.URL.Host {
                 if !shouldCopyHeaderOnRedirect(reqs[0].URL, req.URL) {
                     stripSensitiveHeaders = true
                 }
             }
-            copyHeaders(req, stripSensitiveHeaders)
+            copyHeaders(req, stripSensitiveHeaders) // Sensitiveヘッダを除外しつつヘッダを複製
 
-            // Add the Referer header from the most recent
-            // request URL to the new one, if it's not https->http:
+            // 直前のURLを元にRefererを追加
             if ref := refererForURL(reqs[len(reqs)-1].URL, req.URL, req.Header.Get("Referer")); ref != "" {
                 req.Header.Set("Referer", ref)
             }
-            err = c.checkRedirect(req, reqs)
 
-            // Sentinel error to let users select the
-            // previous response, without closing its
-            // body. See Issue 10069.
+            err = c.checkRedirect(req, reqs) // Client.CheckRedirectの設定があれば実行
+
             if err == ErrUseLastResponse {
                 return resp, nil
             }
 
-            // Close the previous response's body. But
-            // read at least some of the body so if it's
-            // small the underlying TCP connection will be
-            // re-used. No need to check for errors: if it
-            // fails, the Transport won't reuse it anyway.
+            // 直前レスポンスボディを最大2KB読み捨ててからClose
             const maxBodySlurpSize = 2 << 10
+
             if resp.ContentLength == -1 || resp.ContentLength <= maxBodySlurpSize {
                 io.CopyN(io.Discard, resp.Body, maxBodySlurpSize)
             }
+
             resp.Body.Close()
 
             if err != nil {
-                // Special case for Go 1 compatibility: return both the response
-                // and an error if the CheckRedirect function failed.
-                // See https://golang.org/issue/3795
-                // The resp.Body has already been closed.
                 ue := uerr(err)
                 ue.(*url.Error).URL = loc
                 return resp, ue
             }
         }
 
-        reqs = append(reqs, req)
+        // req, err := http.NewRequest("GET", "https://example.com", nil)
+        // res, err := http.DefaultClient.Do(req)
+        reqs = append(reqs, req) // reqsにreqを追加
         var err error
         var didTimeout func() bool
-        if resp, didTimeout, err = c.send(req, deadline); err != nil {
-            // c.send() always closes req.Body
-            reqBodyClosed = true
+
+        // c.send(req, deadline)でリクエストを送信
+        if resp, didTimeout, err = c.send(req, deadline);
+           err != nil { // エラー発生時
+            reqBodyClosed = true // c.send() always closes req.Body
+
             if !deadline.IsZero() && didTimeout() {
                 err = &timeoutError{err.Error() + " (Client.Timeout exceeded while awaiting headers)"}
             }
+
             return nil, uerr(err)
         }
 
         var shouldRedirect, includeBodyOnHop bool
         redirectMethod, shouldRedirect, includeBodyOnHop = redirectBehavior(req.Method, resp, reqs[0])
+
+        // func redirectBehavior(
+        //     reqMethod string,
+        //     resp *Response,
+        //     ireq *Request
+        // ) (redirectMethod string, shouldRedirect, includeBody bool) {
+        //     switch resp.StatusCode {
+        //     case 301, 302, 303:
+        //         redirectMethod = reqMethod
+        //         shouldRedirect = true
+        //         includeBody = false
+        //
+        //         if reqMethod != "GET" && reqMethod != "HEAD" {
+        //             redirectMethod = "GET"
+        //         }
+        //     case 307, 308:
+        //         redirectMethod = reqMethod
+        //         shouldRedirect = true
+        //         includeBody = true
+        //
+        //         if ireq.GetBody == nil && ireq.outgoingLength() != 0 {
+        //             shouldRedirect = false
+        //         }
+        //     }
+        //     return redirectMethod, shouldRedirect, includeBody
+        // }
+
         if !shouldRedirect {
-            return resp, nil
+            return resp, nil // 3xx以外ならそのままレスポンスを返して終了
         }
+
         if !includeBodyOnHop {
-            // Once a hop drops the body, we never send it again
-            // (because we're now handling a redirect for a request with no body).
             includeBody = false
         }
 
@@ -399,3 +433,6 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
     }
 }
 ```
+
+TODO
+- `ForceAttemptHTTP2`の出番を調べる
