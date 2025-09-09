@@ -109,221 +109,83 @@ var DefaultClient = &Client{}
 
 // WIP
 type Transport struct {
-    idleMu       sync.Mutex
-    closeIdle    bool                                // user has requested to close all idle conns
-    idleConn     map[connectMethodKey][]*persistConn // most recently used at end
-    idleConnWait map[connectMethodKey]wantConnQueue  // waiting getConns
-    idleLRU      connLRU
+    idleMu       sync.Mutex                          // Keep-Alive中の接続のテーブルを守るロック
+    closeIdle    bool                                // Keep-Alive中の接続をすべてクローズするフラグ
+    idleConn     map[connectMethodKey][]*persistConn // Keep-Alive中の接続のテーブル
+    idleConnWait map[connectMethodKey]wantConnQueue  // 空き接続を待っているリクエストの待ち行列
+    idleLRU      connLRU                             // Keep-Alive中の接続のLRU (最終利用時刻)
 
+    // 進行中のリクエストにぶら下げたキャンセル関数のレジストリ
     reqMu       sync.Mutex
     reqCanceler map[*Request]context.CancelCauseFunc
 
+    // 代替プロトコルのテーブル (キーはALPN等で得たプロトコル名)
+    // デフォルト以外のRoundTripper (HTTP/2など) に切替えるために参照する
     altMu    sync.Mutex   // guards changing altProto only
     altProto atomic.Value // of nil or map[string]RoundTripper, key is URI scheme
 
+    // 宛先ごとの総接続数カウンタ
     connsPerHostMu   sync.Mutex
     connsPerHost     map[connectMethodKey]int
-    connsPerHostWait map[connectMethodKey]wantConnQueue // waiting getConns
-    dialsInProgress  wantConnQueue
 
-    // Proxy specifies a function to return a proxy for a given
-    // Request. If the function returns a non-nil error, the
-    // request is aborted with the provided error.
-    //
-    // The proxy type is determined by the URL scheme. "http",
-    // "https", "socks5", and "socks5h" are supported. If the scheme is empty,
-    // "http" is assumed.
-    // "socks5" is treated the same as "socks5h".
-    //
-    // If the proxy URL contains a userinfo subcomponent,
-    // the proxy request will pass the username and password
-    // in a Proxy-Authorization header.
-    //
-    // If Proxy is nil or returns a nil *URL, no proxy is used.
-    Proxy func(*Request) (*url.URL, error)
+    connsPerHostWait map[connectMethodKey]wantConnQueue // ホストあたりの同時接続数上限を超えたリクエストの待ち行列
+    dialsInProgress  wantConnQueue                      // 接続中のリクエストの待ち行列
 
-    // OnProxyConnectResponse is called when the Transport gets an HTTP response from
-    // a proxy for a CONNECT request. It's called before the check for a 200 OK response.
-    // If it returns an error, the request fails with that error.
-    OnProxyConnectResponse func(ctx context.Context, proxyURL *url.URL, connectReq *Request, connectRes *Response) error
+    Proxy func(*Request) (*url.URL, error) // プロキシ選択フック
 
-    // DialContext specifies the dial function for creating unencrypted TCP connections.
-    // If DialContext is nil (and the deprecated Dial below is also nil),
-    // then the transport dials using package net.
-    //
-    // DialContext runs concurrently with calls to RoundTrip.
-    // A RoundTrip call that initiates a dial may end up using
-    // a connection dialed previously when the earlier connection
-    // becomes idle before the later DialContext completes.
+    OnProxyConnectResponse func( // HTTPプロキシへCONNECTを送信した直後の応答フック
+        ctx context.Context,
+        proxyURL *url.URL,
+        connectReq *Request,
+        connectRes *Response
+    ) error
+
+    // 平文TCPの接続関数 (未設定ならnet.Dialer)
     DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
-    // Dial specifies the dial function for creating unencrypted TCP connections.
-    //
-    // Dial runs concurrently with calls to RoundTrip.
-    // A RoundTrip call that initiates a dial may end up using
-    // a connection dialed previously when the earlier connection
-    // becomes idle before the later Dial completes.
-    //
-    // Deprecated: Use DialContext instead, which allows the transport
-    // to cancel dials as soon as they are no longer needed.
-    // If both are set, DialContext takes priority.
     Dial func(network, addr string) (net.Conn, error)
-
-    // DialTLSContext specifies an optional dial function for creating
-    // TLS connections for non-proxied HTTPS requests.
-    //
-    // If DialTLSContext is nil (and the deprecated DialTLS below is also nil),
-    // DialContext and TLSClientConfig are used.
-    //
-    // If DialTLSContext is set, the Dial and DialContext hooks are not used for HTTPS
-    // requests and the TLSClientConfig and TLSHandshakeTimeout
-    // are ignored. The returned net.Conn is assumed to already be
-    // past the TLS handshake.
     DialTLSContext func(ctx context.Context, network, addr string) (net.Conn, error)
-
-    // DialTLS specifies an optional dial function for creating
-    // TLS connections for non-proxied HTTPS requests.
-    //
-    // Deprecated: Use DialTLSContext instead, which allows the transport
-    // to cancel dials as soon as they are no longer needed.
-    // If both are set, DialTLSContext takes priority.
     DialTLS func(network, addr string) (net.Conn, error)
 
-    // TLSClientConfig specifies the TLS configuration to use with
-    // tls.Client.
-    // If nil, the default configuration is used.
-    // If non-nil, HTTP/2 support may not be enabled by default.
-    TLSClientConfig *tls.Config
+    TLSClientConfig *tls.Config       // クライアントのTLSの設定
+    TLSHandshakeTimeout time.Duration // TLS ハンドシェイクのタイムアウト
 
-    // TLSHandshakeTimeout specifies the maximum amount of time to
-    // wait for a TLS handshake. Zero means no timeout.
-    TLSHandshakeTimeout time.Duration
+    DisableKeepAlives bool  // Keep-Aliveを使わず毎回つなぎ直す
+    DisableCompression bool // Accept-Encoding: gzip を自動で付けない
 
-    // DisableKeepAlives, if true, disables HTTP keep-alives and
-    // will only use the connection to the server for a single
-    // HTTP request.
-    //
-    // This is unrelated to the similarly named TCP keep-alives.
-    DisableKeepAlives bool
+    MaxIdleConns int        // Keep-Alive接続の上限 (全体)
+    MaxIdleConnsPerHost int // Keep-Alive接続の上限 (ホスト別)
+    MaxConnsPerHost int     // 接続中・使用中・Keep-Alive全てを含む総接続数の上限
 
-    // DisableCompression, if true, prevents the Transport from
-    // requesting compression with an "Accept-Encoding: gzip"
-    // request header when the Request contains no existing
-    // Accept-Encoding value. If the Transport requests gzip on
-    // its own and gets a gzipped response, it's transparently
-    // decoded in the Response.Body. However, if the user
-    // explicitly requested gzip it is not automatically
-    // uncompressed.
-    DisableCompression bool
-
-    // MaxIdleConns controls the maximum number of idle (keep-alive)
-    // connections across all hosts. Zero means no limit.
-    MaxIdleConns int
-
-    // MaxIdleConnsPerHost, if non-zero, controls the maximum idle
-    // (keep-alive) connections to keep per-host. If zero,
-    // DefaultMaxIdleConnsPerHost is used.
-    MaxIdleConnsPerHost int
-
-    // MaxConnsPerHost optionally limits the total number of
-    // connections per host, including connections in the dialing,
-    // active, and idle states. On limit violation, dials will block.
-    //
-    // Zero means no limit.
-    MaxConnsPerHost int
-
-    // IdleConnTimeout is the maximum amount of time an idle
-    // (keep-alive) connection will remain idle before closing
-    // itself.
-    // Zero means no limit.
+    // Keep-Alive接続を自動クローズするまでの時間
     IdleConnTimeout time.Duration
 
-    // ResponseHeaderTimeout, if non-zero, specifies the amount of
-    // time to wait for a server's response headers after fully
-    // writing the request (including its body, if any). This
-    // time does not include the time to read the response body.
+    // リクエスト送信完了後、レスポンスヘッダが返るまでのタイムアウト時間
     ResponseHeaderTimeout time.Duration
 
-    // ExpectContinueTimeout, if non-zero, specifies the amount of
-    // time to wait for a server's first response headers after fully
-    // writing the request headers if the request has an
-    // "Expect: 100-continue" header. Zero means no timeout and
-    // causes the body to be sent immediately, without
-    // waiting for the server to approve.
-    // This time does not include the time to send the request header.
+    // Expect: 100-continueを送った後、最初のレスポンスヘッダが返るまでのタイムアウト時間
     ExpectContinueTimeout time.Duration
 
-    // TLSNextProto specifies how the Transport switches to an
-    // alternate protocol (such as HTTP/2) after a TLS ALPN
-    // protocol negotiation. If Transport dials a TLS connection
-    // with a non-empty protocol name and TLSNextProto contains a
-    // map entry for that key (such as "h2"), then the func is
-    // called with the request's authority (such as "example.com"
-    // or "example.com:1234") and the TLS connection. The function
-    // must return a RoundTripper that then handles the request.
-    // If TLSNextProto is not nil, HTTP/2 support is not enabled
-    // automatically.
+    // ALPNで選ばれたプロトコルに応じて別のRoundTripperに切替えるフック
     TLSNextProto map[string]func(authority string, c *tls.Conn) RoundTripper
 
-    // ProxyConnectHeader optionally specifies headers to send to
-    // proxies during CONNECT requests.
-    // To set the header dynamically, see GetProxyConnectHeader.
+    // CONNECT送信時に送るヘッダ
     ProxyConnectHeader Header
 
-    // GetProxyConnectHeader optionally specifies a func to return
-    // headers to send to proxyURL during a CONNECT request to the
-    // ip:port target.
-    // If it returns an error, the Transport's RoundTrip fails with
-    // that error. It can return (nil, nil) to not add headers.
-    // If GetProxyConnectHeader is non-nil, ProxyConnectHeader is
-    // ignored.
+    // CONNECT送信毎に動的に決めるヘッダ
     GetProxyConnectHeader func(ctx context.Context, proxyURL *url.URL, target string) (Header, error)
 
-    // MaxResponseHeaderBytes specifies a limit on how many
-    // response bytes are allowed in the server's response
-    // header.
-    //
-    // Zero means to use a default limit.
-    MaxResponseHeaderBytes int64
+    MaxResponseHeaderBytes int64 // レスポンスヘッダ総サイズの上限
+    WriteBufferSize int          // 書き込み用のバッファサイズ
+    ReadBufferSize int           // 読み取り用バッファサイズ
 
-    // WriteBufferSize specifies the size of the write buffer used
-    // when writing to the transport.
-    // If zero, a default (currently 4KB) is used.
-    WriteBufferSize int
+    nextProtoOnce      sync.Once   // Transport.RoundTripが最初に呼ばれるときにHTTP/2を有効化するかどうかを判定
+    h2transport        h2Transport // 実際にHTTP/2リクエストを処理するRoundTripper
+    tlsNextProtoWasNil bool        // TLSNextProtoフィールドがnilだったかどうか
 
-    // ReadBufferSize specifies the size of the read buffer used
-    // when reading from the transport.
-    // If zero, a default (currently 4KB) is used.
-    ReadBufferSize int
-
-    // nextProtoOnce guards initialization of TLSNextProto and
-    // h2transport (via onceSetNextProtoDefaults)
-    nextProtoOnce      sync.Once
-    h2transport        h2Transport // non-nil if http2 wired up
-    tlsNextProtoWasNil bool        // whether TLSNextProto was nil when the Once fired
-
-    // ForceAttemptHTTP2 controls whether HTTP/2 is enabled when a non-zero
-    // Dial, DialTLS, or DialContext func or TLSClientConfig is provided.
-    // By default, use of any those fields conservatively disables HTTP/2.
-    // To use a custom dialer or TLS config and still attempt HTTP/2
-    // upgrades, set this to true.
-    ForceAttemptHTTP2 bool
-
-    // HTTP2 configures HTTP/2 connections.
-    //
-    // This field does not yet have any effect.
-    // See https://go.dev/issue/67813.
-    HTTP2 *HTTP2Config
-
-    // Protocols is the set of protocols supported by the transport.
-    //
-    // If Protocols includes UnencryptedHTTP2 and does not include HTTP1,
-    // the transport will use unencrypted HTTP/2 for requests for http:// URLs.
-    //
-    // If Protocols is nil, the default is usually HTTP/1 only.
-    // If ForceAttemptHTTP2 is true, or if TLSNextProto contains an "h2" entry,
-    // the default is HTTP/1 and HTTP/2.
-    Protocols *Protocols
+    ForceAttemptHTTP2 bool // Dial*やTLSClientConfigをカスタムしていてもHTTP/2を試みる
+    HTTP2 *HTTP2Config     // 予約領域
+    Protocols *Protocols   // サポートするプロトコルの集合
 }
 ```
 
