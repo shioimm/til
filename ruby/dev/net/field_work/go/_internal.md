@@ -449,14 +449,6 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
 ```go
 // go/src/net/http/client.go
 
-// Transport (RoundTripper) はClientから内部的に利用される
-func (c *Client) transport() RoundTripper {
-    if c.Transport != nil {
-        return c.Transport
-    }
-    return DefaultTransport
-}
-
 // req, err := http.NewRequest("GET", "https://example.com", nil)
 // res, err := http.DefaultClient.Do(req)
 func (c *Client) Do(req *Request) (*Response, error) {
@@ -657,6 +649,318 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
         }
 
         req.closeBody()
+    }
+}
+
+// c.send(req, deadline)
+func (c *Client) send(req *Request, deadline time.Time) (resp *Response, didTimeout func() bool, err error) {
+    if c.Jar != nil {
+        for _, cookie := range c.Jar.Cookies(req.URL) {
+            req.AddCookie(cookie)
+        }
+    }
+
+    resp, didTimeout, err = send(req, c.transport(), deadline)
+
+    // func (c *Client) transport() RoundTripper {
+    //     if c.Transport != nil {
+    //         return c.Transport
+    //     }
+    //     return DefaultTransport
+    // }
+
+    if err != nil {
+        return nil, didTimeout, err
+    }
+
+    if c.Jar != nil {
+        if rc := resp.Cookies(); len(rc) > 0 {
+            c.Jar.SetCookies(req.URL, rc)
+        }
+    }
+
+    return resp, nil, nil
+}
+
+// send(req, c.transport(), deadline)
+func send(ireq *Request, rt RoundTripper, deadline time.Time) (resp *Response, didTimeout func() bool, err error) {
+    req := ireq // req is either the original request, or a modified fork
+
+    if rt == nil {
+        req.closeBody()
+        return nil, alwaysFalse, errors.New("http: no Client.Transport or DefaultTransport")
+    }
+
+    if req.URL == nil {
+        req.closeBody()
+        return nil, alwaysFalse, errors.New("http: nil Request.URL")
+    }
+
+    // サーバ側の処理
+    if req.RequestURI != "" {
+        req.closeBody()
+        return nil, alwaysFalse, errors.New("http: Request.RequestURI can't be set in client requests")
+    }
+
+    // reqのshallow copy (元のireqを直接書き換えないためのもの)
+    forkReq := func() {
+        if ireq == req {
+            req = new(Request)
+            *req = *ireq // shallow clone
+        }
+    }
+
+    // ヘッダの初期化
+    if req.Header == nil {
+        forkReq()
+        req.Header = make(Header)
+    }
+
+    // URLがユーザー情報を含み、かつAuthorizationヘッダの指定がない場合はBasic認証ヘッダを追加
+    if u := req.URL.User;
+       u != nil && req.Header.Get("Authorization") == "" {
+        username := u.Username()
+        password, _ := u.Password()
+        forkReq()
+        req.Header = cloneOrMakeHeader(ireq.Header)
+        req.Header.Set("Authorization", "Basic "+basicAuth(username, password))
+    }
+
+    // deadlineが指定されている場合、リクエストをキャンセルできるようにする
+    if !deadline.IsZero() {
+        forkReq()
+    }
+    stopTimer, didTimeout := setRequestCancel(req, rt, deadline)
+
+    // データの送信
+    // rt = func (c *Client) transport() RoundTripper の返り値 (デフォルトではvar DefaultTransport RoundTripper)
+    // なので rt.RoundTrip(req) = (*http.Transport).RoundTrip
+    resp, err = rt.RoundTrip(req)
+
+    // (go/src/net/http/roundtrip.go)
+    // func (t *Transport) RoundTrip(req *Request) (*Response, error)
+
+    if err != nil {
+        stopTimer()
+        if resp != nil {
+            log.Printf("RoundTripper returned a response & error; ignoring response")
+        }
+
+        if tlsErr, ok := err.(tls.RecordHeaderError); ok {
+            if string(tlsErr.RecordHeader[:]) == "HTTP/" { // HTTPSで送信してHTTPが返ってきた場合
+                err = ErrSchemeMismatch
+            }
+        }
+
+        return nil, didTimeout, err
+    }
+
+    // レスポンスがnilの場合
+    if resp == nil {
+        return nil, didTimeout, fmt.Errorf(
+            "http: RoundTripper implementation (%T) returned a nil *Response with a nil error",
+            rt
+        )
+    }
+
+    // レスポンスボディがnilの場合
+    if resp.Body == nil {
+        if resp.ContentLength > 0 && req.Method != "HEAD" {
+            return nil, didTimeout, fmt.Errorf(
+                "http: RoundTripper implementation (%T) returned a *Response with content length %d but a nil Body",
+                rt,
+                resp.ContentLength
+            )
+        }
+
+        resp.Body = io.NopCloser(strings.NewReader(""))
+    }
+
+    // deadlineが指定されている場合、レスポンスボディをcancelTimerBodyでラップする
+    if !deadline.IsZero() {
+        resp.Body = &cancelTimerBody{
+            stop:          stopTimer,
+            rc:            resp.Body,
+            reqDidTimeout: didTimeout,
+        }
+    }
+
+    return resp, nil, nil
+}
+```
+
+## `RoundTrip`
+
+```go
+// go/src/net/http/roundtrip.go)
+
+func (t *Transport) RoundTrip(req *Request) (*Response, error) {
+    if t == nil {
+        panic("transport is nil")
+    }
+    return t.roundTrip(req)
+}
+
+// go/src/net/http/transport.go
+// WIP
+func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
+    t.nextProtoOnce.Do(t.onceSetNextProtoDefaults)
+    ctx := req.Context()
+    trace := httptrace.ContextClientTrace(ctx)
+
+    if req.URL == nil {
+        req.closeBody()
+        return nil, errors.New("http: nil Request.URL")
+    }
+    if req.Header == nil {
+        req.closeBody()
+        return nil, errors.New("http: nil Request.Header")
+    }
+    scheme := req.URL.Scheme
+    isHTTP := scheme == "http" || scheme == "https"
+    if isHTTP {
+        // Validate the outgoing headers.
+        if err := validateHeaders(req.Header); err != "" {
+            req.closeBody()
+            return nil, fmt.Errorf("net/http: invalid header %s", err)
+        }
+
+        // Validate the outgoing trailers too.
+        if err := validateHeaders(req.Trailer); err != "" {
+            req.closeBody()
+            return nil, fmt.Errorf("net/http: invalid trailer %s", err)
+        }
+    }
+
+    origReq := req
+    req = setupRewindBody(req)
+
+    if altRT := t.alternateRoundTripper(req); altRT != nil {
+        if resp, err := altRT.RoundTrip(req); err != ErrSkipAltProtocol {
+            return resp, err
+        }
+        var err error
+        req, err = rewindBody(req)
+        if err != nil {
+            return nil, err
+        }
+    }
+    if !isHTTP {
+        req.closeBody()
+        return nil, badStringError("unsupported protocol scheme", scheme)
+    }
+    if req.Method != "" && !validMethod(req.Method) {
+        req.closeBody()
+        return nil, fmt.Errorf("net/http: invalid method %q", req.Method)
+    }
+    if req.URL.Host == "" {
+        req.closeBody()
+        return nil, errors.New("http: no Host in request URL")
+    }
+
+    // Transport request context.
+    //
+    // If RoundTrip returns an error, it cancels this context before returning.
+    //
+    // If RoundTrip returns no error:
+    //   - For an HTTP/1 request, persistConn.readLoop cancels this context
+    //     after reading the request body.
+    //   - For an HTTP/2 request, RoundTrip cancels this context after the HTTP/2
+    //     RoundTripper returns.
+    ctx, cancel := context.WithCancelCause(req.Context())
+
+    // Convert Request.Cancel into context cancelation.
+    if origReq.Cancel != nil {
+        go awaitLegacyCancel(ctx, cancel, origReq)
+    }
+
+    // Convert Transport.CancelRequest into context cancelation.
+    //
+    // This is lamentably expensive. CancelRequest has been deprecated for a long time
+    // and doesn't work on HTTP/2 requests. Perhaps we should drop support for it entirely.
+    cancel = t.prepareTransportCancel(origReq, cancel)
+
+    defer func() {
+        if err != nil {
+            cancel(err)
+        }
+    }()
+
+    for {
+        select {
+        case <-ctx.Done():
+            req.closeBody()
+            return nil, context.Cause(ctx)
+        default:
+        }
+
+        // treq gets modified by roundTrip, so we need to recreate for each retry.
+        treq := &transportRequest{Request: req, trace: trace, ctx: ctx, cancel: cancel}
+        cm, err := t.connectMethodForRequest(treq)
+        if err != nil {
+            req.closeBody()
+            return nil, err
+        }
+
+        // Get the cached or newly-created connection to either the
+        // host (for http or https), the http proxy, or the http proxy
+        // pre-CONNECTed to https server. In any case, we'll be ready
+        // to send it requests.
+        pconn, err := t.getConn(treq, cm)
+        if err != nil {
+            req.closeBody()
+            return nil, err
+        }
+
+        var resp *Response
+        if pconn.alt != nil {
+            // HTTP/2 path.
+            resp, err = pconn.alt.RoundTrip(req)
+        } else {
+            resp, err = pconn.roundTrip(treq)
+        }
+        if err == nil {
+            if pconn.alt != nil {
+                // HTTP/2 requests are not cancelable with CancelRequest,
+                // so we have no further need for the request context.
+                //
+                // On the HTTP/1 path, roundTrip takes responsibility for
+                // canceling the context after the response body is read.
+                cancel(errRequestDone)
+            }
+            resp.Request = origReq
+            return resp, nil
+        }
+
+        // Failed. Clean up and determine whether to retry.
+        if http2isNoCachedConnError(err) {
+            if t.removeIdleConn(pconn) {
+                t.decConnsPerHost(pconn.cacheKey)
+            }
+        } else if !pconn.shouldRetryRequest(req, err) {
+            // Issue 16465: return underlying net.Conn.Read error from peek,
+            // as we've historically done.
+            if e, ok := err.(nothingWrittenError); ok {
+                err = e.error
+            }
+            if e, ok := err.(transportReadFromServerError); ok {
+                err = e.err
+            }
+            if b, ok := req.Body.(*readTrackingBody); ok && !b.didClose.Load() {
+                // Issue 49621: Close the request body if pconn.roundTrip
+                // didn't do so already. This can happen if the pconn
+                // write loop exits without reading the write request.
+                req.closeBody()
+            }
+            return nil, err
+        }
+        testHookRoundTripRetried()
+
+        // Rewind the body if we're able to.
+        req, err = rewindBody(req)
+        if err != nil {
+            return nil, err
+        }
     }
 }
 ```
