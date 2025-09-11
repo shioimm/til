@@ -1041,31 +1041,42 @@ func (t *Transport) getConn(treq *transportRequest, cm connectMethod) (_ *persis
 // }
 
 func (t *Transport) queueForDial(w *wantConn) {
-    w.beforeDial()
+    w.beforeDial() // テスト用のフック
 
+    // ホストごとの接続と待機列を守るロック
     t.connsPerHostMu.Lock()
     defer t.connsPerHostMu.Unlock()
 
+    // 接続の上限が未設定ならダイヤルを開始
     if t.MaxConnsPerHost <= 0 {
+        // ロックを保持したままこのwantConnのためのダイヤルゴルーチンを起動、結果はwantConn.resultに届く
         t.startDialConnForLocked(w)
         return
     }
 
-    if n := t.connsPerHost[w.key]; n < t.MaxConnsPerHost {
+    // 接続の上限があり、前時点で上限以下の場合
+    // n = このホストの接続総数
+    if n := t.connsPerHost[w.key];
+       n < t.MaxConnsPerHost {
         if t.connsPerHost == nil {
-            t.connsPerHost = make(map[connectMethodKey]int)
+            t.connsPerHost = make(map[connectMethodKey]int) // 初期化
         }
-        t.connsPerHost[w.key] = n + 1
-        t.startDialConnForLocked(w)
+
+        t.connsPerHost[w.key] = n + 1 // 接続数カウンタをインクリメント
+        t.startDialConnForLocked(w)   // ダイヤルを開始
         return
     }
 
+    // ここに到達した時点で接続数の上限がいっぱいになっている状況
+
+    // t.connsPerHostWait = ホストキーごとの待機キュー
     if t.connsPerHostWait == nil {
-        t.connsPerHostWait = make(map[connectMethodKey]wantConnQueue)
-}
-    q := t.connsPerHostWait[w.key]
-    q.cleanFrontNotWaiting()
-    q.pushBack(w)
+        t.connsPerHostWait = make(map[connectMethodKey]wantConnQueue) // 初期化
+    }
+
+    q := t.connsPerHostWait[w.key] // キューを取得
+    q.cleanFrontNotWaiting()       // キューの先頭のキャンセル済みエントリを削除
+    q.pushBack(w)                  // wを待機列の末尾に追加する
     t.connsPerHostWait[w.key] = q
 }
 ```
