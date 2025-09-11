@@ -107,7 +107,6 @@ var DefaultClient = &Client{}
 ```go
 // go/src/net/http/transport.go
 
-// WIP
 type Transport struct {
     idleMu       sync.Mutex                          // Keep-Alive中の接続のテーブルを守るロック
     closeIdle    bool                                // Keep-Alive中の接続をすべてクローズするフラグ
@@ -514,7 +513,7 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
     }
 }
 
-// c.send(req, deadline)
+// if resp, didTimeout, err = c.send(req, deadline); (go/src/net/http/client.go)
 func (c *Client) send(req *Request, deadline time.Time) (resp *Response, didTimeout func() bool, err error) {
     if c.Jar != nil {
         for _, cookie := range c.Jar.Cookies(req.URL) {
@@ -544,7 +543,7 @@ func (c *Client) send(req *Request, deadline time.Time) (resp *Response, didTime
     return resp, nil, nil
 }
 
-// send(req, c.transport(), deadline)
+// resp, didTimeout, err = send(req, c.transport(), deadline) (go/src/net/http/client.go)
 func send(ireq *Request, rt RoundTripper, deadline time.Time) (resp *Response, didTimeout func() bool, err error) {
     req := ireq // req is either the original request, or a modified fork
 
@@ -654,8 +653,9 @@ func send(ireq *Request, rt RoundTripper, deadline time.Time) (resp *Response, d
 ## `RoundTrip`
 
 ```go
-// go/src/net/http/roundtrip.go)
+// go/src/net/http/roundtrip.go
 
+// rt.RoundTrip(req) (go/src/net/http/client.go)
 func (t *Transport) RoundTrip(req *Request) (*Response, error) {
     if t == nil {
         panic("transport is nil")
@@ -664,22 +664,118 @@ func (t *Transport) RoundTrip(req *Request) (*Response, error) {
 }
 
 // go/src/net/http/transport.go
-// WIP
+
 func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
+    // onceSetNextProtoDefaults (HTTP/2接続の判断と初期化) を一度だけ実行する
+    // nextProtoOnceには初期化時にsync.Once{}がセットされている
     t.nextProtoOnce.Do(t.onceSetNextProtoDefaults)
-    ctx := req.Context()
-    trace := httptrace.ContextClientTrace(ctx)
+
+    // (go/src/net/http/transport.go)
+    // func (t *Transport) onceSetNextProtoDefaults() {
+    //     t.tlsNextProtoWasNil = (t.TLSNextProto == nil) // 初期化時点でTLSNextProtoがnilだったかどうか
+    //
+    //     // HTTP/2を明示的に無効にしている場合は何もせずに終了
+    //     if http2client.Value() == "0" {
+    //         http2client.IncNonDefault()
+    //         return
+    //     }
+    //
+    //     // 標準添付のhttp2ではなく、golang.org/x/net/http2を利用する場合 (マイグレーション用?)
+    //     altProto, _ := t.altProto.Load().(map[string]RoundTripper)
+    //     if rv := reflect.ValueOf(altProto["https"]);
+    //        rv.IsValid() && rv.Type().Kind() == reflect.Struct && rv.Type().NumField() == 1 {
+    //         if v := rv.Field(0); v.CanInterface() {
+    //             if h2i, ok := v.Interface().(h2Transport); ok {
+    //                 t.h2transport = h2i
+    //                 return
+    //             }
+    //         }
+    //     }
+    //
+    //     // TLSNextProto["h2"]に値がセットされている場合はユーザ or 他所で初期化済み
+    //     if _, ok := t.TLSNextProto["h2"]; ok {
+    //         // There's an existing HTTP/2 implementation installed.
+    //         return
+    //     }
+    //
+    //     // HTTP/2を有効化しない場合
+    //     protocols := t.protocols()
+    //     if !protocols.HTTP2() && !protocols.UnencryptedHTTP2() {
+    //         return
+    //     }
+    //
+    //     // (go/src/net/http/transport.go)
+    //     // どのプロトコルを有効にするか
+    //     // func (t *Transport) protocols() Protocols {
+    //     //     if t.Protocols != nil { // 明示的な指定がある
+    //     //         return *t.Protocols
+    //     //     }
+    //     //
+    //     //     var p Protocols
+    //     //     p.SetHTTP1(true) // デフォルトではHTTP/1
+    //     //
+    //     //     switch {
+    //     //     case t.TLSNextProto != nil:
+    //     //         if t.TLSNextProto["h2"] != nil { // "h2"の指定がある
+    //     //             p.SetHTTP2(true)
+    //     //         }
+    //     //     case !t.ForceAttemptHTTP2 && // カスタムTLS/Dialerが設定されている
+    //     //          (t.TLSClientConfig != nil || t.Dial != nil || t.DialContext != nil || t.hasCustomTLSDialer()):
+    //     //     case http2client.Value() == "0": // 無効が指定されている
+    //     //         // do nothing
+    //     //     default: // デフォルトではHTTP/2
+    //     //         p.SetHTTP2(true)
+    //     //     }
+    //     //     return p
+    //     // }
+    //
+    //
+    //     // 標準添付のHTTP/2を省く指定がある場合
+    //     if omitBundledHTTP2 {
+    //         return
+    //     }
+    //
+    //     // 標準添付のHTTP/2実装をTransportにセット
+    //     t2, err := http2configureTransports(t)
+    //     if err != nil {
+    //         log.Printf("Error enabling Transport HTTP/2 support: %v", err)
+    //         return
+    //     }
+    //     t.h2transport = t2
+    //
+    //     if limit1 := t.MaxResponseHeaderBytes; limit1 != 0 && t2.MaxHeaderListSize == 0 {
+    //         const h2max = 1<<32 - 1
+    //         if limit1 >= h2max {
+    //             t2.MaxHeaderListSize = h2max
+    //         } else {
+    //             t2.MaxHeaderListSize = uint32(limit1)
+    //         }
+    //     }
+    //
+    //     // ALPNの候補リストを更新
+    //     t.TLSClientConfig.NextProtos = adjustNextProtos(t.TLSClientConfig.NextProtos, protocols)
+    // }
+
+    ctx := req.Context() // このリクエストにひもづくcontext.Contextを取得
+    trace := httptrace.ContextClientTrace(ctx) // コンテキストに埋め込まれた*httptrace.ClientTraceを取得
+    // ClientTrace = HTTPクライアントのライフサイクル各段階で呼ばれるコールバック群
 
     if req.URL == nil {
         req.closeBody()
         return nil, errors.New("http: nil Request.URL")
     }
+
+    scheme := req.URL.Scheme
+    isHTTP := scheme == "http" || scheme == "https"
+    origReq := req
+    req = setupRewindBody(req) // リクエストボディを再送可能にする
+
+    // 以下バリデーション
     if req.Header == nil {
         req.closeBody()
         return nil, errors.New("http: nil Request.Header")
     }
-    scheme := req.URL.Scheme
-    isHTTP := scheme == "http" || scheme == "https"
+
     if isHTTP {
         // Validate the outgoing headers.
         if err := validateHeaders(req.Header); err != "" {
@@ -694,54 +790,48 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
         }
     }
 
-    origReq := req
-    req = setupRewindBody(req)
+    if !isHTTP {
+        req.closeBody()
+        return nil, badStringError("unsupported protocol scheme", scheme)
+    }
 
+    if req.Method != "" && !validMethod(req.Method) {
+        req.closeBody()
+        return nil, fmt.Errorf("net/http: invalid method %q", req.Method)
+    }
+
+    if req.URL.Host == "" {
+        req.closeBody()
+        return nil, errors.New("http: no Host in request URL")
+    }
+
+    // ALPN等の結果に応じて別のRoundTripper (HTTP/2など) に振り替える場合の処理
+    // altRTが存在したらそれを使ってリクエストを送る
     if altRT := t.alternateRoundTripper(req); altRT != nil {
         if resp, err := altRT.RoundTrip(req); err != ErrSkipAltProtocol {
             return resp, err
         }
+
         var err error
         req, err = rewindBody(req)
         if err != nil {
             return nil, err
         }
     }
-    if !isHTTP {
-        req.closeBody()
-        return nil, badStringError("unsupported protocol scheme", scheme)
-    }
-    if req.Method != "" && !validMethod(req.Method) {
-        req.closeBody()
-        return nil, fmt.Errorf("net/http: invalid method %q", req.Method)
-    }
-    if req.URL.Host == "" {
-        req.closeBody()
-        return nil, errors.New("http: no Host in request URL")
-    }
 
-    // Transport request context.
-    //
-    // If RoundTrip returns an error, it cancels this context before returning.
-    //
-    // If RoundTrip returns no error:
-    //   - For an HTTP/1 request, persistConn.readLoop cancels this context
-    //     after reading the request body.
-    //   - For an HTTP/2 request, RoundTrip cancels this context after the HTTP/2
-    //     RoundTripper returns.
+    // 既存のreq.Context()を親として、キャンセル可能な子コンテキストを作成
+    // このctxをTransport内部のI/Oに渡し、エラー時や完了時にはキャンセルする
     ctx, cancel := context.WithCancelCause(req.Context())
 
-    // Convert Request.Cancel into context cancelation.
+    // 互換性のための処理
     if origReq.Cancel != nil {
         go awaitLegacyCancel(ctx, cancel, origReq)
     }
 
-    // Convert Transport.CancelRequest into context cancelation.
-    //
-    // This is lamentably expensive. CancelRequest has been deprecated for a long time
-    // and doesn't work on HTTP/2 requests. Perhaps we should drop support for it entirely.
+    // 互換性のための処理
     cancel = t.prepareTransportCancel(origReq, cancel)
 
+    // エラー時のキャンセルをdeferで実行
     defer func() {
         if err != nil {
             cancel(err)
@@ -749,6 +839,7 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
     }()
 
     for {
+        // ループのたび、送信前にキャンセル/タイムアウトを検知したら、ボディをクローズしてエラー終了
         select {
         case <-ctx.Done():
             req.closeBody()
@@ -756,70 +847,83 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
         default:
         }
 
-        // treq gets modified by roundTrip, so we need to recreate for each retry.
+        // req, trace, ctx, cancelをラップ
+        // req: 今回送信する*http.Request
+        // trace: *httptrace.ClientTrace のコールバック群
+        // ctx, cancel: このトランザクション用のコンテキスト / キャンセル
         treq := &transportRequest{Request: req, trace: trace, ctx: ctx, cancel: cancel}
+
         cm, err := t.connectMethodForRequest(treq)
+
+        // (go/src/net/http/transport.go)
+        // このリクエストをどこへ、どうやって繋ぐか
+        // func (t *Transport) connectMethodForRequest(treq *transportRequest) (cm connectMethod, err error) {
+        //     cm.targetScheme = treq.URL.Scheme // リクエストのURLスキーム
+        //     cm.targetAddr = canonicalAddr(treq.URL) // 実際に接続する"host:port"
+        //
+        //     if t.Proxy != nil { // Proxyフィールドが設定されていればcm.proxyURLに格納
+        //         cm.proxyURL, err = t.Proxy(treq.Request)
+        //     }
+        //
+        //     cm.onlyH1 = treq.requiresHTTP1() // HTTP/2 を禁止するフラグ
+        //     return cm, err
+        // }
+
         if err != nil {
             req.closeBody()
             return nil, err
         }
 
-        // Get the cached or newly-created connection to either the
-        // host (for http or https), the http proxy, or the http proxy
-        // pre-CONNECTed to https server. In any case, we'll be ready
-        // to send it requests.
+        // 接続を取得 (コネクションプール再利用 or 新規で接続確立)
         pconn, err := t.getConn(treq, cm)
+
         if err != nil {
             req.closeBody()
             return nil, err
         }
 
         var resp *Response
+
         if pconn.alt != nil {
-            // HTTP/2 path.
-            resp, err = pconn.alt.RoundTrip(req)
+            resp, err = pconn.alt.RoundTrip(req) // HTTP/2で送信
         } else {
-            resp, err = pconn.roundTrip(treq)
-        }
-        if err == nil {
-            if pconn.alt != nil {
-                // HTTP/2 requests are not cancelable with CancelRequest,
-                // so we have no further need for the request context.
-                //
-                // On the HTTP/1 path, roundTrip takes responsibility for
-                // canceling the context after the response body is read.
-                cancel(errRequestDone)
-            }
-            resp.Request = origReq
-            return resp, nil
+            resp, err = pconn.roundTrip(treq) // HTTP/1で送信
         }
 
-        // Failed. Clean up and determine whether to retry.
+        if err == nil {
+            if pconn.alt != nil {
+                cancel(errRequestDone) // HTTP/2はCancelRequestが効かないので、ここでctxをクローズ
+            }
+            resp.Request = origReq // 元のリクエストをセット
+            return resp, nil // レスポンスを返す
+        }
+
+        // 失敗した場合の処理
         if http2isNoCachedConnError(err) {
             if t.removeIdleConn(pconn) {
                 t.decConnsPerHost(pconn.cacheKey)
             }
         } else if !pconn.shouldRetryRequest(req, err) {
-            // Issue 16465: return underlying net.Conn.Read error from peek,
-            // as we've historically done.
-            if e, ok := err.(nothingWrittenError); ok {
+            if e, ok := err.(nothingWrittenError); ok { // リトライしない
                 err = e.error
             }
+
             if e, ok := err.(transportReadFromServerError); ok {
                 err = e.err
             }
+
             if b, ok := req.Body.(*readTrackingBody); ok && !b.didClose.Load() {
-                // Issue 49621: Close the request body if pconn.roundTrip
-                // didn't do so already. This can happen if the pconn
-                // write loop exits without reading the write request.
                 req.closeBody()
             }
             return nil, err
         }
+
+        // リトライする場合はテスト用フックを呼んで続行
         testHookRoundTripRetried()
 
-        // Rewind the body if we're able to.
+        // リトライ前にリクエストボディを巻き戻す
         req, err = rewindBody(req)
+
         if err != nil {
             return nil, err
         }
