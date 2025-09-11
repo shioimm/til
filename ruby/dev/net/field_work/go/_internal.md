@@ -1081,5 +1081,30 @@ func (t *Transport) queueForDial(w *wantConn) {
 }
 ```
 
-TODO
-- `ForceAttemptHTTP2`の出番を調べる
+## `startDialConnForLocked`
+
+```go
+// (go/src/net/http/transport.go)
+
+// if n := t.connsPerHost[w.key];
+//    n < t.MaxConnsPerHost {
+//     if t.connsPerHost == nil {
+//         t.connsPerHost = make(map[connectMethodKey]int) // 初期化
+//     }
+//
+//     t.connsPerHost[w.key] = n + 1 // 接続数カウンタをインクリメント
+//     t.startDialConnForLocked(w)   // ダイヤルを開始
+//     return
+// }
+
+func (t *Transport) startDialConnForLocked(w *wantConn) {
+    t.dialsInProgress.cleanFrontCanceled()
+    t.dialsInProgress.pushBack(w)
+    go func() {
+        t.dialConnFor(w)
+        t.connsPerHostMu.Lock()
+        defer t.connsPerHostMu.Unlock()
+        w.cancelCtx = nil
+    }()
+}
+```
