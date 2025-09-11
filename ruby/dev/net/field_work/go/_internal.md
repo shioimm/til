@@ -1030,5 +1030,45 @@ func (t *Transport) getConn(treq *transportRequest, cm connectMethod) (_ *persis
 }
 ```
 
+## `queueForDial`
+
+```go
+// go/src/net/http/transport.go
+
+// if delivered := t.queueForIdleConn(w); // 接続プールから即時に割り当てられる接続を取得
+//    !delivered { // 接続がない場合は新規ダイヤルの待機列にwantConnを追加
+//     t.queueForDial(w)
+// }
+
+func (t *Transport) queueForDial(w *wantConn) {
+    w.beforeDial()
+
+    t.connsPerHostMu.Lock()
+    defer t.connsPerHostMu.Unlock()
+
+    if t.MaxConnsPerHost <= 0 {
+        t.startDialConnForLocked(w)
+        return
+    }
+
+    if n := t.connsPerHost[w.key]; n < t.MaxConnsPerHost {
+        if t.connsPerHost == nil {
+            t.connsPerHost = make(map[connectMethodKey]int)
+        }
+        t.connsPerHost[w.key] = n + 1
+        t.startDialConnForLocked(w)
+        return
+    }
+
+    if t.connsPerHostWait == nil {
+        t.connsPerHostWait = make(map[connectMethodKey]wantConnQueue)
+}
+    q := t.connsPerHostWait[w.key]
+    q.cleanFrontNotWaiting()
+    q.pushBack(w)
+    t.connsPerHostWait[w.key] = q
+}
+```
+
 TODO
 - `ForceAttemptHTTP2`の出番を調べる
