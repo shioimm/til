@@ -725,10 +725,11 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
     //     //         // do nothing
     //     //     default: // デフォルトではHTTP/2
     //     //         p.SetHTTP2(true)
+    //     //         // (go/src/net/http/http.go)
+    //     //         // func (p *Protocols) SetHTTP2(ok bool) { p.setBit(protoHTTP2, ok) }
     //     //     }
     //     //     return p
     //     // }
-    //
     //
     //     // 標準添付のHTTP/2を省く指定がある場合
     //     if omitBundledHTTP2 {
@@ -927,6 +928,104 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
         if err != nil {
             return nil, err
         }
+    }
+}
+```
+
+## `getCon`
+
+```go
+// go/src/net/http/transport.go
+
+// // treqはreq, trace, ctx, cancelをラップする
+// // req: 今回送信する*http.Request
+// // trace: *httptrace.ClientTrace のコールバック群
+// // ctx, cancel: このトランザクション用のコンテキスト / キャンセル
+// treq := &transportRequest{Request: req, trace: trace, ctx: ctx, cancel: cancel}
+// cm, err := t.connectMethodForRequest(treq)
+// pconn, err := t.getConn(treq, cm)
+
+func (t *Transport) getConn(treq *transportRequest, cm connectMethod) (_ *persistConn, err error) {
+    req := treq.Request
+    trace := treq.trace
+    ctx := req.Context()
+
+    // http.Requestにコールバックが仕込まれている場合はGetConnを読んで通知
+    if trace != nil && trace.GetConn != nil {
+        trace.GetConn(cm.addr()) // cm.addr = 接続先の"host:port"
+    }
+
+    // リクエストのキャンセルに影響されない、かつTransport側で止められるコンテキストを作成する
+    // = リクエストが途中でキャンセルされても接続試行中のTCP/TLSを捨てず、接続確立後は接続プールに追加したい
+    dialCtx, dialCancel := context.WithCancel(
+      context.WithoutCancel(ctx) // キャンセルとDone / Err / Deadlineを取り除いた新しいコンテキスト
+    )
+    // dialCtxを使用してKeep-Alive接続を獲得、または新規ダイヤルを行う
+
+    w := &wantConn{
+        cm:         cm,                        // connectMethod (どこにどう繋ぐか)
+        key:        cm.key(),                  // 接続プールのキー
+        ctx:        dialCtx,                   // ダイヤル用コンテキスト
+        cancelCtx:  dialCancel,                // ダイヤル用コンテキストをキャンセルするための関数
+        result:     make(chan connOrError, 1), // connOrError (接続結果) を1件流すチャネル
+        beforeDial: testHookPrePendingDial,
+        afterDial:  testHookPostPendingDial,
+    }
+
+    defer func() {
+        if err != nil {
+            w.cancel(t)
+        }
+    }()
+
+    if delivered := t.queueForIdleConn(w); // 接続プールから即時に割り当てられる接続を取得
+       !delivered { // 接続がない場合は新規ダイヤルの待機列にwantConnを追加
+        t.queueForDial(w)
+    }
+
+    select {
+    case r := <-w.result: // 結果待ち
+        // r.pc = 取得できた接続 (persistConn)
+        // HTTP/1の場合 (pconn.alt == nil) 、httptrace.GotConnを呼ぶ (HTTP/2は内部で自力でで呼ぶ)
+        if r.pc != nil && r.pc.alt == nil && trace != nil && trace.GotConn != nil {
+            info := httptrace.GotConnInfo{
+                Conn:   r.pc.conn,       // 実際のnet.Conn
+                Reused: r.pc.isReused(), // 再利用接続か
+            }
+
+            // r.idleAt = 割り当てた接続がアイドルだった最終時刻
+            if !r.idleAt.IsZero() {
+                info.WasIdle = true                  // アイドルから割り当てた接続か (true)
+                info.IdleTime = time.Since(r.idleAt) // r.idleAtからの経過時間
+            }
+
+            // リクエストにどの接続が割り当てられたか、をユーザに通知するコールバック呼び出し
+            trace.GotConn(info)
+        }
+
+        // r.err = 失敗時のエラー
+        if r.err != nil {
+            select {
+            case <-treq.ctx.Done(): // 同時にリクエストがキャンセルされていた場合、キャンセルが原因のエラー
+                err := context.Cause(treq.ctx)
+
+                if err == errRequestCanceled {
+                    err = errRequestCanceledConn
+                }
+
+                return nil, err
+            default:
+                // return below
+            }
+        }
+        return r.pc, r.err
+
+    case <-treq.ctx.Done(): // キャンセル待ち
+        err := context.Cause(treq.ctx)
+        if err == errRequestCanceled {
+            err = errRequestCanceledConn
+        }
+        return nil, err // w.resultが届く前にコンテキストがDoneになった場合、即座にキャンセルエラーを返す
     }
 }
 ```
