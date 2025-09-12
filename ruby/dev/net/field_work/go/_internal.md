@@ -1151,3 +1151,226 @@ func (t *Transport) dialConnFor(w *wantConn) {
     }
 }
 ```
+
+## `dialConn`
+
+```go
+// (go/src/net/http/transport.go)
+
+// ctx = 当該TCP/TLSダイヤル処理のキャンセル管理に使用するコンテキスト
+// w.com = connectMethod
+// pc, err := t.dialConn(ctx, w.cm) (go/src/net/http/transport.go)
+
+func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *persistConn, err error) {
+    pconn = &persistConn{
+        t:             t,
+        cacheKey:      cm.key(),
+        reqch:         make(chan requestAndChan, 1),
+        writech:       make(chan writeRequest, 1),
+        closech:       make(chan struct{}),
+        writeErrCh:    make(chan error, 1),
+        writeLoopDone: make(chan struct{}),
+    }
+    trace := httptrace.ContextClientTrace(ctx)
+    wrapErr := func(err error) error {
+        if cm.proxyURL != nil {
+            // Return a typed error, per Issue 16997
+            return &net.OpError{Op: "proxyconnect", Net: "tcp", Err: err}
+        }
+        return err
+    }
+    if cm.scheme() == "https" && t.hasCustomTLSDialer() {
+        var err error
+        pconn.conn, err = t.customDialTLS(ctx, "tcp", cm.addr())
+        if err != nil {
+            return nil, wrapErr(err)
+        }
+        if tc, ok := pconn.conn.(*tls.Conn); ok {
+            // Handshake here, in case DialTLS didn't. TLSNextProto below
+            // depends on it for knowing the connection state.
+            if trace != nil && trace.TLSHandshakeStart != nil {
+                trace.TLSHandshakeStart()
+            }
+            if err := tc.HandshakeContext(ctx); err != nil {
+                go pconn.conn.Close()
+                if trace != nil && trace.TLSHandshakeDone != nil {
+                    trace.TLSHandshakeDone(tls.ConnectionState{}, err)
+                }
+                return nil, err
+            }
+            cs := tc.ConnectionState()
+            if trace != nil && trace.TLSHandshakeDone != nil {
+                trace.TLSHandshakeDone(cs, nil)
+            }
+            pconn.tlsState = &cs
+        }
+    } else {
+        conn, err := t.dial(ctx, "tcp", cm.addr())
+        if err != nil {
+            return nil, wrapErr(err)
+        }
+        pconn.conn = conn
+        if cm.scheme() == "https" {
+            var firstTLSHost string
+            if firstTLSHost, _, err = net.SplitHostPort(cm.addr()); err != nil {
+                return nil, wrapErr(err)
+            }
+            if err = pconn.addTLS(ctx, firstTLSHost, trace); err != nil {
+                return nil, wrapErr(err)
+            }
+        }
+    }
+
+    // Proxy setup.
+    switch {
+    case cm.proxyURL == nil:
+        // Do nothing. Not using a proxy.
+    case cm.proxyURL.Scheme == "socks5" || cm.proxyURL.Scheme == "socks5h":
+        conn := pconn.conn
+        d := socksNewDialer("tcp", conn.RemoteAddr().String())
+        if u := cm.proxyURL.User; u != nil {
+            auth := &socksUsernamePassword{
+                Username: u.Username(),
+            }
+            auth.Password, _ = u.Password()
+            d.AuthMethods = []socksAuthMethod{
+                socksAuthMethodNotRequired,
+                socksAuthMethodUsernamePassword,
+            }
+            d.Authenticate = auth.Authenticate
+        }
+        if _, err := d.DialWithConn(ctx, conn, "tcp", cm.targetAddr); err != nil {
+            conn.Close()
+            return nil, err
+        }
+    case cm.targetScheme == "http":
+        pconn.isProxy = true
+        if pa := cm.proxyAuth(); pa != "" {
+            pconn.mutateHeaderFunc = func(h Header) {
+                h.Set("Proxy-Authorization", pa)
+            }
+        }
+    case cm.targetScheme == "https":
+        conn := pconn.conn
+        var hdr Header
+        if t.GetProxyConnectHeader != nil {
+            var err error
+            hdr, err = t.GetProxyConnectHeader(ctx, cm.proxyURL, cm.targetAddr)
+            if err != nil {
+                conn.Close()
+                return nil, err
+            }
+        } else {
+            hdr = t.ProxyConnectHeader
+        }
+        if hdr == nil {
+            hdr = make(Header)
+        }
+        if pa := cm.proxyAuth(); pa != "" {
+            hdr = hdr.Clone()
+            hdr.Set("Proxy-Authorization", pa)
+        }
+        connectReq := &Request{
+            Method: "CONNECT",
+            URL:    &url.URL{Opaque: cm.targetAddr},
+            Host:   cm.targetAddr,
+            Header: hdr,
+        }
+
+        // Set a (long) timeout here to make sure we don't block forever
+        // and leak a goroutine if the connection stops replying after
+        // the TCP connect.
+        connectCtx, cancel := testHookProxyConnectTimeout(ctx, 1*time.Minute)
+        defer cancel()
+
+        didReadResponse := make(chan struct{}) // closed after CONNECT write+read is done or fails
+        var (
+            resp *Response
+            err  error // write or read error
+        )
+        // Write the CONNECT request & read the response.
+        go func() {
+            defer close(didReadResponse)
+            err = connectReq.Write(conn)
+            if err != nil {
+                return
+            }
+            // Okay to use and discard buffered reader here, because
+            // TLS server will not speak until spoken to.
+            br := bufio.NewReader(&io.LimitedReader{R: conn, N: t.maxHeaderResponseSize()})
+            resp, err = ReadResponse(br, connectReq)
+        }()
+        select {
+        case <-connectCtx.Done():
+            conn.Close()
+            <-didReadResponse
+            return nil, connectCtx.Err()
+        case <-didReadResponse:
+            // resp or err now set
+        }
+        if err != nil {
+            conn.Close()
+            return nil, err
+        }
+
+        if t.OnProxyConnectResponse != nil {
+            err = t.OnProxyConnectResponse(ctx, cm.proxyURL, connectReq, resp)
+            if err != nil {
+                conn.Close()
+                return nil, err
+            }
+        }
+
+        if resp.StatusCode != 200 {
+            _, text, ok := strings.Cut(resp.Status, " ")
+            conn.Close()
+            if !ok {
+                return nil, errors.New("unknown status code")
+            }
+            return nil, errors.New(text)
+        }
+    }
+
+    if cm.proxyURL != nil && cm.targetScheme == "https" {
+        if err := pconn.addTLS(ctx, cm.tlsHost(), trace); err != nil {
+            return nil, err
+        }
+    }
+
+    // Possible unencrypted HTTP/2 with prior knowledge.
+    unencryptedHTTP2 := pconn.tlsState == nil &&
+        t.Protocols != nil &&
+        t.Protocols.UnencryptedHTTP2() &&
+        !t.Protocols.HTTP1()
+    if unencryptedHTTP2 {
+        next, ok := t.TLSNextProto[nextProtoUnencryptedHTTP2]
+        if !ok {
+            return nil, errors.New("http: Transport does not support unencrypted HTTP/2")
+        }
+        alt := next(cm.targetAddr, unencryptedTLSConn(pconn.conn))
+        if e, ok := alt.(erringRoundTripper); ok {
+            // pconn.conn was closed by next (http2configureTransports.upgradeFn).
+            return nil, e.RoundTripErr()
+        }
+        return &persistConn{t: t, cacheKey: pconn.cacheKey, alt: alt}, nil
+    }
+
+    if s := pconn.tlsState; s != nil && s.NegotiatedProtocolIsMutual && s.NegotiatedProtocol != "" {
+        if next, ok := t.TLSNextProto[s.NegotiatedProtocol]; ok {
+            alt := next(cm.targetAddr, pconn.conn.(*tls.Conn))
+            if e, ok := alt.(erringRoundTripper); ok {
+                // pconn.conn was closed by next (http2configureTransports.upgradeFn).
+                return nil, e.RoundTripErr()
+            }
+            return &persistConn{t: t, cacheKey: pconn.cacheKey, alt: alt}, nil
+        }
+    }
+
+    pconn.br = bufio.NewReaderSize(pconn, t.readBufferSize())
+    pconn.bw = bufio.NewWriterSize(persistConnWriter{pconn}, t.writeBufferSize())
+
+    go pconn.readLoop()
+    go pconn.writeLoop()
+    return pconn, nil
+}
+```
