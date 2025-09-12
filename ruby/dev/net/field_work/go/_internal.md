@@ -1115,3 +1115,32 @@ func (t *Transport) startDialConnForLocked(w *wantConn) {
     }()
 }
 ```
+
+## `dialConnFor`
+
+```go
+// go/src/net/http/transport.go
+
+// t.dialConnFor(w) (go/src/net/http/transport.go)
+
+func (t *Transport) dialConnFor(w *wantConn) {
+    defer w.afterDial()
+    ctx := w.getCtxForDial()
+    if ctx == nil {
+        t.decConnsPerHost(w.key)
+        return
+    }
+
+    pc, err := t.dialConn(ctx, w.cm)
+    delivered := w.tryDeliver(pc, err, time.Time{})
+    if err == nil && (!delivered || pc.alt != nil) {
+        // pconn was not passed to w,
+        // or it is HTTP/2 and can be shared.
+        // Add to the idle connection pool.
+        t.putOrCloseIdleConn(pc)
+    }
+    if err != nil {
+        t.decConnsPerHost(w.key)
+    }
+}
+```
