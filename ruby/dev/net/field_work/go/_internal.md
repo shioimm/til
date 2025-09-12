@@ -1097,11 +1097,18 @@ func (t *Transport) queueForDial(w *wantConn) {
 //     return
 // }
 
+// このwantConnで新規ダイヤルを開始する
+// 呼び出し側がconnsPerHostMuを保持している前提で実行される
 func (t *Transport) startDialConnForLocked(w *wantConn) {
-    t.dialsInProgress.cleanFrontCanceled()
-    t.dialsInProgress.pushBack(w)
+    // t.dialsInProgress = ダイヤル中のwantConnのキュー
+    t.dialsInProgress.cleanFrontCanceled() // 先頭のキャンセル済みwantConnエントリを削除
+    t.dialsInProgress.pushBack(w)          // wを待機列の末尾に追加する
+
     go func() {
+        // TCP/TLSの接続を行い、結果を通知する
         t.dialConnFor(w)
+
+        // 不要になったcancelCtxを無効化する
         t.connsPerHostMu.Lock()
         defer t.connsPerHostMu.Unlock()
         w.cancelCtx = nil
