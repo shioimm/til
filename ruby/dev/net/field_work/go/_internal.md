@@ -1030,5 +1030,124 @@ func (t *Transport) getConn(treq *transportRequest, cm connectMethod) (_ *persis
 }
 ```
 
-TODO
-- `ForceAttemptHTTP2`の出番を調べる
+## `queueForDial`
+
+```go
+// go/src/net/http/transport.go
+
+// if delivered := t.queueForIdleConn(w); // 接続プールから即時に割り当てられる接続を取得
+//    !delivered { // 接続がない場合は新規ダイヤルの待機列にwantConnを追加
+//     t.queueForDial(w)
+// }
+
+func (t *Transport) queueForDial(w *wantConn) {
+    w.beforeDial() // テスト用のフック
+
+    // ホストごとの接続と待機列を守るロック
+    t.connsPerHostMu.Lock()
+    defer t.connsPerHostMu.Unlock()
+
+    // 接続の上限が未設定ならダイヤルを開始
+    if t.MaxConnsPerHost <= 0 {
+        // ロックを保持したままこのwantConnのためのダイヤルゴルーチンを起動、結果はwantConn.resultに届く
+        t.startDialConnForLocked(w)
+        return
+    }
+
+    // 接続の上限があり、前時点で上限以下の場合
+    // n = このホストの接続総数
+    if n := t.connsPerHost[w.key];
+       n < t.MaxConnsPerHost {
+        if t.connsPerHost == nil {
+            t.connsPerHost = make(map[connectMethodKey]int) // 初期化
+        }
+
+        t.connsPerHost[w.key] = n + 1 // 接続数カウンタをインクリメント
+        t.startDialConnForLocked(w)   // ダイヤルを開始
+        return
+    }
+
+    // ここに到達した時点で接続数の上限がいっぱいになっている状況
+
+    // t.connsPerHostWait = ホストキーごとの待機キュー
+    if t.connsPerHostWait == nil {
+        t.connsPerHostWait = make(map[connectMethodKey]wantConnQueue) // 初期化
+    }
+
+    q := t.connsPerHostWait[w.key] // キューを取得
+    q.cleanFrontNotWaiting()       // キューの先頭のキャンセル済みエントリを削除
+    q.pushBack(w)                  // wを待機列の末尾に追加する
+    t.connsPerHostWait[w.key] = q
+}
+```
+
+## `startDialConnForLocked`
+
+```go
+// (go/src/net/http/transport.go)
+
+// if n := t.connsPerHost[w.key];
+//    n < t.MaxConnsPerHost {
+//     if t.connsPerHost == nil {
+//         t.connsPerHost = make(map[connectMethodKey]int) // 初期化
+//     }
+//
+//     t.connsPerHost[w.key] = n + 1 // 接続数カウンタをインクリメント
+//     t.startDialConnForLocked(w)   // ダイヤルを開始
+//     return
+// }
+
+// このwantConnで新規ダイヤルを開始する
+// 呼び出し側がconnsPerHostMuを保持している前提で実行される
+func (t *Transport) startDialConnForLocked(w *wantConn) {
+    // t.dialsInProgress = ダイヤル中のwantConnのキュー
+    t.dialsInProgress.cleanFrontCanceled() // 先頭のキャンセル済みwantConnエントリを削除
+    t.dialsInProgress.pushBack(w)          // wを待機列の末尾に追加する
+
+    go func() {
+        // TCP/TLSの接続を行い、結果を通知する
+        t.dialConnFor(w)
+
+        // 不要になったcancelCtxを無効化する
+        t.connsPerHostMu.Lock()
+        defer t.connsPerHostMu.Unlock()
+        w.cancelCtx = nil
+    }()
+}
+```
+
+## `dialConnFor`
+
+```go
+// go/src/net/http/transport.go
+
+// t.dialConnFor(w) (go/src/net/http/transport.go)
+
+func (t *Transport) dialConnFor(w *wantConn) {
+    defer w.afterDial() // テスト用フック
+
+    ctx := w.getCtxForDial() // ダイヤルに使用するコンテキストを取得
+
+    if ctx == nil { // キャンセル等でこのwantConnが不要になっている場合など
+        t.decConnsPerHost(w.key) // 接続カウンタをデクリメント
+        return
+    }
+
+    // 接続を開始~確立
+    // pc *persistConn = 物理接続ハンドラ
+    pc, err := t.dialConn(ctx, w.cm)
+
+    // 接続またはエラーを待ち手へ届ける
+    // delivered = 届いたかどうか
+    delivered := w.tryDeliver(pc, err, time.Time{})
+
+    if err == nil && // ダイヤルに成功
+       (!delivered || pc.alt != nil) { // 未配達 || HTTP/2接続
+        t.putOrCloseIdleConn(pc) // 当該接続を接続アイドルプールに追加
+    }
+
+    if err != nil { // ダイヤルに失敗
+        t.decConnsPerHost(w.key) // 総接続カウントを減らす
+    }
+}
+```
