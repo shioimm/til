@@ -1124,23 +1124,30 @@ func (t *Transport) startDialConnForLocked(w *wantConn) {
 // t.dialConnFor(w) (go/src/net/http/transport.go)
 
 func (t *Transport) dialConnFor(w *wantConn) {
-    defer w.afterDial()
-    ctx := w.getCtxForDial()
-    if ctx == nil {
-        t.decConnsPerHost(w.key)
+    defer w.afterDial() // テスト用フック
+
+    ctx := w.getCtxForDial() // ダイヤルに使用するコンテキストを取得
+
+    if ctx == nil { // キャンセル等でこのwantConnが不要になっている場合など
+        t.decConnsPerHost(w.key) // 接続カウンタをデクリメント
         return
     }
 
+    // 接続を開始~確立
+    // pc *persistConn = 物理接続ハンドラ
     pc, err := t.dialConn(ctx, w.cm)
+
+    // 接続またはエラーを待ち手へ届ける
+    // delivered = 届いたかどうか
     delivered := w.tryDeliver(pc, err, time.Time{})
-    if err == nil && (!delivered || pc.alt != nil) {
-        // pconn was not passed to w,
-        // or it is HTTP/2 and can be shared.
-        // Add to the idle connection pool.
-        t.putOrCloseIdleConn(pc)
+
+    if err == nil && // ダイヤルに成功
+       (!delivered || pc.alt != nil) { // 未配達 || HTTP/2接続
+        t.putOrCloseIdleConn(pc) // 当該接続を接続アイドルプールに追加
     }
-    if err != nil {
-        t.decConnsPerHost(w.key)
+
+    if err != nil { // ダイヤルに失敗
+        t.decConnsPerHost(w.key) // 総接続カウントを減らす
     }
 }
 ```
