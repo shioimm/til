@@ -849,8 +849,8 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
         }
 
         // req, trace, ctx, cancelをラップ
-        // req: 今回送信する*http.Request
-        // trace: *httptrace.ClientTrace のコールバック群
+        // req = 今回送信する*http.Request
+        // trace = *httptrace.ClientTrace のコールバック群
         // ctx, cancel: このトランザクション用のコンテキスト / キャンセル
         treq := &transportRequest{Request: req, trace: trace, ctx: ctx, cancel: cancel}
 
@@ -1180,7 +1180,9 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         writeLoopDone: make(chan struct{}), // 書き込みループの終了通知用
     }
 
-    trace := httptrace.ContextClientTrace(ctx)
+    trace := httptrace.ContextClientTrace(ctx) // コンテキストに埋め込まれた*httptrace.ClientTraceを取得
+
+    // 発生した接続エラーその状況に応じてラップする関数wrapErr
     wrapErr := func(err error) error {
         if cm.proxyURL != nil {
             // Return a typed error, per Issue 16997
@@ -1188,43 +1190,74 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         }
         return err
     }
+
+    // 接続先のスキームがhttpsかつTransportにユーザ定義のカスタムTLSダイヤラ (DialTLSContext) が設定されている
     if cm.scheme() == "https" && t.hasCustomTLSDialer() {
+        // 以下、TCP / TLSを一気に張る
+
         var err error
+
+        // customDialTLS = ユーザが指定したカスタムダイヤラを呼び出す
+        // ctx = タイムアウトやキャンセルを伝えるコンテキスト (通常はリクエストのContext())
+        // cm.addr() = 宛先の"host:port"
+        // pconn.conn  = ネットワーク接続
         pconn.conn, err = t.customDialTLS(ctx, "tcp", cm.addr())
+
         if err != nil {
             return nil, wrapErr(err)
         }
-        if tc, ok := pconn.conn.(*tls.Conn); ok {
-            // Handshake here, in case DialTLS didn't. TLSNextProto below
-            // depends on it for knowing the connection state.
+
+        // tc = pconn.connをTLSセッションを扱うtls.Connにキャスト
+        if tc, ok := pconn.conn.(*tls.Conn); // 返ってきたコネクションが*tls.Connかどうか
+           ok {
             if trace != nil && trace.TLSHandshakeStart != nil {
-                trace.TLSHandshakeStart()
+                trace.TLSHandshakeStart() // TLSハンドシェイク開始を記録
             }
-            if err := tc.HandshakeContext(ctx); err != nil {
+
+            if err := tc.HandshakeContext(ctx); // ハンドシェイクを明示的に開始
+               err != nil {
                 go pconn.conn.Close()
+
                 if trace != nil && trace.TLSHandshakeDone != nil {
-                    trace.TLSHandshakeDone(tls.ConnectionState{}, err)
+                    trace.TLSHandshakeDone(tls.ConnectionState{}, err) // ハンドシェイク終了を記録
                 }
+
                 return nil, err
             }
+
+            // ConnectionState = ピア証明書、ALPN結果、暗号スイート等
             cs := tc.ConnectionState()
+
             if trace != nil && trace.TLSHandshakeDone != nil {
                 trace.TLSHandshakeDone(cs, nil)
             }
+
+            // ConnectionStateをpconn.tlsState に保存
             pconn.tlsState = &cs
         }
     } else {
-        conn, err := t.dial(ctx, "tcp", cm.addr())
+        // 以下、まずTCPを張り、必要ならあとからTLSを貼る
+
+        conn, err := t.dial(ctx, "tcp", cm.addr()) // TCPを張る
+
         if err != nil {
             return nil, wrapErr(err)
         }
+
         pconn.conn = conn
-        if cm.scheme() == "https" {
+
+        if cm.scheme() == "https" { // 接続先のスキームがhttpsの場合
             var firstTLSHost string
-            if firstTLSHost, _, err = net.SplitHostPort(cm.addr()); err != nil {
+
+            // firstTLSHost = ホスト名
+            if firstTLSHost, _, err = net.SplitHostPort(cm.addr()); // "host:port"をホスト名とポート番号に分割
+               err != nil {
                 return nil, wrapErr(err)
             }
-            if err = pconn.addTLS(ctx, firstTLSHost, trace); err != nil {
+
+            // TLSを張る
+            if err = pconn.addTLS(ctx, firstTLSHost, trace);
+               err != nil {
                 return nil, wrapErr(err)
             }
         }
