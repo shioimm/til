@@ -1162,15 +1162,24 @@ func (t *Transport) dialConnFor(w *wantConn) {
 // pc, err := t.dialConn(ctx, w.cm) (go/src/net/http/transport.go)
 
 func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *persistConn, err error) {
+    // ひとつのTCP/TLS接続を管理する内部構造体
+    // readLoop  = レスポンスを読み込むためのループ
+    // writeLoop = リクエストを書き込むためのループ
     pconn = &persistConn{
-        t:             t,
-        cacheKey:      cm.key(),
-        reqch:         make(chan requestAndChan, 1),
-        writech:       make(chan writeRequest, 1),
-        closech:       make(chan struct{}),
-        writeErrCh:    make(chan error, 1),
-        writeLoopDone: make(chan struct{}),
+        t:        t,        // この接続が属するTransportへの参照
+        cacheKey: cm.key(), // 接続プールに対してこの接続を出し入れする際のキー
+
+        // この接続で次に処理すべきリクエスト情報 (レスポンスを誰に返すか) をreadLoopに渡すためのキュー
+        reqch: make(chan requestAndChan, 1),
+
+        // ソケットに書き込むリクエストをwriteLoopに渡すためのキュー
+        writech: make(chan writeRequest, 1),
+
+        closech:       make(chan struct{}), // 接続のクローズ通知用
+        writeErrCh:    make(chan error, 1), // 書き込み側で起きたエラー通知用
+        writeLoopDone: make(chan struct{}), // 書き込みループの終了通知用
     }
+
     trace := httptrace.ContextClientTrace(ctx)
     wrapErr := func(err error) error {
         if cm.proxyURL != nil {
