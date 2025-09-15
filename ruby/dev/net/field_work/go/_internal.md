@@ -1349,14 +1349,16 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
     // クライアントからプロキシにTCPで接続済み、TCPの上からSOCKS5 / SOCKS5Hを利用して接続する場合
     // (プロキシ <-> オリジン間のプロトコルはcm.targetSchemeで指定)
     case cm.proxyURL.Scheme == "socks5" || cm.proxyURL.Scheme == "socks5h":
-        conn := pconn.conn
-        d := socksNewDialer("tcp", conn.RemoteAddr().String())
+        conn := pconn.conn // プロキシへのTCP接続
+        d := socksNewDialer("tcp", conn.RemoteAddr().String()) // SOCKS5ダイヤラを作成
 
+        // 以下認証設定
         if u := cm.proxyURL.User; u != nil {
             auth := &socksUsernamePassword{
                 Username: u.Username(),
             }
             auth.Password, _ = u.Password()
+
             d.AuthMethods = []socksAuthMethod{
                 socksAuthMethodNotRequired,
                 socksAuthMethodUsernamePassword,
@@ -1364,6 +1366,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             d.Authenticate = auth.Authenticate
         }
 
+        // プロキシへのSOCKS5接続を実施
         if _, err := d.DialWithConn(ctx, conn, "tcp", cm.targetAddr); err != nil {
             conn.Close()
             return nil, err
