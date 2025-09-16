@@ -1191,6 +1191,8 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         return err
     }
 
+    // 以下、接続先 (オリジン) のスキームがhttps = オリジンに直接接続
+
     // 接続先のスキームがhttpsかつTransportにユーザ定義のカスタムTLSダイヤラ (DialTLSContext) が設定されている
     if cm.scheme() == "https" && t.hasCustomTLSDialer() {
         // 以下、TCP / TLSを一気に張る
@@ -1236,9 +1238,9 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             pconn.tlsState = &cs
         }
     } else {
-        // 以下、まずTCPを張り、必要ならあとからTLSを貼る
+        // 以下、TCPを張る。接続先のスキームがhttpsの場合のみあとからTLSを貼る
 
-        conn, err := t.dial(ctx, "tcp", cm.addr()) // TCPを張る
+        conn, err := t.dial(ctx, "tcp", cm.addr()) // TCPを張る。接続先がプロキシかオリジンかはcm.addr()次第
 
         if err != nil {
             return nil, wrapErr(err)
@@ -1246,7 +1248,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
 
         pconn.conn = conn
 
-        if cm.scheme() == "https" { // 接続先のスキームがhttpsの場合
+        if cm.scheme() == "https" { // 接続先のスキームがhttps = 接続先がオリジンの場合
             var firstTLSHost string
 
             // firstTLSHost = ホスト名
@@ -1336,35 +1338,51 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         }
     }
 
-    // Proxy setup.
+
+    // 以下プロキシのセットアップ
     switch {
+
+    // プロキシを利用せず直接クライアントからオリジンにTLSで接続済みの場合
     case cm.proxyURL == nil:
         // Do nothing. Not using a proxy.
+
+    // クライアントからプロキシにTCPで接続済み、TCPの上からSOCKS5 / SOCKS5Hを利用して接続する場合
+    // (プロキシ <-> オリジン間のプロトコルはcm.targetSchemeで指定)
     case cm.proxyURL.Scheme == "socks5" || cm.proxyURL.Scheme == "socks5h":
-        conn := pconn.conn
-        d := socksNewDialer("tcp", conn.RemoteAddr().String())
+        conn := pconn.conn // プロキシへのTCP接続
+        d := socksNewDialer("tcp", conn.RemoteAddr().String()) // SOCKS5ダイヤラを作成
+
+        // 以下認証設定
         if u := cm.proxyURL.User; u != nil {
             auth := &socksUsernamePassword{
                 Username: u.Username(),
             }
             auth.Password, _ = u.Password()
+
             d.AuthMethods = []socksAuthMethod{
                 socksAuthMethodNotRequired,
                 socksAuthMethodUsernamePassword,
             }
             d.Authenticate = auth.Authenticate
         }
+
+        // プロキシへのSOCKS5接続を実施
         if _, err := d.DialWithConn(ctx, conn, "tcp", cm.targetAddr); err != nil {
             conn.Close()
             return nil, err
         }
+
+    // クライアントからプロキシにTCP接続済み、クライアント<->プロキシ間、プロキシ<->オリジン間をHTTPで接続する場合
     case cm.targetScheme == "http":
         pconn.isProxy = true
+
         if pa := cm.proxyAuth(); pa != "" {
             pconn.mutateHeaderFunc = func(h Header) {
                 h.Set("Proxy-Authorization", pa)
             }
         }
+
+    // クライアントからプロキシにTCP接続済み、クライアント<->プロキシ間、プロキシ<->オリジン間をHTTPSで接続する場合
     case cm.targetScheme == "https":
         conn := pconn.conn
         var hdr Header
@@ -1445,6 +1463,8 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             return nil, errors.New(text)
         }
     }
+
+    // ここまでプロキシのセットアップ
 
     if cm.proxyURL != nil && cm.targetScheme == "https" {
         if err := pconn.addTLS(ctx, cm.tlsHost(), trace); err != nil {
