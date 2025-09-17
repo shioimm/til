@@ -1419,69 +1419,93 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             Header: hdr,
         }
 
-        // WIP
-        // Set a (long) timeout here to make sure we don't block forever
-        // and leak a goroutine if the connection stops replying after
-        // the TCP connect.
+        // 1分でタイムアウトするCONNECT用のコンテキストを作成
         connectCtx, cancel := testHookProxyConnectTimeout(ctx, 1*time.Minute)
         defer cancel()
 
+        // バックグラウンドで実行するgoroutineの完了通知用のチャネルを作成
         didReadResponse := make(chan struct{}) // closed after CONNECT write+read is done or fails
+
         var (
             resp *Response
             err  error // write or read error
         )
-        // Write the CONNECT request & read the response.
+
+        // goroutineを起動
         go func() {
             defer close(didReadResponse)
+
+            // プロキシに対してCONNECTリクエストを送る
             err = connectReq.Write(conn)
-            if err != nil {
-                return
-            }
-            // Okay to use and discard buffered reader here, because
-            // TLS server will not speak until spoken to.
+            if err != nil { return }
+
+            // プロキシからのレスポンスヘッダを読み込む
             br := bufio.NewReader(&io.LimitedReader{R: conn, N: t.maxHeaderResponseSize()})
             resp, err = ReadResponse(br, connectReq)
         }()
+
+        // CONNECTリクエストの結果を待つ
         select {
-        case <-connectCtx.Done():
+        case <-connectCtx.Done(): // connectCtxがタイムアウト
             conn.Close()
             <-didReadResponse
             return nil, connectCtx.Err()
-        case <-didReadResponse:
+        case <-didReadResponse: // CONNECTリクエストを送信、レスポンス受信して読み終えることに成功
             // resp or err now set
         }
+
         if err != nil {
             conn.Close()
             return nil, err
         }
 
         if t.OnProxyConnectResponse != nil {
+            // Transport.OnProxyConnectResponse = ユーザー定義のコールバック
+            // ctx = 実行中のコンテキスト
+            // cm.proxyURL = 接続先プロキシのURL
+            // connectReq = CONNECTリクエストの内容
+            // resp = プロキシからのレスポンスの内容
             err = t.OnProxyConnectResponse(ctx, cm.proxyURL, connectReq, resp)
+
             if err != nil {
                 conn.Close()
                 return nil, err
             }
         }
 
+        // CONNECTのレスポンスが200以外だった場合
         if resp.StatusCode != 200 {
             _, text, ok := strings.Cut(resp.Status, " ")
             conn.Close()
+
             if !ok {
                 return nil, errors.New("unknown status code")
             }
+
             return nil, errors.New(text)
         }
     }
 
-    // ここまでプロキシのセットアップ
+    // プロキシがある場合、ここまでの処理で以下の状態になっているはず
+    // case cm.proxyURL.Scheme == "socks5" || cm.proxyURL.Scheme == "socks5h":
+    //   - クライアント<->プロキシ間: SOCKS5接続済み
+    //   - プロキシ<->オリジン間: TCP接続済み (SOCKS5のCONNECTコマンドでトンネルが確立)
+    // case cm.targetScheme == "http":
+    //   - クライアント<->プロキシ間: HTTP接続済み
+    //   - プロキシ<->オリジン間: 接続なし (必要時にプロキシがオリジンへTCPを張る)
+    // case cm.targetScheme == "https":
+    //   - クライアント<->プロキシ間: HTTP接続済み
+    //   - プロキシ<->オリジン間: TCPで接続済み (CONNECTリクエストを実行)
 
+    // プロキシあり && プロキシ<->オリジン間をHTTPSで接続する場合
     if cm.proxyURL != nil && cm.targetScheme == "https" {
+        // プロキシ<->オリジン間でTLSを張る
         if err := pconn.addTLS(ctx, cm.tlsHost(), trace); err != nil {
             return nil, err
         }
     }
 
+    // WIP
     // Possible unencrypted HTTP/2 with prior knowledge.
     unencryptedHTTP2 := pconn.tlsState == nil &&
         t.Protocols != nil &&
