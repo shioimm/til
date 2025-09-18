@@ -1191,7 +1191,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         return err
     }
 
-    // 以下、接続先 (オリジン) のスキームがhttps = オリジンに直接接続
+    // 以下、プロキシ・オリジンを問わず最初に接続する相手に対する処理
 
     // 接続先のスキームがhttpsかつTransportにユーザ定義のカスタムTLSダイヤラ (DialTLSContext) が設定されている
     if cm.scheme() == "https" && t.hasCustomTLSDialer() {
@@ -1238,7 +1238,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             pconn.tlsState = &cs
         }
     } else {
-        // 以下、TCPを張る。接続先のスキームがhttpsの場合のみあとからTLSを貼る
+        // 以下、TCPを張る。接続先のスキームがhttpsの場合のみTLSを張る
 
         conn, err := t.dial(ctx, "tcp", cm.addr()) // TCPを張る。接続先がプロキシかオリジンかはcm.addr()次第
 
@@ -1248,7 +1248,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
 
         pconn.conn = conn
 
-        if cm.scheme() == "https" { // 接続先のスキームがhttps = 接続先がオリジンの場合
+        if cm.scheme() == "https" { // 接続先のスキームがhttps
             var firstTLSHost string
 
             // firstTLSHost = ホスト名
@@ -1338,6 +1338,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         }
     }
 
+    // ここまででプロキシ or オリジンに対してTLSまたはTCPで接続済み
 
     // 以下プロキシのセットアップ
     switch {
@@ -1346,7 +1347,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
     case cm.proxyURL == nil:
         // Do nothing. Not using a proxy.
 
-    // クライアントからプロキシにTCPで接続済み、TCPの上からSOCKS5 / SOCKS5Hを利用して接続する場合
+    // クライアント<->プロキシ間をTCP接続済み、TCPの上からSOCKS5 / SOCKS5Hを利用して接続する場合
     // (プロキシ <-> オリジン間のプロトコルはcm.targetSchemeで指定)
     case cm.proxyURL.Scheme == "socks5" || cm.proxyURL.Scheme == "socks5h":
         conn := pconn.conn // プロキシへのTCP接続
@@ -1372,20 +1373,23 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             return nil, err
         }
 
-    // クライアントからプロキシにTCP接続済み、クライアント<->プロキシ間、プロキシ<->オリジン間をHTTPで接続する場合
+    // クライアント<->プロキシ間をTCP or TLS接続済み、プロキシ<->オリジン間をHTTPで接続する場合
     case cm.targetScheme == "http":
-        pconn.isProxy = true
+        pconn.isProxy = true // trueをセットするとリクエストラインにパスではなくURLを記載する
 
+        // プロキシのURLに認証情報が含まれていた場合
         if pa := cm.proxyAuth(); pa != "" {
-            pconn.mutateHeaderFunc = func(h Header) {
+            pconn.mutateHeaderFunc = func(h Header) { // リクエストヘッダを書き換える関数
                 h.Set("Proxy-Authorization", pa)
             }
         }
 
-    // クライアントからプロキシにTCP接続済み、クライアント<->プロキシ間、プロキシ<->オリジン間をHTTPSで接続する場合
+    // クライアント<->プロキシ間をTCP or TLS接続済み、プロキシ<->オリジン間をHTTPSで接続する場合
     case cm.targetScheme == "https":
         conn := pconn.conn
         var hdr Header
+
+        // CONNECT用にヘッダを追加する
         if t.GetProxyConnectHeader != nil {
             var err error
             hdr, err = t.GetProxyConnectHeader(ctx, cm.proxyURL, cm.targetAddr)
@@ -1396,13 +1400,18 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         } else {
             hdr = t.ProxyConnectHeader
         }
+
         if hdr == nil {
             hdr = make(Header)
         }
+
+        // プロキシ認証の付与
         if pa := cm.proxyAuth(); pa != "" {
             hdr = hdr.Clone()
             hdr.Set("Proxy-Authorization", pa)
         }
+
+        // CONNECTリクエストを作成
         connectReq := &Request{
             Method: "CONNECT",
             URL:    &url.URL{Opaque: cm.targetAddr},
@@ -1410,68 +1419,93 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
             Header: hdr,
         }
 
-        // Set a (long) timeout here to make sure we don't block forever
-        // and leak a goroutine if the connection stops replying after
-        // the TCP connect.
+        // 1分でタイムアウトするCONNECT用のコンテキストを作成
         connectCtx, cancel := testHookProxyConnectTimeout(ctx, 1*time.Minute)
         defer cancel()
 
+        // バックグラウンドで実行するgoroutineの完了通知用のチャネルを作成
         didReadResponse := make(chan struct{}) // closed after CONNECT write+read is done or fails
+
         var (
             resp *Response
             err  error // write or read error
         )
-        // Write the CONNECT request & read the response.
+
+        // goroutineを起動
         go func() {
             defer close(didReadResponse)
+
+            // プロキシに対してCONNECTリクエストを送る
             err = connectReq.Write(conn)
-            if err != nil {
-                return
-            }
-            // Okay to use and discard buffered reader here, because
-            // TLS server will not speak until spoken to.
+            if err != nil { return }
+
+            // プロキシからのレスポンスヘッダを読み込む
             br := bufio.NewReader(&io.LimitedReader{R: conn, N: t.maxHeaderResponseSize()})
             resp, err = ReadResponse(br, connectReq)
         }()
+
+        // CONNECTリクエストの結果を待つ
         select {
-        case <-connectCtx.Done():
+        case <-connectCtx.Done(): // connectCtxがタイムアウト
             conn.Close()
             <-didReadResponse
             return nil, connectCtx.Err()
-        case <-didReadResponse:
+        case <-didReadResponse: // CONNECTリクエストを送信、レスポンス受信して読み終えることに成功
             // resp or err now set
         }
+
         if err != nil {
             conn.Close()
             return nil, err
         }
 
         if t.OnProxyConnectResponse != nil {
+            // Transport.OnProxyConnectResponse = ユーザー定義のコールバック
+            // ctx = 実行中のコンテキスト
+            // cm.proxyURL = 接続先プロキシのURL
+            // connectReq = CONNECTリクエストの内容
+            // resp = プロキシからのレスポンスの内容
             err = t.OnProxyConnectResponse(ctx, cm.proxyURL, connectReq, resp)
+
             if err != nil {
                 conn.Close()
                 return nil, err
             }
         }
 
+        // CONNECTのレスポンスが200以外だった場合
         if resp.StatusCode != 200 {
             _, text, ok := strings.Cut(resp.Status, " ")
             conn.Close()
+
             if !ok {
                 return nil, errors.New("unknown status code")
             }
+
             return nil, errors.New(text)
         }
     }
 
-    // ここまでプロキシのセットアップ
+    // プロキシがある場合、ここまでの処理で以下の状態になっているはず
+    // case cm.proxyURL.Scheme == "socks5" || cm.proxyURL.Scheme == "socks5h":
+    //   - クライアント<->プロキシ間: SOCKS5接続済み
+    //   - プロキシ<->オリジン間: TCP接続済み (SOCKS5のCONNECTコマンドでトンネルが確立)
+    // case cm.targetScheme == "http":
+    //   - クライアント<->プロキシ間: HTTP接続済み
+    //   - プロキシ<->オリジン間: 接続なし (必要時にプロキシがオリジンへTCPを張る)
+    // case cm.targetScheme == "https":
+    //   - クライアント<->プロキシ間: HTTP接続済み
+    //   - プロキシ<->オリジン間: TCPで接続済み (CONNECTリクエストを実行)
 
+    // プロキシあり && プロキシ<->オリジン間をHTTPSで接続する場合
     if cm.proxyURL != nil && cm.targetScheme == "https" {
+        // プロキシ<->オリジン間でTLSを張る
         if err := pconn.addTLS(ctx, cm.tlsHost(), trace); err != nil {
             return nil, err
         }
     }
 
+    // WIP
     // Possible unencrypted HTTP/2 with prior knowledge.
     unencryptedHTTP2 := pconn.tlsState == nil &&
         t.Protocols != nil &&
