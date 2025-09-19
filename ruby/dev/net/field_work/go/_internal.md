@@ -1505,25 +1505,30 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         }
     }
 
-    // WIP
-    // Possible unencrypted HTTP/2 with prior knowledge.
-    unencryptedHTTP2 := pconn.tlsState == nil &&
-        t.Protocols != nil &&
-        t.Protocols.UnencryptedHTTP2() &&
-        !t.Protocols.HTTP1()
+    // 以下、暗号化なしのh2cを事前知識ありで使用する場合
+    unencryptedHTTP2 := pconn.tlsState == nil && // まだTLSを張っていない
+        t.Protocols != nil && t.Protocols.UnencryptedHTTP2() && // HTTP/2を暗号化せずに使用
+        !t.Protocols.HTTP1() // HTTP/1 を使わない
+
     if unencryptedHTTP2 {
-        next, ok := t.TLSNextProto[nextProtoUnencryptedHTTP2]
+        next, ok := t.TLSNextProto[nextProtoUnencryptedHTTP2] // h2c用のエントリを取得
         if !ok {
             return nil, errors.New("http: Transport does not support unencrypted HTTP/2")
         }
+
+        // alt = HTTP/1の処理をバイパスして別のプロトコルで処理するRoundTripper
         alt := next(cm.targetAddr, unencryptedTLSConn(pconn.conn))
+
+        // h2側の初期化で致命的に失敗した場合のエラー処理
         if e, ok := alt.(erringRoundTripper); ok {
             // pconn.conn was closed by next (http2configureTransports.upgradeFn).
             return nil, e.RoundTripErr()
         }
+
         return &persistConn{t: t, cacheKey: pconn.cacheKey, alt: alt}, nil
     }
 
+    // WIP
     if s := pconn.tlsState; s != nil && s.NegotiatedProtocolIsMutual && s.NegotiatedProtocol != "" {
         if next, ok := t.TLSNextProto[s.NegotiatedProtocol]; ok {
             alt := next(cm.targetAddr, pconn.conn.(*tls.Conn))
