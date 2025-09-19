@@ -941,26 +941,56 @@ func (t *Transport) onceSetNextProtoDefaults() {
 ## `http2configureTransports`
 
 ```go
-// WIP
+// 標準添付のHTTP/2実装をTransportにセット
+// t2, err := http2configureTransports(t)
+
+// (src/net/http/h2_bundle.go)
+
 func http2configureTransports(t1 *Transport) (*http2Transport, error) {
+    // http2clientConnPool = 接続を管理するプール
+    //
+    // (src/net/http/h2_bundle.go)
+    // type http2clientConnPool struct {
+    //    t *http2Transport
+    //    mu sync.Mutex
+    //    conns        map[string][]*http2ClientConn // key is host:port
+    //    dialing      map[string]*http2dialCall     // currently in-flight dials
+    //    keys         map[*http2ClientConn][]string
+    //    addConnCalls map[string]*http2addConnCall // in-flight addConnIfNeeded calls
+    //}
+
     connPool := new(http2clientConnPool)
+
+    // HTTP/2の接続の実体
     t2 := &http2Transport{
-        ConnPool: http2noDialClientConnPool{connPool},
-        t1:       t1,
+        ConnPool: http2noDialClientConnPool{connPool}, // http2noDialClientConnPool = 既存のTLS接続のプール
+        t1:       t1,                                  // ここまでにTCP/TLS接続済みのTransport
     }
+
+    // プール側からt2にアクセスできるようにする
     connPool.t = t2
+
+    // t1のTLSNextProtoマップにh2プロトコルを登録する
+    // t1.TLSNextProto["h2"]のような呼び出しを可能にする
     if err := http2registerHTTPSProtocol(t1, http2noDialH2RoundTripper{t2}); err != nil {
         return nil, err
     }
+
+    // TLSクライアント設定の準備
     if t1.TLSClientConfig == nil {
         t1.TLSClientConfig = new(tls.Config)
     }
+
+    // NextProtos = ClientHelloのALPN拡張で送る接続プロトコルの候補リスト
+    // 先頭にh2を追加
     if !http2strSliceContains(t1.TLSClientConfig.NextProtos, "h2") {
         t1.TLSClientConfig.NextProtos = append([]string{"h2"}, t1.TLSClientConfig.NextProtos...)
     }
+    // 末尾にhttp/1.1を追加
     if !http2strSliceContains(t1.TLSClientConfig.NextProtos, "http/1.1") {
         t1.TLSClientConfig.NextProtos = append(t1.TLSClientConfig.NextProtos, "http/1.1")
     }
+
     upgradeFn := func(scheme, authority string, c net.Conn) RoundTripper {
         addr := http2authorityAddr(scheme, authority)
         if used, err := connPool.addConnIfNeeded(addr, t2, c); err != nil {
@@ -1588,7 +1618,7 @@ func (pconn *persistConn) addTLS(
             trace.TLSHandshakeStart()
         }
 
-        // ALPNネゴシエーションを実施 WIP
+        // ALPNネゴシエーションを実施
         err := tlsConn.HandshakeContext(ctx)
 
         if timer != nil {
