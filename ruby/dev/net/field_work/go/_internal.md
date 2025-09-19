@@ -951,13 +951,20 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
     //
     // (src/net/http/h2_bundle.go)
     // type http2clientConnPool struct {
-    //    t *http2Transport
-    //    mu sync.Mutex
-    //    conns        map[string][]*http2ClientConn // key is host:port
-    //    dialing      map[string]*http2dialCall     // currently in-flight dials
-    //    keys         map[*http2ClientConn][]string
-    //    addConnCalls map[string]*http2addConnCall // in-flight addConnIfNeeded calls
-    //}
+    //     t *http2Transport // このプールがぶら下がる親
+    //     mu sync.Mutex
+    //     conns        map[string][]*http2ClientConn // 接続先のhost:port : [http2ClientConn, ...] のマップ構造
+    //     dialing      map[string]*http2dialCall
+    //     keys         map[*http2ClientConn][]string // http2ClientConn : [接続先のhost:port, ...] のマップ構造
+    //     addConnCalls map[string]*http2addConnCall
+    // }
+    //
+    // クライアントがhost:portへ送信する際、
+    // conns[host:port]から接続を取得
+    // -> なければdialing[host:port]から接続を取得するか、なければ新規接続を開始してdialingに追加
+    // -> 接続に成功したらconns[host:port]に追加
+    // -> 別ホスト名かつコアレッシング可能な場合はconns[別host:port]に同じ接続を追加
+    // -> 接続を閉じる場合はkeys[http2ClientConn]とconns[host:port]を削除
 
     connPool := new(http2clientConnPool)
 
