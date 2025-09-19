@@ -1162,9 +1162,9 @@ func (t *Transport) dialConnFor(w *wantConn) {
 // pc, err := t.dialConn(ctx, w.cm) (go/src/net/http/transport.go)
 
 func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *persistConn, err error) {
-    // ひとつのTCP/TLS接続を管理する内部構造体
-    // readLoop  = レスポンスを読み込むためのループ
-    // writeLoop = リクエストを書き込むためのループ
+    // persistConn = 確立済みの一つのTCP/TLS接続をラップした構造体
+    // readLoop    = レスポンスを読み込むためのループ (HTTP/1用)
+    // writeLoop   = リクエストを書き込むためのループ (HTTP/1用)
     pconn = &persistConn{
         t:        t,        // この接続が属するTransportへの参照
         cacheKey: cm.key(), // 接続プールに対してこの接続を出し入れする際のキー
@@ -1528,23 +1528,30 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
         return &persistConn{t: t, cacheKey: pconn.cacheKey, alt: alt}, nil
     }
 
-    // WIP
-    if s := pconn.tlsState; s != nil && s.NegotiatedProtocolIsMutual && s.NegotiatedProtocol != "" {
+    // 以下TLS + HTTP/2で接続する場合
+    if s := pconn.tlsState; // TLSの接続情報を取得
+       s != nil &&
+       s.NegotiatedProtocolIsMutual && // ALPNがサーバと合意できた
+       s.NegotiatedProtocol != "" {
+
         if next, ok := t.TLSNextProto[s.NegotiatedProtocol]; ok {
+            // alt = HTTP/1の処理をバイパスして別のプロトコルで処理するRoundTripper
             alt := next(cm.targetAddr, pconn.conn.(*tls.Conn))
+
             if e, ok := alt.(erringRoundTripper); ok {
-                // pconn.conn was closed by next (http2configureTransports.upgradeFn).
                 return nil, e.RoundTripErr()
             }
+
             return &persistConn{t: t, cacheKey: pconn.cacheKey, alt: alt}, nil
         }
     }
 
+    // 以下はHTTP/1で接続する場合
     pconn.br = bufio.NewReaderSize(pconn, t.readBufferSize())
     pconn.bw = bufio.NewWriterSize(persistConnWriter{pconn}, t.writeBufferSize())
 
-    go pconn.readLoop()
-    go pconn.writeLoop()
+    go pconn.readLoop()  // レスポンスをリクエストに対応付けて受け取り、呼び出し側へ返す
+    go pconn.writeLoop() // リクエストをシリアライズして送出
     return pconn, nil
 }
 ```
