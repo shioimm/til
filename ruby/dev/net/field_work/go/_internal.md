@@ -670,93 +670,6 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
     // nextProtoOnceには初期化時にsync.Once{}がセットされている
     t.nextProtoOnce.Do(t.onceSetNextProtoDefaults)
 
-    // (go/src/net/http/transport.go)
-    // func (t *Transport) onceSetNextProtoDefaults() {
-    //     t.tlsNextProtoWasNil = (t.TLSNextProto == nil) // 初期化時点でTLSNextProtoがnilだったかどうか
-    //
-    //     // HTTP/2を明示的に無効にしている場合は何もせずに終了
-    //     if http2client.Value() == "0" {
-    //         http2client.IncNonDefault()
-    //         return
-    //     }
-    //
-    //     // 標準添付のhttp2ではなく、golang.org/x/net/http2を利用する場合 (マイグレーション用?)
-    //     altProto, _ := t.altProto.Load().(map[string]RoundTripper)
-    //     if rv := reflect.ValueOf(altProto["https"]);
-    //        rv.IsValid() && rv.Type().Kind() == reflect.Struct && rv.Type().NumField() == 1 {
-    //         if v := rv.Field(0); v.CanInterface() {
-    //             if h2i, ok := v.Interface().(h2Transport); ok {
-    //                 t.h2transport = h2i
-    //                 return
-    //             }
-    //         }
-    //     }
-    //
-    //     // TLSNextProto["h2"]に値がセットされている場合はユーザ or 他所で初期化済み
-    //     if _, ok := t.TLSNextProto["h2"]; ok {
-    //         // There's an existing HTTP/2 implementation installed.
-    //         return
-    //     }
-    //
-    //     // HTTP/2を有効化しない場合
-    //     protocols := t.protocols()
-    //     if !protocols.HTTP2() && !protocols.UnencryptedHTTP2() {
-    //         return
-    //     }
-    //
-    //     // (go/src/net/http/transport.go)
-    //     // どのプロトコルを有効にするか
-    //     // func (t *Transport) protocols() Protocols {
-    //     //     if t.Protocols != nil { // 明示的な指定がある
-    //     //         return *t.Protocols
-    //     //     }
-    //     //
-    //     //     var p Protocols
-    //     //     p.SetHTTP1(true) // デフォルトではHTTP/1
-    //     //
-    //     //     switch {
-    //     //     case t.TLSNextProto != nil:
-    //     //         if t.TLSNextProto["h2"] != nil { // "h2"の指定がある
-    //     //             p.SetHTTP2(true)
-    //     //         }
-    //     //     case !t.ForceAttemptHTTP2 && // カスタムTLS/Dialerが設定されている
-    //     //          (t.TLSClientConfig != nil || t.Dial != nil || t.DialContext != nil || t.hasCustomTLSDialer()):
-    //     //     case http2client.Value() == "0": // 無効が指定されている
-    //     //         // do nothing
-    //     //     default: // デフォルトではHTTP/2
-    //     //         p.SetHTTP2(true)
-    //     //         // (go/src/net/http/http.go)
-    //     //         // func (p *Protocols) SetHTTP2(ok bool) { p.setBit(protoHTTP2, ok) }
-    //     //     }
-    //     //     return p
-    //     // }
-    //
-    //     // 標準添付のHTTP/2を省く指定がある場合
-    //     if omitBundledHTTP2 {
-    //         return
-    //     }
-    //
-    //     // 標準添付のHTTP/2実装をTransportにセット
-    //     t2, err := http2configureTransports(t)
-    //     if err != nil {
-    //         log.Printf("Error enabling Transport HTTP/2 support: %v", err)
-    //         return
-    //     }
-    //     t.h2transport = t2
-    //
-    //     if limit1 := t.MaxResponseHeaderBytes; limit1 != 0 && t2.MaxHeaderListSize == 0 {
-    //         const h2max = 1<<32 - 1
-    //         if limit1 >= h2max {
-    //             t2.MaxHeaderListSize = h2max
-    //         } else {
-    //             t2.MaxHeaderListSize = uint32(limit1)
-    //         }
-    //     }
-    //
-    //     // ALPNの候補リストを更新
-    //     t.TLSClientConfig.NextProtos = adjustNextProtos(t.TLSClientConfig.NextProtos, protocols)
-    // }
-
     ctx := req.Context() // このリクエストにひもづくcontext.Contextを取得
     trace := httptrace.ContextClientTrace(ctx) // コンテキストに埋め込まれた*httptrace.ClientTraceを取得
     // ClientTrace = HTTPクライアントのライフサイクル各段階で呼ばれるコールバック群
@@ -929,6 +842,158 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
             return nil, err
         }
     }
+}
+```
+
+## `onceSetNextProtoDefaults`
+
+```go
+// (go/src/net/http/transport.go)
+func (t *Transport) onceSetNextProtoDefaults() {
+    t.tlsNextProtoWasNil = (t.TLSNextProto == nil) // 初期化時点でTLSNextProtoがnilだったかどうか
+
+    // HTTP/2を明示的に無効にしている場合は何もせずに終了
+    if http2client.Value() == "0" {
+        http2client.IncNonDefault()
+        return
+    }
+
+    // 標準添付のhttp2ではなく、golang.org/x/net/http2を利用する場合 (マイグレーション用?)
+    altProto, _ := t.altProto.Load().(map[string]RoundTripper)
+    if rv := reflect.ValueOf(altProto["https"]);
+       rv.IsValid() && rv.Type().Kind() == reflect.Struct && rv.Type().NumField() == 1 {
+        if v := rv.Field(0); v.CanInterface() {
+            if h2i, ok := v.Interface().(h2Transport); ok {
+                t.h2transport = h2i
+                return
+            }
+        }
+    }
+
+    // TLSNextProto["h2"]に値がセットされている場合はユーザ or 他所で初期化済み
+    if _, ok := t.TLSNextProto["h2"]; ok {
+        // There's an existing HTTP/2 implementation installed.
+        return
+    }
+
+    // HTTP/2を有効化しない場合
+    protocols := t.protocols()
+    if !protocols.HTTP2() && !protocols.UnencryptedHTTP2() {
+        return
+    }
+
+    // (go/src/net/http/transport.go)
+    // どのプロトコルを有効にするか
+    // func (t *Transport) protocols() Protocols {
+    //     if t.Protocols != nil { // 明示的な指定がある
+    //         return *t.Protocols
+    //     }
+    //
+    //     var p Protocols
+    //     p.SetHTTP1(true) // デフォルトではHTTP/1
+    //
+    //     switch {
+    //     case t.TLSNextProto != nil:
+    //         if t.TLSNextProto["h2"] != nil { // "h2"の指定がある
+    //             p.SetHTTP2(true)
+    //         }
+    //     case !t.ForceAttemptHTTP2 && // カスタムTLS/Dialerが設定されている
+    //          (t.TLSClientConfig != nil || t.Dial != nil || t.DialContext != nil || t.hasCustomTLSDialer()):
+    //     case http2client.Value() == "0": // 無効が指定されている
+    //         // do nothing
+    //     default: // デフォルトではHTTP/2
+    //         p.SetHTTP2(true)
+    //         // (go/src/net/http/http.go)
+    //         // func (p *Protocols) SetHTTP2(ok bool) { p.setBit(protoHTTP2, ok) }
+    //     }
+    //     return p
+    // }
+
+    // 標準添付のHTTP/2を省く指定がある場合
+    if omitBundledHTTP2 {
+        return
+    }
+
+    // 標準添付のHTTP/2実装をTransportにセット
+    t2, err := http2configureTransports(t)
+
+    if err != nil {
+        log.Printf("Error enabling Transport HTTP/2 support: %v", err)
+        return
+    }
+
+    t.h2transport = t2
+
+    if limit1 := t.MaxResponseHeaderBytes; limit1 != 0 && t2.MaxHeaderListSize == 0 {
+        const h2max = 1<<32 - 1
+        if limit1 >= h2max {
+            t2.MaxHeaderListSize = h2max
+        } else {
+            t2.MaxHeaderListSize = uint32(limit1)
+        }
+    }
+
+    // ALPNの候補リストを更新
+    t.TLSClientConfig.NextProtos = adjustNextProtos(t.TLSClientConfig.NextProtos, protocols)
+}
+```
+
+## `http2configureTransports`
+
+```go
+// WIP
+func http2configureTransports(t1 *Transport) (*http2Transport, error) {
+    connPool := new(http2clientConnPool)
+    t2 := &http2Transport{
+        ConnPool: http2noDialClientConnPool{connPool},
+        t1:       t1,
+    }
+    connPool.t = t2
+    if err := http2registerHTTPSProtocol(t1, http2noDialH2RoundTripper{t2}); err != nil {
+        return nil, err
+    }
+    if t1.TLSClientConfig == nil {
+        t1.TLSClientConfig = new(tls.Config)
+    }
+    if !http2strSliceContains(t1.TLSClientConfig.NextProtos, "h2") {
+        t1.TLSClientConfig.NextProtos = append([]string{"h2"}, t1.TLSClientConfig.NextProtos...)
+    }
+    if !http2strSliceContains(t1.TLSClientConfig.NextProtos, "http/1.1") {
+        t1.TLSClientConfig.NextProtos = append(t1.TLSClientConfig.NextProtos, "http/1.1")
+    }
+    upgradeFn := func(scheme, authority string, c net.Conn) RoundTripper {
+        addr := http2authorityAddr(scheme, authority)
+        if used, err := connPool.addConnIfNeeded(addr, t2, c); err != nil {
+            go c.Close()
+            return http2erringRoundTripper{err}
+        } else if !used {
+            // Turns out we don't need this c.
+            // For example, two goroutines made requests to the same host
+            // at the same time, both kicking off TCP dials. (since protocol
+            // was unknown)
+            go c.Close()
+        }
+        if scheme == "http" {
+            return (*http2unencryptedTransport)(t2)
+        }
+        return t2
+    }
+    if t1.TLSNextProto == nil {
+        t1.TLSNextProto = make(map[string]func(string, *tls.Conn) RoundTripper)
+    }
+    t1.TLSNextProto[http2NextProtoTLS] = func(authority string, c *tls.Conn) RoundTripper {
+        return upgradeFn("https", authority, c)
+    }
+    // The "unencrypted_http2" TLSNextProto key is used to pass off non-TLS HTTP/2 conns.
+    t1.TLSNextProto[http2nextProtoUnencryptedHTTP2] = func(authority string, c *tls.Conn) RoundTripper {
+        nc, err := http2unencryptedNetConnFromTLSConn(c)
+        if err != nil {
+            go c.Close()
+            return http2erringRoundTripper{err}
+        }
+        return upgradeFn("http", authority, nc)
+    }
+    return t2, nil
 }
 ```
 
@@ -1262,79 +1327,6 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
                err != nil {
                 return nil, wrapErr(err)
             }
-
-            // (go/src/net/http/transport.go)
-            // func (pconn *persistConn) addTLS(
-            //     ctx context.Context,
-            //     name string,
-            //     trace *httptrace.ClientTrace
-            // ) error {
-            //     cfg := cloneTLSConfig(pconn.t.TLSClientConfig) // Transport.TLSClientConfigをコピー
-            //
-            //     if cfg.ServerName == "" { // ServerNameが未設定の場合
-            //         cfg.ServerName = name
-            //     }
-            //
-            //     if pconn.cacheKey.onlyH1 { // HTTP/1の場合
-            //         cfg.NextProtos = nil // ALPN でHTTP/2を広告しない
-            //     }
-            //
-            //     plainConn := pconn.conn // すでに接続済みのTCP接続
-            //     tlsConn := tls.Client(plainConn, cfg) // ...を、ラップするTLS コネクションオブジェクトをつくる
-            //
-            //     errc := make(chan error, 2)
-            //     var timer *time.Timer // for canceling TLS handshake
-            //
-            //     if d := pconn.t.TLSHandshakeTimeout;
-            //        d != 0 {
-            //         timer = time.AfterFunc(d, func() {
-            //             errc <- tlsHandshakeTimeoutError{}
-            //         })
-            //     }
-            //
-            //     // 別goroutineTLSハンドシェイクを開始
-            //     go func() {
-            //         if trace != nil && trace.TLSHandshakeStart != nil {
-            //             trace.TLSHandshakeStart()
-            //         }
-            //
-            //         err := tlsConn.HandshakeContext(ctx)
-            //
-            //         if timer != nil {
-            //             timer.Stop()
-            //         }
-            //         errc <- err
-            //     }()
-            //
-            //     if err := <-errc; // 最初に届いたエラーを取得
-            //        err != nil {
-            //         plainConn.Close() // TCP接続をクローズ
-            //
-            //         if err == (tlsHandshakeTimeoutError{}) {
-            //             // Now that we have closed the connection,
-            //             // wait for the call to HandshakeContext to return.
-            //             <-errc
-            //         }
-            //
-            //         if trace != nil && trace.TLSHandshakeDone != nil {
-            //             trace.TLSHandshakeDone(tls.ConnectionState{}, err)
-            //         }
-            //         return err
-            //     }
-            //
-            //     // ConnectionStateを取得
-            //     cs := tlsConn.ConnectionState()
-            //
-            //     if trace != nil && trace.TLSHandshakeDone != nil {
-            //         trace.TLSHandshakeDone(cs, nil)
-            //     }
-            //
-            //     // ConnectionStateをpersistConn.tlsState に保存
-            //     pconn.tlsState = &cs
-            //     // persistConn.connをTLS接続に差し替え
-            //     pconn.conn = tlsConn
-            //     return nil
-            // }
         }
     }
 
@@ -1529,6 +1521,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
     }
 
     // 以下TLS + HTTP/2で接続する場合
+    // HTTP/2の実装はh2_bundle.go
     if s := pconn.tlsState; // TLSの接続情報を取得
        s != nil &&
        s.NegotiatedProtocolIsMutual && // ALPNがサーバと合意できた
@@ -1553,5 +1546,84 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
     go pconn.readLoop()  // レスポンスをリクエストに対応付けて受け取り、呼び出し側へ返す
     go pconn.writeLoop() // リクエストをシリアライズして送出
     return pconn, nil
+}
+```
+
+## `addTLS`
+
+```go
+// (go/src/net/http/transport.go)
+
+func (pconn *persistConn) addTLS(
+    ctx context.Context,
+    name string,
+    trace *httptrace.ClientTrace
+) error {
+    cfg := cloneTLSConfig(pconn.t.TLSClientConfig) // Transport.TLSClientConfigをコピー
+
+    if cfg.ServerName == "" { // ServerNameが未設定の場合
+        cfg.ServerName = name
+    }
+
+    if pconn.cacheKey.onlyH1 { // HTTP/1の場合
+        cfg.NextProtos = nil // ALPN でHTTP/2を広告しない
+    }
+
+    plainConn := pconn.conn // すでに接続済みのTCP接続
+    tlsConn := tls.Client(plainConn, cfg) // ...を、ラップするTLS コネクションオブジェクトをつくる
+
+    errc := make(chan error, 2)
+    var timer *time.Timer // for canceling TLS handshake
+
+    if d := pconn.t.TLSHandshakeTimeout;
+       d != 0 {
+        timer = time.AfterFunc(d, func() {
+            errc <- tlsHandshakeTimeoutError{}
+        })
+    }
+
+    // 別goroutineTLSハンドシェイクを開始
+    go func() {
+        if trace != nil && trace.TLSHandshakeStart != nil {
+            trace.TLSHandshakeStart()
+        }
+
+        // ALPNネゴシエーションを実施 WIP
+        err := tlsConn.HandshakeContext(ctx)
+
+        if timer != nil {
+            timer.Stop()
+        }
+        errc <- err
+    }()
+
+    if err := <-errc; // 最初に届いたエラーを取得
+       err != nil {
+        plainConn.Close() // TCP接続をクローズ
+
+        if err == (tlsHandshakeTimeoutError{}) {
+            // Now that we have closed the connection,
+            // wait for the call to HandshakeContext to return.
+            <-errc
+        }
+
+        if trace != nil && trace.TLSHandshakeDone != nil {
+            trace.TLSHandshakeDone(tls.ConnectionState{}, err)
+        }
+        return err
+    }
+
+    // ConnectionStateを取得
+    cs := tlsConn.ConnectionState()
+
+    if trace != nil && trace.TLSHandshakeDone != nil {
+        trace.TLSHandshakeDone(cs, nil)
+    }
+
+    // ConnectionStateをpersistConn.tlsState に保存
+    pconn.tlsState = &cs
+    // persistConn.connをTLS接続に差し替え
+    pconn.conn = tlsConn
+    return nil
 }
 ```
