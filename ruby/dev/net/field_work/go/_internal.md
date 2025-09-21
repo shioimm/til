@@ -915,6 +915,11 @@ func (t *Transport) onceSetNextProtoDefaults() {
     }
 
     // 標準添付のHTTP/2実装をTransportにセット
+    // (src/net/http/h2_bundle.go)
+    // t2 := &http2Transport{
+    //     ConnPool: http2noDialClientConnPool{connPool}, // http2noDialClientConnPool = 既存のTLS接続のプール
+    //     t1:       t1,                                  // ここまでにTCP/TLS接続済みのTransport
+    // }
     t2, err := http2configureTransports(t)
 
     if err != nil {
@@ -922,6 +927,7 @@ func (t *Transport) onceSetNextProtoDefaults() {
         return
     }
 
+    // t.h2transportにhttp2Transportをセット
     t.h2transport = t2
 
     if limit1 := t.MaxResponseHeaderBytes; limit1 != 0 && t2.MaxHeaderListSize == 0 {
@@ -947,6 +953,8 @@ func (t *Transport) onceSetNextProtoDefaults() {
 // (src/net/http/h2_bundle.go)
 
 func http2configureTransports(t1 *Transport) (*http2Transport, error) {
+    // -- t2とコネクションプールの用意 --
+
     // http2clientConnPool = 接続を管理するプール
     //
     // (src/net/http/h2_bundle.go)
@@ -977,6 +985,8 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
     // プール側からt2にアクセスできるようにする
     connPool.t = t2
 
+    // -- ALPN候補を準備 --
+
     // t1のTLSNextProtoマップにh2プロトコルを登録する
     // t1.TLSNextProto["h2"]のような呼び出しを可能にする
     if err := http2registerHTTPSProtocol(t1, http2noDialH2RoundTripper{t2}); err != nil {
@@ -998,38 +1008,61 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
         t1.TLSClientConfig.NextProtos = append(t1.TLSClientConfig.NextProtos, "http/1.1")
     }
 
+    // -- ALPNでh2もしくはh2cが選ばれた場合に実行する関数を設定 --
+
+    // 既存コネクションをh2用に登録→適切なRoundTripperを返す関数
+    // scheme    = https (h2) / http (h2c)
+    // authority = ALPN合意時にTransport.TLSNextProto経由で渡される"host:port"
+    // c         = t1で確立済みのTCP/TLS接続
     upgradeFn := func(scheme, authority string, c net.Conn) RoundTripper {
+        // addr = "scheme://host:port"
         addr := http2authorityAddr(scheme, authority)
-        if used, err := connPool.addConnIfNeeded(addr, t2, c); err != nil {
+
+        // すでに同じaddrと接続済みのClientConnがあるかどうかを確認
+        // なければnet.Connからhttp2ClientConnを作ってconnPoolへ登録
+        if used, err := connPool.addConnIfNeeded(addr, t2, c);
+           err != nil { // このTCP/TLSは使わない
             go c.Close()
             return http2erringRoundTripper{err}
-        } else if !used {
-            // Turns out we don't need this c.
-            // For example, two goroutines made requests to the same host
-            // at the same time, both kicking off TCP dials. (since protocol
-            // was unknown)
+        } else if !used { // 同時に複数のダイヤルが実行され、いずれかが先に登録済みなど
             go c.Close()
         }
+
         if scheme == "http" {
-            return (*http2unencryptedTransport)(t2)
+            // http2unencryptedTransport = http2Transportの型エイリアス
+            return (*http2unencryptedTransport)(t2) // h2c用の特別なRoundTripperとして返す
         }
+
         return t2
     }
+
     if t1.TLSNextProto == nil {
+        // ALPNでh2もしくはh2cが呼ばれた場合にコールバックする関数を格納するためのレジストリを準備
         t1.TLSNextProto = make(map[string]func(string, *tls.Conn) RoundTripper)
     }
+
+    // const http2NextProtoTLS = "h2"
+    // t1.TLSNextProto["h2"]()を呼び出すと、cをもとにhttp2ClientConnを作成してconnPoolに登録
+    // 返り値はt2
     t1.TLSNextProto[http2NextProtoTLS] = func(authority string, c *tls.Conn) RoundTripper {
         return upgradeFn("https", authority, c)
     }
-    // The "unencrypted_http2" TLSNextProto key is used to pass off non-TLS HTTP/2 conns.
+
+    // const http2nextProtoUnencryptedHTTP2 = "unencrypted_http2"
+    // t1.TLSNextProto["unencrypted_http2"]()を呼び出すと、cをもとにhttp2ClientConnを作成してconnPoolに登録
+    // 返り値は(*http2unencryptedTransport)(t2)
     t1.TLSNextProto[http2nextProtoUnencryptedHTTP2] = func(authority string, c *tls.Conn) RoundTripper {
         nc, err := http2unencryptedNetConnFromTLSConn(c)
+
         if err != nil {
             go c.Close()
             return http2erringRoundTripper{err}
         }
         return upgradeFn("http", authority, nc)
     }
+
+    // -- t2を返す --
+
     return t2, nil
 }
 ```
