@@ -799,9 +799,10 @@ func (t *Transport) roundTrip(req *Request) (_ *Response, err error) {
         var resp *Response
 
         if pconn.alt != nil {
-            resp, err = pconn.alt.RoundTrip(req) // HTTP/2で送信
+            // pconn.alt = HTTP/2用のRoundTripper (*http2.Transport型もしくは *http2unencryptedTransport型)
+            resp, err = pconn.alt.RoundTrip(req) // HTTP/2で送受信
         } else {
-            resp, err = pconn.roundTrip(treq) // HTTP/1で送信
+            resp, err = pconn.roundTrip(treq) // HTTP/1で送受信
         }
 
         if err == nil {
@@ -1808,5 +1809,20 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
     }
 
     return c.handshakeErr
+}
+```
+
+## `RoundTrip`
+
+```go
+// (src/net/http/h2_bundle.go)
+
+// WIP
+func (t *http2Transport) RoundTrip(req *Request) (*Response, error) {
+    return t.RoundTripOpt(req, http2RoundTripOpt{})
+}
+
+func (t *http2unencryptedTransport) RoundTrip(req *Request) (*Response, error) {
+    return (*http2Transport)(t).RoundTripOpt(req, http2RoundTripOpt{allowHTTP: true})
 }
 ```
