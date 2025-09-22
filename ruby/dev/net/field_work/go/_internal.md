@@ -1704,67 +1704,67 @@ func (pconn *persistConn) addTLS(
 ```go
 // (go/src/crypto/tls/conn.go)
 
-// WIP
 func (c *Conn) HandshakeContext(ctx context.Context) error {
-    // Delegate to unexported method for named return
-    // without confusing documented signature.
     return c.handshakeContext(ctx)
 }
 
 func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
-    // Fast sync/atomic-based exit if there is no handshake in flight and the
-    // last one succeeded without an error. Avoids the expensive context setup
-    // and mutex for most Read and Write calls.
+    // 現在進行中のハンドシェイクがある場合
     if c.isHandshakeComplete.Load() {
         return nil
     }
 
+    // handshakeCtx = 以降のハンドシェイク処理に渡される、このハンドシェイク専用のコンテキスト
     handshakeCtx, cancel := context.WithCancel(ctx)
-    // Note: defer this before starting the "interrupter" goroutine
-    // so that we can tell the difference between the input being canceled and
-    // this cancellation. In the former case, we need to close the connection.
+
     defer cancel()
 
-    if c.quic != nil {
+    // -- ハンドシェイク処理をコンテキストキャンセルで中断できるようにする準備 --
+
+    if c.quic != nil { // QUICの場合
+        // QUIC側の構造体にhandshakeCtx.Doneチャネルとキャンセル関数cancelを渡す
         c.quic.cancelc = handshakeCtx.Done()
         c.quic.cancel = cancel
-    } else if ctx.Done() != nil {
-        // Start the "interrupter" goroutine, if this context might be canceled.
-        // (The background context cannot).
-        //
-        // The interrupter goroutine waits for the input context to be done and
-        // closes the connection if this happens before the function returns.
-        done := make(chan struct{})
-        interruptRes := make(chan error, 1)
+
+    } else if ctx.Done() != nil { // QUICではない、かつこのコンテキストがキャンセルorタイムアウト可能な場合
+        done := make(chan struct{})         // 関数の終了を通知するチャネルを作成
+        interruptRes := make(chan error, 1) // 中断が発生したかどうかを通知するチャネルを作成
+
+        // 終了時にdoneを閉じ、キャンセル発生時にinterrupterからのその内容を受け取ってretに保存
         defer func() {
             close(done)
-            if ctxErr := <-interruptRes; ctxErr != nil {
-                // Return context error to user.
+
+            if ctxErr := <-interruptRes;
+               ctxErr != nil {
                 ret = ctxErr
             }
         }()
+
         go func() {
             select {
-            case <-handshakeCtx.Done():
-                // Close the connection, discarding the error
-                _ = c.conn.Close()
-                interruptRes <- handshakeCtx.Err()
-            case <-done:
+            case <-handshakeCtx.Done(): // ハンドシェイク完了前にキャンセルorタイムアウトした
+                _ = c.conn.Close() // 接続をクローズ
+                interruptRes <- handshakeCtx.Err() // キャンセル発生時にそれをエラーとして保存
+            case <-done: // ハンドシェイクが正常に完了した
                 interruptRes <- nil
             }
         }()
     }
 
+    // 同じ*tls.Conn に対して複数のgoroutineが同時にハンドシェイクを開始しないようにロック
     c.handshakeMutex.Lock()
     defer c.handshakeMutex.Unlock()
 
+    // 前回のハンドシェイクで発生したエラーがある場合
     if err := c.handshakeErr; err != nil {
         return err
     }
+    // 先行するgoroutineがすでにハンドシェイクを完了させている場合に備えて、ロック取得後にもチェックする
     if c.isHandshakeComplete.Load() {
         return nil
     }
 
+    // c.in = TLSレコード層の入力パスを守るミューテックス
     c.in.Lock()
     defer c.in.Unlock()
 
