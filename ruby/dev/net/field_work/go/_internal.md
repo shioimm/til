@@ -1768,13 +1768,27 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
     c.in.Lock()
     defer c.in.Unlock()
 
+    // -- ハンドシェイクの実行 --
     c.handshakeErr = c.handshakeFn(handshakeCtx)
+    // handshakeFnはtype Conn structのメンバとして保持されているハンドシェイク用の関数
+    // handshakeFn func(context.Context) error // (*Conn).clientHandshake or serverHandshake
+    // src/crypto/tls/conn.goのfunc Clientで以下のようにセットされる
+    // (src/crypto/tls/conn.go)
+    // func Client(conn net.Conn, config *Config) *Conn {
+    //     c := &Conn{
+    //         conn:     conn,
+    //         config:   config,
+    //         isClient: true,
+    //     }
+    //     c.handshakeFn = c.clientHandshake
+    //     return c
+    // }
+
     if c.handshakeErr == nil {
-        c.handshakes++
+        c.handshakes++ // この接続でハンドシェイクが成功した回数を記録
     } else {
-        // If an error occurred during the handshake try to flush the
-        // alert that might be left in the buffer.
-        c.flush()
+        // ハンドシェイク中にエラーが起きると、TLS仕様上はAlert レコードを送信する必要がある
+        c.flush() // 書き込みバッファに残っている可能性がある未送出のアラートをフラッシュする
     }
 
     if c.handshakeErr == nil && !c.isHandshakeComplete.Load() {
