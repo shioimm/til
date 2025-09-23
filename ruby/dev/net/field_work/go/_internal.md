@@ -1770,9 +1770,11 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 
     // -- ハンドシェイクの実行 --
     c.handshakeErr = c.handshakeFn(handshakeCtx)
+
     // handshakeFnはtype Conn structのメンバとして保持されているハンドシェイク用の関数
     // handshakeFn func(context.Context) error // (*Conn).clientHandshake or serverHandshake
     // src/crypto/tls/conn.goのfunc Clientで以下のようにセットされる
+    //
     // (src/crypto/tls/conn.go)
     // func Client(conn net.Conn, config *Config) *Conn {
     //     c := &Conn{
@@ -1831,34 +1833,40 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 ```
 // (src/crypto/tls/handshake_client.go)
 
-// WIP
 func (c *Conn) clientHandshake(ctx context.Context) (err error) {
+    // configをセット
+    // configは暗号スイート、証明書、セッションを管理する値など
     if c.config == nil {
         c.config = defaultConfig()
     }
 
-    // This may be a renegotiation handshake, in which case some fields
-    // need to be reset.
-    c.didResume = false
-    c.curveID = 0
+    c.didResume = false // didResume = セッション再開に成功したかどうか
+    c.curveID = 0 // 椭円曲線のID
 
+    // ClientHelloレコードを作成
+    //   hello        = ClientHelloレコード
+    //   keyShareKeys = Key Share拡張のクライアント側秘密鍵群
+    //   ech          = Encrypted ClientHello (ECH) 用の付帯情報
     hello, keyShareKeys, ech, err := c.makeClientHello()
+
     if err != nil {
         return err
     }
 
+    // セッション再開 / 0-RTTの準備
+    // loadSession = 直近のセッション情報ClientHelloに折り込み、再開できるかを判定する
+    //   session     = 再開できるセッションの候補
+    //   earlySecret = 0-RTT用の派生シークレット
+    //   binderKey   = PSK binderの鍵
     session, earlySecret, binderKey, err := c.loadSession(hello)
+
     if err != nil {
         return err
     }
+
+    // セッション再開を試みて失敗した場合、PSKをキャッシュから捨てる
     if session != nil {
         defer func() {
-            // If we got a handshake failure when resuming a session, throw away
-            // the session ticket. See RFC 5077, Section 3.2.
-            //
-            // RFC 8446 makes no mention of dropping tickets on failure, but it
-            // does require servers to abort on invalid binders, so we need to
-            // delete tickets to recover from a corrupted PSK.
             if err != nil {
                 if cacheKey := c.clientSessionCacheKey(); cacheKey != "" {
                     c.config.ClientSessionCache.Put(cacheKey, nil)
@@ -1867,73 +1875,87 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
         }()
     }
 
+    // makeClientHello() がECHを試すための材料を返した場合
     if ech != nil {
-        // Split hello into inner and outer
-        ech.innerHello = hello.clone()
+        // outer / innerの2種類のClientHelloを扱う
 
-        // Overwrite the server name in the outer hello with the public facing
-        // name.
+        ech.innerHello = hello.clone() // innerHelloに暗号化して送信する内容をセット
+
+        // outerHello (平文) のClientHello.serverNameを公開用のホスト名に置き換える
         hello.serverName = string(ech.config.PublicName)
-        // Generate a new random for the outer hello.
+
+        // outerHelloのrandomを新規生成
         hello.random = make([]byte, 32)
         _, err = io.ReadFull(c.config.rand(), hello.random)
+
         if err != nil {
             return errors.New("tls: short read from Rand: " + err.Error())
         }
 
-        // NOTE: we don't do PSK GREASE, in line with boringssl, it's meant to
-        // work around _possibly_ broken middleboxes, but there is little-to-no
-        // evidence that this is actually a problem.
-
+        // outerHelloにECH拡張を生成して付与
         if err := computeAndUpdateOuterECHExtension(hello, ech.innerHello, ech, true); err != nil {
             return err
         }
     }
 
+    // 以降のサーバ証明書検証で使用するSNIの設定
     c.serverName = hello.serverName
 
+    // ClientHelloをnet.Connに書き込む
     if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
         return err
     }
 
-    if hello.earlyData {
+    // QUIC向け
+    if hello.earlyData { // 当該接続を再開し、0-RTTを試みる
         suite := cipherSuiteTLS13ByID(session.cipherSuite)
         transcript := suite.hash.New()
+
         if err := transcriptMsg(hello, transcript); err != nil {
             return err
         }
+
         earlyTrafficSecret := earlySecret.ClientEarlyTrafficSecret(transcript)
+
+        // Early Data用の送信用鍵をセット
         c.quicSetWriteSecret(QUICEncryptionLevelEarly, suite.id, earlyTrafficSecret)
     }
 
-    // serverHelloMsg is not included in the transcript
+    // サーバからメッセージ (暗号化前なので平文) を受信
     msg, err := c.readHandshake(nil)
+
     if err != nil {
         return err
     }
 
+    // 受信したメッセージがServerHelloであることを確認
     serverHello, ok := msg.(*serverHelloMsg)
     if !ok {
         c.sendAlert(alertUnexpectedMessage)
         return unexpectedMessageError(serverHello, msg)
     }
 
+    // ServerHelloをもとに実際に使うTLSのバージョンを確定
     if err := c.pickTLSVersion(serverHello); err != nil {
         return err
     }
 
-    // If we are negotiating a protocol version that's lower than what we
-    // support, check for the server downgrade canaries.
-    // See RFC 8446, Section 4.1.3.
+    // ダウングレードの検知
+    // クライアント側が対応可能な最大バージョンを取得
     maxVers := c.config.maxSupportedVersion(roleClient)
+    // tls12Downgrade = TLS1.2用のカナリア (TLS1.3対応サーバがTLS1.2を返すときに埋める値)
     tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
+    // tls11Downgrade = TLS1.1用のカナリア (TLS1.2対応サーバがTLS1.1を返すときに埋める値)
     tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
+
+    // ダウングレード (MITMによるバージョンの変更や中間機器の故障) を検知した場合はエラー
     if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||
         maxVers == VersionTLS12 && c.vers <= VersionTLS11 && tls11Downgrade {
         c.sendAlert(alertIllegalParameter)
         return errors.New("tls: downgrade attempt detected, possibly due to a MitM attack or a broken middlebox")
     }
 
+    // TLS1.3を利用する場合はclientHandshakeStateTLS13構造体を作成し、TLS1.3としてハンドシェイクを実施
     if c.vers == VersionTLS13 {
         hs := &clientHandshakeStateTLS13{
             c:            c,
@@ -1949,6 +1971,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
         return hs.handshake()
     }
 
+    // TLS1.2/1.1利用する場合はclientHandshakeState構造体を作成し、ハンドシェイクを実施
     hs := &clientHandshakeState{
         c:           c,
         ctx:         ctx,
