@@ -1704,77 +1704,91 @@ func (pconn *persistConn) addTLS(
 ```go
 // (go/src/crypto/tls/conn.go)
 
-// WIP
 func (c *Conn) HandshakeContext(ctx context.Context) error {
-    // Delegate to unexported method for named return
-    // without confusing documented signature.
     return c.handshakeContext(ctx)
 }
 
 func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
-    // Fast sync/atomic-based exit if there is no handshake in flight and the
-    // last one succeeded without an error. Avoids the expensive context setup
-    // and mutex for most Read and Write calls.
+    // 現在進行中のハンドシェイクがある場合
     if c.isHandshakeComplete.Load() {
         return nil
     }
 
+    // handshakeCtx = 以降のハンドシェイク処理に渡される、このハンドシェイク専用のコンテキスト
     handshakeCtx, cancel := context.WithCancel(ctx)
-    // Note: defer this before starting the "interrupter" goroutine
-    // so that we can tell the difference between the input being canceled and
-    // this cancellation. In the former case, we need to close the connection.
+
     defer cancel()
 
-    if c.quic != nil {
+    // -- ハンドシェイク処理をコンテキストキャンセルで中断できるようにする準備 --
+
+    if c.quic != nil { // QUICの場合
+        // QUIC側の構造体にhandshakeCtx.Doneチャネルとキャンセル関数cancelを渡す
         c.quic.cancelc = handshakeCtx.Done()
         c.quic.cancel = cancel
-    } else if ctx.Done() != nil {
-        // Start the "interrupter" goroutine, if this context might be canceled.
-        // (The background context cannot).
-        //
-        // The interrupter goroutine waits for the input context to be done and
-        // closes the connection if this happens before the function returns.
-        done := make(chan struct{})
-        interruptRes := make(chan error, 1)
+
+    } else if ctx.Done() != nil { // QUICではない、かつこのコンテキストがキャンセルorタイムアウト可能な場合
+        done := make(chan struct{})         // 関数の終了を通知するチャネルを作成
+        interruptRes := make(chan error, 1) // 中断が発生したかどうかを通知するチャネルを作成
+
+        // 終了時にdoneを閉じ、キャンセル発生時にinterrupterからのその内容を受け取ってretに保存
         defer func() {
             close(done)
-            if ctxErr := <-interruptRes; ctxErr != nil {
-                // Return context error to user.
+
+            if ctxErr := <-interruptRes;
+               ctxErr != nil {
                 ret = ctxErr
             }
         }()
+
         go func() {
             select {
-            case <-handshakeCtx.Done():
-                // Close the connection, discarding the error
-                _ = c.conn.Close()
-                interruptRes <- handshakeCtx.Err()
-            case <-done:
+            case <-handshakeCtx.Done(): // ハンドシェイク完了前にキャンセルorタイムアウトした
+                _ = c.conn.Close() // 接続をクローズ
+                interruptRes <- handshakeCtx.Err() // キャンセル発生時にそれをエラーとして保存
+            case <-done: // ハンドシェイクが正常に完了した
                 interruptRes <- nil
             }
         }()
     }
 
+    // 同じ*tls.Conn に対して複数のgoroutineが同時にハンドシェイクを開始しないようにロック
     c.handshakeMutex.Lock()
     defer c.handshakeMutex.Unlock()
 
+    // 前回のハンドシェイクで発生したエラーがある場合
     if err := c.handshakeErr; err != nil {
         return err
     }
+    // 先行するgoroutineがすでにハンドシェイクを完了させている場合に備えて、ロック取得後にもチェックする
     if c.isHandshakeComplete.Load() {
         return nil
     }
 
+    // c.in = TLSレコード層の入力パスを守るミューテックス
     c.in.Lock()
     defer c.in.Unlock()
 
+    // -- ハンドシェイクの実行 --
     c.handshakeErr = c.handshakeFn(handshakeCtx)
+    // handshakeFnはtype Conn structのメンバとして保持されているハンドシェイク用の関数
+    // handshakeFn func(context.Context) error // (*Conn).clientHandshake or serverHandshake
+    // src/crypto/tls/conn.goのfunc Clientで以下のようにセットされる
+    // (src/crypto/tls/conn.go)
+    // func Client(conn net.Conn, config *Config) *Conn {
+    //     c := &Conn{
+    //         conn:     conn,
+    //         config:   config,
+    //         isClient: true,
+    //     }
+    //     c.handshakeFn = c.clientHandshake
+    //     return c
+    // }
+
     if c.handshakeErr == nil {
-        c.handshakes++
+        c.handshakes++ // この接続でハンドシェイクが成功した回数を記録
     } else {
-        // If an error occurred during the handshake try to flush the
-        // alert that might be left in the buffer.
-        c.flush()
+        // ハンドシェイク中にエラーが起きると、TLS仕様上はAlert レコードを送信する必要がある
+        c.flush() // 書き込みバッファに残っている可能性がある未送出のアラートをフラッシュする
     }
 
     if c.handshakeErr == nil && !c.isHandshakeComplete.Load() {
@@ -1809,6 +1823,140 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
     }
 
     return c.handshakeErr
+}
+```
+
+## `clientHandshake`
+
+```
+// (src/crypto/tls/handshake_client.go)
+
+// WIP
+func (c *Conn) clientHandshake(ctx context.Context) (err error) {
+    if c.config == nil {
+        c.config = defaultConfig()
+    }
+
+    // This may be a renegotiation handshake, in which case some fields
+    // need to be reset.
+    c.didResume = false
+    c.curveID = 0
+
+    hello, keyShareKeys, ech, err := c.makeClientHello()
+    if err != nil {
+        return err
+    }
+
+    session, earlySecret, binderKey, err := c.loadSession(hello)
+    if err != nil {
+        return err
+    }
+    if session != nil {
+        defer func() {
+            // If we got a handshake failure when resuming a session, throw away
+            // the session ticket. See RFC 5077, Section 3.2.
+            //
+            // RFC 8446 makes no mention of dropping tickets on failure, but it
+            // does require servers to abort on invalid binders, so we need to
+            // delete tickets to recover from a corrupted PSK.
+            if err != nil {
+                if cacheKey := c.clientSessionCacheKey(); cacheKey != "" {
+                    c.config.ClientSessionCache.Put(cacheKey, nil)
+                }
+            }
+        }()
+    }
+
+    if ech != nil {
+        // Split hello into inner and outer
+        ech.innerHello = hello.clone()
+
+        // Overwrite the server name in the outer hello with the public facing
+        // name.
+        hello.serverName = string(ech.config.PublicName)
+        // Generate a new random for the outer hello.
+        hello.random = make([]byte, 32)
+        _, err = io.ReadFull(c.config.rand(), hello.random)
+        if err != nil {
+            return errors.New("tls: short read from Rand: " + err.Error())
+        }
+
+        // NOTE: we don't do PSK GREASE, in line with boringssl, it's meant to
+        // work around _possibly_ broken middleboxes, but there is little-to-no
+        // evidence that this is actually a problem.
+
+        if err := computeAndUpdateOuterECHExtension(hello, ech.innerHello, ech, true); err != nil {
+            return err
+        }
+    }
+
+    c.serverName = hello.serverName
+
+    if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
+        return err
+    }
+
+    if hello.earlyData {
+        suite := cipherSuiteTLS13ByID(session.cipherSuite)
+        transcript := suite.hash.New()
+        if err := transcriptMsg(hello, transcript); err != nil {
+            return err
+        }
+        earlyTrafficSecret := earlySecret.ClientEarlyTrafficSecret(transcript)
+        c.quicSetWriteSecret(QUICEncryptionLevelEarly, suite.id, earlyTrafficSecret)
+    }
+
+    // serverHelloMsg is not included in the transcript
+    msg, err := c.readHandshake(nil)
+    if err != nil {
+        return err
+    }
+
+    serverHello, ok := msg.(*serverHelloMsg)
+    if !ok {
+        c.sendAlert(alertUnexpectedMessage)
+        return unexpectedMessageError(serverHello, msg)
+    }
+
+    if err := c.pickTLSVersion(serverHello); err != nil {
+        return err
+    }
+
+    // If we are negotiating a protocol version that's lower than what we
+    // support, check for the server downgrade canaries.
+    // See RFC 8446, Section 4.1.3.
+    maxVers := c.config.maxSupportedVersion(roleClient)
+    tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
+    tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
+    if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||
+        maxVers == VersionTLS12 && c.vers <= VersionTLS11 && tls11Downgrade {
+        c.sendAlert(alertIllegalParameter)
+        return errors.New("tls: downgrade attempt detected, possibly due to a MitM attack or a broken middlebox")
+    }
+
+    if c.vers == VersionTLS13 {
+        hs := &clientHandshakeStateTLS13{
+            c:            c,
+            ctx:          ctx,
+            serverHello:  serverHello,
+            hello:        hello,
+            keyShareKeys: keyShareKeys,
+            session:      session,
+            earlySecret:  earlySecret,
+            binderKey:    binderKey,
+            echContext:   ech,
+        }
+        return hs.handshake()
+    }
+
+    hs := &clientHandshakeState{
+        c:           c,
+        ctx:         ctx,
+        serverHello: serverHello,
+        hello:       hello,
+        session:     session,
+    }
+    return hs.handshake()
 }
 ```
 
