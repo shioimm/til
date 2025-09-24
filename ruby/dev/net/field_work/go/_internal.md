@@ -1988,16 +1988,18 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 ```go
 // (src/net/http/h2_bundle.go)
 
+// 標準的なHTTP/2トランスポート
 func (t *http2Transport) RoundTrip(req *Request) (*Response, error) {
     return t.RoundTripOpt(req, http2RoundTripOpt{})
 }
 
+// 暗号化なしのHTTP/2トランスポート
 func (t *http2unencryptedTransport) RoundTrip(req *Request) (*Response, error) {
     return (*http2Transport)(t).RoundTripOpt(req, http2RoundTripOpt{allowHTTP: true})
 }
 
-// WIP
 func (t *http2Transport) RoundTripOpt(req *Request, opt http2RoundTripOpt) (*Response, error) {
+    // リクエストURLのスキームとプロトコルの不整合を検証
     switch req.URL.Scheme {
     case "https":
         // Always okay.
@@ -2009,28 +2011,46 @@ func (t *http2Transport) RoundTripOpt(req *Request, opt http2RoundTripOpt) (*Res
         return nil, errors.New("http2: unsupported scheme")
     }
 
+    // addr = リクエスト先を表す"scheme://host:port"形式の文字列
     addr := http2authorityAddr(req.URL.Scheme, req.URL.Host)
+
+    // retryをインクリメントしながら接続の取得および(再)送信を行う
     for retry := 0; ; retry++ {
+        // 接続プールからhttp2ClientConnを取得
         cc, err := t.connPool().GetClientConn(req, addr)
+
         if err != nil {
             t.vlogf("http2: Transport failed to get client conn for %s: %v", addr, err)
             return nil, err
         }
+
+        // cc.atomicReused = このhttp2ClientConnが過去にリクエストの送信に使用されたかどうか
         reused := !atomic.CompareAndSwapUint32(&cc.atomicReused, 0, 1)
+
+        // トレースを発火させる
         http2traceGotConn(req, cc, reused)
+
+        // HTTP/2のストリームを開始。リクエストを送信
         res, err := cc.RoundTrip(req)
-        if err != nil && retry <= 6 {
+
+        if err != nil && retry <= 6 { // 最大7回までリトライする
             roundTripErr := err
-            if req, err = http2shouldRetryRequest(req, err); err == nil {
-                // After the first retry, do exponential backoff with 10% jitter.
+
+            // http2shouldRetryRequest = 再送可能なエラーかどうか
+            if req, err = http2shouldRetryRequest(req, err);
+               err == nil {
+                // 初回は即時再送
                 if retry == 0 {
                     t.vlogf("RoundTrip retrying after failure: %v", roundTripErr)
                     continue
                 }
+
+                // 2回目以降は指数関数バックオフで再送
                 backoff := float64(uint(1) << (uint(retry) - 1))
                 backoff += backoff * (0.1 * mathrand.Float64())
                 d := time.Second * time.Duration(backoff)
                 tm := t.newTimer(d)
+
                 select {
                 case <-tm.C():
                     t.vlogf("RoundTrip retrying after failure: %v", roundTripErr)
