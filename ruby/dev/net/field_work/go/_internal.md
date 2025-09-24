@@ -1988,12 +1988,80 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 ```go
 // (src/net/http/h2_bundle.go)
 
-// WIP
 func (t *http2Transport) RoundTrip(req *Request) (*Response, error) {
     return t.RoundTripOpt(req, http2RoundTripOpt{})
 }
 
 func (t *http2unencryptedTransport) RoundTrip(req *Request) (*Response, error) {
     return (*http2Transport)(t).RoundTripOpt(req, http2RoundTripOpt{allowHTTP: true})
+}
+
+// WIP
+func (t *http2Transport) RoundTripOpt(req *Request, opt http2RoundTripOpt) (*Response, error) {
+    switch req.URL.Scheme {
+    case "https":
+        // Always okay.
+    case "http":
+        if !t.AllowHTTP && !opt.allowHTTP {
+            return nil, errors.New("http2: unencrypted HTTP/2 not enabled")
+        }
+    default:
+        return nil, errors.New("http2: unsupported scheme")
+    }
+
+    addr := http2authorityAddr(req.URL.Scheme, req.URL.Host)
+    for retry := 0; ; retry++ {
+        cc, err := t.connPool().GetClientConn(req, addr)
+        if err != nil {
+            t.vlogf("http2: Transport failed to get client conn for %s: %v", addr, err)
+            return nil, err
+        }
+        reused := !atomic.CompareAndSwapUint32(&cc.atomicReused, 0, 1)
+        http2traceGotConn(req, cc, reused)
+        res, err := cc.RoundTrip(req)
+        if err != nil && retry <= 6 {
+            roundTripErr := err
+            if req, err = http2shouldRetryRequest(req, err); err == nil {
+                // After the first retry, do exponential backoff with 10% jitter.
+                if retry == 0 {
+                    t.vlogf("RoundTrip retrying after failure: %v", roundTripErr)
+                    continue
+                }
+                backoff := float64(uint(1) << (uint(retry) - 1))
+                backoff += backoff * (0.1 * mathrand.Float64())
+                d := time.Second * time.Duration(backoff)
+                tm := t.newTimer(d)
+                select {
+                case <-tm.C():
+                    t.vlogf("RoundTrip retrying after failure: %v", roundTripErr)
+                    continue
+                case <-req.Context().Done():
+                    tm.Stop()
+                    err = req.Context().Err()
+                }
+            }
+        }
+        if err == http2errClientConnNotEstablished {
+            // This ClientConn was created recently,
+            // this is the first request to use it,
+            // and the connection is closed and not usable.
+            //
+            // In this state, cc.idleTimer will remove the conn from the pool
+            // when it fires. Stop the timer and remove it here so future requests
+            // won't try to use this connection.
+            //
+            // If the timer has already fired and we're racing it, the redundant
+            // call to MarkDead is harmless.
+            if cc.idleTimer != nil {
+                cc.idleTimer.Stop()
+            }
+            t.connPool().MarkDead(cc)
+        }
+        if err != nil {
+            t.vlogf("RoundTrip failure: %v", err)
+            return nil, err
+        }
+        return res, nil
+    }
 }
 ```
