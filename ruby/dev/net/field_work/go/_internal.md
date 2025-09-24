@@ -1988,12 +1988,211 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 ```go
 // (src/net/http/h2_bundle.go)
 
-// WIP
+// 標準的なHTTP/2トランスポート
 func (t *http2Transport) RoundTrip(req *Request) (*Response, error) {
     return t.RoundTripOpt(req, http2RoundTripOpt{})
 }
 
+// 暗号化なしのHTTP/2トランスポート
 func (t *http2unencryptedTransport) RoundTrip(req *Request) (*Response, error) {
     return (*http2Transport)(t).RoundTripOpt(req, http2RoundTripOpt{allowHTTP: true})
+}
+
+func (t *http2Transport) RoundTripOpt(req *Request, opt http2RoundTripOpt) (*Response, error) {
+    // リクエストURLのスキームとプロトコルの不整合を検証
+    switch req.URL.Scheme {
+    case "https":
+        // Always okay.
+    case "http":
+        if !t.AllowHTTP && !opt.allowHTTP {
+            return nil, errors.New("http2: unencrypted HTTP/2 not enabled")
+        }
+    default:
+        return nil, errors.New("http2: unsupported scheme")
+    }
+
+    // addr = リクエスト先を表す"scheme://host:port"形式の文字列
+    addr := http2authorityAddr(req.URL.Scheme, req.URL.Host)
+
+    // retryをインクリメントしながら接続の取得および(再)送信を行う
+    for retry := 0; ; retry++ {
+        // 接続プールからhttp2ClientConnを取得
+        cc, err := t.connPool().GetClientConn(req, addr)
+
+        if err != nil {
+            t.vlogf("http2: Transport failed to get client conn for %s: %v", addr, err)
+            return nil, err
+        }
+
+        // cc.atomicReused = このhttp2ClientConnが過去にリクエストの送信に使用されたかどうか
+        reused := !atomic.CompareAndSwapUint32(&cc.atomicReused, 0, 1)
+
+        // トレースを発火させる
+        http2traceGotConn(req, cc, reused)
+
+        // HTTP/2のストリームを開始。リクエストを送信
+        res, err := cc.RoundTrip(req)
+
+        if err != nil && retry <= 6 { // 最大7回までリトライする
+            roundTripErr := err
+
+            // http2shouldRetryRequest = 再送可能なエラーかどうか
+            if req, err = http2shouldRetryRequest(req, err);
+               err == nil {
+                // 初回は即時再送
+                if retry == 0 {
+                    t.vlogf("RoundTrip retrying after failure: %v", roundTripErr)
+                    continue
+                }
+
+                // 2回目以降は指数関数バックオフで再送
+                backoff := float64(uint(1) << (uint(retry) - 1))
+                backoff += backoff * (0.1 * mathrand.Float64())
+                d := time.Second * time.Duration(backoff)
+                tm := t.newTimer(d)
+
+                select {
+                case <-tm.C():
+                    t.vlogf("RoundTrip retrying after failure: %v", roundTripErr)
+                    continue
+                case <-req.Context().Done():
+                    tm.Stop()
+                    err = req.Context().Err()
+                }
+            }
+        }
+
+        // 初回リクエスト、かつ接続がクローズしていた場合
+        if err == http2errClientConnNotEstablished {
+            if cc.idleTimer != nil {
+                cc.idleTimer.Stop()
+            }
+            t.connPool().MarkDead(cc) // 接続プールから除外
+        }
+
+        if err != nil {
+            t.vlogf("RoundTrip failure: %v", err)
+            return nil, err
+        }
+
+        return res, nil
+    }
+}
+```
+
+```go
+// (src/net/http/h2_bundle.go)
+
+// WIP
+func (cc *http2ClientConn) RoundTrip(req *Request) (*Response, error) {
+    return cc.roundTrip(req, nil)
+}
+
+func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStream)) (*Response, error) {
+    ctx := req.Context()
+    cs := &http2clientStream{
+        cc:                   cc,
+        ctx:                  ctx,
+        reqCancel:            req.Cancel,
+        isHead:               req.Method == "HEAD",
+        reqBody:              req.Body,
+        reqBodyContentLength: http2actualContentLength(req),
+        trace:                httptrace.ContextClientTrace(ctx),
+        peerClosed:           make(chan struct{}),
+        abort:                make(chan struct{}),
+        respHeaderRecv:       make(chan struct{}),
+        donec:                make(chan struct{}),
+    }
+
+    cs.requestedGzip = httpcommon.IsRequestGzip(req.Method, req.Header, cc.t.disableCompression())
+
+    go cs.doRequest(req, streamf)
+
+    waitDone := func() error {
+        select {
+        case <-cs.donec:
+            return nil
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-cs.reqCancel:
+            return http2errRequestCanceled
+        }
+    }
+
+    handleResponseHeaders := func() (*Response, error) {
+        res := cs.res
+        if res.StatusCode > 299 {
+            // On error or status code 3xx, 4xx, 5xx, etc abort any
+            // ongoing write, assuming that the server doesn't care
+            // about our request body. If the server replied with 1xx or
+            // 2xx, however, then assume the server DOES potentially
+            // want our body (e.g. full-duplex streaming:
+            // golang.org/issue/13444). If it turns out the server
+            // doesn't, they'll RST_STREAM us soon enough. This is a
+            // heuristic to avoid adding knobs to Transport. Hopefully
+            // we can keep it.
+            cs.abortRequestBodyWrite()
+        }
+        res.Request = req
+        res.TLS = cc.tlsState
+        if res.Body == http2noBody && http2actualContentLength(req) == 0 {
+            // If there isn't a request or response body still being
+            // written, then wait for the stream to be closed before
+            // RoundTrip returns.
+            if err := waitDone(); err != nil {
+                return nil, err
+            }
+        }
+        return res, nil
+    }
+
+    cancelRequest := func(cs *http2clientStream, err error) error {
+        cs.cc.mu.Lock()
+        bodyClosed := cs.reqBodyClosed
+        cs.cc.mu.Unlock()
+        // Wait for the request body to be closed.
+        //
+        // If nothing closed the body before now, abortStreamLocked
+        // will have started a goroutine to close it.
+        //
+        // Closing the body before returning avoids a race condition
+        // with net/http checking its readTrackingBody to see if the
+        // body was read from or closed. See golang/go#60041.
+        //
+        // The body is closed in a separate goroutine without the
+        // connection mutex held, but dropping the mutex before waiting
+        // will keep us from holding it indefinitely if the body
+        // close is slow for some reason.
+        if bodyClosed != nil {
+            <-bodyClosed
+        }
+        return err
+    }
+
+    for {
+        select {
+        case <-cs.respHeaderRecv:
+            return handleResponseHeaders()
+        case <-cs.abort:
+            select {
+            case <-cs.respHeaderRecv:
+                // If both cs.respHeaderRecv and cs.abort are signaling,
+                // pick respHeaderRecv. The server probably wrote the
+                // response and immediately reset the stream.
+                // golang.org/issue/49645
+                return handleResponseHeaders()
+            default:
+                waitDone()
+                return nil, cs.abortErr
+            }
+        case <-ctx.Done():
+            err := ctx.Err()
+            cs.abortStream(err)
+            return nil, cancelRequest(cs, err)
+        case <-cs.reqCancel:
+            cs.abortStream(http2errRequestCanceled)
+            return nil, cancelRequest(cs, http2errRequestCanceled)
+        }
+    }
 }
 ```
