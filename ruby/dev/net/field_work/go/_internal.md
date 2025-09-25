@@ -2083,31 +2083,36 @@ func (t *http2Transport) RoundTripOpt(req *Request, opt http2RoundTripOpt) (*Res
 ```go
 // (src/net/http/h2_bundle.go)
 
-// WIP
+// res, err := cc.RoundTrip(req)
+
 func (cc *http2ClientConn) RoundTrip(req *Request) (*Response, error) {
     return cc.roundTrip(req, nil)
 }
 
 func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStream)) (*Response, error) {
     ctx := req.Context()
-    cs := &http2clientStream{
-        cc:                   cc,
-        ctx:                  ctx,
-        reqCancel:            req.Cancel,
-        isHead:               req.Method == "HEAD",
-        reqBody:              req.Body,
-        reqBodyContentLength: http2actualContentLength(req),
-        trace:                httptrace.ContextClientTrace(ctx),
-        peerClosed:           make(chan struct{}),
-        abort:                make(chan struct{}),
-        respHeaderRecv:       make(chan struct{}),
-        donec:                make(chan struct{}),
+
+    cs := &http2clientStream{ // ストリーム (roundtripが呼ばれるたびに新規作成される)
+        cc:                   cc, // 利用するHTTP/2接続
+        ctx:                  ctx, // リクエストのContext
+        reqCancel:            req.Cancel, // 互換性用
+        isHead:               req.Method == "HEAD", // HEADメソッドかどうか (= ボディを読む必要があるかどうか)
+        reqBody:              req.Body, // リクエストボディ
+        reqBodyContentLength: http2actualContentLength(req), // 送信サイズ
+        trace:                httptrace.ContextClientTrace(ctx), // httptraceのコールバック一式
+        peerClosed:           make(chan struct{}), // 送信先がストリームを閉じた場合に通知されるチャネル
+        abort:                make(chan struct{}), // 自らがこのストリームを中止したいときに通知するチャネル
+        respHeaderRecv:       make(chan struct{}), // 自らがレスポンスヘッダを受信完了したときに通知するチャネル
+        donec:                make(chan struct{}), // ストリームの全処理が完了したときに通知するチャネル
     }
 
+    // このリクエストに対するレスポンスとしてgzip圧縮ファイルを受け入れるかどうか
     cs.requestedGzip = httpcommon.IsRequestGzip(req.Method, req.Header, cc.t.disableCompression())
 
+    // 別goroutineでリクエストの送信処理を開始
     go cs.doRequest(req, streamf)
 
+    // WIP
     waitDone := func() error {
         select {
         case <-cs.donec:
@@ -2194,5 +2199,261 @@ func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStre
             return nil, cancelRequest(cs, http2errRequestCanceled)
         }
     }
+}
+```
+
+## `doRequest`
+
+```go
+// (src/net/http/h2_bundle.go)
+
+func (cs *http2clientStream) doRequest(req *Request, streamf func(*http2clientStream)) {
+    cs.cc.t.markNewGoroutine() // 起動した送信系ゴルーチンの数を追跡するためのフック
+    err := cs.writeRequest(req, streamf) // リクエスト送信処理
+    cs.cleanupWriteRequest(err) // 送信側のクリーンアップ
+}
+
+func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clientStream)) (err error) {
+    cc := cs.cc   // HTTP/2接続
+    ctx := cs.ctx // リクエストのコンテキスト
+
+    // Extended CONNECT (RFC 8441) の判定
+    // :protocol擬似ヘッダが含まれる場合はExtended CONNECT
+    var isExtendedConnect bool
+    if req.Method == "CONNECT" && req.Header.Get(":protocol") != "" {
+        isExtendedConnect = true
+    }
+
+    // WIP
+    // Acquire the new-request lock by writing to reqHeaderMu.
+    // This lock guards the critical section covering allocating a new stream ID
+    // (requires mu) and creating the stream (requires wmu).
+    if cc.reqHeaderMu == nil {
+        panic("RoundTrip on uninitialized ClientConn") // for tests
+    }
+    if isExtendedConnect {
+        select {
+        case <-cs.reqCancel:
+            return http2errRequestCanceled
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-cc.seenSettingsChan:
+            if !cc.extendedConnectAllowed {
+                return http2errExtendedConnectNotSupported
+            }
+        }
+    }
+    select {
+    case cc.reqHeaderMu <- struct{}{}:
+    case <-cs.reqCancel:
+        return http2errRequestCanceled
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+
+    cc.mu.Lock()
+    if cc.idleTimer != nil {
+        cc.idleTimer.Stop()
+    }
+    cc.decrStreamReservationsLocked()
+    if err := cc.awaitOpenSlotForStreamLocked(cs); err != nil {
+        cc.mu.Unlock()
+        <-cc.reqHeaderMu
+        return err
+    }
+    cc.addStreamLocked(cs) // assigns stream ID
+    if http2isConnectionCloseRequest(req) {
+        cc.doNotReuse = true
+    }
+    cc.mu.Unlock()
+
+    if streamf != nil {
+        streamf(cs)
+    }
+
+    continueTimeout := cc.t.expectContinueTimeout()
+    if continueTimeout != 0 {
+        if !httpguts.HeaderValuesContainsToken(req.Header["Expect"], "100-continue") {
+            continueTimeout = 0
+        } else {
+            cs.on100 = make(chan struct{}, 1)
+        }
+    }
+
+    // Past this point (where we send request headers), it is possible for
+    // RoundTrip to return successfully. Since the RoundTrip contract permits
+    // the caller to "mutate or reuse" the Request after closing the Response's Body,
+    // we must take care when referencing the Request from here on.
+    err = cs.encodeAndWriteHeaders(req)
+    <-cc.reqHeaderMu
+    if err != nil {
+        return err
+    }
+
+    hasBody := cs.reqBodyContentLength != 0
+    if !hasBody {
+        cs.sentEndStream = true
+    } else {
+        if continueTimeout != 0 {
+            http2traceWait100Continue(cs.trace)
+            timer := time.NewTimer(continueTimeout)
+            select {
+            case <-timer.C:
+                err = nil
+            case <-cs.on100:
+                err = nil
+            case <-cs.abort:
+                err = cs.abortErr
+            case <-ctx.Done():
+                err = ctx.Err()
+            case <-cs.reqCancel:
+                err = http2errRequestCanceled
+            }
+            timer.Stop()
+            if err != nil {
+                http2traceWroteRequest(cs.trace, err)
+                return err
+            }
+        }
+
+        if err = cs.writeRequestBody(req); err != nil {
+            if err != http2errStopReqBodyWrite {
+                http2traceWroteRequest(cs.trace, err)
+                return err
+            }
+        } else {
+            cs.sentEndStream = true
+        }
+    }
+
+    http2traceWroteRequest(cs.trace, err)
+
+    var respHeaderTimer <-chan time.Time
+    var respHeaderRecv chan struct{}
+    if d := cc.responseHeaderTimeout(); d != 0 {
+        timer := cc.t.newTimer(d)
+        defer timer.Stop()
+        respHeaderTimer = timer.C()
+        respHeaderRecv = cs.respHeaderRecv
+    }
+    // Wait until the peer half-closes its end of the stream,
+    // or until the request is aborted (via context, error, or otherwise),
+    // whichever comes first.
+    for {
+        select {
+        case <-cs.peerClosed:
+            return nil
+        case <-respHeaderTimer:
+            return http2errTimeout
+        case <-respHeaderRecv:
+            respHeaderRecv = nil
+            respHeaderTimer = nil // keep waiting for END_STREAM
+        case <-cs.abort:
+            return cs.abortErr
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-cs.reqCancel:
+            return http2errRequestCanceled
+        }
+    }
+}
+
+func (cs *http2clientStream) cleanupWriteRequest(err error) {
+    cc := cs.cc
+
+    if cs.ID == 0 {
+        // We were canceled before creating the stream, so return our reservation.
+        cc.decrStreamReservations()
+    }
+
+    // TODO: write h12Compare test showing whether
+    // Request.Body is closed by the Transport,
+    // and in multiple cases: server replies <=299 and >299
+    // while still writing request body
+    cc.mu.Lock()
+    mustCloseBody := false
+    if cs.reqBody != nil && cs.reqBodyClosed == nil {
+        mustCloseBody = true
+        cs.reqBodyClosed = make(chan struct{})
+    }
+    bodyClosed := cs.reqBodyClosed
+    closeOnIdle := cc.singleUse || cc.doNotReuse || cc.t.disableKeepAlives() || cc.goAway != nil
+    cc.mu.Unlock()
+    if mustCloseBody {
+        cs.reqBody.Close()
+        close(bodyClosed)
+    }
+    if bodyClosed != nil {
+        <-bodyClosed
+    }
+
+    if err != nil && cs.sentEndStream {
+        // If the connection is closed immediately after the response is read,
+        // we may be aborted before finishing up here. If the stream was closed
+        // cleanly on both sides, there is no error.
+        select {
+        case <-cs.peerClosed:
+            err = nil
+        default:
+        }
+    }
+    if err != nil {
+        cs.abortStream(err) // possibly redundant, but harmless
+        if cs.sentHeaders {
+            if se, ok := err.(http2StreamError); ok {
+                if se.Cause != http2errFromPeer {
+                    cc.writeStreamReset(cs.ID, se.Code, false, err)
+                }
+            } else {
+                // We're cancelling an in-flight request.
+                //
+                // This could be due to the server becoming unresponsive.
+                // To avoid sending too many requests on a dead connection,
+                // we let the request continue to consume a concurrency slot
+                // until we can confirm the server is still responding.
+                // We do this by sending a PING frame along with the RST_STREAM
+                // (unless a ping is already in flight).
+                //
+                // For simplicity, we don't bother tracking the PING payload:
+                // We reset cc.pendingResets any time we receive a PING ACK.
+                //
+                // We skip this if the conn is going to be closed on idle,
+                // because it's short lived and will probably be closed before
+                // we get the ping response.
+                ping := false
+                if !closeOnIdle {
+                    cc.mu.Lock()
+                    // rstStreamPingsBlocked works around a gRPC behavior:
+                    // see comment on the field for details.
+                    if !cc.rstStreamPingsBlocked {
+                        if cc.pendingResets == 0 {
+                            ping = true
+                        }
+                        cc.pendingResets++
+                    }
+                    cc.mu.Unlock()
+                }
+                cc.writeStreamReset(cs.ID, http2ErrCodeCancel, ping, err)
+            }
+        }
+        cs.bufPipe.CloseWithError(err) // no-op if already closed
+    } else {
+        if cs.sentHeaders && !cs.sentEndStream {
+            cc.writeStreamReset(cs.ID, http2ErrCodeNo, false, nil)
+        }
+        cs.bufPipe.CloseWithError(http2errRequestCanceled)
+    }
+    if cs.ID != 0 {
+        cc.forgetStreamID(cs.ID)
+    }
+
+    cc.wmu.Lock()
+    werr := cc.werr
+    cc.wmu.Unlock()
+    if werr != nil {
+        cc.Close()
+    }
+
+    close(cs.donec)
 }
 ```
