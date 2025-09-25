@@ -2112,18 +2112,19 @@ func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStre
     // 別goroutineでリクエストの送信処理を開始
     go cs.doRequest(req, streamf)
 
-    // WIP
+    // ストリームの完了を待機
     waitDone := func() error {
         select {
-        case <-cs.donec:
+        case <-cs.donec:     // このストリームの処理が完了したとき
             return nil
-        case <-ctx.Done():
+        case <-ctx.Done():   // Contextのキャンセルまたはタイムアウトしたとき
             return ctx.Err()
-        case <-cs.reqCancel:
+        case <-cs.reqCancel: // キャンセル発生時 (互換性用)
             return http2errRequestCanceled
         }
     }
 
+    // WIP
     handleResponseHeaders := func() (*Response, error) {
         res := cs.res
         if res.StatusCode > 299 {
@@ -2224,25 +2225,28 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
         isExtendedConnect = true
     }
 
-    // WIP
-    // Acquire the new-request lock by writing to reqHeaderMu.
-    // This lock guards the critical section covering allocating a new stream ID
-    // (requires mu) and creating the stream (requires wmu).
+    // http2ClientConnの初期化をチェック
     if cc.reqHeaderMu == nil {
         panic("RoundTrip on uninitialized ClientConn") // for tests
     }
+
+    // Extended CONNECTの場合
     if isExtendedConnect {
         select {
-        case <-cs.reqCancel:
+        case <-cs.reqCancel: // キャンセル発生時 (互換性用)
             return http2errRequestCanceled
-        case <-ctx.Done():
+        case <-ctx.Done():   // Contextのキャンセルまたはタイムアウトしたとき
             return ctx.Err()
-        case <-cc.seenSettingsChan:
+        case <-cc.seenSettingsChan: // SETTINGSフレームを受信したとき
+            // extendedConnectAllowed = サーバがENABLE_CONNECT_PROTOCOLを有効化したかどうか
             if !cc.extendedConnectAllowed {
+                // サーバがExtended CONNECTをサポートしないのに送ってしまった場合
                 return http2errExtendedConnectNotSupported
             }
         }
     }
+
+    // WIP
     select {
     case cc.reqHeaderMu <- struct{}{}:
     case <-cs.reqCancel:
