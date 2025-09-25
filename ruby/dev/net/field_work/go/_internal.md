@@ -2083,31 +2083,36 @@ func (t *http2Transport) RoundTripOpt(req *Request, opt http2RoundTripOpt) (*Res
 ```go
 // (src/net/http/h2_bundle.go)
 
-// WIP
+// res, err := cc.RoundTrip(req)
+
 func (cc *http2ClientConn) RoundTrip(req *Request) (*Response, error) {
     return cc.roundTrip(req, nil)
 }
 
 func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStream)) (*Response, error) {
     ctx := req.Context()
-    cs := &http2clientStream{
-        cc:                   cc,
-        ctx:                  ctx,
-        reqCancel:            req.Cancel,
-        isHead:               req.Method == "HEAD",
-        reqBody:              req.Body,
-        reqBodyContentLength: http2actualContentLength(req),
-        trace:                httptrace.ContextClientTrace(ctx),
-        peerClosed:           make(chan struct{}),
-        abort:                make(chan struct{}),
-        respHeaderRecv:       make(chan struct{}),
-        donec:                make(chan struct{}),
+
+    cs := &http2clientStream{ // ストリーム (roundtripが呼ばれるたびに新規作成される)
+        cc:                   cc, // 利用するHTTP/2接続
+        ctx:                  ctx, // リクエストのContext
+        reqCancel:            req.Cancel, // 互換性用
+        isHead:               req.Method == "HEAD", // HEADメソッドかどうか (= ボディを読む必要があるかどうか)
+        reqBody:              req.Body, // リクエストボディ
+        reqBodyContentLength: http2actualContentLength(req), // 送信サイズ
+        trace:                httptrace.ContextClientTrace(ctx), // httptraceのコールバック一式
+        peerClosed:           make(chan struct{}), // 送信先がストリームを閉じた場合に通知されるチャネル
+        abort:                make(chan struct{}), // 自らがこのストリームを中止したいときに通知するチャネル
+        respHeaderRecv:       make(chan struct{}), // 自らがレスポンスヘッダを受信完了したときに通知するチャネル
+        donec:                make(chan struct{}), // ストリームの全処理が完了したときに通知するチャネル
     }
 
+    // このリクエストに対するレスポンスとしてgzip圧縮ファイルを受け入れるかどうか
     cs.requestedGzip = httpcommon.IsRequestGzip(req.Method, req.Header, cc.t.disableCompression())
 
+    // 別goroutineでリクエストの送信処理を開始
     go cs.doRequest(req, streamf)
 
+    // WIP
     waitDone := func() error {
         select {
         case <-cs.donec:
