@@ -2207,24 +2207,24 @@ func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStre
 ```go
 // (src/net/http/h2_bundle.go)
 
-// WIP
 func (cs *http2clientStream) doRequest(req *Request, streamf func(*http2clientStream)) {
-    cs.cc.t.markNewGoroutine()
-    err := cs.writeRequest(req, streamf)
-    cs.cleanupWriteRequest(err)
+    cs.cc.t.markNewGoroutine() // 起動した送信系ゴルーチンの数を追跡するためのフック
+    err := cs.writeRequest(req, streamf) // リクエスト送信処理
+    cs.cleanupWriteRequest(err) // 送信側のクリーンアップ
 }
 
 func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clientStream)) (err error) {
-    cc := cs.cc
-    ctx := cs.ctx
+    cc := cs.cc   // HTTP/2接続
+    ctx := cs.ctx // リクエストのコンテキスト
 
-    // wait for setting frames to be received, a server can change this value later,
-    // but we just wait for the first settings frame
+    // Extended CONNECT (RFC 8441) の判定
+    // :protocol擬似ヘッダが含まれる場合はExtended CONNECT
     var isExtendedConnect bool
     if req.Method == "CONNECT" && req.Header.Get(":protocol") != "" {
         isExtendedConnect = true
     }
 
+    // WIP
     // Acquire the new-request lock by writing to reqHeaderMu.
     // This lock guards the critical section covering allocating a new stream ID
     // (requires mu) and creating the stream (requires wmu).
