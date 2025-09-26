@@ -2235,7 +2235,7 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
         select {
         case <-cs.reqCancel: // キャンセル発生時 (互換性用)
             return http2errRequestCanceled
-        case <-ctx.Done():   // Contextのキャンセルまたはタイムアウトしたとき
+        case <-ctx.Done():   // Contextがキャンセルまたはタイムアウトしたとき
             return ctx.Err()
         case <-cc.seenSettingsChan: // SETTINGSフレームを受信したとき
             // extendedConnectAllowed = サーバがENABLE_CONNECT_PROTOCOLを有効化したかどうか
@@ -2246,15 +2246,23 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
         }
     }
 
-    // WIP
+    // 同一コネクション上でのHEADERSフレームの送信が競合しないようにするためのロック処理
+    // cc.reqHeaderMu = バッファ1つのチャネル
+    // cc.reqHeaderMuに値を送ること (= ロックを取得する) ができるようになるまで待つ
+    // ヘッダ送信が終わった側が<-cc.reqHeaderMuを受信してバッファを開ける
     select {
     case cc.reqHeaderMu <- struct{}{}:
-    case <-cs.reqCancel:
+    case <-cs.reqCancel: //キャンセル発生時 (互換性用)
         return http2errRequestCanceled
-    case <-ctx.Done():
+    case <-ctx.Done(): // Contextがキャンセルまたはタイムアウトしたとき
         return ctx.Err()
     }
+    // - HPACKの動的テーブルは同一コネクション内で共有されるため、
+    //   競合した場合正しくテーブルへの行の登録・読み出しができない
+    // - HEADERSフレームは分割されうるため、サーバ側でHEADERSフレームを受信した後にCONTINUATIONフレームが届かず
+    //   別のストリームのHEADERSフレームに割り込まれるとプロトコルエラーになる
 
+    // WIP
     cc.mu.Lock()
     if cc.idleTimer != nil {
         cc.idleTimer.Stop()
