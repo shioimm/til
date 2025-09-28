@@ -2262,22 +2262,37 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     // - HEADERSフレームは分割されうるため、サーバ側でHEADERSフレームを受信した後にCONTINUATIONフレームが届かず
     //   別のストリームのHEADERSフレームに割り込まれるとプロトコルエラーになる
 
-    // WIP
+    // --- 接続全体の状態をロック ---
     cc.mu.Lock()
+
+     // 接続がアイドルになった場合に自動クローズするタイマーを停止
     if cc.idleTimer != nil {
         cc.idleTimer.Stop()
     }
+
+    // ストリームの予約枠を解放する
+    // func (cc *http2ClientConn) ReserveNewRequest() boolの中で
+    // cc.streamsReserved++したstreamsReservedをデクリメントしている
     cc.decrStreamReservationsLocked()
-    if err := cc.awaitOpenSlotForStreamLocked(cs); err != nil {
+
+    // 新しいストリームを開ける状態になるまで待つ
+    if err := cc.awaitOpenSlotForStreamLocked(cs);
+       err != nil {
         cc.mu.Unlock()
         <-cc.reqHeaderMu
         return err
     }
+
+    // 新しいストリームを作成してhttp2ClientConnに登録し、ストリームIDを割り当てるなどのセットアップを行う
     cc.addStreamLocked(cs) // assigns stream ID
+
+    // 接続を再利用しないリクエストの場合はdoNotReuseフラグを立てる
     if http2isConnectionCloseRequest(req) {
         cc.doNotReuse = true
     }
+
     cc.mu.Unlock()
+    // --- ロックを解除 ---
 
     if streamf != nil {
         streamf(cs)
