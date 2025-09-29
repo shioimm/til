@@ -2225,6 +2225,8 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
         isExtendedConnect = true
     }
 
+    // --- リクエストの送信準備 ---
+
     // http2ClientConnの初期化をチェック
     if cc.reqHeaderMu == nil {
         panic("RoundTrip on uninitialized ClientConn") // for tests
@@ -2262,7 +2264,7 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     // - HEADERSフレームは分割されうるため、サーバ側でHEADERSフレームを受信した後にCONTINUATIONフレームが届かず
     //   別のストリームのHEADERSフレームに割り込まれるとプロトコルエラーになる
 
-    // --- 接続全体の状態をロック ---
+    // 接続全体の状態をロック
     cc.mu.Lock()
 
      // 接続がアイドルになった場合に自動クローズするタイマーを停止
@@ -2291,95 +2293,113 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
         cc.doNotReuse = true
     }
 
+    // ロックを解除
     cc.mu.Unlock()
-    // --- ロックを解除 ---
 
     if streamf != nil {
         streamf(cs)
     }
 
+    // リクエストヘッダにExpect: 100-continueがセットされている場合 (ヘッダだけ送信して様子見する場合) の処理
     continueTimeout := cc.t.expectContinueTimeout()
     if continueTimeout != 0 {
         if !httpguts.HeaderValuesContainsToken(req.Header["Expect"], "100-continue") {
             continueTimeout = 0
         } else {
+            // サーバからの100 Continueを通知するチャネル (待機時間内に通知がなければボディの送信を始める)
             cs.on100 = make(chan struct{}, 1)
         }
     }
 
-    // Past this point (where we send request headers), it is possible for
-    // RoundTrip to return successfully. Since the RoundTrip contract permits
-    // the caller to "mutate or reuse" the Request after closing the Response's Body,
-    // we must take care when referencing the Request from here on.
+    // --- リクエストを送信 ---
+
+    // 疑似ヘッダ (:method, :scheme, :authority, :path) + 通常のヘッダをHPACKで圧縮し、
+    // HEADERS (+ CONTINUATION) フレームとして送信
     err = cs.encodeAndWriteHeaders(req)
+
+    // ヘッダ専用ロックを解放
     <-cc.reqHeaderMu
+
     if err != nil {
         return err
     }
 
+    // Content-Length == 0の場合
+    // (GET/HEADの場合、もしくはPOST/PUTかつContent-Length: 0の場合)
     hasBody := cs.reqBodyContentLength != 0
+
     if !hasBody {
+        // 送信したヘッダにEND_STREAMフラグが立っていたものとみなしてcs.sentEndStream = trueにセット
         cs.sentEndStream = true
-    } else {
-        if continueTimeout != 0 {
+    } else { // これから送信するべきボディがある場合はこちら
+        if continueTimeout != 0 { // Expect: 100-continueをセットしている場合
             http2traceWait100Continue(cs.trace)
-            timer := time.NewTimer(continueTimeout)
+            timer := time.NewTimer(continueTimeout) // 100 Continueを待機するタイマーを起動
+
             select {
-            case <-timer.C:
+            case <-timer.C: // 100 Continueを受信する前にタイムアウト (-> 最適化を諦めてボディを送信)
                 err = nil
-            case <-cs.on100:
+            case <-cs.on100: // 100 Continueを受信 (-> ボディを送信)
                 err = nil
-            case <-cs.abort:
+            case <-cs.abort: // ストリームの送信を中止
                 err = cs.abortErr
-            case <-ctx.Done():
+            case <-ctx.Done(): // Contextのキャンセル
                 err = ctx.Err()
-            case <-cs.reqCancel:
+            case <-cs.reqCancel: // リクエストのキャンセル (互換性用)
                 err = http2errRequestCanceled
             }
+
             timer.Stop()
+
             if err != nil {
                 http2traceWroteRequest(cs.trace, err)
                 return err
             }
         }
 
-        if err = cs.writeRequestBody(req); err != nil {
+        // DATAフレームをフロー制御に従って分割送信
+        if err = cs.writeRequestBody(req);
+           err != nil {
             if err != http2errStopReqBodyWrite {
                 http2traceWroteRequest(cs.trace, err)
                 return err
             }
         } else {
+            // 「送信済み」を記録
             cs.sentEndStream = true
         }
     }
 
     http2traceWroteRequest(cs.trace, err)
 
+    // --- レスポンスヘッダの受信を待機 ---
+
     var respHeaderTimer <-chan time.Time
     var respHeaderRecv chan struct{}
-    if d := cc.responseHeaderTimeout(); d != 0 {
-        timer := cc.t.newTimer(d)
+
+    // レスポンスヘッダが返ってくるまでの最大待ち時間を取得
+    if d := cc.responseHeaderTimeout();
+       d != 0 { // タイムアウトが有効な場合
+        timer := cc.t.newTimer(d) // タイマーを作成
         defer timer.Stop()
-        respHeaderTimer = timer.C()
-        respHeaderRecv = cs.respHeaderRecv
+        respHeaderTimer = timer.C() // タイムアウトの通知を受け取るチャネル
+        respHeaderRecv = cs.respHeaderRecv // レスポンスヘッダの受信を知らせるシグナル
     }
-    // Wait until the peer half-closes its end of the stream,
-    // or until the request is aborted (via context, error, or otherwise),
-    // whichever comes first.
+
     for {
         select {
-        case <-cs.peerClosed:
+        case <-cs.peerClosed: // サーバがこのストリームをクローズ (レスポンス処理が完了 = 成功)
             return nil
-        case <-respHeaderTimer:
+        case <-respHeaderTimer: // レスポンスヘッダの待機がタイムアウト
             return http2errTimeout
-        case <-respHeaderRecv:
+        case <-respHeaderRecv: // レスポンスヘッダを受信
             respHeaderRecv = nil
             respHeaderTimer = nil // keep waiting for END_STREAM
-        case <-cs.abort:
+        case <-cs.abort: // このストリームの送受信を中止
             return cs.abortErr
-        case <-ctx.Done():
+        case <-ctx.Done(): // Contextのキャンセル
             return ctx.Err()
-        case <-cs.reqCancel:
+        case <-cs.reqCancel: // リクエストのキャンセル (互換性用)
             return http2errRequestCanceled
         }
     }
