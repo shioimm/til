@@ -2397,102 +2397,136 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     }
 }
 
-func (cs *http2clientStream) cleanupWriteRequest(err error) {
+// WIP
+func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
     cc := cs.cc
+    body := cs.reqBody
+    sentEnd := false // whether we sent the final DATA frame w/ END_STREAM
 
-    if cs.ID == 0 {
-        // We were canceled before creating the stream, so return our reservation.
-        cc.decrStreamReservations()
-    }
+    hasTrailers := req.Trailer != nil
+    remainLen := cs.reqBodyContentLength
+    hasContentLen := remainLen != -1
 
-    // TODO: write h12Compare test showing whether
-    // Request.Body is closed by the Transport,
-    // and in multiple cases: server replies <=299 and >299
-    // while still writing request body
     cc.mu.Lock()
-    mustCloseBody := false
-    if cs.reqBody != nil && cs.reqBodyClosed == nil {
-        mustCloseBody = true
-        cs.reqBodyClosed = make(chan struct{})
-    }
-    bodyClosed := cs.reqBodyClosed
-    closeOnIdle := cc.singleUse || cc.doNotReuse || cc.t.disableKeepAlives() || cc.goAway != nil
+    maxFrameSize := int(cc.maxFrameSize)
     cc.mu.Unlock()
-    if mustCloseBody {
-        cs.reqBody.Close()
-        close(bodyClosed)
-    }
-    if bodyClosed != nil {
-        <-bodyClosed
+
+    // Scratch buffer for reading into & writing from.
+    scratchLen := cs.frameScratchBufferLen(maxFrameSize)
+    var buf []byte
+    index := http2bufPoolIndex(scratchLen)
+    if bp, ok := http2bufPools[index].Get().(*[]byte); ok && len(*bp) >= scratchLen {
+        defer http2bufPools[index].Put(bp)
+        buf = *bp
+    } else {
+        buf = make([]byte, scratchLen)
+        defer http2bufPools[index].Put(&buf)
     }
 
-    if err != nil && cs.sentEndStream {
-        // If the connection is closed immediately after the response is read,
-        // we may be aborted before finishing up here. If the stream was closed
-        // cleanly on both sides, there is no error.
-        select {
-        case <-cs.peerClosed:
-            err = nil
-        default:
-        }
-    }
-    if err != nil {
-        cs.abortStream(err) // possibly redundant, but harmless
-        if cs.sentHeaders {
-            if se, ok := err.(http2StreamError); ok {
-                if se.Cause != http2errFromPeer {
-                    cc.writeStreamReset(cs.ID, se.Code, false, err)
-                }
-            } else {
-                // We're cancelling an in-flight request.
-                //
-                // This could be due to the server becoming unresponsive.
-                // To avoid sending too many requests on a dead connection,
-                // we let the request continue to consume a concurrency slot
-                // until we can confirm the server is still responding.
-                // We do this by sending a PING frame along with the RST_STREAM
-                // (unless a ping is already in flight).
-                //
-                // For simplicity, we don't bother tracking the PING payload:
-                // We reset cc.pendingResets any time we receive a PING ACK.
-                //
-                // We skip this if the conn is going to be closed on idle,
-                // because it's short lived and will probably be closed before
-                // we get the ping response.
-                ping := false
-                if !closeOnIdle {
-                    cc.mu.Lock()
-                    // rstStreamPingsBlocked works around a gRPC behavior:
-                    // see comment on the field for details.
-                    if !cc.rstStreamPingsBlocked {
-                        if cc.pendingResets == 0 {
-                            ping = true
-                        }
-                        cc.pendingResets++
-                    }
-                    cc.mu.Unlock()
-                }
-                cc.writeStreamReset(cs.ID, http2ErrCodeCancel, ping, err)
+    var sawEOF bool
+    for !sawEOF {
+        n, err := body.Read(buf)
+        if hasContentLen {
+            remainLen -= int64(n)
+            if remainLen == 0 && err == nil {
+                // The request body's Content-Length was predeclared and
+                // we just finished reading it all, but the underlying io.Reader
+                // returned the final chunk with a nil error (which is one of
+                // the two valid things a Reader can do at EOF). Because we'd prefer
+                // to send the END_STREAM bit early, double-check that we're actually
+                // at EOF. Subsequent reads should return (0, EOF) at this point.
+                // If either value is different, we return an error in one of two ways below.
+                var scratch [1]byte
+                var n1 int
+                n1, err = body.Read(scratch[:])
+                remainLen -= int64(n1)
+            }
+            if remainLen < 0 {
+                err = http2errReqBodyTooLong
+                return err
             }
         }
-        cs.bufPipe.CloseWithError(err) // no-op if already closed
-    } else {
-        if cs.sentHeaders && !cs.sentEndStream {
-            cc.writeStreamReset(cs.ID, http2ErrCodeNo, false, nil)
+        if err != nil {
+            cc.mu.Lock()
+            bodyClosed := cs.reqBodyClosed != nil
+            cc.mu.Unlock()
+            switch {
+            case bodyClosed:
+                return http2errStopReqBodyWrite
+            case err == io.EOF:
+                sawEOF = true
+                err = nil
+            default:
+                return err
+            }
         }
-        cs.bufPipe.CloseWithError(http2errRequestCanceled)
+
+        remain := buf[:n]
+        for len(remain) > 0 && err == nil {
+            var allowed int32
+            allowed, err = cs.awaitFlowControl(len(remain))
+            if err != nil {
+                return err
+            }
+            cc.wmu.Lock()
+            data := remain[:allowed]
+            remain = remain[allowed:]
+            sentEnd = sawEOF && len(remain) == 0 && !hasTrailers
+            err = cc.fr.WriteData(cs.ID, sentEnd, data)
+            if err == nil {
+                // TODO(bradfitz): this flush is for latency, not bandwidth.
+                // Most requests won't need this. Make this opt-in or
+                // opt-out?  Use some heuristic on the body type? Nagel-like
+                // timers?  Based on 'n'? Only last chunk of this for loop,
+                // unless flow control tokens are low? For now, always.
+                // If we change this, see comment below.
+                err = cc.bw.Flush()
+            }
+            cc.wmu.Unlock()
+        }
+        if err != nil {
+            return err
+        }
     }
-    if cs.ID != 0 {
-        cc.forgetStreamID(cs.ID)
+
+    if sentEnd {
+        // Already sent END_STREAM (which implies we have no
+        // trailers) and flushed, because currently all
+        // WriteData frames above get a flush. So we're done.
+        return nil
+    }
+
+    // Since the RoundTrip contract permits the caller to "mutate or reuse"
+    // a request after the Response's Body is closed, verify that this hasn't
+    // happened before accessing the trailers.
+    cc.mu.Lock()
+    trailer := req.Trailer
+    err = cs.abortErr
+    cc.mu.Unlock()
+    if err != nil {
+        return err
     }
 
     cc.wmu.Lock()
-    werr := cc.werr
-    cc.wmu.Unlock()
-    if werr != nil {
-        cc.Close()
+    defer cc.wmu.Unlock()
+    var trls []byte
+    if len(trailer) > 0 {
+        trls, err = cc.encodeTrailers(trailer)
+        if err != nil {
+            return err
+        }
     }
 
-    close(cs.donec)
+    // Two ways to send END_STREAM: either with trailers, or
+    // with an empty DATA frame.
+    if len(trls) > 0 {
+        err = cc.writeHeaders(cs.ID, true, maxFrameSize, trls)
+    } else {
+        err = cc.fr.WriteData(cs.ID, true, nil)
+    }
+    if ferr := cc.bw.Flush(); ferr != nil && err == nil {
+        err = ferr
+    }
+    return err
 }
 ```
