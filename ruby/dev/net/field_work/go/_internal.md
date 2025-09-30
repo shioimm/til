@@ -2124,52 +2124,40 @@ func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStre
         }
     }
 
-    // WIP
+    // レスポンスヘッダを受信後に実行する関数
     handleResponseHeaders := func() (*Response, error) {
+        // レスポンスを取得
         res := cs.res
+
+        // ステータスコード3xx/4xx/5xxの場合、リクエストボディの送信を中止する
         if res.StatusCode > 299 {
-            // On error or status code 3xx, 4xx, 5xx, etc abort any
-            // ongoing write, assuming that the server doesn't care
-            // about our request body. If the server replied with 1xx or
-            // 2xx, however, then assume the server DOES potentially
-            // want our body (e.g. full-duplex streaming:
-            // golang.org/issue/13444). If it turns out the server
-            // doesn't, they'll RST_STREAM us soon enough. This is a
-            // heuristic to avoid adding knobs to Transport. Hopefully
-            // we can keep it.
             cs.abortRequestBodyWrite()
         }
-        res.Request = req
-        res.TLS = cc.tlsState
+
+        res.Request = req // 対応する元リクエストを取得
+        res.TLS = cc.tlsState // この接続のTLSの状態を取得
+
+        // レスポンスボディとリクエストボディが何もない場合、
+        // waitDone = ストリームの終了 (END_STREAM) を待つ
         if res.Body == http2noBody && http2actualContentLength(req) == 0 {
-            // If there isn't a request or response body still being
-            // written, then wait for the stream to be closed before
-            // RoundTrip returns.
             if err := waitDone(); err != nil {
                 return nil, err
             }
         }
+
+         // レスポンスを返す
         return res, nil
     }
 
+    // ストリームを中断する際に実行する関数
     cancelRequest := func(cs *http2clientStream, err error) error {
         cs.cc.mu.Lock()
+        // cs.reqBodyClosed = このリクエストボディをクローズ後に通知されるチャネルを取得
         bodyClosed := cs.reqBodyClosed
         cs.cc.mu.Unlock()
-        // Wait for the request body to be closed.
-        //
-        // If nothing closed the body before now, abortStreamLocked
-        // will have started a goroutine to close it.
-        //
-        // Closing the body before returning avoids a race condition
-        // with net/http checking its readTrackingBody to see if the
-        // body was read from or closed. See golang/go#60041.
-        //
-        // The body is closed in a separate goroutine without the
-        // connection mutex held, but dropping the mutex before waiting
-        // will keep us from holding it indefinitely if the body
-        // close is slow for some reason.
+
         if bodyClosed != nil {
+            // チャネルが閉じるまで待つ
             <-bodyClosed
         }
         return err
@@ -2177,24 +2165,28 @@ func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStre
 
     for {
         select {
+
+        // レスポンスのHEADERSを受信した場合
         case <-cs.respHeaderRecv:
             return handleResponseHeaders()
+
+        // ストリームを中止する場合
         case <-cs.abort:
             select {
-            case <-cs.respHeaderRecv:
-                // If both cs.respHeaderRecv and cs.abort are signaling,
-                // pick respHeaderRecv. The server probably wrote the
-                // response and immediately reset the stream.
-                // golang.org/issue/49645
+            case <-cs.respHeaderRecv: // ヘッダを受信済みの場合
                 return handleResponseHeaders()
             default:
                 waitDone()
                 return nil, cs.abortErr
             }
+
+        // Contextがキャンセルされた場合
         case <-ctx.Done():
             err := ctx.Err()
             cs.abortStream(err)
             return nil, cancelRequest(cs, err)
+
+        // リクエストがキャンセルされた場合 (互換性用)
         case <-cs.reqCancel:
             cs.abortStream(http2errRequestCanceled)
             return nil, cancelRequest(cs, http2errRequestCanceled)
