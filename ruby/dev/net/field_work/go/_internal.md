@@ -2411,18 +2411,21 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
     maxFrameSize := int(cc.maxFrameSize)
     cc.mu.Unlock()
 
-    // Scratch buffer for reading into & writing from.
+    // 以下、DATAフレームを書き出す際に使用するバッファを取得する
     scratchLen := cs.frameScratchBufferLen(maxFrameSize)
     var buf []byte
     index := http2bufPoolIndex(scratchLen)
-    if bp, ok := http2bufPools[index].Get().(*[]byte); ok && len(*bp) >= scratchLen {
-        defer http2bufPools[index].Put(bp)
+
+    if bp, ok := http2bufPools[index].Get().(*[]byte); // プールからバッファを取得する
+       ok && len(*bp) >= scratchLen {
+        defer http2bufPools[index].Put(bp) // 関数を抜ける際にバッファをプールへ返す
         buf = *bp
     } else {
         buf = make([]byte, scratchLen)
         defer http2bufPools[index].Put(&buf)
     }
 
+    // WIP
     var sawEOF bool
     for !sawEOF {
         n, err := body.Read(buf)
