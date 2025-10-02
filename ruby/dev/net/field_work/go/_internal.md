@@ -2397,32 +2397,35 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     }
 }
 
-// WIP
 func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
-    cc := cs.cc
-    body := cs.reqBody
-    sentEnd := false // whether we sent the final DATA frame w/ END_STREAM
+    cc := cs.cc        // HTTP/2コネクション
+    body := cs.reqBody // リクエストボディのio.Reader
+    sentEnd := false   // DATAを最後まで送信したか (END_STREAMフラグを立てたか)
 
-    hasTrailers := req.Trailer != nil
-    remainLen := cs.reqBodyContentLength
-    hasContentLen := remainLen != -1
+    hasTrailers := req.Trailer != nil    // リクエストトレーラがあるか (あれば別HEADERSフレームで送る)
+    remainLen := cs.reqBodyContentLength // 未送信のバイト数
+    hasContentLen := remainLen != -1     // Content-Lengthがあるか
 
+    // ロックをとってMAX_FRAME_SIZE (DATAフレームの最大サイズ) を取得 (サーバ側のSETTINGSによって決定)
     cc.mu.Lock()
     maxFrameSize := int(cc.maxFrameSize)
     cc.mu.Unlock()
 
-    // Scratch buffer for reading into & writing from.
+    // 以下、DATAフレームを書き出す際に使用するバッファを取得する
     scratchLen := cs.frameScratchBufferLen(maxFrameSize)
     var buf []byte
     index := http2bufPoolIndex(scratchLen)
-    if bp, ok := http2bufPools[index].Get().(*[]byte); ok && len(*bp) >= scratchLen {
-        defer http2bufPools[index].Put(bp)
+
+    if bp, ok := http2bufPools[index].Get().(*[]byte); // プールからバッファを取得する
+       ok && len(*bp) >= scratchLen {
+        defer http2bufPools[index].Put(bp) // 関数を抜ける際にバッファをプールへ返す
         buf = *bp
     } else {
         buf = make([]byte, scratchLen)
         defer http2bufPools[index].Put(&buf)
     }
 
+    // WIP
     var sawEOF bool
     for !sawEOF {
         n, err := body.Read(buf)
