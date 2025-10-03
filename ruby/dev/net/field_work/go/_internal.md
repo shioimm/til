@@ -2425,45 +2425,56 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
         defer http2bufPools[index].Put(&buf)
     }
 
-    // WIP
+    // リクエストボディのEOFに到達したかどうか
     var sawEOF bool
+
+    // リクエストボディのEOFに到達するまで読み出す
     for !sawEOF {
+        // DATAフレームを書き出すためのバッファにリクエストボディを読み込む
+        // n = 読み込んだバイト数
         n, err := body.Read(buf)
+
+        // Content-Lengthが明らかな場合
         if hasContentLen {
+            // 読み込んだ分だけ残りのremainLenを減らす
             remainLen -= int64(n)
+
+            // 残りのremainLenがないのにEOFを検出してない場合
+            // (次の読み込みでEOFを検出するケース)
             if remainLen == 0 && err == nil {
-                // The request body's Content-Length was predeclared and
-                // we just finished reading it all, but the underlying io.Reader
-                // returned the final chunk with a nil error (which is one of
-                // the two valid things a Reader can do at EOF). Because we'd prefer
-                // to send the END_STREAM bit early, double-check that we're actually
-                // at EOF. Subsequent reads should return (0, EOF) at this point.
-                // If either value is different, we return an error in one of two ways below.
                 var scratch [1]byte
                 var n1 int
-                n1, err = body.Read(scratch[:])
+                n1, err = body.Read(scratch[:]) // 追加で1byte読み込む
                 remainLen -= int64(n1)
             }
+
             if remainLen < 0 {
                 err = http2errReqBodyTooLong
                 return err
             }
         }
+
+        // EOFを検出した場合
         if err != nil {
             cc.mu.Lock()
+            // cs.reqBodyClosed = リクエストボディがクローズされた際に通知されるチャネル
+            // cs.reqBodyClosed != nil はボディへをクローズする処理がどこかで始まっていることを意味する
+            // abortRequestBodyWrite() が実行されたり、RST_STREAMを受信するなど
             bodyClosed := cs.reqBodyClosed != nil
             cc.mu.Unlock()
+
             switch {
-            case bodyClosed:
-                return http2errStopReqBodyWrite
-            case err == io.EOF:
-                sawEOF = true
+            case bodyClosed: // ボディがクローズされている場合
+                return http2errStopReqBodyWrite // 送信を停止し、writeRequestの呼び出し元に返る
+            case err == io.EOF: // EOFを検出した場合
+                sawEOF = true // sawEOFをセット
                 err = nil
             default:
                 return err
             }
         }
 
+        // WIP
         remain := buf[:n]
         for len(remain) > 0 && err == nil {
             var allowed int32
