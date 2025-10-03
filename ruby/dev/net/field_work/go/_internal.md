@@ -2474,28 +2474,36 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
             }
         }
 
-        // WIP
+        // リクエストボディの未送部分を取得
         remain := buf[:n]
+
         for len(remain) > 0 && err == nil {
+            // 現在のウィンドウサイズに対して送信可能な長さをallowedを取得
+            // ウィンドウが小さく送信できない場合はWINDOW_UPDATEの受信を待機
             var allowed int32
             allowed, err = cs.awaitFlowControl(len(remain))
+
             if err != nil {
                 return err
             }
+
             cc.wmu.Lock()
+
+            // 送信可能なサイズのリクエストボディを切り出す
             data := remain[:allowed]
+
+            // これが最後に送信するDATAかどうかを判定
             remain = remain[allowed:]
             sentEnd = sawEOF && len(remain) == 0 && !hasTrailers
+
+            // DATAフレームを書き出す
+            // cs.ID = ストリームID
+            // sentEndがtrueの場合はEND_STREAMフラグを立てる
             err = cc.fr.WriteData(cs.ID, sentEnd, data)
             if err == nil {
-                // TODO(bradfitz): this flush is for latency, not bandwidth.
-                // Most requests won't need this. Make this opt-in or
-                // opt-out?  Use some heuristic on the body type? Nagel-like
-                // timers?  Based on 'n'? Only last chunk of this for loop,
-                // unless flow control tokens are low? For now, always.
-                // If we change this, see comment below.
-                err = cc.bw.Flush()
+                err = cc.bw.Flush() // 送信後は即フラッシュ
             }
+
             cc.wmu.Unlock()
         }
         if err != nil {
@@ -2503,6 +2511,7 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
         }
     }
 
+    // WIP
     if sentEnd {
         // Already sent END_STREAM (which implies we have no
         // trailers) and flushed, because currently all
