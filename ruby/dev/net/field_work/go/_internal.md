@@ -2612,28 +2612,38 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
     return err
 }
 
-// WIP
+// hdrs = HPACKで圧縮済みのヘッダブロックの生バイト列を、HEADERS + CONTINUATION ...の列に分割して書き込む
 func (cc *http2ClientConn) writeHeaders(streamID uint32, endStream bool, maxFrameSize int, hdrs []byte) error {
+    // 最初のフレーム = HEADERSかどうかの判定
     first := true // first frame written (HEADERS is first, then CONTINUATION)
+
     for len(hdrs) > 0 && cc.werr == nil {
+        // hdrsをmaxFrameSize ごとに切り出す
         chunk := hdrs
         if len(chunk) > maxFrameSize {
             chunk = chunk[:maxFrameSize]
         }
         hdrs = hdrs[len(chunk):]
+
+        // 残りのヘッダがないかどうか
         endHeaders := len(hdrs) == 0
+
         if first {
+            // HEADERSフレームの書き込み
             cc.fr.WriteHeaders(http2HeadersFrameParam{
                 StreamID:      streamID,
                 BlockFragment: chunk,
                 EndStream:     endStream,
                 EndHeaders:    endHeaders,
             })
+
             first = false
         } else {
+            // CONTINUATIONフレームの書き込み
             cc.fr.WriteContinuation(streamID, endHeaders, chunk)
         }
     }
+
     cc.bw.Flush()
     return cc.werr
 }
