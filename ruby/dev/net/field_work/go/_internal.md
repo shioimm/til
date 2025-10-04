@@ -2511,45 +2511,46 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
         }
     }
 
-    // WIP
+    // すでにEND_STREAMを送信済みの場合
     if sentEnd {
-        // Already sent END_STREAM (which implies we have no
-        // trailers) and flushed, because currently all
-        // WriteData frames above get a flush. So we're done.
-        return nil
+        return nil // ここで即終了
     }
 
-    // Since the RoundTrip contract permits the caller to "mutate or reuse"
-    // a request after the Response's Body is closed, verify that this hasn't
-    // happened before accessing the trailers.
+    // まだEND_STREAMを未送信の場合
     cc.mu.Lock()
-    trailer := req.Trailer
+    trailer := req.Trailer // トレーラを取得
     err = cs.abortErr
     cc.mu.Unlock()
+
     if err != nil {
         return err
     }
 
     cc.wmu.Lock()
     defer cc.wmu.Unlock()
+
+    // トレーラがある場合
     var trls []byte
     if len(trailer) > 0 {
+        // req.TrailerをHPACKエンコードしてHEADERS用のバイト列に変換
         trls, err = cc.encodeTrailers(trailer)
         if err != nil {
             return err
         }
     }
 
-    // Two ways to send END_STREAM: either with trailers, or
-    // with an empty DATA frame.
-    if len(trls) > 0 {
+    if len(trls) > 0 { // トレーラを送信する必要がある場合
+        // END_STREAMフラグを立ててHEADERSフレームを送信
         err = cc.writeHeaders(cs.ID, true, maxFrameSize, trls)
-    } else {
+    } else { // トレーラを送信する必要がない場合
+        // END_STREAMフラグを立ててHEADERSフレームを送信
         err = cc.fr.WriteData(cs.ID, true, nil)
     }
+
     if ferr := cc.bw.Flush(); ferr != nil && err == nil {
         err = ferr
     }
+
     return err
 }
 ```
