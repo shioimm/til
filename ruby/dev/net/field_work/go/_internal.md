@@ -2397,6 +2397,64 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     }
 }
 
+// WIP
+func (cs *http2clientStream) encodeAndWriteHeaders(req *Request) error {
+    cc := cs.cc
+    ctx := cs.ctx
+
+    cc.wmu.Lock()
+    defer cc.wmu.Unlock()
+
+    // If the request was canceled while waiting for cc.mu, just quit.
+    select {
+    case <-cs.abort:
+        return cs.abortErr
+    case <-ctx.Done():
+        return ctx.Err()
+    case <-cs.reqCancel:
+        return http2errRequestCanceled
+    default:
+    }
+
+    // Encode headers.
+    //
+    // we send: HEADERS{1}, CONTINUATION{0,} + DATA{0,} (DATA is
+    // sent by writeRequestBody below, along with any Trailers,
+    // again in form HEADERS{1}, CONTINUATION{0,})
+    cc.hbuf.Reset()
+    res, err := http2encodeRequestHeaders(req, cs.requestedGzip, cc.peerMaxHeaderListSize, func(name, value string) {
+        cc.writeHeader(name, value)
+    })
+    if err != nil {
+        return fmt.Errorf("http2: %w", err)
+    }
+    hdrs := cc.hbuf.Bytes()
+
+    // Write the request.
+    endStream := !res.HasBody && !res.HasTrailers
+    cs.sentHeaders = true
+    err = cc.writeHeaders(cs.ID, endStream, int(cc.maxFrameSize), hdrs)
+    http2traceWroteHeaders(cs.trace)
+    return err
+}
+
+// WIP
+func http2encodeRequestHeaders(req *Request, addGzipHeader bool, peerMaxHeaderListSize uint64, headerf func(name, value string)) (httpcommon.EncodeHeadersResult, error) {
+    return httpcommon.EncodeHeaders(req.Context(), httpcommon.EncodeHeadersParam{
+        Request: httpcommon.Request{
+            Header:              req.Header,
+            Trailer:             req.Trailer,
+            URL:                 req.URL,
+            Host:                req.Host,
+            Method:              req.Method,
+            ActualContentLength: http2actualContentLength(req),
+        },
+        AddGzipHeader:         addGzipHeader,
+        PeerMaxHeaderListSize: peerMaxHeaderListSize,
+        DefaultUserAgent:      http2defaultUserAgent,
+    }, headerf)
+}
+
 func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
     cc := cs.cc        // HTTP/2コネクション
     body := cs.reqBody // リクエストボディのio.Reader
@@ -2552,5 +2610,31 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
     }
 
     return err
+}
+
+// WIP
+func (cc *http2ClientConn) writeHeaders(streamID uint32, endStream bool, maxFrameSize int, hdrs []byte) error {
+    first := true // first frame written (HEADERS is first, then CONTINUATION)
+    for len(hdrs) > 0 && cc.werr == nil {
+        chunk := hdrs
+        if len(chunk) > maxFrameSize {
+            chunk = chunk[:maxFrameSize]
+        }
+        hdrs = hdrs[len(chunk):]
+        endHeaders := len(hdrs) == 0
+        if first {
+            cc.fr.WriteHeaders(http2HeadersFrameParam{
+                StreamID:      streamID,
+                BlockFragment: chunk,
+                EndStream:     endStream,
+                EndHeaders:    endHeaders,
+            })
+            first = false
+        } else {
+            cc.fr.WriteContinuation(streamID, endHeaders, chunk)
+        }
+    }
+    cc.bw.Flush()
+    return cc.werr
 }
 ```
