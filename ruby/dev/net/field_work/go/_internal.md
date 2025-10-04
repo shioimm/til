@@ -2397,15 +2397,15 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     }
 }
 
-// WIP
 func (cs *http2clientStream) encodeAndWriteHeaders(req *Request) error {
     cc := cs.cc
     ctx := cs.ctx
 
+    // ロックを取得 (HEADERS + CONTINUATION... は連続で送信する必要がある)
     cc.wmu.Lock()
     defer cc.wmu.Unlock()
 
-    // If the request was canceled while waiting for cc.mu, just quit.
+    // ロック獲得までの待機中に 中止/キャンセルが先行している場合は中断
     select {
     case <-cs.abort:
         return cs.abortErr
@@ -2416,30 +2416,37 @@ func (cs *http2clientStream) encodeAndWriteHeaders(req *Request) error {
     default:
     }
 
-    // Encode headers.
-    //
-    // we send: HEADERS{1}, CONTINUATION{0,} + DATA{0,} (DATA is
-    // sent by writeRequestBody below, along with any Trailers,
-    // again in form HEADERS{1}, CONTINUATION{0,})
     cc.hbuf.Reset()
-    res, err := http2encodeRequestHeaders(req, cs.requestedGzip, cc.peerMaxHeaderListSize, func(name, value string) {
-        cc.writeHeader(name, value)
-    })
+
+    // リクエストヘッダをHPACK圧縮してcc.hbufに保存する
+    // 内部でヘッダフィールドを順に生成し、その度にコールバックを呼ぶ
+    res, err := http2encodeRequestHeaders(
+        // *http.Request
+        req,
+        // Accept-Encoding: gzip を付けるかどうか
+        cs.requestedGzip,
+        // 送信先が許容するヘッダのサイズ (SETTINGSで通告されている)
+        cc.peerMaxHeaderListSize,
+        // ヘッダ名と値を受け取ったらそれをcc.hbufに書き込むコールバック
+        func(name, value string) { cc.writeHeader(name, value) }
+    )
     if err != nil {
         return fmt.Errorf("http2: %w", err)
     }
+
     hdrs := cc.hbuf.Bytes()
 
-    // Write the request.
     endStream := !res.HasBody && !res.HasTrailers
     cs.sentHeaders = true
+
+    // 出来上がったHPACKブロックをHEADERS + CONTINUATION...に分割して送信
     err = cc.writeHeaders(cs.ID, endStream, int(cc.maxFrameSize), hdrs)
     http2traceWroteHeaders(cs.trace)
     return err
 }
 
-// WIP
 func http2encodeRequestHeaders(req *Request, addGzipHeader bool, peerMaxHeaderListSize uint64, headerf func(name, value string)) (httpcommon.EncodeHeadersResult, error) {
+    // 共通リクエストヘッダをhttpcommon.Requestに詰め替える
     return httpcommon.EncodeHeaders(req.Context(), httpcommon.EncodeHeadersParam{
         Request: httpcommon.Request{
             Header:              req.Header,
@@ -2452,7 +2459,7 @@ func http2encodeRequestHeaders(req *Request, addGzipHeader bool, peerMaxHeaderLi
         AddGzipHeader:         addGzipHeader,
         PeerMaxHeaderListSize: peerMaxHeaderListSize,
         DefaultUserAgent:      http2defaultUserAgent,
-    }, headerf)
+    }, headerf) // ヘッダ一件ずつに対してheaderfを実行する
 }
 
 func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
