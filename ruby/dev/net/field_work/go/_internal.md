@@ -2397,6 +2397,71 @@ func (cs *http2clientStream) writeRequest(req *Request, streamf func(*http2clien
     }
 }
 
+func (cs *http2clientStream) encodeAndWriteHeaders(req *Request) error {
+    cc := cs.cc
+    ctx := cs.ctx
+
+    // ロックを取得 (HEADERS + CONTINUATION... は連続で送信する必要がある)
+    cc.wmu.Lock()
+    defer cc.wmu.Unlock()
+
+    // ロック獲得までの待機中に 中止/キャンセルが先行している場合は中断
+    select {
+    case <-cs.abort:
+        return cs.abortErr
+    case <-ctx.Done():
+        return ctx.Err()
+    case <-cs.reqCancel:
+        return http2errRequestCanceled
+    default:
+    }
+
+    cc.hbuf.Reset()
+
+    // リクエストヘッダをHPACK圧縮してcc.hbufに保存する
+    // 内部でヘッダフィールドを順に生成し、その度にコールバックを呼ぶ
+    res, err := http2encodeRequestHeaders(
+        // *http.Request
+        req,
+        // Accept-Encoding: gzip を付けるかどうか
+        cs.requestedGzip,
+        // 送信先が許容するヘッダのサイズ (SETTINGSで通告されている)
+        cc.peerMaxHeaderListSize,
+        // ヘッダ名と値を受け取ったらそれをcc.hbufに書き込むコールバック
+        func(name, value string) { cc.writeHeader(name, value) }
+    )
+    if err != nil {
+        return fmt.Errorf("http2: %w", err)
+    }
+
+    hdrs := cc.hbuf.Bytes()
+
+    endStream := !res.HasBody && !res.HasTrailers
+    cs.sentHeaders = true
+
+    // 出来上がったHPACKブロックをHEADERS + CONTINUATION...に分割して送信
+    err = cc.writeHeaders(cs.ID, endStream, int(cc.maxFrameSize), hdrs)
+    http2traceWroteHeaders(cs.trace)
+    return err
+}
+
+func http2encodeRequestHeaders(req *Request, addGzipHeader bool, peerMaxHeaderListSize uint64, headerf func(name, value string)) (httpcommon.EncodeHeadersResult, error) {
+    // 共通リクエストヘッダをhttpcommon.Requestに詰め替える
+    return httpcommon.EncodeHeaders(req.Context(), httpcommon.EncodeHeadersParam{
+        Request: httpcommon.Request{
+            Header:              req.Header,
+            Trailer:             req.Trailer,
+            URL:                 req.URL,
+            Host:                req.Host,
+            Method:              req.Method,
+            ActualContentLength: http2actualContentLength(req),
+        },
+        AddGzipHeader:         addGzipHeader,
+        PeerMaxHeaderListSize: peerMaxHeaderListSize,
+        DefaultUserAgent:      http2defaultUserAgent,
+    }, headerf) // ヘッダ一件ずつに対してheaderfを実行する
+}
+
 func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
     cc := cs.cc        // HTTP/2コネクション
     body := cs.reqBody // リクエストボディのio.Reader
@@ -2511,45 +2576,82 @@ func (cs *http2clientStream) writeRequestBody(req *Request) (err error) {
         }
     }
 
-    // WIP
+    // すでにEND_STREAMを送信済みの場合
     if sentEnd {
-        // Already sent END_STREAM (which implies we have no
-        // trailers) and flushed, because currently all
-        // WriteData frames above get a flush. So we're done.
-        return nil
+        return nil // ここで即終了
     }
 
-    // Since the RoundTrip contract permits the caller to "mutate or reuse"
-    // a request after the Response's Body is closed, verify that this hasn't
-    // happened before accessing the trailers.
+    // まだEND_STREAMを未送信の場合
     cc.mu.Lock()
-    trailer := req.Trailer
+    trailer := req.Trailer // トレーラを取得
     err = cs.abortErr
     cc.mu.Unlock()
+
     if err != nil {
         return err
     }
 
     cc.wmu.Lock()
     defer cc.wmu.Unlock()
+
+    // トレーラがある場合
     var trls []byte
     if len(trailer) > 0 {
+        // req.TrailerをHPACKエンコードしてHEADERS用のバイト列に変換
         trls, err = cc.encodeTrailers(trailer)
         if err != nil {
             return err
         }
     }
 
-    // Two ways to send END_STREAM: either with trailers, or
-    // with an empty DATA frame.
-    if len(trls) > 0 {
+    if len(trls) > 0 { // トレーラを送信する必要がある場合
+        // END_STREAMフラグを立ててHEADERSフレームを送信
         err = cc.writeHeaders(cs.ID, true, maxFrameSize, trls)
-    } else {
+    } else { // トレーラを送信する必要がない場合
+        // END_STREAMフラグを立ててHEADERSフレームを送信
         err = cc.fr.WriteData(cs.ID, true, nil)
     }
+
     if ferr := cc.bw.Flush(); ferr != nil && err == nil {
         err = ferr
     }
+
     return err
+}
+
+// hdrs = HPACKで圧縮済みのヘッダブロックの生バイト列を、HEADERS + CONTINUATION ...の列に分割して書き込む
+func (cc *http2ClientConn) writeHeaders(streamID uint32, endStream bool, maxFrameSize int, hdrs []byte) error {
+    // 最初のフレーム = HEADERSかどうかの判定
+    first := true // first frame written (HEADERS is first, then CONTINUATION)
+
+    for len(hdrs) > 0 && cc.werr == nil {
+        // hdrsをmaxFrameSize ごとに切り出す
+        chunk := hdrs
+        if len(chunk) > maxFrameSize {
+            chunk = chunk[:maxFrameSize]
+        }
+        hdrs = hdrs[len(chunk):]
+
+        // 残りのヘッダがないかどうか
+        endHeaders := len(hdrs) == 0
+
+        if first {
+            // HEADERSフレームの書き込み
+            cc.fr.WriteHeaders(http2HeadersFrameParam{
+                StreamID:      streamID,
+                BlockFragment: chunk,
+                EndStream:     endStream,
+                EndHeaders:    endHeaders,
+            })
+
+            first = false
+        } else {
+            // CONTINUATIONフレームの書き込み
+            cc.fr.WriteContinuation(streamID, endHeaders, chunk)
+        }
+    }
+
+    cc.bw.Flush()
+    return cc.werr
 }
 ```
