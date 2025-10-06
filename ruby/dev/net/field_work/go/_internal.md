@@ -1,6 +1,25 @@
 # net/http 現地調査 (202509時点)
 https://github.com/golang/go/tree/master/src/net/http
 
+1. `Client.Do(req)`
+2. `Transport.RoundTrip(req)` -> `roundtrip`
+3. `t.nextProtoOnce.Do(t.onceSetNextProtoDefaults)`
+4. `t.alternateRoundTripper(req)`
+5. `t.getConn(treq, cm)`
+6. `t.queueForIdleConn(w)` or `t.queueForDial(w)`
+7. `t.startDialConnForLocked(w)` -> `go t.dialConnFor(w)`
+8. `t.dialConn(ctx, cm)`
+    - `pconn.addTLS(ctx, host, trace)`
+    - ALPN でh2が選択された場合`t.TLSNextProto["h2"](authority, tlsConn)`
+9. `pconn.alt.RoundTrip(req)` (= `http2Transport.RoundTrip(req)`)
+10. `http2Transport.RoundTripOpt(req, opt)`
+    - (再試行) `http2shouldRetryRequest(req, err)`
+11. `http2ClientConn.RoundTrip(req)` -> `cc.roundTrip(req, nil)`
+12. `cs := &http2clientStream{...}` を生成
+13. `go cs.doRequest(req, streamf)`
+14. (ボディがある場合) `cs.writeRequestBody(req)`
+15. `handleResponseHeaders()`
+
 ### `type Request struct`
 
 ```go
