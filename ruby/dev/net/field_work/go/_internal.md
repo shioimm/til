@@ -9,16 +9,33 @@ https://github.com/golang/go/tree/master/src/net/http
 6. `t.queueForIdleConn(w)` or `t.queueForDial(w)`
 7. `t.startDialConnForLocked(w)` -> `go t.dialConnFor(w)`
 8. `t.dialConn(ctx, cm)`
-    - `pconn.addTLS(ctx, host, trace)`
-    - ALPN でh2が選択された場合`t.TLSNextProto["h2"](authority, tlsConn)`
-9. `pconn.alt.RoundTrip(req)` (= `http2Transport.RoundTrip(req)`)
-10. `http2Transport.RoundTripOpt(req, opt)`
-    - (再試行) `http2shouldRetryRequest(req, err)`
-11. `http2ClientConn.RoundTrip(req)` -> `cc.roundTrip(req, nil)`
-12. `cs := &http2clientStream{...}` を生成
-13. `go cs.doRequest(req, streamf)`
-14. (ボディがある場合) `cs.writeRequestBody(req)`
-15. `handleResponseHeaders()`
+    - ここでプロトコルが決定する
+      - スキームがhttpかつ`UnencryptedHTTP2() == false`の場合
+        - `go pconn.readLoop()` / `go pconn.writeLoop()`
+        - `pconn.roundTrip(treq)`
+      - スキームがhttpかつ`UnencryptedHTTP2() == true` (h2c) の場合
+        - `t.TLSNextProto["unencrypted_http2"]`
+        - `upgradeFn("http", ...)`
+        - `connPool.addConnIfNeeded(...)`
+        - `pconn.alt.RoundTrip(req)`
+      - スキームがhttpsの場合、`pconn.addTLS(ctx, host, trace)` -> `tlsConn.HandshakeContext(ctx)`
+        - `t.TLSNextProto["h2"]`が見つかった場合 (= ALPNでh2が選択された場合)
+          - `upgradeFn("https", ...)`
+          - `connPool.addConnIfNeeded(...)`
+          - `pconn.alt.RoundTrip(req)`
+        - `t.TLSNextProto["h2"]`が見つからなかった場合
+          - `go pconn.readLoop()` / `go pconn.writeLoop()`
+          - `pconn.roundTrip(treq)`
+
+#### `pconn.alt.RoundTrip(req)` (= `http2Transport.RoundTrip(req)`) 後
+1. `pconn.alt.RoundTrip(req)` (= `http2Transport.RoundTrip(req)`)
+2. `http2Transport.RoundTripOpt(req, opt)`
+   - (再試行) `http2shouldRetryRequest(req, err)`
+3. `http2ClientConn.RoundTrip(req)` -> `cc.roundTrip(req, nil)`
+4. `cs := &http2clientStream{...}` を生成
+5. `go cs.doRequest(req, streamf)`
+6. (ボディがある場合) `cs.writeRequestBody(req)`
+7. `handleResponseHeaders()`
 
 ### `type Request struct`
 
