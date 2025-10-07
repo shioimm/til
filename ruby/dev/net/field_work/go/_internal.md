@@ -37,6 +37,14 @@ https://github.com/golang/go/tree/master/src/net/http
 6. (ボディがある場合) `cs.writeRequestBody(req)`
 7. `handleResponseHeaders()`
 
+#### Transportの仕事
+- 接続の確立 (TCP / TLSの確立、ALPN、プロキシとの接続)
+- 接続の再利用 (Keep-Alive、接続プール (idleConn) の管理)
+- リクエストの送信
+- レスポンスの受信
+- タイムアウト・キャンセル
+- プロトコルの切り替え
+
 ### `type Request struct`
 
 ```go
