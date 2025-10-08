@@ -3,6 +3,7 @@ require "httpx"
 HOST = "https://example.com"
 
 response = HTTPX.get(HOST)
+p HTTPX.method(:get).source_location
 
 puts "--- HEADERS ---"
 response.headers.each { |k, v| puts "#{k}: #{v}" }
