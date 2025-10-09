@@ -181,3 +181,50 @@ module HTTPX
   end
 end
 ```
+
+## `Session#send_requests`
+
+```ruby
+# (lib/httpx/session.rb)
+
+def send_requests(*requests)
+  selector = get_current_selector { Selector.new }
+
+  # Selector.newは
+  #   #<HTTPX::Selector:0x000000011c0f0650
+  #     @timers=#<HTTPX::Timers:0x000000011c0f05b0 @intervals=[]>,
+  #     @selectables=[], @is_timer_interval=false>
+
+  # (lib/httpx/session.rb)
+  # def get_current_selector
+  #   selector_store[self] || (yield if block_given?)
+  # end
+  #
+  # def selector_store
+  #   th_current = Thread.current
+  #
+  #   th_current.thread_variable_get(:httpx_persistent_selector_store) || begin
+  #     # Hash#compare_by_identity = selfのキーの一致判定をオブジェクトの同一性で判定するように変更する
+  #     {}.compare_by_identity.tap do |store| # store = レシーバの{}
+  #       th_current.thread_variable_set(:httpx_persistent_selector_store, store)
+  #     end
+  #   end
+  # end
+  #
+  # なので、ここでselectorには#<HTTPX::Selector>格納されている状態になる
+
+  # WIP
+  begin
+    _send_requests(requests, selector)
+    receive_requests(requests, selector)
+  ensure
+    unless @wrapped
+      if @persistent
+        deactivate(selector)
+      else
+        close(selector)
+      end
+    end
+  end
+end
+```
