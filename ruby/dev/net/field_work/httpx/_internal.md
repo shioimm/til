@@ -148,10 +148,10 @@ module HTTPX
       set_request_callbacks(request)
 
       # (lib/httpx/session.rb)
-      # def set_request_callbacks(request)
-      #   request.on(:response, &method(:on_response).curry(2)[request])
-      #   request.on(:promise, &method(:on_promise))
-      # end
+      #   def set_request_callbacks(request)
+      #     request.on(:response, &method(:on_response).curry(2)[request])
+      #     request.on(:promise, &method(:on_promise))
+      #   end
 
       request
     end
@@ -196,26 +196,34 @@ def send_requests(*requests)
   #     @selectables=[], @is_timer_interval=false>
 
   # (lib/httpx/session.rb)
-  # def get_current_selector
-  #   selector_store[self] || (yield if block_given?)
-  # end
+  #   def get_current_selector
+  #     selector_store[self] || (yield if block_given?)
+  #   end
   #
-  # def selector_store
-  #   th_current = Thread.current
+  #   def selector_store
+  #     th_current = Thread.current
   #
-  #   th_current.thread_variable_get(:httpx_persistent_selector_store) || begin
-  #     # Hash#compare_by_identity = selfのキーの一致判定をオブジェクトの同一性で判定するように変更する
-  #     {}.compare_by_identity.tap do |store| # store = レシーバの{}
-  #       th_current.thread_variable_set(:httpx_persistent_selector_store, store)
+  #     th_current.thread_variable_get(:httpx_persistent_selector_store) || begin
+  #       # Hash#compare_by_identity = selfのキーの一致判定をオブジェクトの同一性で判定するように変更する
+  #       {}.compare_by_identity.tap do |store| # store = レシーバの{}
+  #         th_current.thread_variable_set(:httpx_persistent_selector_store, store)
+  #       end
   #     end
   #   end
-  # end
   #
   # なので、ここでselectorには#<HTTPX::Selector>格納されている状態になる
 
-  # WIP
   begin
+    # WIP
     _send_requests(requests, selector)
+
+    # (lib/httpx/session.rb)
+    #   def _send_requests(requests, selector)
+    #     requests.each do |request|
+    #       send_request(request, selector)
+    #     end
+    #   end
+
     receive_requests(requests, selector)
   ensure
     unless @wrapped
@@ -224,6 +232,80 @@ def send_requests(*requests)
       else
         close(selector)
       end
+    end
+  end
+end
+
+def send_request(request, selector, options = request.options)
+  error = begin
+    catch(:resolve_error) do
+      # WIP
+      connection = find_connection(request.uri, selector, options)
+      connection.send(request)
+    end
+  rescue StandardError => e
+    e
+  end
+  return unless error && error.is_a?(Exception)
+
+  raise error unless error.is_a?(Error)
+
+  request.emit(:response, ErrorResponse.new(request, error))
+end
+
+def find_connection(request_uri, selector, options)
+  # WIP
+  if (connection = selector.find_connection(request_uri, options))
+    return connection
+  end
+
+  connection = @pool.checkout_connection(request_uri, options)
+
+  case connection.state
+  when :idle
+    do_init_connection(connection, selector)
+  when :open
+    if options.io
+      select_connection(connection, selector)
+    else
+      pin_connection(connection, selector)
+    end
+  when :closed
+    connection.idling
+    select_connection(connection, selector)
+  when :closing
+    connection.once(:close) do
+      connection.idling
+      select_connection(connection, selector)
+    end
+  else
+    pin_connection(connection, selector)
+  end
+
+  connection
+end
+```
+
+## `Selector#find_connection`
+
+```ruby
+# (lib/httpx/selector.rb)
+
+def find_connection(request_uri, options)
+  each_connection.find do |connection|
+    connection.match?(request_uri, options)
+  end
+end
+
+def each_connection(&block)
+  return enum_for(__method__) unless block
+
+  # WIP
+  @selectables.each do |c|
+    if c.is_a?(Resolver::Resolver)
+      c.each_connection(&block)
+    else
+      yield c
     end
   end
 end
