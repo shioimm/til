@@ -430,3 +430,51 @@ def checkout_connection(uri, options)
   end
 end
 ```
+
+## `Session#do_init_connection`
+
+```ruby
+# (lib/httpx/session.rb)
+
+# WIP
+def do_init_connection(connection, selector)
+  resolve_connection(connection, selector) unless connection.family
+end
+
+def resolve_connection(connection, selector)
+  if connection.addresses || connection.open?
+    #
+    # there are two cases in which we want to activate initialization of
+    # connection immediately:
+    #
+    # 1. when the connection already has addresses, i.e. it doesn't need to
+    #    resolve a name (not the same as name being an IP, yet)
+    # 2. when the connection is initialized with an external already open IO.
+    #
+    on_resolver_connection(connection, selector)
+    return
+  end
+
+  resolver = find_resolver_for(connection, selector)
+
+  resolver.early_resolve(connection) || resolver.lazy_resolve(connection)
+end
+
+def on_resolver_connection(connection, selector)
+  from_pool = false
+  found_connection = selector.find_mergeable_connection(connection) || begin
+    from_pool = true
+    @pool.checkout_mergeable_connection(connection)
+  end
+
+  return select_connection(connection, selector) unless found_connection
+
+  if found_connection.open?
+    coalesce_connections(found_connection, connection, selector, from_pool)
+  else
+    found_connection.once(:open) do
+      coalesce_connections(found_connection, connection, selector, from_pool)
+    end
+  end
+end
+```
