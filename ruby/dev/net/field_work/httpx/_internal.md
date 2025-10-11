@@ -273,9 +273,8 @@ def send_request(request, selector, options = request.options)
 end
 
 def find_connection(request_uri, selector, options)
-  # WIP
   # selectorに登録済み = リクエスト処理待ちの接続のうち、この宛先に対して接続中のものがあればそれを取得
-  if (connection = selector.find_connection(request_uri, options))
+  if (connection = selector.find_connection(request_uri, options)) # WIP Selector#find_connection
     return connection
   end
 
@@ -287,7 +286,7 @@ def find_connection(request_uri, selector, options)
   #       @resolver_mtx=#<Thread::Mutex:0x000000011e982230>, @connections=[],
   #       @connection_mtx=#<Thread::Mutex:0x000000011e9821b8>, @origin_counters={}, @origin_conds={}>
 
-  # 取得したconnection
+  # 取得したconnection (HTTPX::Connection?)
   #   #<#<Class:0x000000010149a8c0>:0x0000000106b80130
   #       @coalesced_connection=nil, @sibling=nil, @current_selector=nil, @current_session=nil,
   #       @main_sibling=false, @cloned=false, @exhausted=false,
@@ -301,8 +300,9 @@ def find_connection(request_uri, selector, options)
   #                   altsvc: [#<Proc:0x0000000106baf908 /path/to/lib/httpx/connection.rb:97>]},
   #       @current_timeout=60, @timeout=60, @connected_at=nil, @state=:idle, @inflight=0, @keep_alive_timeout=20>
 
+  # WIP
   case connection.state
-  when :idle
+  when :idle # 新規接続の場合はここ
     do_init_connection(connection, selector)
   when :open
     if options.io
@@ -331,8 +331,8 @@ end
 ```ruby
 # (lib/httpx/selector.rb)
 
-# WIP
 def find_connection(request_uri, options)
+  # selectorが監視しているオブジェクト群から、この宛先に対して接続済みのものを探して返す
   each_connection.find do |connection|
     connection.match?(request_uri, options)
   end
@@ -341,11 +341,12 @@ end
 def each_connection(&block)
   return enum_for(__method__) unless block
 
+  # selectorが監視しているオブジェクト群 (Connectionや名前解決のResolverなど)
   @selectables.each do |c|
     if c.is_a?(Resolver::Resolver)
-      c.each_connection(&block)
+      c.each_connection(&block) # Resolverが持っている複数の接続を列挙してブロックに渡す
     else
-      yield c
+      yield c # Connectionをブロックに渡す
     end
   end
 end
