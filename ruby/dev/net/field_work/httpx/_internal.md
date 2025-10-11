@@ -236,6 +236,25 @@ def send_requests(*requests)
   end
 end
 
+# request.options
+#   @options=#<HTTPX::Options:0x0000000106b84410
+#              @max_requests=Infinity, @debug_level=1, @ssl={}, @http2_settings={settings_enable_push: 0},
+#              @fallback_protocol="http/1.1", @supported_compression_formats=["gzip", "deflate"],
+#              @decompress_response_body=true, @compress_request_body=true,
+#              @timeout={connect_timeout: 60, settings_timeout: 10, close_handshake_timeout: 10,
+#                        operation_timeout: nil, keep_alive_timeout: 20,
+#                        read_timeout: 60, write_timeout: 60, request_timeout: nil},
+#              @headers_class=#<Class:0x000000010149b0e0>,
+#              @headers={}, @window_size=16384, @buffer_size=16384, @body_threshold_size=114688,
+#              @request_class=#<Class:0x000000010149af00>,
+#              @response_class=#<Class:0x000000010149adc0>,
+#              @request_body_class=#<Class:0x000000010149ac80>,
+#              @response_body_class=#<Class:0x000000010149ab40>,
+#              @pool_class=#<Class:0x000000010149aa00>, @connection_class=#<Class:0x000000010149a8c0>,
+#              @options_class=#<Class:0x000000010149a780>, @persistent=false,
+#              @resolver_class=:native, @resolver_options={cache: true},
+#              @pool_options={}, @ip_families=[2]>,
+
 def send_request(request, selector, options = request.options)
   error = begin
     catch(:resolve_error) do
@@ -255,11 +274,32 @@ end
 
 def find_connection(request_uri, selector, options)
   # WIP
+  # selectorに登録済み = リクエスト処理待ちの接続のうち、この宛先に対して接続中のものがあればそれを取得
   if (connection = selector.find_connection(request_uri, options))
     return connection
   end
 
   connection = @pool.checkout_connection(request_uri, options)
+
+  # @pool
+  #   #<#<Class:0x000000010358aa08>:0x000000011e9823e8
+  #       @max_connections_per_origin=Infinity, @pool_timeout=5, @resolvers={},
+  #       @resolver_mtx=#<Thread::Mutex:0x000000011e982230>, @connections=[],
+  #       @connection_mtx=#<Thread::Mutex:0x000000011e9821b8>, @origin_counters={}, @origin_conds={}>
+
+  # 取得したconnection
+  #   #<#<Class:0x000000010149a8c0>:0x0000000106b80130
+  #       @coalesced_connection=nil, @sibling=nil, @current_selector=nil, @current_session=nil,
+  #       @main_sibling=false, @cloned=false, @exhausted=false,
+  #       @options=#<HTTPX::Options:0x0000000106b84410 ...>,
+  #       @type="ssl", @origins=["https://example.com"], @origin=#<URI::HTTPS https://example.com>,
+  #       @window_size=16384, @read_buffer=#<HTTPX::Buffer:0x0000000106bafd68 @buffer="", @limit=16384>,
+  #       @write_buffer=#<HTTPX::Buffer:0x0000000106bafcc8 @buffer="", @limit=16384>, @pending=[],
+  #       @callbacks={error: [#<Proc:0x0000000106bafc28 (lambda)>],
+  #                   close: [#<Proc:0x0000000106baf9a8 /path/to/lib/httpx/connection.rb:75>],
+  #                   terminate: [#<Proc:0x0000000106baf958 /path/to/lib/httpx/connection.rb:85>],
+  #                   altsvc: [#<Proc:0x0000000106baf908 /path/to/lib/httpx/connection.rb:97>]},
+  #       @current_timeout=60, @timeout=60, @connected_at=nil, @state=:idle, @inflight=0, @keep_alive_timeout=20>
 
   case connection.state
   when :idle
@@ -291,6 +331,7 @@ end
 ```ruby
 # (lib/httpx/selector.rb)
 
+# WIP
 def find_connection(request_uri, options)
   each_connection.find do |connection|
     connection.match?(request_uri, options)
@@ -300,12 +341,90 @@ end
 def each_connection(&block)
   return enum_for(__method__) unless block
 
-  # WIP
   @selectables.each do |c|
     if c.is_a?(Resolver::Resolver)
       c.each_connection(&block)
     else
       yield c
+    end
+  end
+end
+```
+
+## `Pool#checkout_connection`
+
+```ruby
+# (lib/httpx/pool.rb)
+
+def checkout_connection(uri, options)
+  # 指定のioがあればそれを利用して接続を作成
+  return checkout_new_connection(uri, options) if options.io
+
+  # (lib/httpx/pool.rb)
+  #   def checkout_new_connection(uri, options)
+  #     options.connection_class.new(uri, options)
+  #   end
+
+
+  @connection_mtx.synchronize do
+    acquire_connection(uri, options) || begin
+
+      # (lib/httpx/pool.rb)
+      # コネクションプールが保持しているアイドル中の接続のうち、
+      # 同じ宛先に対して過去に接続したことのあるものがあればそれを取得する
+      #   def acquire_connection(uri, options)
+      #     idx = @connections.find_index do |connection|
+      #       connection.match?(uri, options)
+      #     end
+      #
+      #     @connections.delete_at(idx) if idx
+      #   end
+
+      # 総接続数の上限に到達している?
+      if @connections_counter == @max_connections
+        # そのうちどれかが接続をクローズするまで最大@pool_timeout秒待機
+        @max_connections_cond.wait(@connection_mtx, @pool_timeout)
+
+        # 接続が返却された場合、そのうち利用できるものがあればそれを返す
+        if (conn = acquire_connection(uri, options))
+          return conn
+        end
+
+        # まだ上限に到達している?
+        if @connections_counter == @max_connections
+          # プール内の接続のうち、クローズ済みのものがあれば取得
+          conn = @connections.find { |c| c.state == :closed }
+
+          # なければPoolTimeoutError
+          raise PoolTimeoutError.new(
+            @pool_timeout,
+            "Timed out after #{@pool_timeout} seconds while waiting for a connection"
+          ) unless conn
+
+          # クローズ済みの接続をプールから削除
+          drop_connection(conn)
+        end
+
+      end
+
+      # オリジンに対する接続数の上限に到達している? (同一scheme://host:port)
+      if @origin_counters[uri.origin] == @max_connections_per_origin
+        # このオリジン向けの接続の空きが出るまで or @pool_timeoutまで待機
+        @origin_conds[uri.origin].wait(@connection_mtx, @pool_timeout)
+
+        # 接続の在庫を取得 or PoolTimeoutError
+        return acquire_connection(uri, options) ||
+          raise(PoolTimeoutError.new(
+            @pool_timeout,
+            "Timed out after #{@pool_timeout} seconds while waiting for a connection to #{uri.origin}")
+          )
+      end
+
+      @connections_counter += 1 # 総接続数
+      @origin_counters[uri.origin] += 1 # オリジンに対する接続数
+
+      # 総接続数、オリジン別の接続数、いずれも上限以下なので新規接続を作成
+      checkout_new_connection(uri, options)
     end
   end
 end
