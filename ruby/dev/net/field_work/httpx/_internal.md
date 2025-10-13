@@ -441,6 +441,7 @@ def resolve_connection(connection, selector)
   # resolver = #<HTTPX::Resolver::Multi ...>
 
   # WIP
+  # すでに取得済みのアドレスを利用する or lazy_resolve
   resolver.early_resolve(connection) || resolver.lazy_resolve(connection)
 end
 
@@ -558,6 +559,71 @@ def find_resolver_for(connection, selector)
   end
 
   resolver
+end
+
+# (lib/httpx/resolver/multi.rb)
+
+def early_resolve(connection)
+  # 接続先ホスト名
+  hostname = connection.peer.host
+
+  # キャッシュがある場合: すでにこのconnectionに関連付けられたAddrinfo(s)、もしくはIP文字列があればそれを取得
+  # なければfalseを返す
+  addresses = @resolver_options[:cache] && (connection.addresses || HTTPX::Resolver.nolookup_resolve(hostname))
+  return false unless addresses
+
+  resolved = false
+
+  # Addrinfo(s)をアドレスファミリごとにグルーピングし、IPv6を優先するように並び替え
+  addresses.group_by(&:family).sort { |(f1, _), (f2, _)| f2 <=> f1 }.each do |family, addrs|
+    # アドレスファミリに対応するリゾルバを選択
+    resolver = @resolvers.find { |r| r.family == family } || @resolvers.first
+
+    next unless resolver # this should ever happen
+
+    # リゾルバに対し、このconnectionの名前解決が完了したことを通知
+    # WIP
+    resolver.emit_addresses(connection, family, addrs, true)
+
+    resolved = true
+  end
+
+  resolved
+end
+
+# (lib/httpx/resolver/resolver.rb)
+
+# WIP
+def emit_addresses(connection, family, addresses, early_resolve = false)
+  addresses.map! do |address|
+    address.is_a?(IPAddr) ? address : IPAddr.new(address.to_s)
+  end
+
+  # double emission check, but allow early resolution to work
+  return if !early_resolve && connection.addresses && !addresses.intersect?(connection.addresses)
+
+  log do
+    "resolver #{FAMILY_TYPES[RECORD_TYPES[family]]}: " \
+      "answer #{connection.peer.host}: #{addresses.inspect} (early resolve: #{early_resolve})"
+  end
+
+  if !early_resolve && # do not apply resolution delay for non-dns name resolution
+     @current_selector && # just in case...
+     family == Socket::AF_INET && # resolution delay only applies to IPv4
+     !connection.io && # connection already has addresses and initiated/ended handshake
+     connection.options.ip_families.size > 1 && # no need to delay if not supporting dual stack IP
+     addresses.first.to_s != connection.peer.host.to_s # connection URL host is already the IP (early resolve included perhaps?)
+    log { "resolver #{FAMILY_TYPES[RECORD_TYPES[family]]}: applying resolution delay..." }
+
+    @current_selector.after(0.05) do
+      # double emission check
+      unless connection.addresses && addresses.intersect?(connection.addresses)
+        emit_resolved_connection(connection, addresses, early_resolve)
+      end
+    end
+  else
+    emit_resolved_connection(connection, addresses, early_resolve)
+  end
 end
 ```
 
