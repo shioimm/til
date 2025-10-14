@@ -582,7 +582,6 @@ def early_resolve(connection)
     next unless resolver # this should ever happen
 
     # リゾルバに対し、このconnectionの名前解決が完了したことを通知
-    # WIP
     resolver.emit_addresses(connection, family, addrs, true)
 
     resolved = true
@@ -593,13 +592,13 @@ end
 
 # (lib/httpx/resolver/resolver.rb)
 
-# WIP
 def emit_addresses(connection, family, addresses, early_resolve = false)
+  # addressesをIPAddrに変換
   addresses.map! do |address|
     address.is_a?(IPAddr) ? address : IPAddr.new(address.to_s)
   end
 
-  # double emission check, but allow early resolution to work
+  # connectionに対してこのaddressesと同じ内容のアドレスリストが設定されている場合はreturn
   return if !early_resolve && connection.addresses && !addresses.intersect?(connection.addresses)
 
   log do
@@ -607,22 +606,49 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
       "answer #{connection.peer.host}: #{addresses.inspect} (early resolve: #{early_resolve})"
   end
 
-  if !early_resolve && # do not apply resolution delay for non-dns name resolution
-     @current_selector && # just in case...
-     family == Socket::AF_INET && # resolution delay only applies to IPv4
-     !connection.io && # connection already has addresses and initiated/ended handshake
-     connection.options.ip_families.size > 1 && # no need to delay if not supporting dual stack IP
-     addresses.first.to_s != connection.peer.host.to_s # connection URL host is already the IP (early resolve included perhaps?)
+  # HEのための遅延? (アドレスリストをかたまりで渡している気がする...)
+  if !early_resolve && # early_resolveからの呼び出しの場合はtrue
+     @current_selector && selectorが存在する
+     family == Socket::AF_INET && # IPv4
+     !connection.io && # 接続済みではない
+     connection.options.ip_families.size > 1 && # IPv4 / IPv6両方をサポートしている
+     addresses.first.to_s != connection.peer.host.to_s # 接続先ホストがIPアドレスではない
+
     log { "resolver #{FAMILY_TYPES[RECORD_TYPES[family]]}: applying resolution delay..." }
 
+    # 50ms後に名前解決を通知
     @current_selector.after(0.05) do
-      # double emission check
       unless connection.addresses && addresses.intersect?(connection.addresses)
         emit_resolved_connection(connection, addresses, early_resolve)
       end
     end
   else
+    # 名前可決を通知
     emit_resolved_connection(connection, addresses, early_resolve)
+  end
+end
+
+# (lib/httpx/resolver/resolver.rb)↲
+
+def emit_resolved_connection(connection, addresses, early_resolve)
+  begin
+    # connectionに解決済みアドレスリストを設定
+    # 以降、connectionはaddressesに対して接続できるようになる
+    connection.addresses = addresses
+
+    return if connection.state == :closed
+
+    # リゾルバが保持するコールバックリスト (callbacks[:resolve])に対してイベントを発火 (引数connection)
+    emit(:resolve, connection)
+  rescue StandardError => e # SocketErrorやIOErrorが発生した場合
+    if early_resolve
+      # connectionの状態をリセットして例外を呼び出し元に伝搬する
+      connection.force_reset
+      throw(:resolve_error, e)
+    else
+      # リゾルバが保持するコールバックリスト (callbacks[:error])に対してイベントを発火 (引数connection, e)
+      emit(:error, connection, e)
+    end
   end
 end
 ```
