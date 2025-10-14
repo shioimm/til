@@ -534,6 +534,19 @@ def find_resolver_for(connection, selector)
     #     resolver_type = options.resolver_class # 使用するDNSリゾルバの種類を特定
     #     resolver_type = Resolver.resolver_for(resolver_type, options) # 実際のResolverオブジェクトを作成
     #
+    #     # (lib/httpx/resolver.rb)
+    #     #   def resolver_for(resolver_type)
+    #     #     case resolver_type
+    #     #     when :native then Native
+    #     #     when :system then System
+    #     #     when :https then HTTPS
+    #     #     else
+    #     #       return resolver_type if resolver_type.is_a?(Class) && resolver_type < Resolver
+    #     #
+    #     #       raise Error, "unsupported resolver type (#{resolver_type})"
+    #     #     end
+    #     #   end
+    #
     #     @resolver_mtx.synchronize do
     #       resolvers = @resolvers[resolver_type] # @resolvers = リゾルバの種類ごとにResolverの在庫を持つHash
     #
