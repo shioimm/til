@@ -651,12 +651,42 @@ def emit_resolved_connection(connection, addresses, early_resolve)
     end
   end
 end
+
+# (lib/httpx/resolver/multi.rb)
+
+def lazy_resolve(connection)
+  @resolvers.each do |resolver|
+    resolver << @current_session.try_clone_connection(connection, @current_selector, resolver.family)
+    next if resolver.empty?
+
+    @current_session.select_resolver(resolver, @current_selector)
+  end
+end
+
+# (lib/httpx/session.rb)
+
+def try_clone_connection(connection, selector, family)
+  connection.family ||= family
+
+  return connection if connection.family == family
+
+  new_connection = connection.class.new(connection.origin, connection.options)
+
+  new_connection.family = family
+
+  connection.sibling = new_connection
+
+  do_init_connection(new_connection, selector)
+  new_connection
+end
 ```
 
 ## `Session#select_connection`
 
 ```
 # (lib/httpx/session.rb)
+
+alias_method :select_resolver, :select_connection
 
 def select_connection(connection, selector)
   # この接続に対して、このセッションとこのselectorを紐づける
