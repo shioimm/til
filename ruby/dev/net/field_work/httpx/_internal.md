@@ -828,24 +828,71 @@ end
 # (lib/httpx/connection.rb)
 
 def send(request)
+  # この接続が他の接続に合流している場合、合流先の接続を利用して送信を行う
   return @coalesced_connection.send(request) if @coalesced_connection
 
+  # @parserが存在している = HTTPX::Connection::HTTP2 (HTTP/1の場合はHTTPX::Connection::HTTP1)
+  # !@write_buffer.full?  = 送信バッファに空きがある
   if @parser && !@write_buffer.full?
+
+    # @response_received_at = 最後にレスポンスを受け取った時刻
+    # @keep_alive_timeout   = Keep-Alive時間
+    # @response_received_atが@keep_alive_timeoutを超えている場合、接続がタイムアウトしていないか確認のためpingを送信
     if @response_received_at && @keep_alive_timeout &&
        Utils.elapsed_time(@response_received_at) > @keep_alive_timeout
-      # when pushing a request into an existing connection, we have to check whether there
-      # is the possibility that the connection might have extended the keep alive timeout.
-      # for such cases, we want to ping for availability before deciding to shovel requests.
       log(level: 3) { "keep alive timeout expired, pinging connection..." }
-      @pending << request
-      transition(:active) if @state == :inactive
-      parser.ping
+
+      @pending << request # 現在のリクエストを@pendingキューに追加
+      transition(:active) if @state == :inactive # 状態を:activeに変更
+      parser.ping # pingを送信
       return
     end
 
     send_request_to_parser(request)
-  else
+
+  else # 名前解決中 or TCPハンドシェイク中 or TLSハンドシェイク中 or フロー制御ウィンドウが満杯
+    # 現在のリクエストを@pendingキューに追加
     @pending << request
   end
+end
+
+def parser
+  @parser ||= build_parser
+end
+
+def build_parser(protocol = @io.protocol)
+  parser = self.class.parser_type(protocol).new(@write_buffer, @options)
+
+  # (lib/httpx/connection.rb)
+  #   def parser_type(protocol)
+  #     case protocol
+  #     when "h2" then HTTP2
+  #     when "http/1.1" then HTTP1
+  #     else
+  #       raise Error, "unsupported protocol (##{protocol})"
+  #     end
+  #   end
+
+  set_parser_callbacks(parser)
+  parser
+end
+
+def send_request_to_parser(request)
+  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
+  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
+  parser.send(request) # 送信
+
+  set_request_timeouts(request)
+
+  # (lib/httpx/connection.rb)
+  #   def set_request_timeouts(request)
+  #     set_request_write_timeout(request)
+  #     set_request_read_timeout(request)
+  #     set_request_request_timeout(request)
+  #   end
+
+  return unless @state == :inactive
+
+  transition(:active) # 状態を:activeに変更
 end
 ```
