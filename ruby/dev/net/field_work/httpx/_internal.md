@@ -881,7 +881,7 @@ end
 def send_request_to_parser(request)
   @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
   request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
-  parser.send(request) # 送信
+  parser.send(request) # 送信 # WIP
 
   set_request_timeouts(request)
 
@@ -996,5 +996,30 @@ def set_parser_callbacks(parser)
     request.response = response
     request.emit(:response, response)
   end
+end
+```
+
+### `HTTPX::Connection::HTTP2#send`
+
+```ruby
+# (lib/httpx/connection/http2.rb)
+
+# WIP
+def send(request, head = false)
+  unless can_buffer_more_requests?
+    head ? @pending.unshift(request) : @pending << request
+    return false
+  end
+  unless (stream = @streams[request])
+    stream = @connection.new_stream
+    handle_stream(stream, request)
+    @streams[request] = stream
+    @max_requests -= 1
+  end
+  handle(request, stream)
+  true
+rescue ::HTTP2::Error::StreamLimitExceeded
+  @pending.unshift(request)
+  false
 end
 ```
