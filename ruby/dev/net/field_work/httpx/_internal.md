@@ -236,7 +236,10 @@ def send_requests(*requests)
   end
 end
 
-# request.options
+# (lib/httpx/session.rb)
+
+# request = #<HTTPX::Request ...>
+# request.options =
 #   @options=#<HTTPX::Options:0x0000000106b84410
 #              @max_requests=Infinity, @debug_level=1, @ssl={}, @http2_settings={settings_enable_push: 0},
 #              @fallback_protocol="http/1.1", @supported_compression_formats=["gzip", "deflate"],
@@ -258,8 +261,8 @@ end
 def send_request(request, selector, options = request.options)
   error = begin
     catch(:resolve_error) do
-      # WIP
       connection = find_connection(request.uri, selector, options)
+      # WIP
       connection.send(request)
     end
   rescue StandardError => e
@@ -271,7 +274,11 @@ def send_request(request, selector, options = request.options)
 
   request.emit(:response, ErrorResponse.new(request, error))
 end
+```
 
+### `Session#find_connection`
+
+```ruby
 def find_connection(request_uri, selector, options)
   # selectorに登録済み = リクエスト処理待ちの接続のうち、この宛先に対して接続中のものがあればそれを取得
   if (connection = selector.find_connection(request_uri, options))
@@ -300,25 +307,34 @@ def find_connection(request_uri, selector, options)
   #                   altsvc: [#<Proc:0x0000000106baf908 /path/to/lib/httpx/connection.rb:97>]},
   #       @current_timeout=60, @timeout=60, @connected_at=nil, @state=:idle, @inflight=0, @keep_alive_timeout=20>
 
+  # connectionの現在の状態に応じて初期化 (名前解決を含む) 、再利用、再接続などの適当な処理を行う
   case connection.state
-  when :idle # 新規接続の場合はここ
-    do_init_connection(connection, selector)
-  when :open
-    # WIP
-    if options.io
+  when :idle # 新規接続
+    do_init_connection(connection, selector) # 名前解決・接続開始
+
+    # 何がしかのクラスに定義されているtransitionメソッドに適切な状態を渡すと@io.connectする、
+    # ということになっているらしい
+  when :open # 宛先と接続済み
+    if options.io # 外部からIOが指定されている場合
+      # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
       select_connection(connection, selector)
     else
+      # この接続に対してこのセッションとこのselectorを紐づける
       pin_connection(connection, selector)
     end
-  when :closed
+  when :closed # connectionがclose済み、再利用可能
+    # connectionの状態を:idleに戻して再初期化
     connection.idling
+    # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
     select_connection(connection, selector)
-  when :closing
+  when :closing # 接続終了中
+    # :closeイベントをフックして:closedの場合と同じ処理を行う
     connection.once(:close) do
       connection.idling
       select_connection(connection, selector)
     end
   else
+    # この接続に対してこのセッションとこのselectorを紐づける
     pin_connection(connection, selector)
   end
 
@@ -509,7 +525,6 @@ def on_resolver_connection(connection, selector)
   #     true
   #   end
 end
-
 
 def find_resolver_for(connection, selector)
   resolver = selector.find_resolver(connection.options)
@@ -785,7 +800,7 @@ def resolve(connection = nil, hostname = nil)
 end
 ```
 
-## `Session#select_connection`
+### `Session#select_connection`
 
 ```
 # (lib/httpx/session.rb)
@@ -796,13 +811,190 @@ def select_connection(connection, selector)
   # この接続に対して、このセッションとこのselectorを紐づける
   pin_connection(connection, selector)
 
-  # (lib/httpx/session.rb)
-  #   def pin_connection(connection, selector)
-  #     connection.current_session = self
-  #     connection.current_selector = selector
-  #   end
-
   # このselectorにこの接続を登録する
   selector.register(connection)
+end
+
+# (lib/httpx/session.rb)
+def pin_connection(connection, selector)
+  connection.current_session = self
+  connection.current_selector = selector
+end
+```
+
+### `Connection#send`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+def send(request)
+  # この接続が他の接続に合流している場合、合流先の接続を利用して送信を行う
+  return @coalesced_connection.send(request) if @coalesced_connection
+
+  # @parserが存在している = HTTPX::Connection::HTTP2 (HTTP/1の場合はHTTPX::Connection::HTTP1)
+  # !@write_buffer.full?  = 送信バッファに空きがある
+  if @parser && !@write_buffer.full?
+
+    # @response_received_at = 最後にレスポンスを受け取った時刻
+    # @keep_alive_timeout   = Keep-Alive時間
+    # @response_received_atが@keep_alive_timeoutを超えている場合、接続がタイムアウトしていないか確認のためpingを送信
+    if @response_received_at && @keep_alive_timeout &&
+       Utils.elapsed_time(@response_received_at) > @keep_alive_timeout
+      log(level: 3) { "keep alive timeout expired, pinging connection..." }
+
+      @pending << request # 現在のリクエストを@pendingキューに追加
+      transition(:active) if @state == :inactive # 状態を:activeに変更
+      parser.ping # pingを送信
+      return
+    end
+
+    send_request_to_parser(request)
+
+  else # 名前解決中 or TCPハンドシェイク中 or TLSハンドシェイク中 or フロー制御ウィンドウが満杯
+    # 現在のリクエストを@pendingキューに追加
+    @pending << request
+  end
+end
+
+def parser
+  @parser ||= build_parser
+end
+
+def build_parser(protocol = @io.protocol)
+  parser = self.class.parser_type(protocol).new(@write_buffer, @options)
+
+  # (lib/httpx/connection.rb)
+  #   def parser_type(protocol)
+  #     case protocol
+  #     when "h2" then HTTP2
+  #     when "http/1.1" then HTTP1
+  #     else
+  #       raise Error, "unsupported protocol (##{protocol})"
+  #     end
+  #   end
+
+  # WIP
+  set_parser_callbacks(parser)
+  parser
+end
+
+def send_request_to_parser(request)
+  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
+  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
+  parser.send(request) # 送信
+
+  set_request_timeouts(request)
+
+  # (lib/httpx/connection.rb)
+  #   def set_request_timeouts(request)
+  #     set_request_write_timeout(request)
+  #     set_request_read_timeout(request)
+  #     set_request_request_timeout(request)
+  #   end
+
+  return unless @state == :inactive
+
+  transition(:active) # 状態を:activeに変更
+end
+```
+
+### `Connection#set_parser_callbacks`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+# WIP
+def set_parser_callbacks(parser)
+  parser.on(:response) do |request, response|
+    AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
+      emit(:altsvc, alt_origin, origin, alt_params)
+    end
+    @response_received_at = Utils.now
+    @inflight -= 1
+    request.emit(:response, response)
+  end
+  parser.on(:altsvc) do |alt_origin, origin, alt_params|
+    emit(:altsvc, alt_origin, origin, alt_params)
+  end
+
+  parser.on(:pong, &method(:send_pending))
+
+  parser.on(:promise) do |request, stream|
+    request.emit(:promise, parser, stream)
+  end
+  parser.on(:exhausted) do
+    @exhausted = true
+    current_session = @current_session
+    current_selector = @current_selector
+    begin
+      parser.close
+      @pending.concat(parser.pending)
+    ensure
+      @current_session = current_session
+      @current_selector = current_selector
+    end
+
+    case @state
+    when :closed
+      idling
+      @exhausted = false
+    when :closing
+      once(:closed) do
+        idling
+        @exhausted = false
+      end
+    end
+  end
+  parser.on(:origin) do |origin|
+    @origins |= [origin]
+  end
+  parser.on(:close) do |force|
+    if force
+      reset
+      emit(:terminate)
+    end
+  end
+  parser.on(:close_handshake) do
+    consume
+  end
+  parser.on(:reset) do
+    @pending.concat(parser.pending) unless parser.empty?
+    current_session = @current_session
+    current_selector = @current_selector
+    reset
+    unless @pending.empty?
+      idling
+      @current_session = current_session
+      @current_selector = current_selector
+    end
+  end
+  parser.on(:current_timeout) do
+    @current_timeout = @timeout = parser.timeout
+  end
+  parser.on(:timeout) do |tout|
+    @timeout = tout
+  end
+  parser.on(:error) do |request, error|
+    case error
+    when :http_1_1_required
+      current_session = @current_session
+      current_selector = @current_selector
+      parser.close
+
+      other_connection = current_session.find_connection(@origin, current_selector,
+                                                         @options.merge(ssl: { alpn_protocols: %w[http/1.1] }))
+      other_connection.merge(self)
+      request.transition(:idle)
+      other_connection.send(request)
+      next
+    when OperationTimeoutError
+      # request level timeouts should take precedence
+      next unless request.active_timeouts.empty?
+    end
+
+    response = ErrorResponse.new(request, error)
+    request.response = response
+    request.emit(:response, response)
+  end
 end
 ```
