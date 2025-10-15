@@ -850,7 +850,7 @@ def send(request)
 
     send_request_to_parser(request)
 
-  else # 名前解決中 or TCPハンドシェイク中 or TLSハンドシェイク中 or フロー制御ウィンドウが満杯
+  else
     # 現在のリクエストを@pendingキューに追加
     @pending << request
   end
