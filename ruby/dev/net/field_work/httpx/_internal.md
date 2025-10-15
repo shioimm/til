@@ -304,6 +304,9 @@ def find_connection(request_uri, selector, options)
   case connection.state
   when :idle # 新規接続
     do_init_connection(connection, selector) # 名前解決・接続開始
+
+    # 何がしかのクラスに定義されているtransitionメソッドに適切な状態を渡すと@io.connectする、
+    # ということになっているらしい
   when :open # 宛先と接続済み
     if options.io # 外部からIOが指定されている場合
       # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
