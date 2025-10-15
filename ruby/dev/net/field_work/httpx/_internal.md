@@ -236,7 +236,10 @@ def send_requests(*requests)
   end
 end
 
-# request.options
+# (lib/httpx/session.rb)
+
+# request = #<HTTPX::Request ...>
+# request.options =
 #   @options=#<HTTPX::Options:0x0000000106b84410
 #              @max_requests=Infinity, @debug_level=1, @ssl={}, @http2_settings={settings_enable_push: 0},
 #              @fallback_protocol="http/1.1", @supported_compression_formats=["gzip", "deflate"],
@@ -258,8 +261,8 @@ end
 def send_request(request, selector, options = request.options)
   error = begin
     catch(:resolve_error) do
-      # WIP
       connection = find_connection(request.uri, selector, options)
+      # WIP
       connection.send(request)
     end
   rescue StandardError => e
@@ -271,7 +274,11 @@ def send_request(request, selector, options = request.options)
 
   request.emit(:response, ErrorResponse.new(request, error))
 end
+```
 
+### `Session#find_connection`
+
+```ruby
 def find_connection(request_uri, selector, options)
   # selectorに登録済み = リクエスト処理待ちの接続のうち、この宛先に対して接続中のものがあればそれを取得
   if (connection = selector.find_connection(request_uri, options))
@@ -518,7 +525,6 @@ def on_resolver_connection(connection, selector)
   #     true
   #   end
 end
-
 
 def find_resolver_for(connection, selector)
   resolver = selector.find_resolver(connection.options)
@@ -794,7 +800,7 @@ def resolve(connection = nil, hostname = nil)
 end
 ```
 
-## `Session#select_connection`
+### `Session#select_connection`
 
 ```
 # (lib/httpx/session.rb)
@@ -813,5 +819,33 @@ end
 def pin_connection(connection, selector)
   connection.current_session = self
   connection.current_selector = selector
+end
+```
+
+### `Connection#send`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+def send(request)
+  return @coalesced_connection.send(request) if @coalesced_connection
+
+  if @parser && !@write_buffer.full?
+    if @response_received_at && @keep_alive_timeout &&
+       Utils.elapsed_time(@response_received_at) > @keep_alive_timeout
+      # when pushing a request into an existing connection, we have to check whether there
+      # is the possibility that the connection might have extended the keep alive timeout.
+      # for such cases, we want to ping for availability before deciding to shovel requests.
+      log(level: 3) { "keep alive timeout expired, pinging connection..." }
+      @pending << request
+      transition(:active) if @state == :inactive
+      parser.ping
+      return
+    end
+
+    send_request_to_parser(request)
+  else
+    @pending << request
+  end
 end
 ```
