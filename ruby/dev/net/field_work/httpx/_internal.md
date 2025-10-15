@@ -300,25 +300,31 @@ def find_connection(request_uri, selector, options)
   #                   altsvc: [#<Proc:0x0000000106baf908 /path/to/lib/httpx/connection.rb:97>]},
   #       @current_timeout=60, @timeout=60, @connected_at=nil, @state=:idle, @inflight=0, @keep_alive_timeout=20>
 
+  # connectionの現在の状態に応じて初期化 (名前解決を含む) 、再利用、再接続などの適当な処理を行う
   case connection.state
-  when :idle # 新規接続の場合はここ
-    do_init_connection(connection, selector)
-  when :open
-    # WIP
-    if options.io
+  when :idle # 新規接続
+    do_init_connection(connection, selector) # 名前解決・接続開始
+  when :open # 宛先と接続済み
+    if options.io # 外部からIOが指定されている場合
+      # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
       select_connection(connection, selector)
     else
+      # この接続に対してこのセッションとこのselectorを紐づける
       pin_connection(connection, selector)
     end
-  when :closed
+  when :closed # connectionがclose済み、再利用可能
+    # connectionの状態を:idleに戻して再初期化
     connection.idling
+    # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
     select_connection(connection, selector)
-  when :closing
+  when :closing # 接続終了中
+    # :closeイベントをフックして:closedの場合と同じ処理を行う
     connection.once(:close) do
       connection.idling
       select_connection(connection, selector)
     end
   else
+    # この接続に対してこのセッションとこのselectorを紐づける
     pin_connection(connection, selector)
   end
 
@@ -796,13 +802,13 @@ def select_connection(connection, selector)
   # この接続に対して、このセッションとこのselectorを紐づける
   pin_connection(connection, selector)
 
-  # (lib/httpx/session.rb)
-  #   def pin_connection(connection, selector)
-  #     connection.current_session = self
-  #     connection.current_selector = selector
-  #   end
-
   # このselectorにこの接続を登録する
   selector.register(connection)
+end
+
+# (lib/httpx/session.rb)
+def pin_connection(connection, selector)
+  connection.current_session = self
+  connection.current_selector = selector
 end
 ```
