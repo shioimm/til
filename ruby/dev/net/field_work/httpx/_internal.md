@@ -300,11 +300,11 @@ def find_connection(request_uri, selector, options)
   #                   altsvc: [#<Proc:0x0000000106baf908 /path/to/lib/httpx/connection.rb:97>]},
   #       @current_timeout=60, @timeout=60, @connected_at=nil, @state=:idle, @inflight=0, @keep_alive_timeout=20>
 
-  # WIP
   case connection.state
   when :idle # 新規接続の場合はここ
     do_init_connection(connection, selector)
   when :open
+    # WIP
     if options.io
       select_connection(connection, selector)
     else
@@ -440,8 +440,7 @@ def resolve_connection(connection, selector)
   resolver = find_resolver_for(connection, selector)
   # resolver = #<HTTPX::Resolver::Multi ...>
 
-  # WIP
-  # すでに取得済みのアドレスを利用する or lazy_resolve
+  # すでに取得済みのアドレスを利用する or アドレスファミリごとに名前解決を開始する
   resolver.early_resolve(connection) || resolver.lazy_resolve(connection)
 end
 
@@ -535,6 +534,19 @@ def find_resolver_for(connection, selector)
     #     resolver_type = options.resolver_class # 使用するDNSリゾルバの種類を特定
     #     resolver_type = Resolver.resolver_for(resolver_type, options) # 実際のResolverオブジェクトを作成
     #
+    #     # (lib/httpx/resolver.rb)
+    #     #   def resolver_for(resolver_type)
+    #     #     case resolver_type
+    #     #     when :native then Native
+    #     #     when :system then System
+    #     #     when :https then HTTPS
+    #     #     else
+    #     #       return resolver_type if resolver_type.is_a?(Class) && resolver_type < Resolver
+    #     #
+    #     #       raise Error, "unsupported resolver type (#{resolver_type})"
+    #     #     end
+    #     #   end
+    #
     #     @resolver_mtx.synchronize do
     #       resolvers = @resolvers[resolver_type] # @resolvers = リゾルバの種類ごとにResolverの在庫を持つHash
     #
@@ -582,7 +594,6 @@ def early_resolve(connection)
     next unless resolver # this should ever happen
 
     # リゾルバに対し、このconnectionの名前解決が完了したことを通知
-    # WIP
     resolver.emit_addresses(connection, family, addrs, true)
 
     resolved = true
@@ -593,13 +604,13 @@ end
 
 # (lib/httpx/resolver/resolver.rb)
 
-# WIP
 def emit_addresses(connection, family, addresses, early_resolve = false)
+  # addressesをIPAddrに変換
   addresses.map! do |address|
     address.is_a?(IPAddr) ? address : IPAddr.new(address.to_s)
   end
 
-  # double emission check, but allow early resolution to work
+  # connectionに対してこのaddressesと同じ内容のアドレスリストが設定されている場合はreturn
   return if !early_resolve && connection.addresses && !addresses.intersect?(connection.addresses)
 
   log do
@@ -607,22 +618,169 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
       "answer #{connection.peer.host}: #{addresses.inspect} (early resolve: #{early_resolve})"
   end
 
-  if !early_resolve && # do not apply resolution delay for non-dns name resolution
-     @current_selector && # just in case...
-     family == Socket::AF_INET && # resolution delay only applies to IPv4
-     !connection.io && # connection already has addresses and initiated/ended handshake
-     connection.options.ip_families.size > 1 && # no need to delay if not supporting dual stack IP
-     addresses.first.to_s != connection.peer.host.to_s # connection URL host is already the IP (early resolve included perhaps?)
+  # HEのための遅延? (アドレスリストをかたまりで渡している気がする...)
+  if !early_resolve && # early_resolveからの呼び出しの場合はtrue
+     @current_selector && selectorが存在する
+     family == Socket::AF_INET && # IPv4
+     !connection.io && # 接続済みではない
+     connection.options.ip_families.size > 1 && # IPv4 / IPv6両方をサポートしている
+     addresses.first.to_s != connection.peer.host.to_s # 接続先ホストがIPアドレスではない
+
     log { "resolver #{FAMILY_TYPES[RECORD_TYPES[family]]}: applying resolution delay..." }
 
+    # 50ms後に名前解決を通知
     @current_selector.after(0.05) do
-      # double emission check
       unless connection.addresses && addresses.intersect?(connection.addresses)
         emit_resolved_connection(connection, addresses, early_resolve)
       end
     end
   else
+    # 名前可決を通知
     emit_resolved_connection(connection, addresses, early_resolve)
+  end
+end
+
+# (lib/httpx/resolver/resolver.rb)↲
+
+def emit_resolved_connection(connection, addresses, early_resolve)
+  begin
+    # connectionに解決済みアドレスリストを設定
+    # 以降、connectionはaddressesに対して接続できるようになる
+    connection.addresses = addresses
+
+    return if connection.state == :closed
+
+    # リゾルバが保持するコールバックリスト (callbacks[:resolve])に対してイベントを発火 (引数connection)
+    emit(:resolve, connection)
+  rescue StandardError => e # SocketErrorやIOErrorが発生した場合
+    if early_resolve
+      # connectionの状態をリセットして例外を呼び出し元に伝搬する
+      connection.force_reset
+      throw(:resolve_error, e)
+    else
+      # リゾルバが保持するコールバックリスト (callbacks[:error])に対してイベントを発火 (引数connection, e)
+      emit(:error, connection, e)
+    end
+  end
+end
+
+# (lib/httpx/resolver/multi.rb)
+
+def lazy_resolve(connection)
+  # @resolvers = [#<HTTPX::Resolver::Native ...>, ...]
+  @resolvers.each do |resolver|
+    # resolverに対してこの接続を名前解決する対象として登録する
+    resolver << @current_session.try_clone_connection(connection, @current_selector, resolver.family)
+    next if resolver.empty?
+
+    @current_session.select_resolver(resolver, @current_selector)
+  end
+end
+
+# (lib/httpx/session.rb)
+
+def try_clone_connection(connection, selector, family)
+  connection.family ||= family
+
+  # アドレスファミリが同じ場合はそのconnectionを返す
+  return connection if connection.family == family
+
+  # アドレスファミリが異なる場合、connectionを複製してアドレスファミリを設定
+  new_connection = connection.class.new(connection.origin, connection.options)
+  new_connection.family = family
+
+  # 元のconnectionと新しいnew_connectionを関連づける (同じ宛先に対するIPv6/IPv4接続を関連づける)
+  connection.sibling = new_connection
+
+  # 複製したnew_connectionをresolverに登録して名前解決を開始
+  do_init_connection(new_connection, selector)
+  new_connection
+end
+
+# (lib/httpx/resolver/native.rb)
+
+def <<(connection)
+  if @nameserver.nil? # DNSサーバが存在しない場合はResolveError
+    ex = ResolveError.new("No available nameserver")
+    ex.set_backtrace(caller)
+    connection.force_reset
+    throw(:resolve_error, ex)
+  else
+    # @connectionsにconnectionを追加してresolv
+    @connections << connection
+    resolve
+  end
+end
+
+def resolve(connection = nil, hostname = nil)
+  # @connectionsを先頭からたどり、closeした接続が残っている場合は取り除く
+  @connections.shift until @connections.empty? || @connections.first.state != :closed
+
+  # まだクエリが発行されていないconnectionを取得、なければエラー
+  connection ||= @connections.find { |c| !@queries.value?(c) }
+  raise Error, "no URI to resolve" unless connection
+
+  # 書き込みバッファが空でない場合は何もしない
+  return unless @write_buffer.empty?
+
+  # 引数に指定がなければ@queriesに登録されているホスト名を取得
+  hostname ||= @queries.key(connection)
+
+  if hostname.nil? # hostnameが未指定の場合
+    # connectionのpeer.hostから取得
+    hostname = connection.peer.host
+
+    log do
+      "resolver #{FAMILY_TYPES[@record_type]}: " \
+        "resolve IDN #{connection.peer.non_ascii_hostname} as #{hostname}"
+    end if connection.peer.non_ascii_hostname
+
+    # hostnameに候補を格納
+    hostname = generate_candidates(hostname).each do |name|
+      # (lib/httpx/resolver/native.rb)
+      #   def generate_candidates(name)
+      #     return [name] if name.end_with?(".")
+      #
+      #     candidates = []
+      #     name_parts = name.scan(/[^.]+/)
+      #     candidates = [name] if @ndots <= name_parts.size - 1
+      #     candidates.concat(@search.map { |domain| [*name_parts, *domain].join(".") })
+      #     fname = "#{name}."
+      #     candidates << fname unless candidates.include?(fname)
+      #
+      #     candidates
+      #   end
+
+      # @queriesにconnectionを登録
+      @queries[name] = connection
+    end.first # generate_candidatesが返す最初の候補をクエリ対象とする
+  else
+    # @queriesにconnectionを登録
+    @queries[hostname] = connection
+  end
+
+  @name = hostname
+  log { "resolver #{FAMILY_TYPES[@record_type]}: query for #{hostname}" }
+
+  begin
+    # encode_dns_queryでDNSクエリをエンコードして、@write_bufferに書き込む
+    # (この後selectorがソケットに書き込みイベントを発火させることで送信される) (Resolver::Native#dwrite)
+    # @write_buffer = #<HTTPX::Buffer:0x000000012036e9c8 @buffer="", @limit=512>
+    @write_buffer << encode_dns_query(hostname)
+
+    # (lib/httpx/resolver.rb)
+    #  def encode_dns_query(hostname, type: Resolv::DNS::Resource::IN::A, message_id: generate_id)
+    #    Resolv::DNS::Message.new(message_id).tap do |query|
+    #      query.rd = 1
+    #      query.add_question(hostname, type)
+    #    end.encode
+    #  end
+
+  rescue Resolv::DNS::EncodeError => e
+    reset_hostname(hostname, connection: connection)
+    @connections.delete(connection)
+    emit_resolve_error(connection, hostname, e)
+    close_or_resolve
   end
 end
 ```
@@ -631,6 +789,8 @@ end
 
 ```
 # (lib/httpx/session.rb)
+
+alias_method :select_resolver, :select_connection
 
 def select_connection(connection, selector)
   # この接続に対して、このセッションとこのselectorを紐づける
