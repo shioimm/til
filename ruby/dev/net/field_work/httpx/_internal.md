@@ -873,6 +873,7 @@ def build_parser(protocol = @io.protocol)
   #     end
   #   end
 
+  # WIP
   set_parser_callbacks(parser)
   parser
 end
@@ -894,5 +895,106 @@ def send_request_to_parser(request)
   return unless @state == :inactive
 
   transition(:active) # 状態を:activeに変更
+end
+```
+
+### `Connection#set_parser_callbacks`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+# WIP
+def set_parser_callbacks(parser)
+  parser.on(:response) do |request, response|
+    AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
+      emit(:altsvc, alt_origin, origin, alt_params)
+    end
+    @response_received_at = Utils.now
+    @inflight -= 1
+    request.emit(:response, response)
+  end
+  parser.on(:altsvc) do |alt_origin, origin, alt_params|
+    emit(:altsvc, alt_origin, origin, alt_params)
+  end
+
+  parser.on(:pong, &method(:send_pending))
+
+  parser.on(:promise) do |request, stream|
+    request.emit(:promise, parser, stream)
+  end
+  parser.on(:exhausted) do
+    @exhausted = true
+    current_session = @current_session
+    current_selector = @current_selector
+    begin
+      parser.close
+      @pending.concat(parser.pending)
+    ensure
+      @current_session = current_session
+      @current_selector = current_selector
+    end
+
+    case @state
+    when :closed
+      idling
+      @exhausted = false
+    when :closing
+      once(:closed) do
+        idling
+        @exhausted = false
+      end
+    end
+  end
+  parser.on(:origin) do |origin|
+    @origins |= [origin]
+  end
+  parser.on(:close) do |force|
+    if force
+      reset
+      emit(:terminate)
+    end
+  end
+  parser.on(:close_handshake) do
+    consume
+  end
+  parser.on(:reset) do
+    @pending.concat(parser.pending) unless parser.empty?
+    current_session = @current_session
+    current_selector = @current_selector
+    reset
+    unless @pending.empty?
+      idling
+      @current_session = current_session
+      @current_selector = current_selector
+    end
+  end
+  parser.on(:current_timeout) do
+    @current_timeout = @timeout = parser.timeout
+  end
+  parser.on(:timeout) do |tout|
+    @timeout = tout
+  end
+  parser.on(:error) do |request, error|
+    case error
+    when :http_1_1_required
+      current_session = @current_session
+      current_selector = @current_selector
+      parser.close
+
+      other_connection = current_session.find_connection(@origin, current_selector,
+                                                         @options.merge(ssl: { alpn_protocols: %w[http/1.1] }))
+      other_connection.merge(self)
+      request.transition(:idle)
+      other_connection.send(request)
+      next
+    when OperationTimeoutError
+      # request level timeouts should take precedence
+      next unless request.active_timeouts.empty?
+    end
+
+    response = ErrorResponse.new(request, error)
+    request.response = response
+    request.emit(:response, response)
+  end
 end
 ```
