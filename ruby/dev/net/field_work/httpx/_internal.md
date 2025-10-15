@@ -903,20 +903,27 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
-# WIP
 def set_parser_callbacks(parser)
+  # レスポンスを受信したとき
   parser.on(:response) do |request, response|
+    # レスポンスヘッダをパースし、Alt-Svcが含まれている場合
     AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
+      # :altsvcイベントを発火
       emit(:altsvc, alt_origin, origin, alt_params)
     end
-    @response_received_at = Utils.now
-    @inflight -= 1
-    request.emit(:response, response)
+
+    @response_received_at = Utils.now # この接続で最後にレスポンスを受信した時刻
+    @inflight -= 1 # 送信済みかつレスポンス待ちのリクエストのカウントを減算
+    request.emit(:response, response) # HTTPX::Requestオブジェクトに対して:responseイベントを発火
   end
+
+  # ALTSVCフレームを受信した場合
   parser.on(:altsvc) do |alt_origin, origin, alt_params|
+      # :altsvcイベントを発火
     emit(:altsvc, alt_origin, origin, alt_params)
   end
 
+  # WIP
   parser.on(:pong, &method(:send_pending))
 
   parser.on(:promise) do |request, stream|
