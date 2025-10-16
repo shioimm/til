@@ -850,7 +850,7 @@ def send(request)
 
     send_request_to_parser(request)
 
-  else # 名前解決中 or TCPハンドシェイク中 or TLSハンドシェイク中 or フロー制御ウィンドウが満杯
+  else
     # 現在のリクエストを@pendingキューに追加
     @pending << request
   end
@@ -881,7 +881,7 @@ end
 def send_request_to_parser(request)
   @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
   request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
-  parser.send(request) # 送信
+  parser.send(request) # 送信 # WIP
 
   set_request_timeouts(request)
 
@@ -903,20 +903,27 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
-# WIP
 def set_parser_callbacks(parser)
+  # レスポンスを受信したとき
   parser.on(:response) do |request, response|
+    # レスポンスヘッダをパースし、Alt-Svcが含まれている場合
     AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
+      # :altsvcイベントを発火
       emit(:altsvc, alt_origin, origin, alt_params)
     end
-    @response_received_at = Utils.now
-    @inflight -= 1
-    request.emit(:response, response)
+
+    @response_received_at = Utils.now # この接続で最後にレスポンスを受信した時刻
+    @inflight -= 1 # 送信済みかつレスポンス待ちのリクエストのカウントを減算
+    request.emit(:response, response) # HTTPX::Requestオブジェクトに対して:responseイベントを発火
   end
+
+  # ALTSVCフレームを受信した場合
   parser.on(:altsvc) do |alt_origin, origin, alt_params|
+      # :altsvcイベントを発火
     emit(:altsvc, alt_origin, origin, alt_params)
   end
 
+  # WIP
   parser.on(:pong, &method(:send_pending))
 
   parser.on(:promise) do |request, stream|
@@ -996,5 +1003,30 @@ def set_parser_callbacks(parser)
     request.response = response
     request.emit(:response, response)
   end
+end
+```
+
+### `HTTPX::Connection::HTTP2#send`
+
+```ruby
+# (lib/httpx/connection/http2.rb)
+
+# WIP
+def send(request, head = false)
+  unless can_buffer_more_requests?
+    head ? @pending.unshift(request) : @pending << request
+    return false
+  end
+  unless (stream = @streams[request])
+    stream = @connection.new_stream
+    handle_stream(stream, request)
+    @streams[request] = stream
+    @max_requests -= 1
+  end
+  handle(request, stream)
+  true
+rescue ::HTTP2::Error::StreamLimitExceeded
+  @pending.unshift(request)
+  false
 end
 ```
