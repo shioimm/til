@@ -919,42 +919,76 @@ def set_parser_callbacks(parser)
 
   # ALTSVCフレームを受信した場合
   parser.on(:altsvc) do |alt_origin, origin, alt_params|
-      # :altsvcイベントを発火
+    # :altsvcイベントを発火
     emit(:altsvc, alt_origin, origin, alt_params)
   end
 
-  # WIP
+  # PINGフレームを受信した時
+  # @pendingに積まれたリクエストを送信する
   parser.on(:pong, &method(:send_pending))
 
+  # (lib/httpx/connection.rb)
+  #   def send_pending
+  #     while !@write_buffer.full? && (request = @pending.shift)
+  #       send_request_to_parser(request)
+  #     end
+  #   end
+
+  # PUSH_PROMISEフレームを受信した時
   parser.on(:promise) do |request, stream|
+    # :promiseイベントを発火
     request.emit(:promise, parser, stream)
   end
+
+  # GOAWAYフレームを受信した時 (HTTP/2)
+  # 送信可能なリクエスト数の上限 (Keep-Aliveの上限値など) に達した時 (HTTP/1)
   parser.on(:exhausted) do
+    # この接続ではこれ以上送信できない
+
     @exhausted = true
     current_session = @current_session
     current_selector = @current_selector
+
     begin
       parser.close
-      @pending.concat(parser.pending)
+      @pending.concat(parser.pending) # 未送信・送信途中のリクエストがあれば@pendingに追加
     ensure
+      # parser.closeなどの副作用で@current_session / @current_selectorなどの値が変わるかもしれない
       @current_session = current_session
       @current_selector = current_selector
     end
 
-    case @state
+    case @state # この接続の状態
     when :closed
       idling
       @exhausted = false
     when :closing
-      once(:closed) do
+      once(:closed) do # closeしたら
         idling
         @exhausted = false
       end
     end
+
+    # (lib/httpx/connection.rb)
+    #  def idling
+    #    purge_after_closed # ソケットを閉じる、読み取り用のバッファを空にする、タイムアウト設定ををリセット
+    #    @write_buffer.clear # 未送信リクエストを空にする
+    #    transition(:idle) # 状態を:idle = 再利用可能な状態に変更
+    #    @parser = nil if @parser
+    #  end
+    #
+    #  def purge_after_closed
+    #    @io.close if @io
+    #    @read_buffer.clear
+    #    @timeout = nil
+    #  end
   end
+
+  # WIP
   parser.on(:origin) do |origin|
     @origins |= [origin]
   end
+
   parser.on(:close) do |force|
     if force
       reset
