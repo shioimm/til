@@ -1106,20 +1106,46 @@ end
 
 # WIP
 def send(request, head = false)
+  # 同時オープン可能なストリーム数を確認し、新しいストリームを開けるかを判定
   unless can_buffer_more_requests?
-    head ? @pending.unshift(request) : @pending << request
+    # このリクエストを@pendingに積む (新しい接続を利用して送信される)
+    if head # 優先再送
+      @pending.unshift(request)
+    else
+      @pending << request
+    end
+
     return false
   end
+
+  # すでにこのリクエストに対応するストリームが存在すれば再利用する (stream)
   unless (stream = @streams[request])
+    # なければ新しいストリームを作成
     stream = @connection.new_stream
     handle_stream(stream, request)
-    @streams[request] = stream
-    @max_requests -= 1
+
+    # (lib/httpx/connection/http2.rb)
+    #   def handle_stream(stream, request)
+    #     request.on(:refuse, &method(:on_stream_refuse).curry(3)[stream, request])
+    #     stream.on(:close, &method(:on_stream_close).curry(3)[stream, request])
+    #
+    #     stream.on(:half_close) do
+    #       log(level: 2) { "#{stream.id}: waiting for response..." }
+    #     end
+    #
+    #     stream.on(:altsvc, &method(:on_altsvc).curry(2)[request.origin])
+    #     stream.on(:headers, &method(:on_stream_headers).curry(3)[stream, request])
+    #     stream.on(:data, &method(:on_stream_data).curry(3)[stream, request])
+    #   end
+
+    @streams[request] = stream # リクエストとストリームを1:1で紐づけ
+    @max_requests -= 1 # 利用可能なストリーム枠を減らす
   end
-  handle(request, stream)
+
+  handle(request, stream) # フレームを生成、送信 # WIP
   true
-rescue ::HTTP2::Error::StreamLimitExceeded
-  @pending.unshift(request)
+rescue ::HTTP2::Error::StreamLimitExceeded # サーバからRST_STREAMが返ってきた場合など (ストリームの上限)
+  @pending.unshift(request) # リクエストを再試行できるように@pendingの先頭に戻す
   false
 end
 ```
