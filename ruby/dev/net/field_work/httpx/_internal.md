@@ -1040,24 +1040,35 @@ def set_parser_callbacks(parser)
     @timeout = tout
   end
 
+  # HTTPパーサからエラー通知を受けた時
   parser.on(:error) do |request, error|
     case error
-    when :http_1_1_required
+    when :http_1_1_required # サーバがALPN negotiationを拒否し、HTTP/1.1 requiredを返した場合
+
       current_session = @current_session
       current_selector = @current_selector
-      parser.close
+      parser.close # このパーサではもはや通信できない
 
-      other_connection = current_session.find_connection(@origin, current_selector,
-                                                         @options.merge(ssl: { alpn_protocols: %w[http/1.1] }))
+      # 同じSessionとSelectorから別の接続を取得
+      other_connection = current_session.find_connection(
+        @origin,
+        current_selector,
+        @options.merge(ssl: { alpn_protocols: %w[http/1.1] }) # ALPNの候補を"http/1.1"に限定
+      )
+
+      # この接続が保持している情報を新しい接続に引き継ぐ
+      # @pending, @origins, @sibling, @coalesced_connectionなど
       other_connection.merge(self)
-      request.transition(:idle)
-      other_connection.send(request)
-      next
-    when OperationTimeoutError
-      # request level timeouts should take precedence
-      next unless request.active_timeouts.empty?
+
+      request.transition(:idle) # リクエストの状態をidle に戻す
+      other_connection.send(request) # 新しい接続を利用して再送
+      next # parser.on(:error)ブロックから抜ける
+
+    when OperationTimeoutError # read / write / connectがOperationTimeoutErrorに達した場合
+      next unless request.active_timeouts.empty? # リクエストの個別のtimeout時間内の場合は何もしない
     end
 
+    # 上記の2ケース以外はエラーをリクエストに紐づけてレスポンスとして返す
     response = ErrorResponse.new(request, error)
     request.response = response
     request.emit(:response, response)
