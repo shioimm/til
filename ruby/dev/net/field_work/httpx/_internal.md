@@ -1148,6 +1148,76 @@ rescue ::HTTP2::Error::StreamLimitExceeded # サーバからRST_STREAMが返っ�
   @pending.unshift(request) # リクエストを再試行できるように@pendingの先頭に戻す
   false
 end
+
+def handle(request, stream)
+  catch(:buffer_full) do # 送信バッファがいっぱいになったら一時停止
+    # リクエストのステートを:idle -> :headersに移行
+    request.transition(:headers)
+    # HEADERSフレームを構築してストリームへ書き込み
+    join_headers(stream, request) if request.state == :headers
+
+    # リクエストのステートを:headers -> :bodyに移行
+    request.transition(:body)
+    # DATAフレームを構築してストリームへ書き込み
+    join_body(stream, request) if request.state == :body
+
+    # リクエストのステートを:body -> :trailersに移行
+    request.transition(:trailers)
+    # TRAILERSフレームを構築してストリームへ書き込み
+    join_trailers(stream, request) if request.state == :trailers && !request.body.empty?
+
+    # リクエストのステートを:trailers -> :doneに移行
+    request.transition(:done)
+  end
+end
+
+# WIP
+def join_headers(stream, request)
+  extra_headers = set_protocol_headers(request)
+
+  if request.headers.key?("host")
+    log { "forbidden \"host\" header found (#{request.headers["host"]}), will use it as authority..." }
+    extra_headers[":authority"] = request.headers["host"]
+  end
+
+  log(level: 1, color: :yellow) do
+    request.headers.merge(extra_headers).each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
+  end
+  stream.headers(request.headers.each(extra_headers), end_stream: request.body.empty?)
+end
+
+def join_body(stream, request)
+  return if request.body.empty?
+
+  chunk = @drains.delete(request) || request.drain_body
+  while chunk
+    next_chunk = request.drain_body
+    log(level: 1, color: :green) { "#{stream.id}: -> DATA: #{chunk.bytesize} bytes..." }
+    log(level: 2, color: :green) { "#{stream.id}: -> #{chunk.inspect}" }
+    stream.data(chunk, end_stream: !(next_chunk || request.trailers? || request.callbacks_for?(:trailers)))
+    if next_chunk && (@buffer.full? || request.body.unbounded_body?)
+      @drains[request] = next_chunk
+      throw(:buffer_full)
+    end
+    chunk = next_chunk
+  end
+
+  return unless (error = request.drain_error)
+
+  on_stream_refuse(stream, request, error)
+end
+
+def join_trailers(stream, request)
+  unless request.trailers?
+    stream.data("", end_stream: true) if request.callbacks_for?(:trailers)
+    return
+  end
+
+  log(level: 1, color: :yellow) do
+    request.trailers.each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
+  end
+  stream.headers(request.trailers.each, end_stream: true)
+end
 ```
 
 ## `HTTPX::Callbacks`
