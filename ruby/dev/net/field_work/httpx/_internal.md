@@ -1081,17 +1081,20 @@ end
 # (lib/httpx/connection/http1.rb)
 # parser.sendとして呼ばれている
 
-# WIP
 def send(request)
+  # Keep-Aliveヘッダなどでサーバから指定されたリクエスト数の上限値を超えている場合
   unless @max_requests.positive?
-    @pending << request
+    @pending << request # このリクエストを@pendingに積む (新しい接続を利用して送信される)
     return
   end
 
+  # 同じリクエストがすでに送信キューに入っている場合は重複して追加しないようにする
   return if @requests.include?(request)
 
-  @requests << request
-  @pipelining = true if @requests.size > 1
+  @requests << request # 送信キューにこのリクエストを追加
+  @pipelining = true if @requests.size > 1 # リクエストが2件以上溜まったらパイプライニングを有効化
+
+  # selectorがこの接続の@ioをwritableと判断すると実際の書き込みが行われる
 end
 ```
 
