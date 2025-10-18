@@ -262,7 +262,6 @@ def send_request(request, selector, options = request.options)
   error = begin
     catch(:resolve_error) do
       connection = find_connection(request.uri, selector, options)
-      # WIP
       connection.send(request)
     end
   rescue StandardError => e
@@ -272,11 +271,12 @@ def send_request(request, selector, options = request.options)
 
   raise error unless error.is_a?(Error)
 
+  # WIP
   request.emit(:response, ErrorResponse.new(request, error))
 end
 ```
 
-### `Session#find_connection`
+## `Session#find_connection`
 
 ```ruby
 def find_connection(request_uri, selector, options)
@@ -822,7 +822,7 @@ def pin_connection(connection, selector)
 end
 ```
 
-### `Connection#send`
+## `Connection#send`
 
 ```ruby
 # (lib/httpx/connection.rb)
@@ -880,7 +880,7 @@ end
 def send_request_to_parser(request)
   @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
   request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
-  parser.send(request) # 送信 # WIP
+  parser.send(request) # 送信
 
   set_request_timeouts(request)
 
@@ -1104,7 +1104,6 @@ end
 # (lib/httpx/connection/http2.rb)
 # parser.sendとして呼ばれている
 
-# WIP
 def send(request, head = false)
   # 同時オープン可能なストリーム数を確認し、新しいストリームを開けるかを判定
   unless can_buffer_more_requests?
@@ -1120,7 +1119,7 @@ def send(request, head = false)
 
   # すでにこのリクエストに対応するストリームが存在すれば再利用する (stream)
   unless (stream = @streams[request])
-    # なければ新しいストリームを作成
+    # なければ新しいストリーム (HTTP2::Client::Stream) を作成
     stream = @connection.new_stream
     handle_stream(stream, request)
 
@@ -1142,7 +1141,7 @@ def send(request, head = false)
     @max_requests -= 1 # 利用可能なストリーム枠を減らす
   end
 
-  handle(request, stream) # フレームを生成、送信 # WIP
+  handle(request, stream) # フレームを生成、送信
   true
 rescue ::HTTP2::Error::StreamLimitExceeded # サーバからRST_STREAMが返ってきた場合など (ストリームの上限)
   @pending.unshift(request) # リクエストを再試行できるように@pendingの先頭に戻す
@@ -1171,10 +1170,11 @@ def handle(request, stream)
   end
 end
 
-# WIP
 def join_headers(stream, request)
+  # 擬似ヘッダを作成
   extra_headers = set_protocol_headers(request)
 
+  # HTTP/2のforbidden headerである"host"ヘッダが含まれている場合は警告を出し、authorityヘッダに書き換える
   if request.headers.key?("host")
     log { "forbidden \"host\" header found (#{request.headers["host"]}), will use it as authority..." }
     extra_headers[":authority"] = request.headers["host"]
@@ -1183,32 +1183,42 @@ def join_headers(stream, request)
   log(level: 1, color: :yellow) do
     request.headers.merge(extra_headers).each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
   end
+
+  # ストリームにヘッダをHEADERSフレームとして書き込む
   stream.headers(request.headers.each(extra_headers), end_stream: request.body.empty?)
 end
 
 def join_body(stream, request)
   return if request.body.empty?
 
+  # @drains (途中で送信を中断したリクエストの残り) もしくは直接リクエストからボディのチャンクを取得
   chunk = @drains.delete(request) || request.drain_body
-  while chunk
+
+  while chunk # チャンクごとに送信
     next_chunk = request.drain_body
+
     log(level: 1, color: :green) { "#{stream.id}: -> DATA: #{chunk.bytesize} bytes..." }
     log(level: 2, color: :green) { "#{stream.id}: -> #{chunk.inspect}" }
+
+    # ストリームにチャンクをDATAフレームとして書き込む
     stream.data(chunk, end_stream: !(next_chunk || request.trailers? || request.callbacks_for?(:trailers)))
+
+    # 次のチャンクがあり、かつ送信バッファがいっぱいの場合
     if next_chunk && (@buffer.full? || request.body.unbounded_body?)
-      @drains[request] = next_chunk
+      @drains[request] = next_chunk # 次のチャンクを@drainsに保存
       throw(:buffer_full)
     end
+
     chunk = next_chunk
   end
 
   return unless (error = request.drain_error)
-
-  on_stream_refuse(stream, request, error)
+  on_stream_refuse(stream, request, error) # ストリーム拒否
 end
 
 def join_trailers(stream, request)
   unless request.trailers?
+    # トレーラがなく、かつトレーラ送信時に呼び出されるコールバックが設定されている場合は空のDATAフレームを送信
     stream.data("", end_stream: true) if request.callbacks_for?(:trailers)
     return
   end
@@ -1216,6 +1226,8 @@ def join_trailers(stream, request)
   log(level: 1, color: :yellow) do
     request.trailers.each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
   end
+
+  # ストリームにトレーラヘッダをHEADERSフレームとして書き込む
   stream.headers(request.trailers.each, end_stream: true)
 end
 ```
