@@ -873,7 +873,6 @@ def build_parser(protocol = @io.protocol)
   #     end
   #   end
 
-  # WIP
   set_parser_callbacks(parser)
   parser
 end
@@ -1076,10 +1075,31 @@ def set_parser_callbacks(parser)
 end
 ```
 
+### `HTTPX::Connection::HTTP1#send`
+
+```ruby
+# (lib/httpx/connection/http1.rb)
+# parser.sendとして呼ばれている
+
+# WIP
+def send(request)
+  unless @max_requests.positive?
+    @pending << request
+    return
+  end
+
+  return if @requests.include?(request)
+
+  @requests << request
+  @pipelining = true if @requests.size > 1
+end
+```
+
 ### `HTTPX::Connection::HTTP2#send`
 
 ```ruby
 # (lib/httpx/connection/http2.rb)
+# parser.sendとして呼ばれている
 
 # WIP
 def send(request, head = false)
