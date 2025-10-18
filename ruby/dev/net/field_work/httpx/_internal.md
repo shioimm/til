@@ -908,8 +908,7 @@ def set_parser_callbacks(parser)
   parser.on(:response) do |request, response|
     # レスポンスヘッダをパースし、Alt-Svcが含まれている場合
     AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
-      # :altsvcイベントを発火
-      emit(:altsvc, alt_origin, origin, alt_params)
+      emit(:altsvc, alt_origin, origin, alt_params) # :altsvcイベントを発火
     end
 
     @response_received_at = Utils.now # この接続で最後にレスポンスを受信した時刻
@@ -919,13 +918,11 @@ def set_parser_callbacks(parser)
 
   # ALTSVCフレームを受信した場合
   parser.on(:altsvc) do |alt_origin, origin, alt_params|
-    # :altsvcイベントを発火
-    emit(:altsvc, alt_origin, origin, alt_params)
+    emit(:altsvc, alt_origin, origin, alt_params) # :altsvcイベントを発火
   end
 
   # PINGフレームを受信した時
-  # @pendingに積まれたリクエストを送信する
-  parser.on(:pong, &method(:send_pending))
+  parser.on(:pong, &method(:send_pending)) # @pendingに積まれたリクエストを送信する
 
   # (lib/httpx/connection.rb)
   #   def send_pending
@@ -936,8 +933,7 @@ def set_parser_callbacks(parser)
 
   # PUSH_PROMISEフレームを受信した時
   parser.on(:promise) do |request, stream|
-    # :promiseイベントを発火
-    request.emit(:promise, parser, stream)
+    request.emit(:promise, parser, stream) # :promiseイベントを発火
   end
 
   # GOAWAYフレームを受信した時 (HTTP/2)
@@ -984,37 +980,66 @@ def set_parser_callbacks(parser)
     #  end
   end
 
-  # WIP
+  # ORIGINフレームを受信した時
+  # (この接続でどのオリジン = ホスト名を扱えるか。接続の合流に使用する)
   parser.on(:origin) do |origin|
+    # @originsにホスト名を追加する
     @origins |= [origin]
   end
 
+  # 接続がcloseしたとき
   parser.on(:close) do |force|
-    if force
+    if force # 強制終了
       reset
-      emit(:terminate)
+
+      # (lib/httpx/connection.rb)
+      #   def reset
+      #     return if @state == :closing || @state == :closed
+      #     transition(:closing)
+      #     transition(:closed)
+      #   end
+
+      emit(:terminate) # :terminateイベントを発火
     end
   end
+
+  # クローズハンドシェイクが完了した時 (GOAWAYフレーム受信後にすべてのストリームがcloseした場合など)
   parser.on(:close_handshake) do
     consume
   end
+
+  # 接続、またはストリームがプロトコルレベルでリセットによって中断された時 (RST_STREAM, TCP RSTなど)
   parser.on(:reset) do
+    # 未完了のリクエストを@pendingに戻す
     @pending.concat(parser.pending) unless parser.empty?
+
+    # 一時退避 (resetを呼ぶと@current_sessionがクリアされるため)
     current_session = @current_session
     current_selector = @current_selector
+
     reset
+
+    # 未送信のリクエストがあれば再送準備
     unless @pending.empty?
       idling
       @current_session = current_session
       @current_selector = current_selector
     end
   end
+
+  # このリクエストに対してタイムアウトの監視が始まる時
   parser.on(:current_timeout) do
+    # @current_timeout = 現在処理中のリクエストのタイムアウト
+    # @timeout = この接続全体のタイムアウト
+    # parser.timeout = このリクエスト単位の残り時間
     @current_timeout = @timeout = parser.timeout
   end
+
+  # この接続に対してKeep-Alive (HTTP/1)、Ping、Goaway、Idle (HTTP/2) のタイマーが設定された時
   parser.on(:timeout) do |tout|
     @timeout = tout
   end
+
   parser.on(:error) do |request, error|
     case error
     when :http_1_1_required
