@@ -159,29 +159,6 @@ module HTTPX
 end
 ```
 
-## `Callbacks#on`
-
-```ruby
-# (lib/httpx/callbacks.rb)
-# HTTPX::Requestからincludeされている
-
-module HTTPX
-  module Callbacks
-    def on(type, &action)
-      callbacks(type) << action
-      action
-    end
-
-    def callbacks(type = nil)
-      return @callbacks unless type
-
-      @callbacks ||= Hash.new { |h, k| h[k] = [] }
-      @callbacks[type]
-    end
-  end
-end
-```
-
 ## `Session#send_requests`
 
 ```ruby
@@ -1237,14 +1214,15 @@ end
 ```ruby
 # (lib/httpx/callbacks.rb)
 
-# WIP
 module HTTPX
   module Callbacks
+    # typeに対してactionを登録する
     def on(type, &action)
       callbacks(type) << action
       action
     end
 
+    # typeに対して一回だけ発火するactionを登録する
     def once(type, &block)
       on(type) do |*args, &callback|
         block.call(*args, &callback)
@@ -1252,11 +1230,13 @@ module HTTPX
       end
     end
 
+    # typeに対してactionを発火する
     def emit(type, *args)
       log { "emit #{type.inspect} callbacks" } if respond_to?(:log)
       callbacks(type).delete_if { |pr| :delete == pr.call(*args) } # rubocop:disable Style/YodaCondition
     end
 
+    # typeが登録されているかどうか
     def callbacks_for?(type)
       @callbacks.key?(type) && @callbacks[type].any?
     end
