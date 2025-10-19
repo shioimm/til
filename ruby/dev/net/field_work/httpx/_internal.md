@@ -198,7 +198,7 @@ def send_requests(*requests)
     _send_requests(requests, selector) # => Session#_send_requests
 
     # WIP
-    receive_requests(requests, selector)
+    receive_requests(requests, selector) # => Session#receive_requests
   ensure
     unless @wrapped
       if @persistent
@@ -1294,6 +1294,52 @@ def join_trailers(stream, request)
 
   # ストリームにトレーラヘッダをHEADERSフレームとして書き込む
   stream.headers(request.trailers.each, end_stream: true)
+end
+```
+
+## `Session#receive_requests`
+
+```ruby
+# (lib/httpx/session.rb)
+
+def receive_requests(requests, selector)
+  # @type var responses: Array[response]
+  responses = []
+
+  # guarantee ordered responses
+  loop do
+    request = requests.first
+
+    return responses unless request
+
+    catch(:coalesced) { selector.next_tick } until (response = fetch_response(request, selector, request.options))
+
+    # (lib/httpx/session.rb)
+    #   def fetch_response(request, _selector, _options)
+    #     @responses.delete(request)
+    #   end
+
+    request.emit(:complete, response)
+
+    responses << response
+    requests.shift
+
+    break if requests.empty?
+
+    next unless selector.empty?
+
+    # in some cases, the pool of connections might have been drained because there was some
+    # handshake error, and the error responses have already been emitted, but there was no
+    # opportunity to traverse the requests, hence we're returning only a fraction of the errors
+    # we were supposed to. This effectively fetches the existing responses and return them.
+    while (request = requests.shift)
+      response = fetch_response(request, selector, request.options)
+      request.emit(:complete, response) if response
+      responses << response
+    end
+    break
+  end
+  responses
 end
 ```
 
