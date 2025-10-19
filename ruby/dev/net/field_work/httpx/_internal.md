@@ -249,8 +249,89 @@ def send_request(request, selector, options = request.options)
 
   raise error unless error.is_a?(Error)
 
-  # WIP
   request.emit(:response, ErrorResponse.new(request, error))
+
+  # request.on(:response)を呼んでいる箇所
+  # # (lib/httpx/session.rb) => Session#set_request_callbacks
+  #     request.on(:response, &method(:on_response).curry(2)[request])
+  #
+  # # (lib/httpx/resolver/https.rb) # => Resolver::HTTPS#resolve
+  #    request.on(:response, &method(:on_response).curry(2)[request])
+end
+```
+
+### `Session#set_request_callbacks`
+
+```ruby
+def set_request_callbacks(request)
+  request.on(:response, &method(:on_response).curry(2)[request])
+  request.on(:promise, &method(:on_promise))
+end
+
+def on_response(request, response)
+  @responses[request] = response # リクエストにレスポンスを対応づける
+end
+```
+
+### `Resolver::HTTPS#resolve`
+- `Resolver::HTTPS#<<`から呼ばれる
+
+```ruby
+# (lib/httpx/resolver/https.rb)
+
+# @connections = HTTPSコネクションのプール
+def resolve(connection = @connections.first, hostname = nil)
+  return unless connection
+
+  # ホスト名と接続のマッピングが存在する場合はそれを再利用する
+  hostname ||= @queries.key(connection)
+
+  if hostname.nil?
+    hostname = connection.peer.host # ホスト名を取得
+    # log
+    hostname = @resolver.generate_candidates(hostname).each do |name|
+      # 検索候補一つ一つに接続を紐付けて保存
+      @queries[name.to_s] = connection
+    end.first.to_s # 最初の候補をホスト名として返す
+  else
+    @queries[hostname] = connection # ホスト名に接続をマッピングし直す
+  end
+
+  log { "resolver #{FAMILY_TYPES[@record_type]}: query for #{hostname}" }
+
+  begin
+    # DoHサーバへのリクエストを構築
+    request = build_request(hostname)
+
+    request.on(:response, &method(:on_response).curry(2)[request])
+    request.on(:promise, &method(:on_promise))
+
+    @requests[request] = hostname # このリクエストとホスト名を紐付ける
+    resolver_connection.send(request)
+    @connections << connection # この名前解決を発行した接続を保存
+  rescue ResolveError, Resolv::DNS::EncodeError => e
+    reset_hostname(hostname)
+    emit_resolve_error(connection, connection.peer.host, e)
+  end
+end
+
+def on_response(request, response)
+  response.raise_for_status # => Response#raise_for_status
+
+  # (lib/httpx/response.rb)
+  #   def raise_for_status
+  #     return self unless (err = error)
+  #     raise err
+  #   end
+rescue StandardError => e
+  hostname = @requests.delete(request)
+  connection = reset_hostname(hostname)
+  emit_resolve_error(connection, connection.peer.host, e)
+else
+  # @type var response: HTTPX::Response
+  parse(request, response)
+ensure
+  @requests.delete(request)
 end
 ```
 
