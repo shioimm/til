@@ -1302,36 +1302,38 @@ end
 ```ruby
 # (lib/httpx/session.rb)
 
+# 元のリクエストの送信順にresponsesを整列して返す
 def receive_requests(requests, selector)
   # @type var responses: Array[response]
   responses = []
 
-  # guarantee ordered responses
   loop do
-    request = requests.first
+    request = requests.first # 先頭のリクエストを取得
+    return responses unless request # リクエストが空になったらレスポンスを返す
 
-    return responses unless request
+    catch(:coalesced) {
+      selector.next_tick # => Selector#next_tick # WIP
+    } until (
+      response = fetch_response(request, selector, request.options)
 
-    catch(:coalesced) { selector.next_tick } until (response = fetch_response(request, selector, request.options))
+      # (lib/httpx/session.rb)
+      #   def fetch_response(request, _selector, _options)
+      #     @responses.delete(request)
+      #   end
+    )
 
-    # (lib/httpx/session.rb)
-    #   def fetch_response(request, _selector, _options)
-    #     @responses.delete(request)
-    #   end
-
-    request.emit(:complete, response)
-
+    request.emit(:complete, response) # リクエストに対して:completeイベントを通知
     responses << response
     requests.shift
 
     break if requests.empty?
 
+    # selectorに監視中のI/Oが残っている場合、まだ受信中の可能性があるため、もう一周ループをくり返す
     next unless selector.empty?
 
-    # in some cases, the pool of connections might have been drained because there was some
-    # handshake error, and the error responses have already been emitted, but there was no
-    # opportunity to traverse the requests, hence we're returning only a fraction of the errors
-    # we were supposed to. This effectively fetches the existing responses and return them.
+    # ハンドシェイクエラーが発生するなどしてエラーレスポンスが送信済みになっている、
+    # かつ未処理になっているリクエストがある可能性があるため、
+    # ここでリクエストを処理することでエラーを回収する
     while (request = requests.shift)
       response = fetch_response(request, selector, request.options)
       request.emit(:complete, response) if response
@@ -1339,7 +1341,117 @@ def receive_requests(requests, selector)
     end
     break
   end
+
   responses
+end
+```
+
+### `Selector#next_tick`
+
+```ruby
+# (lib/httpx/selector.rb)
+
+def next_tick
+  catch(:jump_tick) do
+    timeout = next_timeout
+    if timeout && timeout.negative?
+      @timers.fire
+      throw(:jump_tick)
+    end
+
+    begin
+      select(timeout, &:call)
+      @timers.fire
+    rescue TimeoutError => e
+      @timers.fire(e)
+    end
+  end
+rescue StandardError => e
+  emit_error(e)
+rescue Exception # rubocop:disable Lint/RescueException
+  each_connection do |conn|
+    conn.force_reset
+    conn.disconnect
+  end
+
+  raise
+end
+
+def select(interval, &block)
+  # do not cause an infinite loop here.
+  #
+  # this may happen if timeout calculation actually triggered an error which causes
+  # the connections to be reaped (such as the total timeout error) before #select
+  # gets called.
+  return if interval.nil? && @selectables.empty?
+
+  return select_one(interval, &block) if @selectables.size == 1
+
+  select_many(interval, &block)
+end
+
+def select_many(interval, &block)
+  r, w = nil
+
+  # first, we group IOs based on interest type. On call to #interests however,
+  # things might already happen, and new IOs might be registered, so we might
+  # have to start all over again. We do this until we group all selectables
+  @selectables.delete_if do |io|
+    interests = io.interests
+
+    (r ||= []) << io if READABLE.include?(interests)
+    (w ||= []) << io if WRITABLE.include?(interests)
+
+    io.state == :closed
+  end
+
+  # TODO: what to do if there are no selectables?
+
+  readers, writers = IO.select(r, w, nil, interval)
+
+  if readers.nil? && writers.nil? && interval
+    [*r, *w].each { |io| io.handle_socket_timeout(interval) }
+    return
+  end
+
+  if writers
+    readers.each do |io|
+      yield io
+
+      # so that we don't yield 2 times
+      writers.delete(io)
+    end if readers
+
+    writers.each(&block)
+  else
+    readers.each(&block) if readers
+  end
+end
+
+def select_one(interval)
+  io = @selectables.first
+
+  return unless io
+
+  interests = io.interests
+
+  result = case interests
+           when :r then io.to_io.wait_readable(interval)
+           when :w then io.to_io.wait_writable(interval)
+           when :rw then io.to_io.wait(interval, :read_write)
+           when nil then return
+  end
+
+  unless result || interval.nil?
+    io.handle_socket_timeout(interval) unless @is_timer_interval
+    return
+  end
+  # raise TimeoutError.new(interval, "timed out while waiting on select")
+
+  yield io
+  # rescue IOError, SystemCallError
+  #   @selectables.reject!(&:closed?)
+  #   raise unless @selectables.empty?
 end
 ```
 
