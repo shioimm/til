@@ -89,7 +89,6 @@ module HTTPX
       #     @body=>
       # ]
 
-      # WIP
       responses = send_requests(*requests) # => Session#send_requests
       return responses.first if responses.size == 1
 
@@ -197,7 +196,6 @@ def send_requests(*requests)
   begin
     _send_requests(requests, selector) # => Session#_send_requests
 
-    # WIP
     receive_requests(requests, selector) # => Session#receive_requests
   ensure
     unless @wrapped
@@ -1490,3 +1488,7 @@ module HTTPX
   end
 end
 ```
+
+- 全体の流れ
+- プロトコルの切り替えをどこで行なっているのか
+- プロキシへの対応はどのように行なっているのか
