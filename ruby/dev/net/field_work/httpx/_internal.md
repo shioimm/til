@@ -1312,7 +1312,7 @@ def receive_requests(requests, selector)
     return responses unless request # リクエストが空になったらレスポンスを返す
 
     catch(:coalesced) {
-      selector.next_tick # => Selector#next_tick # WIP
+      selector.next_tick # => Selector#next_tick
     } until (
       response = fetch_response(request, selector, request.options)
 
@@ -1353,21 +1353,22 @@ end
 
 def next_tick
   catch(:jump_tick) do
-    timeout = next_timeout
-    if timeout && timeout.negative?
-      @timers.fire
-      throw(:jump_tick)
+    timeout = next_timeout # 次のタイムアウトまでの残り時間を取得
+
+    if timeout && timeout.negative? # タイムアウト済みの場合
+      @timers.fire # 期限切れのタイマーを発火
+      throw(:jump_tick) # 残りの処理をスキップ
     end
 
     begin
-      select(timeout, &:call)
+      select(timeout, &:call) # => Selector#select
       @timers.fire
     rescue TimeoutError => e
-      @timers.fire(e)
+      @timers.fire(e) # 強制的にタイマーを発火
     end
   end
 rescue StandardError => e
-  emit_error(e)
+  emit_error(e) # すべてのIOに:errorイベントを通知
 rescue Exception # rubocop:disable Lint/RescueException
   each_connection do |conn|
     conn.force_reset
@@ -1378,24 +1379,40 @@ rescue Exception # rubocop:disable Lint/RescueException
 end
 
 def select(interval, &block)
-  # do not cause an infinite loop here.
-  #
-  # this may happen if timeout calculation actually triggered an error which causes
-  # the connections to be reaped (such as the total timeout error) before #select
-  # gets called.
-  return if interval.nil? && @selectables.empty?
+  return if interval.nil? && @selectables.empty? # 監視対象が空の場合は何もしない
 
-  return select_one(interval, &block) if @selectables.size == 1
+  return select_one(interval, &block) if @selectables.size == 1 # 監視対象のIOがひとつ => Selector#select_one
 
-  select_many(interval, &block)
+  select_many(interval, &block) # 監視対象のIOが複数 => Selector#select_many
+end
+
+def select_one(interval)
+  io = @selectables.first
+  return unless io
+
+  # どんなイベントを待つかによってwait_readable / wait_writable / waitを呼び出す
+  interests = io.interests
+  result = case interests
+           when :r then io.to_io.wait_readable(interval)
+           when :w then io.to_io.wait_writable(interval)
+           when :rw then io.to_io.wait(interval, :read_write)
+           when nil then return
+  end
+
+  unless result || interval.nil?
+    # タイムアウト発生時の処理
+    io.handle_socket_timeout(interval) unless @is_timer_interval
+    return
+  end
+
+  # next_tickの中でselect(timeout, &:call)のように呼び出している。のでこの場合はio.call
+  yield io
 end
 
 def select_many(interval, &block)
   r, w = nil
 
-  # first, we group IOs based on interest type. On call to #interests however,
-  # things might already happen, and new IOs might be registered, so we might
-  # have to start all over again. We do this until we group all selectables
+  # 監視対象のIOをr, wに振り分ける
   @selectables.delete_if do |io|
     interests = io.interests
 
@@ -1405,15 +1422,16 @@ def select_many(interval, &block)
     io.state == :closed
   end
 
-  # TODO: what to do if there are no selectables?
-
+  # IOの準備ができるまで待機
   readers, writers = IO.select(r, w, nil, interval)
 
+  # タイムアウト発生時の処理
   if readers.nil? && writers.nil? && interval
     [*r, *w].each { |io| io.handle_socket_timeout(interval) }
     return
   end
 
+  # 読み書き可能なIOに対して.callを読んでいく
   if writers
     readers.each do |io|
       yield io
@@ -1426,32 +1444,6 @@ def select_many(interval, &block)
   else
     readers.each(&block) if readers
   end
-end
-
-def select_one(interval)
-  io = @selectables.first
-
-  return unless io
-
-  interests = io.interests
-
-  result = case interests
-           when :r then io.to_io.wait_readable(interval)
-           when :w then io.to_io.wait_writable(interval)
-           when :rw then io.to_io.wait(interval, :read_write)
-           when nil then return
-  end
-
-  unless result || interval.nil?
-    io.handle_socket_timeout(interval) unless @is_timer_interval
-    return
-  end
-  # raise TimeoutError.new(interval, "timed out while waiting on select")
-
-  yield io
-  # rescue IOError, SystemCallError
-  #   @selectables.reject!(&:closed?)
-  #   raise unless @selectables.empty?
 end
 ```
 
