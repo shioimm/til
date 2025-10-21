@@ -1500,14 +1500,28 @@ end
       - `Session#build_requests`
       - `Session#send_requests`
         - `Session#_send_requests`
-          - `Session#send_request`
+          - `Session#send_request` -> `Request#emit<:response>`
             - `Session#find_connection`
               - `Session#do_init_connection`
                 - `Session#resolve_connection`
-                  - `Resolver::Multi#early_resolve`
+                  - `Resolver::Multi#early_resolve` -> `Resolver::Native#emit<:resolve, :error>`
                   - `Resolver::Multi#lazy_resolve`
-            - `Connection#send`
-        - `Session#receive_requests`
+            - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
+        - `Session#receive_requests` -> `Request#emit<:complete>`
           - `Selector#next_tick`
             - `Selector#select↲`
           - `Session#fetch_response`
+
+### コールバックの設定
+### `Request#on`
+- `:response`
+- `:promise`
+- `:complete`
+
+### `Resolver::Native#on`
+- `:resolve`
+- `:error`
+
+### `Connection#on`
+- `:altsvc`
+- `:terminate`
