@@ -1513,15 +1513,129 @@ end
           - `Session#fetch_response`
 
 ### コールバックの設定
-### `Request#on`
+#### `Request#on`
 - `:response`
 - `:promise`
-- `:complete`
+- `:complete` (`Connection#set_request_timeout`でセットされている?)
 
-### `Resolver::Native#on`
+```ruby
+# (lib/httpx/session.rb)
+
+# Session#request -> #build_requests -> #build_requestから呼ばれる
+def set_request_callbacks(request)
+  request.on(:response, &method(:on_response).curry(2)[request]) # リクエストに対してレスポンスを紐づける
+  request.on(:promise, &method(:on_promise)) # PUSH_PROMISEフレームを明示的に拒否する (http-2)
+end
+
+def on_response(request, response)
+  @responses[request] = response
+end
+
+def on_promise(_, stream)
+  stream.refuse
+end
+```
+
+#### `Resolver::Native#on`
 - `:resolve`
 - `:error`
 
-### `Connection#on`
+```ruby
+# (lib/httpx/resolver/resolver.rb)
+
+# Resolver::Resolver#initializeから呼ばれる
+def set_resolver_callbacks
+  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
+  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
+  on(:close, &method(:close_resolver)) # リゾルバをcloseする
+end
+
+def resolve_connection(connection)
+  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
+  # => Session#on_resolver_connection
+end
+
+def emit_connection_error(connection, error)
+  return connection.handle_connect_error(error) if connection.connecting?
+  connection.emit(:error, error)
+end
+
+def close_resolver(resolver)
+  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
+end
+
+def on_resolver_close(resolver, selector)
+  return if resolver.closed?
+
+  deselect_resolver(resolver, selector) # selectorからresolverを取得
+  resolver.close unless resolver.closed? # resolverをclose
+end
+```
+
+#### `Connection#on`
 - `:altsvc`
 - `:terminate`
+
+```ruby
+# lib/httpx/connection.rb
+
+# Connection#initializeから呼ばれる
+def initialize
+  # ...
+  on(:terminate) do # 接続のライフサイクルの終了処理
+    next if @exhausted # この接続の最大リクエスト数に達したら以降の処理をスキップ (将来的に再利用される)
+
+    current_session = @current_session
+    current_selector = @current_selector
+
+    # :terminateイベントは:closeイベントのあとに呼ばれることがあり、
+    # この時点ですでに接続がコネクションプールに返却済みの可能性がある。その場合は何もしない
+    next unless current_session && current_selector
+
+    current_session.deselect_connection(self, current_selector)
+
+    # (lib/httpx/session.rb)
+    #   def deselect_connection(connection, selector, cloned = false)
+    #     selector.deregister(connection) # selectorの監視対象からこの接続を除外する
+    #     # when connections coalesce
+    #     return if connection.state == :idle # 再利用待ちの場合は何もしない
+    #     return if cloned # この接続がtry_clone_connectionで生成された場合は別の接続に統合されるので何もしない
+    #     return if @closing && connection.state == :closed # このセッションがclose中で接続がclosedなら何もしない
+    #     @pool.checkin_connection(connection) # この接続をコネクションプールに返却する
+    #   end
+  end
+
+  on(:altsvc) do |alt_origin, origin, alt_params| # 新しいAlt-Svc先へ接続を張り直す
+    build_altsvc_connection(alt_origin, origin, alt_params)
+  end
+  # ...
+end
+
+def build_altsvc_connection(alt_origin, origin, alt_params)
+  # HTTPS -> HTTP への切り替えはできないので何もしない
+  return if @origin.scheme == "https" && alt_origin.scheme != "https"
+
+  # サーバから返って来たAlt-Svcを取得
+  altsvc = AltSvc.cached_altsvc_set(origin, alt_params.merge("origin" => alt_origin))
+
+  return unless altsvc
+
+  # 接続オプションを引き継いで新しい接続を取得
+  alt_options = @options.merge(ssl: @options.ssl.merge(hostname: URI(origin).host))
+  connection = @current_session.find_connection(alt_origin, @current_selector, alt_options)
+
+  # 取得した接続がこの接続と同じものなら何もしない
+  # advertised altsvc is the same origin being used, ignore
+  return if connection == self
+
+  connection.extend(AltSvc::ConnectionMixin) unless connection.is_a?(AltSvc::ConnectionMixin)
+  log(level: 1) { "#{origin} alt-svc: #{alt_origin}" }
+
+  # この接続から新しい接続へ、未送信のリクエストなどを移行する
+  connection.merge(self)
+  terminate # この接続は終了
+rescue UnsupportedSchemeError
+  altsvc["noop"] = true
+  nil
+end
+```
