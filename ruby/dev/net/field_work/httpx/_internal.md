@@ -1639,3 +1639,9 @@ rescue UnsupportedSchemeError
   nil
 end
 ```
+
+## 用語
+- `Selector` - IO (名前解決や接続) の監視を行うイベントループ
+- `Resolver` - DNSリゾルバ
+- `Connection` - 接続
+- `Session` - リクエスト単位の一連の流れ
