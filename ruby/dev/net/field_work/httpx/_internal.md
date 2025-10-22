@@ -211,7 +211,7 @@ end
 def _send_requests(requests, selector)
   requests.each do |request|
     # request = #<HTTPX::Request ...>
-    send_request(request, selector) # Session#send_request
+    send_request(request, selector) # => Session#send_request
   end
 end
 
@@ -1492,3 +1492,36 @@ end
 - 全体の流れ
 - プロトコルの切り替えをどこで行なっているのか
 - プロキシへの対応はどのように行なっているのか
+
+## 全体の流れ
+- `HTTPX.get`
+  - `Chainable#request`
+    - `Session#request`
+      - `Session#build_requests`
+      - `Session#send_requests`
+        - `Session#_send_requests`
+          - `Session#send_request` -> `Request#emit<:response>`
+            - `Session#find_connection`
+              - `Session#do_init_connection`
+                - `Session#resolve_connection`
+                  - `Resolver::Multi#early_resolve` -> `Resolver::Native#emit<:resolve, :error>`
+                  - `Resolver::Multi#lazy_resolve`
+            - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
+        - `Session#receive_requests` -> `Request#emit<:complete>`
+          - `Selector#next_tick`
+            - `Selector#select↲`
+          - `Session#fetch_response`
+
+### コールバックの設定
+### `Request#on`
+- `:response`
+- `:promise`
+- `:complete`
+
+### `Resolver::Native#on`
+- `:resolve`
+- `:error`
+
+### `Connection#on`
+- `:altsvc`
+- `:terminate`
