@@ -721,7 +721,7 @@ def emit_resolved_connection(connection, addresses, early_resolve)
   begin
     # connectionに解決済みアドレスリストを設定
     # 以降、connectionはaddressesに対して接続できるようになる
-    connection.addresses = addresses
+    connection.addresses = addresses # => Connection#addresses=
 
     return if connection.state == :closed
 
@@ -736,6 +736,81 @@ def emit_resolved_connection(connection, addresses, early_resolve)
       # リゾルバが保持するコールバックリスト (callbacks[:error])に対してイベントを発火 (引数connection, e)
       emit(:error, connection, e)
     end
+  end
+end
+
+# (Connection#addresses=)
+
+def addresses=(addrs)
+  if @io
+    @io.add_addresses(addrs)
+  else
+    @io = build_socket(addrs)
+  end
+end
+
+def build_socket(addrs = nil)
+  case @type
+  when "tcp"
+    TCP.new(peer, addrs, @options) # HTTPX::TCP
+  when "ssl"
+    SSL.new(peer, addrs, @options) do |sock| # HTTPX::SSL < HTTPX::TCP
+      sock.ssl_session = @ssl_session
+      sock.session_new_cb do |sess|
+        @ssl_session = sess
+        sock.ssl_session = sess
+      end
+    end
+  when "unix"
+    path = Array(addrs).first
+    path = String(path) if path
+    UNIX.new(peer, path, @options)
+  else
+    raise Error, "unsupported transport (#{@type})"
+  end
+
+  # @typeはConnectionのinitialize時に値が決まる
+  #   def initialize(uri, options)
+  #     # ...
+  #     @type = initialize_type(uri, @options)
+  #     # ...
+  #   end
+  #
+  #   def initialize_type(uri, options)
+  #     options.transport || begin
+  #       case uri.scheme
+  #       when "http" then "tcp"
+  #       when "https" then "ssl"
+  #       else
+  #         raise UnsupportedSchemeError, "#{uri}: #{uri.scheme}: unsupported URI scheme"
+  #       end
+  #     end
+  #   end
+end
+
+# (lib/httpx/io/tcp.rb)
+
+def initialize(origin, addresses, options)
+  # ...
+  if @options.io
+    # ...
+  else
+    add_addresses(addresses)
+  end
+  # ...
+end
+
+def add_addresses(addrs)
+  return if addrs.empty?
+
+  addrs = addrs.map { |addr| addr.is_a?(IPAddr) ? addr : IPAddr.new(addr) }
+  ip_index = @ip_index || (@addresses.size - 1)
+
+  if addrs.first.ipv6?
+    @addresses = [*@addresses[0, ip_index], *addrs, *@addresses[ip_index..-1]]
+  else
+    @addresses.unshift(*addrs)
+    @ip_index += addrs.size if @ip_index
   end
 end
 
@@ -956,6 +1031,33 @@ def send_request_to_parser(request)
   return unless @state == :inactive
 
   transition(:active) # 状態を:activeに変更
+end
+
+# Connectionに対してtransition(:active)が呼ばれると、
+
+# WIP
+def handle_transition(nextstate)
+  case nextstate
+    # ...
+  when :active
+    return unless @state == :inactive
+
+    nextstate = :open
+    @current_session.select_connection(self, @current_selector)
+  when :open
+    return if @state == :closed
+
+    @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
+    close_sibling if @io.state == :connected
+
+    return unless @io.connected?
+
+    @connected_at = Utils.now
+    send_pending
+    @timeout = @current_timeout = parser.timeout
+    emit(:open)
+  # ...
+  end
 end
 ```
 
@@ -1489,7 +1591,6 @@ module HTTPX
 end
 ```
 
-- 全体の流れ
 - プロトコルの切り替えをどこで行なっているのか
 - プロキシへの対応はどのように行なっているのか
 
