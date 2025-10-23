@@ -980,7 +980,7 @@ def send(request)
       log(level: 3) { "keep alive timeout expired, pinging connection..." }
 
       @pending << request # 現在のリクエストを@pendingキューに追加
-      transition(:active) if @state == :inactive # 状態を:activeに変更
+      transition(:active) if @state == :inactive
       parser.ping # pingを送信 # => Connection#parser
       return
     end
@@ -1028,15 +1028,14 @@ def send_request_to_parser(request)
   #     set_request_request_timeout(request)
   #   end
 
-  return unless @state == :inactive
+  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
 
   transition(:active) # 状態を:activeに変更
 end
 
 # Connectionに対してtransition(:active)が呼ばれると、
 
-# WIP
-def handle_transition(nextstate)
+def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
   case nextstate
     # ...
   when :active
@@ -1044,20 +1043,9 @@ def handle_transition(nextstate)
 
     nextstate = :open
     @current_session.select_connection(self, @current_selector)
-  when :open
-    return if @state == :closed
-
-    @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
-    close_sibling if @io.state == :connected
-
-    return unless @io.connected?
-
-    @connected_at = Utils.now
-    send_pending
-    @timeout = @current_timeout = parser.timeout
-    emit(:open)
   # ...
   end
+  @state = nextstate
 end
 ```
 
@@ -1544,6 +1532,55 @@ def select_many(interval, &block)
   else
     readers.each(&block) if readers
   end
+end
+```
+
+### `Connection#interests`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+def interests
+  # connecting
+  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
+    connect
+
+    return @io.interests if connecting?
+  end
+
+  # if the write buffer is full, we drain it
+  return :w unless @write_buffer.empty?
+
+  return @parser.interests if @parser
+
+  nil
+rescue StandardError => e
+  emit(:error, e)
+  nil
+end
+
+def connect
+  transition(:open)
+end
+
+def handle_transition(nextstate)
+  case nextstate
+    # ...
+  when :open
+    return if @state == :closed
+
+    @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
+    close_sibling if @io.state == :connected
+
+    return unless @io.connected?
+
+    @connected_at = Utils.now
+    send_pending
+    @timeout = @current_timeout = parser.timeout
+    emit(:open)
+  # ...
+  end
+  @state = nextstate
 end
 ```
 
