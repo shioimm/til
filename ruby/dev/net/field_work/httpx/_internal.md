@@ -1541,16 +1541,15 @@ end
 # (lib/httpx/connection.rb)
 
 def interests
-  # connecting
+  # まだ接続していない場合はconnectを開始
   if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
     connect
-
-    return @io.interests if connecting?
+    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
   end
 
-  # if the write buffer is full, we drain it
+  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
   return :w unless @write_buffer.empty?
-
+  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
   return @parser.interests if @parser
 
   nil
@@ -1570,12 +1569,11 @@ def handle_transition(nextstate)
     return if @state == :closed
 
     @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
-    close_sibling if @io.state == :connected
+    close_sibling if @io.state == :connected # ioが接続済みになったら同じオリジンの別接続を閉じる
+    return unless @io.connected? # 非同期接続が完了していない場合はここで返る
 
-    return unless @io.connected?
-
-    @connected_at = Utils.now
-    send_pending
+    @connected_at = Utils.now # 接続完了時刻
+    send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信
     @timeout = @current_timeout = parser.timeout
     emit(:open)
   # ...
@@ -1646,8 +1644,11 @@ end
                   - `Resolver::Multi#lazy_resolve`
             - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
         - `Session#receive_requests` -> `Request#emit<:complete>`
-          - `Selector#next_tick`
+          - `Selector#next_tick` -> `Connection#emit<:on>`
             - `Selector#select↲`
+              - `Connection#interests`
+                - `TCP#connect`
+                - `SSLconnect`
           - `Session#fetch_response`
 
 ### コールバックの設定
@@ -1713,9 +1714,10 @@ end
 #### `Connection#on`
 - `:altsvc`
 - `:terminate`
+- `:open`
 
 ```ruby
-# lib/httpx/connection.rb
+# (lib/httpx/connection.rb)
 
 # Connection#initializeから呼ばれる
 def initialize
@@ -1775,6 +1777,33 @@ def build_altsvc_connection(alt_origin, origin, alt_params)
 rescue UnsupportedSchemeError
   altsvc["noop"] = true
   nil
+end
+```
+
+```ruby
+# (lib/httpx/plugins/callbacks.rb)
+def do_init_connection(connection, selector)
+  super
+  connection.on(:open) do
+    next unless connection.current_session == self
+
+    emit_or_callback_error(:connection_opened, connection.origin, connection.io.socket)
+  end
+  # ...
+end
+
+%i[
+  connection_opened connection_closed
+  request_error
+  request_started request_body_chunk request_completed
+  response_started response_body_chunk response_completed
+].each do |meth|
+  class_eval(<<-MOD, __FILE__, __LINE__ + 1)
+    def on_#{meth}(&blk)   # def on_connection_opened(&blk)
+      on(:#{meth}, &blk)   #   on(:connection_opened, &blk)
+      self                 #   self
+    end                    # end
+  MOD
 end
 ```
 
