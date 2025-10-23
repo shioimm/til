@@ -1582,6 +1582,103 @@ def handle_transition(nextstate)
 end
 ```
 
+### `TCP#connect`
+
+```ruby
+# (lib/httpx/io/tcp.rb)
+
+# WIP
+def connect
+  return unless closed?
+
+  if !@io || @io.closed?
+    transition(:idle)
+    @io = build_socket
+  end
+  try_connect
+rescue Errno::ECONNREFUSED,
+       Errno::EADDRNOTAVAIL,
+       Errno::EHOSTUNREACH,
+       SocketError,
+       IOError => e
+  raise e if @ip_index <= 0
+
+  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
+  @ip_index -= 1
+  @io = build_socket
+  retry
+rescue Errno::ETIMEDOUT => e
+  raise ConnectTimeoutError.new(@options.timeout[:connect_timeout], e.message) if @ip_index <= 0
+
+  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
+  @ip_index -= 1
+  @io = build_socket
+  retry
+end
+
+def try_connect
+  ret = @io.connect_nonblock(Socket.sockaddr_in(@port, @ip.to_s), exception: false)
+  log(level: 3, color: :cyan) { "TCP CONNECT: #{ret}..." }
+  case ret
+  when :wait_readable
+    @interests = :r
+    return
+  when :wait_writable
+    @interests = :w
+    return
+  end
+  transition(:connected)
+  @interests = :w
+rescue Errno::EALREADY
+  @interests = :w
+end
+```
+
+### `SSL#connect`
+
+```ruby
+# (lib/httpx/io/ssl.rb)
+
+# WIP
+def connect
+  super
+  return if @state == :negotiated ||
+            @state != :connected
+
+  unless @io.is_a?(OpenSSL::SSL::SSLSocket)
+    if (hostname_is_ip = (@ip == @sni_hostname))
+      # IPv6 address would be "[::1]", must turn to "0000:0000:0000:0000:0000:0000:0000:0001" for cert SAN check
+      @sni_hostname = @ip.to_string
+      # IP addresses in SNI is not valid per RFC 6066, section 3.
+      @ctx.verify_hostname = false
+    end
+
+    @io = OpenSSL::SSL::SSLSocket.new(@io, @ctx)
+
+    @io.hostname = @sni_hostname unless hostname_is_ip
+    @io.session = @ssl_session unless ssl_session_expired?
+    @io.sync_close = true
+  end
+  try_ssl_connect
+end
+
+def try_ssl_connect
+  ret = @io.connect_nonblock(exception: false)
+  log(level: 3, color: :cyan) { "TLS CONNECT: #{ret}..." }
+  case ret
+  when :wait_readable
+    @interests = :r
+    return
+  when :wait_writable
+    @interests = :w
+    return
+  end
+  @io.post_connection_check(@sni_hostname) if @ctx.verify_mode != OpenSSL::SSL::VERIFY_NONE && @verify_hostname
+  transition(:negotiated)
+  @interests = :w
+end
+```
+
 ## `HTTPX::Callbacks`
 
 ```ruby
