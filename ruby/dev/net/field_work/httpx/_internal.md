@@ -980,7 +980,7 @@ def send(request)
       log(level: 3) { "keep alive timeout expired, pinging connection..." }
 
       @pending << request # 現在のリクエストを@pendingキューに追加
-      transition(:active) if @state == :inactive # 状態を:activeに変更
+      transition(:active) if @state == :inactive
       parser.ping # pingを送信 # => Connection#parser
       return
     end
@@ -1028,15 +1028,14 @@ def send_request_to_parser(request)
   #     set_request_request_timeout(request)
   #   end
 
-  return unless @state == :inactive
+  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
 
   transition(:active) # 状態を:activeに変更
 end
 
 # Connectionに対してtransition(:active)が呼ばれると、
 
-# WIP
-def handle_transition(nextstate)
+def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
   case nextstate
     # ...
   when :active
@@ -1044,20 +1043,9 @@ def handle_transition(nextstate)
 
     nextstate = :open
     @current_session.select_connection(self, @current_selector)
-  when :open
-    return if @state == :closed
-
-    @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
-    close_sibling if @io.state == :connected
-
-    return unless @io.connected?
-
-    @connected_at = Utils.now
-    send_pending
-    @timeout = @current_timeout = parser.timeout
-    emit(:open)
   # ...
   end
+  @state = nextstate
 end
 ```
 
@@ -1547,6 +1535,150 @@ def select_many(interval, &block)
 end
 ```
 
+### `Connection#interests`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+def interests
+  # まだ接続していない場合はconnectを開始
+  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
+    connect
+    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+  end
+
+  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
+  return :w unless @write_buffer.empty?
+  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
+  return @parser.interests if @parser
+
+  nil
+rescue StandardError => e
+  emit(:error, e)
+  nil
+end
+
+def connect
+  transition(:open)
+end
+
+def handle_transition(nextstate)
+  case nextstate
+    # ...
+  when :open
+    return if @state == :closed
+
+    @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
+    close_sibling if @io.state == :connected # ioが接続済みになったら同じオリジンの別接続を閉じる
+    return unless @io.connected? # 非同期接続が完了していない場合はここで返る
+
+    @connected_at = Utils.now # 接続完了時刻
+    send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信
+    @timeout = @current_timeout = parser.timeout
+    emit(:open)
+  # ...
+  end
+  @state = nextstate
+end
+```
+
+### `TCP#connect`
+
+```ruby
+# (lib/httpx/io/tcp.rb)
+
+# WIP
+def connect
+  return unless closed?
+
+  if !@io || @io.closed?
+    transition(:idle)
+    @io = build_socket
+  end
+  try_connect
+rescue Errno::ECONNREFUSED,
+       Errno::EADDRNOTAVAIL,
+       Errno::EHOSTUNREACH,
+       SocketError,
+       IOError => e
+  raise e if @ip_index <= 0
+
+  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
+  @ip_index -= 1
+  @io = build_socket
+  retry
+rescue Errno::ETIMEDOUT => e
+  raise ConnectTimeoutError.new(@options.timeout[:connect_timeout], e.message) if @ip_index <= 0
+
+  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
+  @ip_index -= 1
+  @io = build_socket
+  retry
+end
+
+def try_connect
+  ret = @io.connect_nonblock(Socket.sockaddr_in(@port, @ip.to_s), exception: false)
+  log(level: 3, color: :cyan) { "TCP CONNECT: #{ret}..." }
+  case ret
+  when :wait_readable
+    @interests = :r
+    return
+  when :wait_writable
+    @interests = :w
+    return
+  end
+  transition(:connected)
+  @interests = :w
+rescue Errno::EALREADY
+  @interests = :w
+end
+```
+
+### `SSL#connect`
+
+```ruby
+# (lib/httpx/io/ssl.rb)
+
+# WIP
+def connect
+  super
+  return if @state == :negotiated ||
+            @state != :connected
+
+  unless @io.is_a?(OpenSSL::SSL::SSLSocket)
+    if (hostname_is_ip = (@ip == @sni_hostname))
+      # IPv6 address would be "[::1]", must turn to "0000:0000:0000:0000:0000:0000:0000:0001" for cert SAN check
+      @sni_hostname = @ip.to_string
+      # IP addresses in SNI is not valid per RFC 6066, section 3.
+      @ctx.verify_hostname = false
+    end
+
+    @io = OpenSSL::SSL::SSLSocket.new(@io, @ctx)
+
+    @io.hostname = @sni_hostname unless hostname_is_ip
+    @io.session = @ssl_session unless ssl_session_expired?
+    @io.sync_close = true
+  end
+  try_ssl_connect
+end
+
+def try_ssl_connect
+  ret = @io.connect_nonblock(exception: false)
+  log(level: 3, color: :cyan) { "TLS CONNECT: #{ret}..." }
+  case ret
+  when :wait_readable
+    @interests = :r
+    return
+  when :wait_writable
+    @interests = :w
+    return
+  end
+  @io.post_connection_check(@sni_hostname) if @ctx.verify_mode != OpenSSL::SSL::VERIFY_NONE && @verify_hostname
+  transition(:negotiated)
+  @interests = :w
+end
+```
+
 ## `HTTPX::Callbacks`
 
 ```ruby
@@ -1609,8 +1741,11 @@ end
                   - `Resolver::Multi#lazy_resolve`
             - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
         - `Session#receive_requests` -> `Request#emit<:complete>`
-          - `Selector#next_tick`
+          - `Selector#next_tick` -> `Connection#emit<:on>`
             - `Selector#select↲`
+              - `Connection#interests`
+                - `TCP#connect`
+                - `SSLconnect`
           - `Session#fetch_response`
 
 ### コールバックの設定
@@ -1676,9 +1811,10 @@ end
 #### `Connection#on`
 - `:altsvc`
 - `:terminate`
+- `:open`
 
 ```ruby
-# lib/httpx/connection.rb
+# (lib/httpx/connection.rb)
 
 # Connection#initializeから呼ばれる
 def initialize
@@ -1738,6 +1874,33 @@ def build_altsvc_connection(alt_origin, origin, alt_params)
 rescue UnsupportedSchemeError
   altsvc["noop"] = true
   nil
+end
+```
+
+```ruby
+# (lib/httpx/plugins/callbacks.rb)
+def do_init_connection(connection, selector)
+  super
+  connection.on(:open) do
+    next unless connection.current_session == self
+
+    emit_or_callback_error(:connection_opened, connection.origin, connection.io.socket)
+  end
+  # ...
+end
+
+%i[
+  connection_opened connection_closed
+  request_error
+  request_started request_body_chunk request_completed
+  response_started response_body_chunk response_completed
+].each do |meth|
+  class_eval(<<-MOD, __FILE__, __LINE__ + 1)
+    def on_#{meth}(&blk)   # def on_connection_opened(&blk)
+      on(:#{meth}, &blk)   #   on(:connection_opened, &blk)
+      self                 #   self
+    end                    # end
+  MOD
 end
 ```
 
