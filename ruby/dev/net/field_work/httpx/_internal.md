@@ -1700,6 +1700,32 @@ def try_ssl_connect
   transition(:negotiated)
   @interests = :w # 接続待ち
 end
+
+# そもそものalpn_protocolsの設定...
+# 明示的にALPNを設定することでハンドシェイクを行うことができる
+TLS_OPTIONS = { alpn_protocols: %w[h2 http/1.1].freeze }
+
+def initialize(_, _, options)
+  super
+  ctx_options = TLS_OPTIONS.merge(options.ssl)
+  @sni_hostname = ctx_options.delete(:hostname) || @hostname
+
+  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
+    @ctx = @io.context
+    @state = :negotiated
+  else
+    @ctx = OpenSSL::SSL::SSLContext.new
+    @ctx.set_params(ctx_options) unless ctx_options.empty?
+    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
+      @ctx.session_cache_mode =
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+    end
+
+    yield(self) if block_given?
+  end
+
+  @verify_hostname = @ctx.verify_hostname
+end
 ```
 
 ## `HTTPX::Callbacks`
@@ -1745,9 +1771,6 @@ module HTTPX
   end
 end
 ```
-
-- プロトコルの切り替えをどこで行なっているのか
-- プロキシへの対応はどのように行なっているのか
 
 ## 全体の流れ
 - `HTTPX.get`
@@ -1932,3 +1955,7 @@ end
 - `Resolver` - DNSリゾルバ
 - `Connection` - 接続
 - `Session` - リクエスト単位の一連の流れ
+
+## 残タスク
+- あらためて一回流れを整理する
+- ALPNの結果をどのように取得し、利用しているのか
