@@ -1587,48 +1587,57 @@ end
 ```ruby
 # (lib/httpx/io/tcp.rb)
 
-# WIP
 def connect
   return unless closed?
 
   if !@io || @io.closed?
     transition(:idle)
     @io = build_socket
+
+    # (lib/httpx/io/tcp.rb)
+    #   def build_socket
+    #     @ip = @addresses[@ip_index] # @ip_index = アドレス在庫の位置を示すインデックス
+    #     Socket.new(@ip.family, :STREAM, 0)
+    #   end
   end
-  try_connect
+
+  try_connect # 接続試行
 rescue Errno::ECONNREFUSED,
        Errno::EADDRNOTAVAIL,
        Errno::EHOSTUNREACH,
        SocketError,
        IOError => e
-  raise e if @ip_index <= 0
 
-  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
+  raise e if @ip_index <= 0 # 試行できるアドレスの在庫がないためエラー
+
   @ip_index -= 1
-  @io = build_socket
+  @io = build_socket # ソケットを再作成してリトライ
   retry
 rescue Errno::ETIMEDOUT => e
   raise ConnectTimeoutError.new(@options.timeout[:connect_timeout], e.message) if @ip_index <= 0
 
-  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
   @ip_index -= 1
-  @io = build_socket
+  @io = build_socket # ソケットを再作成してリトライ
   retry
 end
 
 def try_connect
+  # ノンブロッキングで接続を試す
   ret = @io.connect_nonblock(Socket.sockaddr_in(@port, @ip.to_s), exception: false)
-  log(level: 3, color: :cyan) { "TCP CONNECT: #{ret}..." }
+
+  # 上位レイヤのselectorなどで待機するように@interestsをセットする
   case ret
-  when :wait_readable
+  when :wait_readable # ソケットが読み込み可能になるのを待つ必要がある
     @interests = :r
     return
-  when :wait_writable
+  when :wait_writable # ソケットが書き込み可能になるのを待つ必要がある
     @interests = :w
     return
   end
+
+  # connect_nonblockが即時成功した場合
   transition(:connected)
-  @interests = :w
+  @interests = :w # 書き込み可能になるのを待つ
 rescue Errno::EALREADY
   @interests = :w
 end
