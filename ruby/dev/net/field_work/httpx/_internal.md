@@ -1737,6 +1737,7 @@ rescue StandardError
 end
 
 # ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
+# build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
 ```
 
 ## `HTTPX::Callbacks`
@@ -1969,4 +1970,3 @@ end
 
 ## 残タスク
 - あらためて一回流れを整理する
-- ALPNの結果をどのように取得し、利用しているのか
