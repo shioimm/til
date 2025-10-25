@@ -1568,7 +1568,7 @@ def handle_transition(nextstate)
   when :open
     return if @state == :closed
 
-    @io.connect # => TCP#connect / SSL#connect WIP 実際に接続処理を行っている箇所
+    @io.connect # => TCP#connect / SSL#connect 実際に接続処理を行っている箇所
     close_sibling if @io.state == :connected # ioが接続済みになったら同じオリジンの別接続を閉じる
     return unless @io.connected? # 非同期接続が完了していない場合はここで返る
 
@@ -1587,48 +1587,60 @@ end
 ```ruby
 # (lib/httpx/io/tcp.rb)
 
-# WIP
 def connect
   return unless closed?
 
   if !@io || @io.closed?
     transition(:idle)
     @io = build_socket
+
+    # (lib/httpx/io/tcp.rb)
+    #   def build_socket
+    #     @ip = @addresses[@ip_index] # @ip_index = アドレス在庫の位置を示すインデックス
+    #     Socket.new(@ip.family, :STREAM, 0)
+    #   end
   end
-  try_connect
+
+  try_connect # 接続試行
 rescue Errno::ECONNREFUSED,
        Errno::EADDRNOTAVAIL,
        Errno::EHOSTUNREACH,
        SocketError,
        IOError => e
-  raise e if @ip_index <= 0
 
-  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
+  raise e if @ip_index <= 0 # 試行できるアドレスの在庫がないためエラー
+
   @ip_index -= 1
-  @io = build_socket
+  @io = build_socket # ソケットを再作成してリトライ
   retry
 rescue Errno::ETIMEDOUT => e
   raise ConnectTimeoutError.new(@options.timeout[:connect_timeout], e.message) if @ip_index <= 0
 
-  log { "failed connecting to #{@ip} (#{e.message}), trying next..." }
   @ip_index -= 1
-  @io = build_socket
+  @io = build_socket # ソケットを再作成してリトライ
   retry
 end
 
 def try_connect
+  # ノンブロッキングでTCP接続を試行
   ret = @io.connect_nonblock(Socket.sockaddr_in(@port, @ip.to_s), exception: false)
-  log(level: 3, color: :cyan) { "TCP CONNECT: #{ret}..." }
+
+  # 上位レイヤのselectorなどで待機するように@interestsをセットする
   case ret
-  when :wait_readable
+  when :wait_readable # (EINPROGRESS以外が発生した場合など)
+    # サーバがすぐにRSTを返した場合 -> エラーの読み取りが必要
+    # 接続完了通知がreadイベントとして届く一部のOS -> イベントの読み取りが必要
+    # この場合は上位レイヤのselectorなどでselectし直す
     @interests = :r
     return
-  when :wait_writable
+  when :wait_writable # 接続が完了してソケットが書き込み可能になるまで待つ場合
     @interests = :w
     return
   end
+
+  # connect_nonblockが即時成功した場合
   transition(:connected)
-  @interests = :w
+  @interests = :w # 書き込み可能になるのを待つ
 rescue Errno::EALREADY
   @interests = :w
 end
@@ -1639,43 +1651,80 @@ end
 ```ruby
 # (lib/httpx/io/ssl.rb)
 
-# WIP
 def connect
-  super
-  return if @state == :negotiated ||
-            @state != :connected
+  super # SSLクラスはTCPクラスを継承している => TCP#connect
+
+  # この時点で接続に成功している場合、そのソケットはまだ暗号化されていない状態
+
+  return if @state == :negotiated || # TLSハンドシェイクが完了している
+            @state != :connected # TCP接続が完了していない...接続完了後にTLSハンドシェイクするのかな
 
   unless @io.is_a?(OpenSSL::SSL::SSLSocket)
-    if (hostname_is_ip = (@ip == @sni_hostname))
-      # IPv6 address would be "[::1]", must turn to "0000:0000:0000:0000:0000:0000:0000:0001" for cert SAN check
+    if (hostname_is_ip = (@ip == @sni_hostname)) # @sni_hostname = 証明書検証などに使うホスト名
       @sni_hostname = @ip.to_string
-      # IP addresses in SNI is not valid per RFC 6066, section 3.
-      @ctx.verify_hostname = false
+      @ctx.verify_hostname = false # 接続先がIPの場合は証明書のSANチェックを無効化
     end
 
+    # TCPソケットをOpenSSL::SSL::SSLSocketでラップする
     @io = OpenSSL::SSL::SSLSocket.new(@io, @ctx)
 
-    @io.hostname = @sni_hostname unless hostname_is_ip
-    @io.session = @ssl_session unless ssl_session_expired?
-    @io.sync_close = true
+    @io.hostname = @sni_hostname unless hostname_is_ip # SNI拡張でホスト名を送る
+    @io.session = @ssl_session unless ssl_session_expired? # 以前のセッションが有効なら再利用
+    @io.sync_close = true # SSLソケットを閉じるときに内部のTCPソケットも自動で閉じる
   end
+
   try_ssl_connect
 end
 
 def try_ssl_connect
+  # ノンブロッキングでTLS接続を試行
   ret = @io.connect_nonblock(exception: false)
-  log(level: 3, color: :cyan) { "TLS CONNECT: #{ret}..." }
+
+  # 上位レイヤのselectorなどで待機するように@interestsをセットする
   case ret
   when :wait_readable
-    @interests = :r
+    @interests = :r # ServerHello待ち
     return
   when :wait_writable
-    @interests = :w
+    @interests = :w # 接続待ち
     return
   end
-  @io.post_connection_check(@sni_hostname) if @ctx.verify_mode != OpenSSL::SSL::VERIFY_NONE && @verify_hostname
+
+  # 即座にハンドシェイクが完了した場合
+
+  # 証明書の検証が有効になっており、ホスト名の検証を行う場合
+  if @ctx.verify_mode != OpenSSL::SSL::VERIFY_NONE && @verify_hostname
+    @io.post_connection_check(@sni_hostname) # => OpenSSL::SSL::SSLSocket#post_connection_check
+  end
+
   transition(:negotiated)
-  @interests = :w
+  @interests = :w # 接続待ち
+end
+
+# そもそものalpn_protocolsの設定...
+# 明示的にALPNを設定することでハンドシェイクを行うことができる
+TLS_OPTIONS = { alpn_protocols: %w[h2 http/1.1].freeze }
+
+def initialize(_, _, options)
+  super
+  ctx_options = TLS_OPTIONS.merge(options.ssl)
+  @sni_hostname = ctx_options.delete(:hostname) || @hostname
+
+  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
+    @ctx = @io.context
+    @state = :negotiated
+  else
+    @ctx = OpenSSL::SSL::SSLContext.new
+    @ctx.set_params(ctx_options) unless ctx_options.empty?
+    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
+      @ctx.session_cache_mode =
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+    end
+
+    yield(self) if block_given?
+  end
+
+  @verify_hostname = @ctx.verify_hostname
 end
 ```
 
@@ -1722,9 +1771,6 @@ module HTTPX
   end
 end
 ```
-
-- プロトコルの切り替えをどこで行なっているのか
-- プロキシへの対応はどのように行なっているのか
 
 ## 全体の流れ
 - `HTTPX.get`
@@ -1909,3 +1955,7 @@ end
 - `Resolver` - DNSリゾルバ
 - `Connection` - 接続
 - `Session` - リクエスト単位の一連の流れ
+
+## 残タスク
+- あらためて一回流れを整理する
+- ALPNの結果をどのように取得し、利用しているのか
