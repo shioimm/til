@@ -1726,6 +1726,17 @@ def initialize(_, _, options)
 
   @verify_hostname = @ctx.verify_hostname
 end
+
+def protocol
+  @io.alpn_protocol || super
+  # @io.alpn_protocol => "h2"
+  # => OpenSSL::SSL::SSLSocket#alpn_protocol
+  # Returns the ALPN protocol string that was finally selected by the server during the handshake
+rescue StandardError
+  super
+end
+
+# ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
 ```
 
 ## `HTTPX::Callbacks`
