@@ -1732,6 +1732,15 @@ def protocol
   # @io.alpn_protocol => "h2"
   # => OpenSSL::SSL::SSLSocket#alpn_protocol
   # Returns the ALPN protocol string that was finally selected by the server during the handshake
+
+  # superの場合
+  # (lib/httpx/io/tcp.rb)
+  #   def protocol
+  #     @fallback_protocol
+  #     # => @options.fallback_protocol (TCP#initialize)
+  #     # Options::DEFAULT_OPTIONS[:fallback_protocol] に"http/1.1"が設定されている
+  #   end
+
 rescue StandardError
   super
 end
