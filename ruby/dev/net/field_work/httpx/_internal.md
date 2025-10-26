@@ -1726,6 +1726,27 @@ def initialize(_, _, options)
 
   @verify_hostname = @ctx.verify_hostname
 end
+
+def protocol
+  @io.alpn_protocol || super
+  # @io.alpn_protocol => "h2"
+  # => OpenSSL::SSL::SSLSocket#alpn_protocol
+  # Returns the ALPN protocol string that was finally selected by the server during the handshake
+
+  # superの場合
+  # (lib/httpx/io/tcp.rb)
+  #   def protocol
+  #     @fallback_protocol
+  #     # => @options.fallback_protocol (TCP#initialize)
+  #     # Options::DEFAULT_OPTIONS[:fallback_protocol] に"http/1.1"が設定されている
+  #   end
+
+rescue StandardError
+  super
+end
+
+# ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
+# build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
 ```
 
 ## `HTTPX::Callbacks`
@@ -1958,4 +1979,3 @@ end
 
 ## 残タスク
 - あらためて一回流れを整理する
-- ALPNの結果をどのように取得し、利用しているのか
