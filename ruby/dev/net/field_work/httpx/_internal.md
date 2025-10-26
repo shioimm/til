@@ -1934,33 +1934,37 @@ end
 ## 全体の流れ
 1. `HTTPX.get` -> `Chainable#request`
 2. `Session#request`
-3. `Session#build_requests`
-4. `Session#send_requests`
-    - `Session#_send_requests`
-      - `Session#send_request`
-        - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
-          - (新しい接続の場合) `Session#do_init_connection`
-            - `Session#resolve_connection`
-              - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
-                - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
-              - `Resolver::Multi#lazy_resolve` 新規に名前解決
-                - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
-                - `Session#select_connection`
-        - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
-          - `Connection#send_request_to_parser`
-            - `Connection::HTTP1#send`
-            - `Connection::HTTP2#send`
-        - `Request#emit<:response>`発火
-5. `Session#receive_requests`
-    - `Selector#next_tick` レスポンスの待機
-      - `Selector#select`
-        - `Connection#call`
-          - `Connection#connect`
-            - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれているっぽい
-          - `Connection#consume`
-            - `Connection#parser` HTTPパーサの作成
-    - `Session#fetch_response`
-    - `Request#emit<:complete>`発火
+    - `Session#build_requests`
+    - `Session#send_requests`
+        - `Session#_send_requests`
+          - `Session#send_request`
+            - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
+              - (新しい接続の場合) `Session#do_init_connection`
+                - `Session#resolve_connection`
+                  - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
+                    - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
+                  - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                    - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
+                    - `Session#select_connection`
+            - `Connection#send`
+              - `Connection#send_request_to_parser`
+                - `Connection::HTTP1#send`
+                - `Connection::HTTP2#send`
+            - `Request#emit<:response>`発火
+    - `Session#receive_requests` `send_requests`後、即時実行
+        - `Selector#next_tick` レスポンスの待機
+          - `Selector#select`
+            - `Connection#call`
+              - `Connection#connect`
+                - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれている?
+              - `Connection#consume`
+                - `Connection#parser` HTTPパーサの作成
+                  - `Connection#set_parser_callbacks`
+                    - `Connection#emit<:altsvc, :terminate>`発火
+                    - `Request#emit<:response, :promise>`発火
+          - `Connection#interests`
+        - `Session#fetch_response`
+        - `Request#emit<:complete>`発火
 
 ### コールバックの設定
 TODO それぞれemitしている箇所に引っ越す
