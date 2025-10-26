@@ -1947,7 +1947,6 @@ end
                 - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
                 - `Session#select_connection`
         - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
-          - TODO 最初にparserが呼ばれている箇所を確認する
           - `Connection#send_request_to_parser`
             - `Connection::HTTP1#send`
             - `Connection::HTTP2#send`
@@ -1955,8 +1954,11 @@ end
 5. `Session#receive_requests`
     - `Selector#next_tick` レスポンスの待機
       - `Selector#select`
-        - `Connection#connect`
-          - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれているっぽい
+        - `Connection#call`
+          - `Connection#connect`
+            - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれているっぽい
+          - `Connection#consume`
+            - `Connection#parser` HTTPパーサの作成
     - `Session#fetch_response`
     - `Request#emit<:complete>`発火
 
