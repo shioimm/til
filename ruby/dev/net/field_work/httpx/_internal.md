@@ -1887,6 +1887,30 @@ def consume
 end
 ```
 
+### `Connection#interests`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+def interests
+  # まだ接続していない場合はconnectを開始
+  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
+    connect
+    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+  end
+
+  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
+  return :w unless @write_buffer.empty?
+  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
+  return @parser.interests if @parser
+
+  nil
+rescue StandardError => e
+  emit(:error, e)
+  nil
+end
+```
+
 ## `HTTPX::Callbacks`
 
 ```ruby
