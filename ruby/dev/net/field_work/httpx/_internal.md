@@ -1527,34 +1527,35 @@ def select_many(interval, &block)
       writers.delete(io)
     end if readers
 
-    writers.each(&block)
+    writers.each(&block) # => Connection#call
   else
     readers.each(&block) if readers
   end
 end
 ```
 
-### `Connection#interests`
+### `Connection#call`
 
 ```ruby
 # (lib/httpx/connection.rb)
 
-def interests
-  # まだ接続していない場合はconnectを開始
-  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
-    connect
-    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+def call
+  case @state
+  when :idle # 接続開始時
+    connect # => Connection#connect
+    consume # => Connection#consume
+  when :closed
+    return
+  when :closing
+    consume
+    transition(:closed)
+  when :open
+    consume
   end
-
-  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
-  return :w unless @write_buffer.empty?
-  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
-  return @parser.interests if @parser
-
   nil
 rescue StandardError => e
   emit(:error, e)
-  nil
+  raise e
 end
 
 def connect
@@ -1816,8 +1817,8 @@ end
 5. `Session#receive_requests`
     - `Selector#next_tick` レスポンスの待機
       - `Selector#select`
-        - `Connection#interests`
-          - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO どういうこと???
+        - `Connection#connect`
+          - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれているっぽい
     - `Session#fetch_response`
     - `Request#emit<:complete>`発火
 
