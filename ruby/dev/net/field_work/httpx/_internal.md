@@ -15,6 +15,8 @@ module HTTPX
     end
 
     def request(*args, **options)
+      branch(default_options).request(*args, **options)
+
       # default_options = @options || Session.default_options (Session.default_optionsはOptions.new)
       #   #<HTTPX::Options:0x000000011bf841b8
       #     @max_requests=Infinity, @debug_level=1, @ssl={},
@@ -35,8 +37,6 @@ module HTTPX
       #     @options_class=#<Class:0x0000000100bea798>, @persistent=false,
       #     @resolver_class=:native, @resolver_options={cache: true},
       #     @ip_families=[30, 2]>
-
-      branch(default_options).request(*args, **options)
     end
 
     def branch(options, &blk)
@@ -76,7 +76,7 @@ module HTTPX
     def request(*args, **params)
       raise ArgumentError, "must perform at least one request" if args.empty?
 
-      requests = args.first.is_a?(Request) ? args : build_requests(*args, params) # Session#build_requests
+      requests = args.first.is_a?(Request) ? args : build_requests(*args, params) # => Session#build_requests
 
       # argsの宛先が複数ある場合は配列でHTTPX::Requestを持つ
       # requests = [
@@ -96,7 +96,7 @@ module HTTPX
     end
 ```
 
-### `Session#build_requests`
+## `Session#build_requests`
 
 ```ruby
 # (lib/httpx/session.rb)
@@ -162,7 +162,7 @@ def build_request(verb, uri, params = EMPTY_HASH, options = @options)
 end
 ```
 
-### `Session#send_requests`
+## `Session#send_requests`
 
 ```ruby
 # (lib/httpx/session.rb)
@@ -375,7 +375,7 @@ def find_connection(request_uri, selector, options)
     # ということになっているらしい
   when :open # 宛先と接続済み
     if options.io # 外部からIOが指定されている場合
-      # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
+      # この接続に対してこのセッションとselectorを紐づけ、selectorにこの接続を登録する
       select_connection(connection, selector) # => Session#select_connection
     else
       # この接続に対してこのセッションとこのselectorを紐づける
@@ -384,7 +384,7 @@ def find_connection(request_uri, selector, options)
   when :closed # connectionがclose済み、再利用可能
     # connectionの状態を:idleに戻して再初期化
     connection.idling
-    # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
+    # この接続に対してこのセッションとselectorを紐づけ、selectorにこの接続を登録する
     select_connection(connection, selector) # => Session#select_connection
   when :closing # 接続終了中
     # :closeイベントをフックして:closedの場合と同じ処理を行う
@@ -945,7 +945,7 @@ end
 alias_method :select_resolver, :select_connection
 
 def select_connection(connection, selector)
-  # この接続に対して、このセッションとこのselectorを紐づける
+  # この接続に対して、このセッションとselectorを紐づける
   pin_connection(connection, selector) # => Session#pin_connection
 
   # このselectorにこの接続を登録する
@@ -972,12 +972,11 @@ def send(request)
   # !@write_buffer.full?  = 送信バッファに空きがある
   if @parser && !@write_buffer.full?
 
-    # @response_received_at = 最後にレスポンスを受け取った時刻
-    # @keep_alive_timeout   = Keep-Alive時間
-    # @response_received_atが@keep_alive_timeoutを超えている場合、接続がタイムアウトしていないか確認のためpingを送信
-    if @response_received_at && @keep_alive_timeout &&
+    if @response_received_at && # 最後にレスポンスを受け取った時刻
+       @keep_alive_timeout && # Keep-Alive時間
        Utils.elapsed_time(@response_received_at) > @keep_alive_timeout
-      log(level: 3) { "keep alive timeout expired, pinging connection..." }
+
+      # 接続がタイムアウトしていないか確認のためpingを送信
 
       @pending << request # 現在のリクエストを@pendingキューに追加
       transition(:active) if @state == :inactive
@@ -1794,28 +1793,37 @@ end
 ```
 
 ## 全体の流れ
-- `HTTPX.get`
-  - `Chainable#request`
-    - `Session#request`
-      - `Session#build_requests`
-      - `Session#send_requests`
-        - `Session#_send_requests`
-          - `Session#send_request` -> `Request#emit<:response>`
-            - `Session#find_connection`
-              - `Session#do_init_connection`
-                - `Session#resolve_connection`
-                  - `Resolver::Multi#early_resolve` -> `Resolver::Native#emit<:resolve, :error>`
-                  - `Resolver::Multi#lazy_resolve`
-            - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
-        - `Session#receive_requests` -> `Request#emit<:complete>`
-          - `Selector#next_tick` -> `Connection#emit<:on>`
-            - `Selector#select↲`
-              - `Connection#interests`
-                - `TCP#connect`
-                - `SSLconnect`
-          - `Session#fetch_response`
+1. `HTTPX.get` -> `Chainable#request`
+2. `Session#request`
+3. `Session#build_requests`
+4. `Session#send_requests`
+    - `Session#_send_requests`
+      - `Session#send_request`
+        - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
+          - (新しい接続の場合) `Session#do_init_connection`
+            - `Session#resolve_connection`
+              - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
+                - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
+              - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
+                - `Session#select_connection`
+        - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
+          - TODO 最初にparserが呼ばれている箇所を確認する
+          - `Connection#send_request_to_parser`
+            - `Connection::HTTP1#send`
+            - `Connection::HTTP2#send`
+        - `Request#emit<:response>`発火
+5. `Session#receive_requests`
+    - `Selector#next_tick` レスポンスの待機
+      - `Selector#select`
+        - `Connection#interests`
+          - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO どういうこと???
+    - `Session#fetch_response`
+    - `Request#emit<:complete>`発火
 
 ### コールバックの設定
+TODO それぞれemitしている箇所に引っ越す
+
 #### `Request#on`
 - `:response`
 - `:promise`
@@ -1976,6 +1984,3 @@ end
 - `Resolver` - DNSリゾルバ
 - `Connection` - 接続
 - `Session` - リクエスト単位の一連の流れ
-
-## 残タスク
-- あらためて一回流れを整理する
