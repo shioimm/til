@@ -1778,24 +1778,18 @@ def consume
         return
       end
 
-      # WIP
+      # この接続の最新のタイムアウト値
       @timeout = @current_timeout
 
-      read_drained = false
-      write_drained = nil
+      read_drained = false # 未読み込みのデータがあるかどうか
+      write_drained = nil # 未書き込みのデータがあるかどうか
 
-      #
-      # tight read loop.
-      #
-      # read as much of the socket as possible.
-      #
-      # this tight loop reads all the data it can from the socket and pipes it to
-      # its parser.
-      #
+      # 読み取りループ
       loop do
+        # 最大@window_sizeバイト分を読み取って@read_bufferに格納
         siz = @io.read(@window_size, @read_buffer)
-        log(level: 3, color: :cyan) { "IO READ: #{siz} bytes... (wsize: #{@window_size}, rbuffer: #{@read_buffer.bytesize})" }
-        unless siz
+
+        unless siz # ソケットがcloseしている
           @write_buffer.clear
 
           ex = EOFError.new("descriptor closed")
@@ -1804,24 +1798,26 @@ def consume
           return
         end
 
-        # socket has been drained. mark and exit the read loop.
-        if siz.zero?
-          read_drained = @read_buffer.empty?
+        if siz.zero? # 読み込みは成功したが現時点ではまだデータが無い (ノンブロッキングで空読み)
+          read_drained = @read_buffer.empty? # 状態を記録
           epiped = false
-          break
+          break # このtickではこれ以上読み取るものがないのでループを抜ける
         end
 
-        parser << @read_buffer.to_s
+        parser << @read_buffer.to_s # 読み取ったデータをパーサに渡す
 
-        # continue reading if possible.
+        # 書き込み待ちの状態に入っている場合はここで読み取りを中断
         break if interests == :w && !epiped
 
-        # exit the read loop if connection is preparing to be closed
+        # 接続が終了中になった場合はここで読み取りを中断
         break if @state == :closing || @state == :closed
 
-        # exit #consume altogether if all outstanding requests have been dealt with
+        # @pendingも@inflightも残っていない場合は処理すべきリクエストがないためここで終了
         return if @pending.empty? && @inflight.zero?
       end unless ((ints = interests).nil? || ints == :w || @state == :closing) && !epiped
+      # 読み込みが必要、かつ接続状態がclosingではなく、かつ別ストリームの処理中ではない場合にループを実行
+
+      # WIP
 
       #
       # tight write loop.
