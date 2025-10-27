@@ -1806,6 +1806,22 @@ def consume
 
         parser << @read_buffer.to_s # 読み取ったデータをパーサに渡す
 
+        # (lib/httpx/connection/http1.rb)
+        #   def <<(data)
+        #     @parser << data # => Parser::HTTP1#<<
+        #   end
+        #
+        # (lib/httpx/parser/http1.rb)
+        #   def <<(chunk)
+        #     @buffer << chunk
+        #     parse
+        #   end
+
+        # (lib/httpx/connection/http2.rb)
+        #   def <<(data)
+        #     @connection << data # => (http-2) HTTP2::Client#<<
+        #   end
+
         # 書き込み待ちの状態に入っている場合はここで読み取りを中断
         break if interests == :w && !epiped
 
