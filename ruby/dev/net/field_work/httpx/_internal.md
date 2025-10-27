@@ -15,6 +15,8 @@ module HTTPX
     end
 
     def request(*args, **options)
+      branch(default_options).request(*args, **options)
+
       # default_options = @options || Session.default_options (Session.default_optionsはOptions.new)
       #   #<HTTPX::Options:0x000000011bf841b8
       #     @max_requests=Infinity, @debug_level=1, @ssl={},
@@ -35,8 +37,6 @@ module HTTPX
       #     @options_class=#<Class:0x0000000100bea798>, @persistent=false,
       #     @resolver_class=:native, @resolver_options={cache: true},
       #     @ip_families=[30, 2]>
-
-      branch(default_options).request(*args, **options)
     end
 
     def branch(options, &blk)
@@ -76,7 +76,7 @@ module HTTPX
     def request(*args, **params)
       raise ArgumentError, "must perform at least one request" if args.empty?
 
-      requests = args.first.is_a?(Request) ? args : build_requests(*args, params) # Session#build_requests
+      requests = args.first.is_a?(Request) ? args : build_requests(*args, params) # => Session#build_requests
 
       # argsの宛先が複数ある場合は配列でHTTPX::Requestを持つ
       # requests = [
@@ -96,7 +96,7 @@ module HTTPX
     end
 ```
 
-### `Session#build_requests`
+## `Session#build_requests`
 
 ```ruby
 # (lib/httpx/session.rb)
@@ -162,7 +162,7 @@ def build_request(verb, uri, params = EMPTY_HASH, options = @options)
 end
 ```
 
-### `Session#send_requests`
+## `Session#send_requests`
 
 ```ruby
 # (lib/httpx/session.rb)
@@ -375,7 +375,7 @@ def find_connection(request_uri, selector, options)
     # ということになっているらしい
   when :open # 宛先と接続済み
     if options.io # 外部からIOが指定されている場合
-      # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
+      # この接続に対してこのセッションとselectorを紐づけ、selectorにこの接続を登録する
       select_connection(connection, selector) # => Session#select_connection
     else
       # この接続に対してこのセッションとこのselectorを紐づける
@@ -384,7 +384,7 @@ def find_connection(request_uri, selector, options)
   when :closed # connectionがclose済み、再利用可能
     # connectionの状態を:idleに戻して再初期化
     connection.idling
-    # この接続に対してこのセッションとこのselectorを紐づけ、selectorにこの接続を登録する
+    # この接続に対してこのセッションとselectorを紐づけ、selectorにこの接続を登録する
     select_connection(connection, selector) # => Session#select_connection
   when :closing # 接続終了中
     # :closeイベントをフックして:closedの場合と同じ処理を行う
@@ -945,7 +945,7 @@ end
 alias_method :select_resolver, :select_connection
 
 def select_connection(connection, selector)
-  # この接続に対して、このセッションとこのselectorを紐づける
+  # この接続に対して、このセッションとselectorを紐づける
   pin_connection(connection, selector) # => Session#pin_connection
 
   # このselectorにこの接続を登録する
@@ -972,12 +972,11 @@ def send(request)
   # !@write_buffer.full?  = 送信バッファに空きがある
   if @parser && !@write_buffer.full?
 
-    # @response_received_at = 最後にレスポンスを受け取った時刻
-    # @keep_alive_timeout   = Keep-Alive時間
-    # @response_received_atが@keep_alive_timeoutを超えている場合、接続がタイムアウトしていないか確認のためpingを送信
-    if @response_received_at && @keep_alive_timeout &&
+    if @response_received_at && # 最後にレスポンスを受け取った時刻
+       @keep_alive_timeout && # Keep-Alive時間
        Utils.elapsed_time(@response_received_at) > @keep_alive_timeout
-      log(level: 3) { "keep alive timeout expired, pinging connection..." }
+
+      # 接続がタイムアウトしていないか確認のためpingを送信
 
       @pending << request # 現在のリクエストを@pendingキューに追加
       transition(:active) if @state == :inactive
@@ -1528,34 +1527,35 @@ def select_many(interval, &block)
       writers.delete(io)
     end if readers
 
-    writers.each(&block)
+    writers.each(&block) # => Connection#call
   else
     readers.each(&block) if readers
   end
 end
 ```
 
-### `Connection#interests`
+### `Connection#call`
 
 ```ruby
 # (lib/httpx/connection.rb)
 
-def interests
-  # まだ接続していない場合はconnectを開始
-  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
-    connect
-    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+def call
+  case @state
+  when :idle # 接続開始時
+    connect # => Connection#connect
+    consume # => Connection#consume WIP
+  when :closed
+    return
+  when :closing
+    consume
+    transition(:closed)
+  when :open
+    consume
   end
-
-  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
-  return :w unless @write_buffer.empty?
-  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
-  return @parser.interests if @parser
-
   nil
 rescue StandardError => e
   emit(:error, e)
-  nil
+  raise e
 end
 
 def connect
@@ -1749,6 +1749,168 @@ end
 # build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
 ```
 
+### `Connection#consume`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+# WIP
+def consume
+  return unless @io
+
+  catch(:called) do
+    epiped = false
+    loop do
+      # connection may have
+      return if @state == :idle
+
+      parser.consume
+
+      # we exit if there's no more requests to process
+      #
+      # this condition takes into account:
+      #
+      # * the number of inflight requests
+      # * the number of pending requests
+      # * whether the write buffer has bytes (i.e. for close handshake)
+      if @pending.empty? && @inflight.zero? && @write_buffer.empty?
+        log(level: 3) { "NO MORE REQUESTS..." }
+        return
+      end
+
+      @timeout = @current_timeout
+
+      read_drained = false
+      write_drained = nil
+
+      #
+      # tight read loop.
+      #
+      # read as much of the socket as possible.
+      #
+      # this tight loop reads all the data it can from the socket and pipes it to
+      # its parser.
+      #
+      loop do
+        siz = @io.read(@window_size, @read_buffer)
+        log(level: 3, color: :cyan) { "IO READ: #{siz} bytes... (wsize: #{@window_size}, rbuffer: #{@read_buffer.bytesize})" }
+        unless siz
+          @write_buffer.clear
+
+          ex = EOFError.new("descriptor closed")
+          ex.set_backtrace(caller)
+          on_error(ex)
+          return
+        end
+
+        # socket has been drained. mark and exit the read loop.
+        if siz.zero?
+          read_drained = @read_buffer.empty?
+          epiped = false
+          break
+        end
+
+        parser << @read_buffer.to_s
+
+        # continue reading if possible.
+        break if interests == :w && !epiped
+
+        # exit the read loop if connection is preparing to be closed
+        break if @state == :closing || @state == :closed
+
+        # exit #consume altogether if all outstanding requests have been dealt with
+        return if @pending.empty? && @inflight.zero?
+      end unless ((ints = interests).nil? || ints == :w || @state == :closing) && !epiped
+
+      #
+      # tight write loop.
+      #
+      # flush as many bytes as the sockets allow.
+      #
+      loop do
+        # buffer has been drainned, mark and exit the write loop.
+        if @write_buffer.empty?
+          # we only mark as drained on the first loop
+          write_drained = write_drained.nil? && @inflight.positive?
+
+          break
+        end
+
+        begin
+          siz = @io.write(@write_buffer)
+        rescue Errno::EPIPE
+          # this can happen if we still have bytes in the buffer to send to the server, but
+          # the server wants to respond immediately with some message, or an error. An example is
+          # when one's uploading a big file to an unintended endpoint, and the server stops the
+          # consumption, and responds immediately with an authorization of even method not allowed error.
+          # at this point, we have to let the connection switch to read-mode.
+          log(level: 2) { "pipe broken, could not flush buffer..." }
+          epiped = true
+          read_drained = false
+          break
+        end
+        log(level: 3, color: :cyan) { "IO WRITE: #{siz} bytes..." }
+        unless siz
+          @write_buffer.clear
+
+          ex = EOFError.new("descriptor closed")
+          ex.set_backtrace(caller)
+          on_error(ex)
+          return
+        end
+
+        # socket closed for writing. mark and exit the write loop.
+        if siz.zero?
+          write_drained = !@write_buffer.empty?
+          break
+        end
+
+        # exit write loop if marked to consume from peer, or is closing.
+        break if interests == :r || @state == :closing || @state == :closed
+
+        write_drained = false
+      end unless (ints = interests) == :r
+
+      send_pending if @state == :open
+
+      # return if socket is drained
+      next unless (ints != :r || read_drained) && (ints != :w || write_drained)
+
+      # gotta go back to the event loop. It happens when:
+      #
+      # * the socket is drained of bytes or it's not the interest of the conn to read;
+      # * theres nothing more to write, or it's not in the interest of the conn to write;
+      log(level: 3) { "(#{ints}): WAITING FOR EVENTS..." }
+      return
+    end
+  end
+end
+```
+
+### `Connection#interests`
+
+```ruby
+# (lib/httpx/connection.rb)
+
+def interests
+  # まだ接続していない場合はconnectを開始
+  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
+    connect
+    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+  end
+
+  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
+  return :w unless @write_buffer.empty?
+  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
+  return @parser.interests if @parser
+
+  nil
+rescue StandardError => e
+  emit(:error, e)
+  nil
+end
+```
+
 ## `HTTPX::Callbacks`
 
 ```ruby
@@ -1794,28 +1956,43 @@ end
 ```
 
 ## 全体の流れ
-- `HTTPX.get`
-  - `Chainable#request`
-    - `Session#request`
-      - `Session#build_requests`
-      - `Session#send_requests`
+1. `HTTPX.get` -> `Chainable#request`
+2. `Session#request`
+    - `Session#build_requests`
+    - `Session#send_requests`
         - `Session#_send_requests`
-          - `Session#send_request` -> `Request#emit<:response>`
-            - `Session#find_connection`
-              - `Session#do_init_connection`
+          - `Session#send_request`
+            - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
+              - (新しい接続の場合) `Session#do_init_connection`
                 - `Session#resolve_connection`
-                  - `Resolver::Multi#early_resolve` -> `Resolver::Native#emit<:resolve, :error>`
-                  - `Resolver::Multi#lazy_resolve`
-            - `Connection#send` -> `Connection#emit<:altsvc, :terminate>` / `Request#emit<:response, :promise>`
-        - `Session#receive_requests` -> `Request#emit<:complete>`
-          - `Selector#next_tick` -> `Connection#emit<:on>`
-            - `Selector#select↲`
-              - `Connection#interests`
-                - `TCP#connect`
-                - `SSLconnect`
-          - `Session#fetch_response`
+                  - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
+                    - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
+                  - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                    - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
+                    - `Session#select_connection`
+            - `Connection#send`
+              - `Connection#send_request_to_parser`
+                - `Connection::HTTP1#send`
+                - `Connection::HTTP2#send`
+            - `Request#emit<:response>`発火
+    - `Session#receive_requests` `send_requests`後、即時実行
+        - `Selector#next_tick` レスポンスの待機
+          - `Selector#select`
+            - `Connection#call`
+              - `Connection#connect`
+                - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれている?
+              - `Connection#consume`
+                - `Connection#parser` HTTPパーサの作成
+                  - `Connection#set_parser_callbacks`
+                    - `Connection#emit<:altsvc, :terminate>`発火
+                    - `Request#emit<:response, :promise>`発火
+          - `Connection#interests`
+        - `Session#fetch_response`
+        - `Request#emit<:complete>`発火
 
 ### コールバックの設定
+TODO それぞれemitしている箇所に引っ越す
+
 #### `Request#on`
 - `:response`
 - `:promise`
@@ -1976,6 +2153,3 @@ end
 - `Resolver` - DNSリゾルバ
 - `Connection` - 接続
 - `Session` - リクエスト単位の一連の流れ
-
-## 残タスク
-- あらためて一回流れを整理する
