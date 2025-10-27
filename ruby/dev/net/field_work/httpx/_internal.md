@@ -1448,6 +1448,7 @@ def next_tick
     end
 
     begin
+      # @selectablesの各要素となっているioが読み書き可能になるとioに対して.callが呼ばれる
       select(timeout, &:call) # => Selector#select
       @timers.fire
     rescue TimeoutError => e
@@ -1754,47 +1755,42 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
-# WIP
 def consume
-  return unless @io
+  return unless @io # ソケットが存在しない場合 (connectが終わっていないなど) は何もしない
 
+  # throw(:called) が発火するまで以下の処理を実行 (任意の時点でこのtickでのI/O消費を切り上げるため)
   catch(:called) do
     epiped = false
+
     loop do
       # connection may have
+      # 何かのきっかけで状態が:idleに戻った場合は即終了
       return if @state == :idle
 
-      parser.consume
+      parser.consume # Connection::HTTP1#consume / Connection::HTTP2#consume
 
-      # we exit if there's no more requests to process
-      #
-      # this condition takes into account:
-      #
-      # * the number of inflight requests
-      # * the number of pending requests
-      # * whether the write buffer has bytes (i.e. for close handshake)
+      # 終了条件
+      # @pending.empty? = 送信待ちのリクエストがない
+      # @inflight.zero? = 送信済みでレスポンス待ちのリクエストがない
+      # @write_buffer.empty? = 書き込みデータが残っていない
       if @pending.empty? && @inflight.zero? && @write_buffer.empty?
         log(level: 3) { "NO MORE REQUESTS..." }
         return
       end
 
+      # この接続の最新のタイムアウト値
       @timeout = @current_timeout
 
-      read_drained = false
-      write_drained = nil
+      read_drained = false # 未読み込みのデータがあるかどうか
+      write_drained = nil # 未書き込みのデータがあるかどうか
 
-      #
-      # tight read loop.
-      #
-      # read as much of the socket as possible.
-      #
-      # this tight loop reads all the data it can from the socket and pipes it to
-      # its parser.
-      #
+      # --- 読み取りループ ---
+
       loop do
+        # 最大@window_sizeバイト分を読み取って@read_bufferに格納
         siz = @io.read(@window_size, @read_buffer)
-        log(level: 3, color: :cyan) { "IO READ: #{siz} bytes... (wsize: #{@window_size}, rbuffer: #{@read_buffer.bytesize})" }
-        unless siz
+
+        unless siz # ソケットがcloseしている
           @write_buffer.clear
 
           ex = EOFError.new("descriptor closed")
@@ -1803,54 +1799,66 @@ def consume
           return
         end
 
-        # socket has been drained. mark and exit the read loop.
-        if siz.zero?
-          read_drained = @read_buffer.empty?
+        if siz.zero? # 読み込みは成功したが現時点ではまだデータが無い (ノンブロッキングで空読み)
+          read_drained = @read_buffer.empty? # 状態を記録
           epiped = false
-          break
+          break # このtickではこれ以上読み取るものがないのでループを抜ける
         end
 
-        parser << @read_buffer.to_s
+        parser << @read_buffer.to_s # 読み取ったデータをパーサに渡す
 
-        # continue reading if possible.
+        # (lib/httpx/connection/http1.rb)
+        #   def <<(data)
+        #     @parser << data # => Parser::HTTP1#<<
+        #   end
+        #
+        # (lib/httpx/parser/http1.rb)
+        #   def <<(chunk)
+        #     @buffer << chunk
+        #     parse
+        #   end
+
+        # (lib/httpx/connection/http2.rb)
+        #   def <<(data)
+        #     @connection << data # => (http-2) HTTP2::Client#<<
+        #   end
+
+        # 書き込み待ちの状態に入っている場合はここで読み取りを中断
         break if interests == :w && !epiped
 
-        # exit the read loop if connection is preparing to be closed
+        # 接続が終了中になった場合はここで読み取りを中断
         break if @state == :closing || @state == :closed
 
-        # exit #consume altogether if all outstanding requests have been dealt with
+        # @pendingも@inflightも残っていない場合は処理すべきリクエストがないためここで終了
         return if @pending.empty? && @inflight.zero?
       end unless ((ints = interests).nil? || ints == :w || @state == :closing) && !epiped
+      # 読み込み待ちの状態、かつ接続状態がclosingではなく、かつ別ストリームの処理中ではない場合にループを実行
 
-      #
-      # tight write loop.
-      #
-      # flush as many bytes as the sockets allow.
-      #
+      # --- 読み取りループここまで ---
+
+      # --- 書き込みループ ---
+
       loop do
-        # buffer has been drainned, mark and exit the write loop.
+        # 書き込みバッファが空の場合
         if @write_buffer.empty?
-          # we only mark as drained on the first loop
+          # 最初のループかつ送信済みでレスポンス待ちのリクエストがある
           write_drained = write_drained.nil? && @inflight.positive?
 
-          break
+          break # 送信するものがないので中断
         end
 
         begin
+          # @write_bufferの内容をソケットに書き込み
           siz = @io.write(@write_buffer)
-        rescue Errno::EPIPE
-          # this can happen if we still have bytes in the buffer to send to the server, but
-          # the server wants to respond immediately with some message, or an error. An example is
-          # when one's uploading a big file to an unintended endpoint, and the server stops the
-          # consumption, and responds immediately with an authorization of even method not allowed error.
-          # at this point, we have to let the connection switch to read-mode.
-          log(level: 2) { "pipe broken, could not flush buffer..." }
+        rescue Errno::EPIPE # サーバ側がすでに接続を閉じている場合
           epiped = true
-          read_drained = false
+          read_drained = false # サーバからのレスポンスを読み取る必要あり
           break
         end
+
         log(level: 3, color: :cyan) { "IO WRITE: #{siz} bytes..." }
-        unless siz
+
+        unless siz # ソケットがcloseしている
           @write_buffer.clear
 
           ex = EOFError.new("descriptor closed")
@@ -1859,30 +1867,98 @@ def consume
           return
         end
 
-        # socket closed for writing. mark and exit the write loop.
-        if siz.zero?
-          write_drained = !@write_buffer.empty?
-          break
+        if siz.zero? # ソケットは開いているが現時点ではまだ書き込みできない (送信ウィンドウが満杯など)
+          write_drained = !@write_buffer.empty? # 状態を記録
+          break # このtickではこれ以上書き込めないのでループを抜ける
         end
 
-        # exit write loop if marked to consume from peer, or is closing.
+        # 読み取り待ちの状態に入っている場合、接続が終了する場合はここで書き込みを中断
         break if interests == :r || @state == :closing || @state == :closed
 
         write_drained = false
       end unless (ints = interests) == :r
+      # 書き込み待ちの状態の場合にループを実行
 
-      send_pending if @state == :open
+      # --- 書き込みループここまで ---
 
-      # return if socket is drained
+      send_pending if @state == :open # @pendingに積まれたリクエストを送信する
+
+      # (ints != :r || read_drained) = 読み込むデータがない
+      # (ints != :w || write_drained) = 書き込むデータがない
+      # 次のイベントを待つ
       next unless (ints != :r || read_drained) && (ints != :w || write_drained)
 
-      # gotta go back to the event loop. It happens when:
-      #
-      # * the socket is drained of bytes or it's not the interest of the conn to read;
-      # * theres nothing more to write, or it's not in the interest of the conn to write;
       log(level: 3) { "(#{ints}): WAITING FOR EVENTS..." }
-      return
+      return # consumeを終了
     end
+  end
+end
+
+# (lib/httpx/connection/http1.rb)
+
+def consume
+  # リクエスト数の上限 (ほぼつねに1)
+  requests_limit = [@max_requests, @requests.size].min
+  concurrent_requests_limit = [@max_concurrent_requests, requests_limit].min
+
+  @requests.each_with_index do |request, idx|
+    break if idx >= concurrent_requests_limit
+    next if request.state == :done
+
+    # request.stateが:doneではないrequestをhandle
+    handle(request)
+  end
+end
+
+def handle(request)
+  # 状態を遷移させつつソケットにリクエストを書き込む
+  catch(:buffer_full) do
+    # requestの状態をheadersに遷移
+    request.transition(:headers)
+    join_headers(request) if request.state == :headers
+
+    # requestの状態をbodyに遷移
+    request.transition(:body)
+    join_body(request) if request.state == :body
+
+    # requestの状態をtransitionに遷移
+    request.transition(:trailers)
+    join_trailers(request) if request.body.chunked? && request.state == :trailers
+
+    # requestの状態をdoneに遷移
+    request.transition(:done)
+  end
+end
+
+# (lib/httpx/connection/http2.rb)
+
+def consume
+  # すべてのストリームが対象
+  @streams.each do |request, stream|
+    next if request.state == :done
+
+    # request.stateが:doneではないrequestをhandle
+    handle(request, stream)
+  end
+end
+
+def handle(request, stream)
+  # 状態を遷移させつつソケットにリクエストを書き込む
+  catch(:buffer_full) do
+    # requestの状態をheadersに遷移
+    request.transition(:headers)
+    join_headers(stream, request) if request.state == :headers
+
+    # requestの状態をbodyに遷移
+    request.transition(:body)
+    join_body(stream, request) if request.state == :body
+
+    # requestの状態をtrailersに遷移
+    request.transition(:trailers)
+    join_trailers(stream, request) if request.state == :trailers && !request.body.empty?
+
+    # requestの状態をdoneに遷移
+    request.transition(:done)
   end
 end
 ```
