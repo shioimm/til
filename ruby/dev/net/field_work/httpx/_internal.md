@@ -1448,6 +1448,7 @@ def next_tick
     end
 
     begin
+      # @selectablesの各要素となっているioが読み書き可能になるとioに対して.callが呼ばれる
       select(timeout, &:call) # => Selector#select
       @timers.fire
     rescue TimeoutError => e
@@ -1754,30 +1755,30 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
-# WIP
 def consume
-  return unless @io
+  return unless @io # ソケットが存在しない場合 (connectが終わっていないなど) は何もしない
 
+  # throw(:called) が発火するまで以下の処理を実行 (任意の時点でこのtickでのI/O消費を切り上げるため)
   catch(:called) do
     epiped = false
+
     loop do
       # connection may have
+      # 何かのきっかけで状態が:idleに戻った場合は即終了
       return if @state == :idle
 
-      parser.consume
+      parser.consume # Connection::HTTP1#consume / Connection::HTTP2#consume
 
-      # we exit if there's no more requests to process
-      #
-      # this condition takes into account:
-      #
-      # * the number of inflight requests
-      # * the number of pending requests
-      # * whether the write buffer has bytes (i.e. for close handshake)
+      # 終了条件
+      # @pending.empty? = 送信待ちのリクエストがない
+      # @inflight.zero? = 送信済みでレスポンス待ちのリクエストがない
+      # @write_buffer.empty? = 書き込みデータが残っていない
       if @pending.empty? && @inflight.zero? && @write_buffer.empty?
         log(level: 3) { "NO MORE REQUESTS..." }
         return
       end
 
+      # WIP
       @timeout = @current_timeout
 
       read_drained = false
@@ -1883,6 +1884,74 @@ def consume
       log(level: 3) { "(#{ints}): WAITING FOR EVENTS..." }
       return
     end
+  end
+end
+
+# (lib/httpx/connection/http1.rb)
+
+def consume
+  # リクエスト数の上限 (ほぼつねに1)
+  requests_limit = [@max_requests, @requests.size].min
+  concurrent_requests_limit = [@max_concurrent_requests, requests_limit].min
+
+  @requests.each_with_index do |request, idx|
+    break if idx >= concurrent_requests_limit
+    next if request.state == :done
+
+    # request.stateが:doneではないrequestをhandle
+    handle(request)
+  end
+end
+
+def handle(request)
+  # 状態を遷移させつつソケットにリクエストを書き込む
+  catch(:buffer_full) do
+    # requestの状態をheadersに遷移
+    request.transition(:headers)
+    join_headers(request) if request.state == :headers
+
+    # requestの状態をbodyに遷移
+    request.transition(:body)
+    join_body(request) if request.state == :body
+
+    # requestの状態をtransitionに遷移
+    request.transition(:trailers)
+    join_trailers(request) if request.body.chunked? && request.state == :trailers
+
+    # requestの状態をdoneに遷移
+    request.transition(:done)
+  end
+end
+
+# (lib/httpx/connection/http2.rb)
+
+def consume
+  # すべてのストリームが対象
+  @streams.each do |request, stream|
+    next if request.state == :done
+
+    # request.stateが:doneではないrequestをhandle
+    handle(request, stream)
+  end
+end
+
+def handle(request, stream)
+  # 状態を遷移させつつソケットにリクエストを書き込む
+  catch(:buffer_full) do
+    # requestの状態をheadersに遷移
+    request.transition(:headers)
+    join_headers(stream, request) if request.state == :headers
+
+    # requestの状態をbodyに遷移
+    request.transition(:body)
+    join_body(stream, request) if request.state == :body
+
+    # requestの状態をtrailersに遷移
+    request.transition(:trailers)
+    join_trailers(stream, request) if request.state == :trailers && !request.body.empty?
+
+    # requestの状態をdoneに遷移
+    request.transition(:done)
   end
 end
 ```
