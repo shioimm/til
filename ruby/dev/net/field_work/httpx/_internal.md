@@ -1784,7 +1784,8 @@ def consume
       read_drained = false # 未読み込みのデータがあるかどうか
       write_drained = nil # 未書き込みのデータがあるかどうか
 
-      # 読み取りループ
+      # --- 読み取りループ ---
+
       loop do
         # 最大@window_sizeバイト分を読み取って@read_bufferに格納
         siz = @io.read(@window_size, @read_buffer)
@@ -1831,39 +1832,33 @@ def consume
         # @pendingも@inflightも残っていない場合は処理すべきリクエストがないためここで終了
         return if @pending.empty? && @inflight.zero?
       end unless ((ints = interests).nil? || ints == :w || @state == :closing) && !epiped
-      # 読み込みが必要、かつ接続状態がclosingではなく、かつ別ストリームの処理中ではない場合にループを実行
+      # 読み込み待ちの状態、かつ接続状態がclosingではなく、かつ別ストリームの処理中ではない場合にループを実行
 
-      # WIP
+      # --- 読み取りループここまで ---
 
-      #
-      # tight write loop.
-      #
-      # flush as many bytes as the sockets allow.
-      #
+      # --- 書き込みループ ---
+
       loop do
-        # buffer has been drainned, mark and exit the write loop.
+        # 書き込みバッファが空の場合
         if @write_buffer.empty?
-          # we only mark as drained on the first loop
+          # 最初のループかつ送信済みでレスポンス待ちのリクエストがある
           write_drained = write_drained.nil? && @inflight.positive?
 
-          break
+          break # 送信するものがないので中断
         end
 
         begin
+          # @write_bufferの内容をソケットに書き込み
           siz = @io.write(@write_buffer)
-        rescue Errno::EPIPE
-          # this can happen if we still have bytes in the buffer to send to the server, but
-          # the server wants to respond immediately with some message, or an error. An example is
-          # when one's uploading a big file to an unintended endpoint, and the server stops the
-          # consumption, and responds immediately with an authorization of even method not allowed error.
-          # at this point, we have to let the connection switch to read-mode.
-          log(level: 2) { "pipe broken, could not flush buffer..." }
+        rescue Errno::EPIPE # サーバ側がすでに接続を閉じている場合
           epiped = true
-          read_drained = false
+          read_drained = false # サーバからのレスポンスを読み取る必要あり
           break
         end
+
         log(level: 3, color: :cyan) { "IO WRITE: #{siz} bytes..." }
-        unless siz
+
+        unless siz # ソケットがcloseしている
           @write_buffer.clear
 
           ex = EOFError.new("descriptor closed")
@@ -1872,29 +1867,29 @@ def consume
           return
         end
 
-        # socket closed for writing. mark and exit the write loop.
-        if siz.zero?
-          write_drained = !@write_buffer.empty?
-          break
+        if siz.zero? # ソケットは開いているが現時点ではまだ書き込みできない (送信ウィンドウが満杯など)
+          write_drained = !@write_buffer.empty? # 状態を記録
+          break # このtickではこれ以上書き込めないのでループを抜ける
         end
 
-        # exit write loop if marked to consume from peer, or is closing.
+        # 読み取り待ちの状態に入っている場合、接続が終了する場合はここで書き込みを中断
         break if interests == :r || @state == :closing || @state == :closed
 
         write_drained = false
       end unless (ints = interests) == :r
+      # 書き込み待ちの状態の場合にループを実行
 
-      send_pending if @state == :open
+      # --- 書き込みループここまで ---
 
-      # return if socket is drained
+      send_pending if @state == :open # @pendingに積まれたリクエストを送信する
+
+      # (ints != :r || read_drained) = 読み込むデータがない
+      # (ints != :w || write_drained) = 書き込むデータがない
+      # 次のイベントを待つ
       next unless (ints != :r || read_drained) && (ints != :w || write_drained)
 
-      # gotta go back to the event loop. It happens when:
-      #
-      # * the socket is drained of bytes or it's not the interest of the conn to read;
-      # * theres nothing more to write, or it's not in the interest of the conn to write;
       log(level: 3) { "(#{ints}): WAITING FOR EVENTS..." }
-      return
+      return # consumeを終了
     end
   end
 end
