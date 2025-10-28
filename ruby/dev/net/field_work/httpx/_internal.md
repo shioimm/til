@@ -170,11 +170,6 @@ end
 def send_requests(*requests)
   selector = get_current_selector { Selector.new }
 
-  # Selector.newは
-  #   #<HTTPX::Selector:0x000000011c0f0650
-  #     @timers=#<HTTPX::Timers:0x000000011c0f05b0 @intervals=[]>,
-  #     @selectables=[], @is_timer_interval=false>
-
   # (lib/httpx/session.rb)
   #   def get_current_selector
   #     selector_store[self] || (yield if block_given?)
@@ -184,12 +179,25 @@ def send_requests(*requests)
   #     th_current = Thread.current
   #
   #     th_current.thread_variable_get(:httpx_persistent_selector_store) || begin
+  #
   #       # Hash#compare_by_identity = selfのキーの一致判定をオブジェクトの同一性で判定するように変更する
   #       {}.compare_by_identity.tap do |store| # store = レシーバの{}
   #         th_current.thread_variable_set(:httpx_persistent_selector_store, store)
   #       end
+  #
   #     end
   #   end
+  #
+  # (lib/httpx/selector.rb)
+  #   def initialize
+  #     @timers = Timers.new
+  #     @selectables = []
+  #     @is_timer_interval = false
+  #   end
+  #
+  # => #<HTTPX::Selector:0x000000011c0f0650
+  #      @timers=#<HTTPX::Timers:0x000000011c0f05b0 @intervals=[]>,
+  #      @selectables=[], @is_timer_interval=false>
   #
   # なので、ここでselectorには#<HTTPX::Selector>格納されている状態になる
 
@@ -2036,22 +2044,23 @@ end
 2. `Session#request`
     - `Session#build_requests`
     - `Session#send_requests`
-        - `Session#_send_requests`
-          - `Session#send_request`
-            - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
-              - (新しい接続の場合) `Session#do_init_connection`
-                - `Session#resolve_connection`
-                  - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
-                    - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
-                  - `Resolver::Multi#lazy_resolve` 新規に名前解決
-                    - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
-                    - `Session#select_connection`
-            - `Connection#send`
-              - `Connection#send_request_to_parser`
-                - `Connection::HTTP1#send`
-                - `Connection::HTTP2#send`
-            - `Request#emit<:response>`発火
-    - `Session#receive_requests` `send_requests`後、即時実行
+      - `Session#get_current_selector`
+      - `Session#_send_requests`
+        - `Session#send_request`
+          - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
+            - (新しい接続の場合) `Session#do_init_connection`
+              - `Session#resolve_connection`
+                - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
+                  - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
+                - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                  - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
+                  - `Session#select_connection`
+          - `Connection#send`
+            - `Connection#send_request_to_parser`
+              - `Connection::HTTP1#send`
+              - `Connection::HTTP2#send`
+          - `Request#emit<:response>`発火
+      - `Session#receive_requests` `send_requests`後、即時実行
         - `Selector#next_tick` レスポンスの待機
           - `Selector#select`
             - `Connection#call`
