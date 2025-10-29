@@ -1,6 +1,6 @@
 require "httpx"
 
-HOST1 = "https://example.com"
+HOST1 = "http://example.com"
 HOST2 = "https://google.com"
 
 responses = HTTPX.get(HOST1)#, HOST2)
