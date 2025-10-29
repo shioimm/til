@@ -1,5 +1,42 @@
 # httpx 現地調査 (202510時点)
-https://gitlab.com/os85/httpx
+
+## 全体の流れ
+1. `HTTPX.get` -> `Chainable#request`
+2. `Session#request`
+    - `Session#build_requests`
+    - `Session#send_requests`
+      - `Session#get_current_selector`
+      - `Session#_send_requests`
+        - `Session#send_request`
+          - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
+            - (新しい接続の場合) `Session#do_init_connection`
+              - `Session#resolve_connection`
+                - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
+                  - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
+                - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                  - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
+                  - `Session#select_connection`
+          - `Connection#send`
+            - `Connection#send_request_to_parser`
+              - `Connection::HTTP1#send`
+              - `Connection::HTTP2#send`
+          - `Request#emit<:response>`発火
+      - `Session#receive_requests` `send_requests`後、即時実行
+        - `Selector#next_tick` レスポンスの待機
+          - `Selector#select`
+            - `Connection#call`
+              - `Connection#connect`
+                - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれている?
+              - `Connection#consume`
+                - `Connection#parser` HTTPパーサの作成
+                  - `Connection#set_parser_callbacks`
+                    - `Connection#emit<:altsvc, :terminate>`発火
+                    - `Request#emit<:response, :promise>`発火
+          - `Connection#interests`
+        - `Session#fetch_response`
+        - `Request#emit<:complete>`発火
+
+## `Chainable#request`
 
 ```ruby
 # (lib/httpx/chainable.rb)
@@ -110,7 +147,7 @@ def build_requests(*args, params)
       reqs.map do |verb, uri, ps = EMPTY_HASH|
         request_params = params
         request_params = request_params.merge(ps) unless ps.empty?
-        build_request(verb, uri, request_params)
+        build_request(verb, uri, request_params) # => Session#build_request
       end
 
     else
@@ -128,10 +165,10 @@ def build_requests(*args, params)
           # verb           = "GET"
           # uri            = "https://example.com"
           # request_params = {}
-          build_request(verb, uri, request_params)
+          build_request(verb, uri, request_params) # => Session#build_request
         end
       else
-        [build_request(verb, uris, params)]
+        [build_request(verb, uris, params)] # => Session#build_request
       end
 
     end
@@ -141,6 +178,7 @@ def build_requests(*args, params)
   requests
 end
 
+# Session#build_request (lib/httpx/session.rb)
 # verb    = "GET"
 # uri     = "https://example.com"
 # params  = {}
@@ -150,15 +188,24 @@ def build_request(verb, uri, params = EMPTY_HASH, options = @options)
   request = rklass.new(verb, uri, options, params) # => #<HTTPX::Request>
   request.persistent = @persistent                 # => false
 
-  set_request_callbacks(request)
-
-  # (lib/httpx/session.rb)
-  #   def set_request_callbacks(request)
-  #     request.on(:response, &method(:on_response).curry(2)[request])
-  #     request.on(:promise, &method(:on_promise))
-  #   end
+  set_request_callbacks(request) # => Session#set_request_callbacks
 
   request
+end
+
+# Session#set_request_callbacks (lib/httpx/session.rb)
+
+def set_request_callbacks(request)
+  request.on(:response, &method(:on_response).curry(2)[request]) # リクエストに対してレスポンスを紐づける
+  request.on(:promise, &method(:on_promise)) # PUSH_PROMISEフレームを明示的に拒否する (http-2)
+end
+
+def on_response(request, response)
+  @responses[request] = response # リクエストにレスポンスを対応づける
+end
+
+def on_promise(_, stream)
+  stream.refuse
 end
 ```
 
@@ -168,9 +215,9 @@ end
 # (lib/httpx/session.rb)
 
 def send_requests(*requests)
-  selector = get_current_selector { Selector.new }
+  selector = get_current_selector { Selector.new } # => Session#get_current_selector / Selector#initialize
 
-  # (lib/httpx/session.rb)
+  # Session#get_current_selector (lib/httpx/session.rb)
   #   def get_current_selector
   #     selector_store[self] || (yield if block_given?)
   #   end
@@ -188,7 +235,7 @@ def send_requests(*requests)
   #     end
   #   end
   #
-  # (lib/httpx/selector.rb)
+  # Selector#initialize (lib/httpx/selector.rb)
   #   def initialize
   #     @timers = Timers.new
   #     @selectables = []
@@ -215,6 +262,12 @@ def send_requests(*requests)
     end
   end
 end
+```
+
+## `Session#_send_requests`
+
+```ruby
+# (lib/httpx/session.rb)
 
 def _send_requests(requests, selector)
   requests.each do |request|
@@ -251,97 +304,16 @@ def send_request(request, selector, options = request.options)
   rescue StandardError => e
     e
   end
+
   return unless error && error.is_a?(Exception)
 
   raise error unless error.is_a?(Error)
 
-  request.emit(:response, ErrorResponse.new(request, error))
-
-  # request.on(:response)を呼んでいる箇所
-  # # (lib/httpx/session.rb) => Session#set_request_callbacks
-  #     request.on(:response, &method(:on_response).curry(2)[request])
-  #
-  # # (lib/httpx/resolver/https.rb) # => Resolver::HTTPS#resolve
-  #    request.on(:response, &method(:on_response).curry(2)[request])
+  request.emit(:response, ErrorResponse.new(request, error)) # => Request#on(:response)
 end
 ```
 
-### `Session#set_request_callbacks`
-
-```ruby
-def set_request_callbacks(request)
-  request.on(:response, &method(:on_response).curry(2)[request])
-  request.on(:promise, &method(:on_promise))
-end
-
-def on_response(request, response)
-  @responses[request] = response # リクエストにレスポンスを対応づける
-end
-```
-
-### `Resolver::HTTPS#resolve`
-- `Resolver::HTTPS#<<`から呼ばれる
-
-```ruby
-# (lib/httpx/resolver/https.rb)
-
-# @connections = HTTPSコネクションのプール
-def resolve(connection = @connections.first, hostname = nil)
-  return unless connection
-
-  # ホスト名と接続のマッピングが存在する場合はそれを再利用する
-  hostname ||= @queries.key(connection)
-
-  if hostname.nil?
-    hostname = connection.peer.host # ホスト名を取得
-    # log
-    hostname = @resolver.generate_candidates(hostname).each do |name|
-      # 検索候補一つ一つに接続を紐付けて保存
-      @queries[name.to_s] = connection
-    end.first.to_s # 最初の候補をホスト名として返す
-  else
-    @queries[hostname] = connection # ホスト名に接続をマッピングし直す
-  end
-
-  log { "resolver #{FAMILY_TYPES[@record_type]}: query for #{hostname}" }
-
-  begin
-    # DoHサーバへのリクエストを構築
-    request = build_request(hostname)
-
-    request.on(:response, &method(:on_response).curry(2)[request])
-    request.on(:promise, &method(:on_promise))
-
-    @requests[request] = hostname # このリクエストとホスト名を紐付ける
-    resolver_connection.send(request)
-    @connections << connection # この名前解決を発行した接続を保存
-  rescue ResolveError, Resolv::DNS::EncodeError => e
-    reset_hostname(hostname)
-    emit_resolve_error(connection, connection.peer.host, e)
-  end
-end
-
-def on_response(request, response)
-  response.raise_for_status # => Response#raise_for_status
-
-  # (lib/httpx/response.rb)
-  #   def raise_for_status
-  #     return self unless (err = error)
-  #     raise err
-  #   end
-rescue StandardError => e
-  hostname = @requests.delete(request)
-  connection = reset_hostname(hostname)
-  emit_resolve_error(connection, connection.peer.host, e)
-else
-  # @type var response: HTTPX::Response
-  parse(request, response)
-ensure
-  @requests.delete(request)
-end
-```
-
-## `Session#find_connection`
+### `Session#find_connection`
 
 ```ruby
 # (lib/httpx/session.rb)
@@ -352,7 +324,7 @@ def find_connection(request_uri, selector, options)
     return connection
   end
 
-  connection = @pool.checkout_connection(request_uri, options)
+  connection = @pool.checkout_connection(request_uri, options) # => Pool#checkout_connection
 
   # @pool
   #   #<#<Class:0x000000010358aa08>:0x000000011e9823e8
@@ -408,7 +380,7 @@ def find_connection(request_uri, selector, options)
   connection
 end
 
-# (lib/httpx/selector.rb)
+# Selector#find_connection (lib/httpx/selector.rb)
 
 def find_connection(request_uri, options)
   # selectorが監視しているオブジェクト群から、この宛先に対して接続済みのものを探して返す
@@ -430,21 +402,21 @@ def each_connection(&block)
   end
 end
 
-# (lib/httpx/pool.rb)
+# Pool#checkout_connection (lib/httpx/pool.rb)
 
 def checkout_connection(uri, options)
   # 指定のioがあればそれを利用して接続を作成
-  return checkout_new_connection(uri, options) if options.io
+  return checkout_new_connection(uri, options) if options.io # => Pool#checkout_new_connection
 
-  # (lib/httpx/pool.rb)
+  # Pool#checkout_new_connection (lib/httpx/pool.rb)
   #   def checkout_new_connection(uri, options)
-  #     options.connection_class.new(uri, options)
+  #     options.connection_class.new(uri, options) # :connection_class => Class.new(Connection)
   #   end
 
   @connection_mtx.synchronize do
-    acquire_connection(uri, options) || begin
+    acquire_connection(uri, options) || begin # => Pool#acquire_connection
 
-      # (lib/httpx/pool.rb)
+      # Pool#acquire_connection (lib/httpx/pool.rb)
       # コネクションプールが保持しているアイドル中の接続のうち、
       # 同じ宛先に対して過去に接続したことのあるものがあればそれを取得する
       #   def acquire_connection(uri, options)
@@ -504,7 +476,124 @@ def checkout_connection(uri, options)
   end
 end
 
-# (lib/httpx/session.rb)
+# Connection#initialize (lib/httpx/connection.rb)
+
+def initialize(uri, options)
+  @current_session = @current_selector = @sibling = @coalesced_connection = nil
+  @exhausted = @cloned = @main_sibling = false
+
+  @options = Options.new(options)
+  @type = initialize_type(uri, @options) # => Connection#initialize_type
+
+  # Connection#initialize_type (lib/httpx/connection.rb)
+  #   def initialize_type(uri, options)
+  #     options.transport || begin
+  #       case uri.scheme
+  #       when "http" then "tcp"
+  #       when "https" then "ssl"
+  #       else
+  #         raise UnsupportedSchemeError, "#{uri}: #{uri.scheme}: unsupported URI scheme"
+  #       end
+  #     end
+  #   end
+
+  @origins = [uri.origin]
+  @origin = Utils.to_uri(uri.origin)
+  @window_size = @options.window_size
+  @read_buffer = Buffer.new(@options.buffer_size)
+  @write_buffer = Buffer.new(@options.buffer_size)
+  @pending = []
+
+  on(:error, &method(:on_error)) # Connection#on(:error)
+
+  if @options.io
+    # if there's an already open IO, get its
+    # peer address, and force-initiate the parser
+    transition(:already_open)
+    @io = build_socket
+    parser
+  else
+    transition(:idle)
+  end
+
+  # Connection#on(:close)
+  on(:close) do
+    next if @exhausted # it'll reset
+
+    # may be called after ":close" above, so after the connection has been checked back in.
+    # next unless @current_session
+
+    next unless @current_session
+
+    @current_session.deselect_connection(self, @current_selector, @cloned)
+  end
+
+  # Connection#on(:terminate)
+  on(:terminate) do # 接続のライフサイクルの終了処理
+    next if @exhausted # この接続の最大リクエスト数に達したら以降の処理をスキップ (将来的に再利用される)
+
+    current_session = @current_session
+    current_selector = @current_selector
+
+    # :terminateイベントは:closeイベントのあとに呼ばれることがあり、
+    # この時点ですでに接続がコネクションプールに返却済みの可能性がある。その場合は何もしない
+    next unless current_session && current_selector
+
+    current_session.deselect_connection(self, current_selector) # => Session#deselect_connection
+
+    # Session#deselect_connection (lib/httpx/session.rb)
+    #   def deselect_connection(connection, selector, cloned = false)
+    #     selector.deregister(connection) # selectorの監視対象からこの接続を除外する
+    #     # when connections coalesce
+    #     return if connection.state == :idle # 再利用待ちの場合は何もしない
+    #     return if cloned # この接続がtry_clone_connectionで生成された場合は別の接続に統合されるので何もしない
+    #     return if @closing && connection.state == :closed # このセッションがclose中で接続がclosedなら何もしない
+    #     @pool.checkin_connection(connection) # この接続をコネクションプールに返却する
+    #   end
+  end
+
+  # Connection#on(:altsvc)
+  on(:altsvc) do |alt_origin, origin, alt_params| # 新しいAlt-Svc先へ接続を張り直す
+    build_altsvc_connection(alt_origin, origin, alt_params) # => Connection#build_altsvc_connection
+  end
+
+  @inflight = 0
+  @keep_alive_timeout = @options.timeout[:keep_alive_timeout]
+
+  self.addresses = @options.addresses if @options.addresses
+end
+
+# Connection#build_altsvc_connection (lib/httpx/connection.rb)
+
+def build_altsvc_connection(alt_origin, origin, alt_params)
+  # HTTPS -> HTTP への切り替えはできないので何もしない
+  return if @origin.scheme == "https" && alt_origin.scheme != "https"
+
+  # サーバから返って来たAlt-Svcを取得
+  altsvc = AltSvc.cached_altsvc_set(origin, alt_params.merge("origin" => alt_origin))
+
+  return unless altsvc
+
+  # 接続オプションを引き継いで新しい接続を取得
+  alt_options = @options.merge(ssl: @options.ssl.merge(hostname: URI(origin).host))
+  connection = @current_session.find_connection(alt_origin, @current_selector, alt_options)
+
+  # 取得した接続がこの接続と同じものなら何もしない
+  # advertised altsvc is the same origin being used, ignore
+  return if connection == self
+
+  connection.extend(AltSvc::ConnectionMixin) unless connection.is_a?(AltSvc::ConnectionMixin)
+  log(level: 1) { "#{origin} alt-svc: #{alt_origin}" }
+
+  # この接続から新しい接続へ、未送信のリクエストなどを移行する
+  connection.merge(self)
+  terminate # この接続は終了
+rescue UnsupportedSchemeError
+  altsvc["noop"] = true
+  nil
+end
+
+# Session#do_init_connection (lib/httpx/session.rb)
 
 def do_init_connection(connection, selector)
   # アドレスファミリが決定していない場合
@@ -532,23 +621,43 @@ def on_resolver_connection(connection, selector)
 
   # selectorの中から同じオリジンに対して接続済み、open済みの接続を取得
   # なければプール内からマージ可能な接続を取得
-  found_connection = selector.find_mergeable_connection(connection) || begin
-    from_pool = true
-    @pool.checkout_mergeable_connection(connection)
-  end
+  found_connection = selector.find_mergeable_connection(connection) || begin # => Selector#find_mergeable_connection
 
-  # マージ可能かどうか
-  # (lib/httpx/connection.rb)
-  #   def mergeable?(connection)
-  #     return false if @state == :closing || @state == :closed || !@io
-  #
-  #     return false unless connection.addresses
-  #
-  #     (
-  #       (open? && @origin == connection.origin) ||
-  #       !(@io.addresses & (connection.addresses || [])).empty?
-  #     ) && @options == connection.options
-  #   end
+    # Selector#find_mergeable_connection (lib/httpx/selector.rb)
+    #   def find_mergeable_connection(connection)
+    #     each_connection.find do |ch|
+    #       ch != connection && ch.mergeable?(connection) # => Connection#mergeable?
+    #     end
+    #   end
+    #
+    # Connection#mergeable? (lib/httpx/connection.rb)
+    #   def mergeable?(connection)
+    #     return false if @state == :closing || @state == :closed || !@io
+    #
+    #     return false unless connection.addresses
+    #
+    #     (
+    #       (open? && @origin == connection.origin) ||
+    #       !(@io.addresses & (connection.addresses || [])).empty?
+    #     ) && @options == connection.options
+    #   end
+
+    from_pool = true
+    @pool.checkout_mergeable_connection(connection) # => Pool#checkout_mergeable_connection
+
+    # Pool#checkout_mergeable_connection (lib/httpx/pool.rb)
+    #   def checkout_mergeable_connection(connection)
+    #     return if connection.options.io
+    #
+    #     @connection_mtx.synchronize do
+    #       idx = @connections.find_index do |ch|
+    #         ch != connection && ch.mergeable?(connection)
+    #       end
+    #       @connections.delete_at(idx) if idx
+    #     end
+    #   end
+
+  end
 
   # 既存の接続が見つからない場合はconnectionをselector に登録して新規接続を開始し、それを返す
   return select_connection(connection, selector) unless found_connection # => Session#select_connection
@@ -556,16 +665,16 @@ def on_resolver_connection(connection, selector)
   # 既存の接続がまだopenしている場合
   if found_connection.open?
     # 即座に統合
-    coalesce_connections(found_connection, connection, selector, from_pool)
+    coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
   else
     # openイベントを待って統合
     found_connection.once(:open) do
-      coalesce_connections(found_connection, connection, selector, from_pool)
+      coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
     end
   end
 
-  # (lib/httpx/session.rb)
-  # 接続の統合を行う
+  # Session#coalesced_connection (lib/httpx/session.rb)
+  #   接続の統合を行う
   #   conn1 = 同じオリジンに対して接続済み、open済みの既存の接続
   #   conn2 = 新たに作成しようとしている接続
   #   selector = 現在のselector
@@ -593,10 +702,12 @@ def on_resolver_connection(connection, selector)
   #   end
 end
 
-def find_resolver_for(connection, selector)
-  resolver = selector.find_resolver(connection.options)
+# Session#find_resolver_for (lib/httpx/session.rb)
 
-  # (lib/httpx/selector.rb)
+def find_resolver_for(connection, selector)
+  resolver = selector.find_resolver(connection.options) # => Selector#find_resolver
+
+  # Selector#find_resolver (lib/httpx/selector.rb)
   #   def find_resolver(options)
   #     # @selectables = selector が現在監視している全オブジェクト
   #     res = @selectables.find do |c|
@@ -609,9 +720,9 @@ def find_resolver_for(connection, selector)
 
   unless resolver
     # 使用中ではないResolverを取得または新規作成
-    resolver = @pool.checkout_resolver(connection.options)
+    resolver = @pool.checkout_resolver(connection.options) # => Pool#checkout_resolver
 
-    # (lib/httpx/pool.rb)
+    # Pool#checkout_resolver (lib/httpx/pool.rb)
     #   def checkout_resolver(options)
     #     resolver_type = options.resolver_class # 使用するDNSリゾルバの種類を特定
     #     resolver_type = Resolver.resolver_for(resolver_type, options) # 実際のResolverオブジェクトを作成
@@ -655,7 +766,7 @@ def find_resolver_for(connection, selector)
   resolver
 end
 
-# (lib/httpx/resolver/multi.rb)
+# Resolver::Multi#early_resolve (lib/httpx/resolver/multi.rb)
 
 def early_resolve(connection)
   # 接続先ホスト名
@@ -676,7 +787,7 @@ def early_resolve(connection)
     next unless resolver # this should ever happen
 
     # リゾルバに対し、このconnectionの名前解決が完了したことを通知
-    resolver.emit_addresses(connection, family, addrs, true)
+    resolver.emit_addresses(connection, family, addrs, true) # => Resolver::Resolver#emit_addresses
 
     resolved = true
   end
@@ -684,7 +795,7 @@ def early_resolve(connection)
   resolved
 end
 
-# (lib/httpx/resolver/resolver.rb)
+# Resolver::Resolver#emit_addresses (lib/httpx/resolver/resolver.rb)
 
 def emit_addresses(connection, family, addresses, early_resolve = false)
   # addressesをIPAddrに変換
@@ -723,7 +834,7 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
   end
 end
 
-# (lib/httpx/resolver/resolver.rb)↲
+# Resolver::Resolver#emit_resolved_connection (lib/httpx/resolver/resolver.rb)↲
 
 def emit_resolved_connection(connection, addresses, early_resolve)
   begin
@@ -733,21 +844,19 @@ def emit_resolved_connection(connection, addresses, early_resolve)
 
     return if connection.state == :closed
 
-    # リゾルバが保持するコールバックリスト (callbacks[:resolve])に対してイベントを発火 (引数connection)
-    emit(:resolve, connection)
+    emit(:resolve, connection) # => Resolver::Resolver#on(:resolve)
   rescue StandardError => e # SocketErrorやIOErrorが発生した場合
     if early_resolve
       # connectionの状態をリセットして例外を呼び出し元に伝搬する
       connection.force_reset
       throw(:resolve_error, e)
     else
-      # リゾルバが保持するコールバックリスト (callbacks[:error])に対してイベントを発火 (引数connection, e)
-      emit(:error, connection, e)
+      emit(:error, connection, e) # => Resolver::Resolver#on(:error)
     end
   end
 end
 
-# (Connection#addresses=)
+# Connection#addresses= (lib/httpx/connection.rb)
 
 def addresses=(addrs)
   if @io
@@ -758,11 +867,12 @@ def addresses=(addrs)
 end
 
 def build_socket(addrs = nil)
+  # @typeはConnectionのinitialize時にinitialize_typeの呼び出しによって値が決まる
   case @type
   when "tcp"
-    TCP.new(peer, addrs, @options) # HTTPX::TCP
+    TCP.new(peer, addrs, @options) # => TCP#initialize
   when "ssl"
-    SSL.new(peer, addrs, @options) do |sock| # HTTPX::SSL < HTTPX::TCP
+    SSL.new(peer, addrs, @options) do |sock| # => SSL#initialize < HTTPX::TCP
       sock.ssl_session = @ssl_session
       sock.session_new_cb do |sess|
         @ssl_session = sess
@@ -776,27 +886,9 @@ def build_socket(addrs = nil)
   else
     raise Error, "unsupported transport (#{@type})"
   end
-
-  # @typeはConnectionのinitialize時に値が決まる
-  #   def initialize(uri, options)
-  #     # ...
-  #     @type = initialize_type(uri, @options)
-  #     # ...
-  #   end
-  #
-  #   def initialize_type(uri, options)
-  #     options.transport || begin
-  #       case uri.scheme
-  #       when "http" then "tcp"
-  #       when "https" then "ssl"
-  #       else
-  #         raise UnsupportedSchemeError, "#{uri}: #{uri.scheme}: unsupported URI scheme"
-  #       end
-  #     end
-  #   end
 end
 
-# (lib/httpx/io/tcp.rb)
+# TCP#initialize (lib/httpx/io/tcp.rb)
 
 def initialize(origin, addresses, options)
   # ...
@@ -822,7 +914,34 @@ def add_addresses(addrs)
   end
 end
 
-# (lib/httpx/resolver/multi.rb)
+# SSL#initialize (lib/httpx/io/ssl.rb)
+
+def initialize(_, _, options)
+  super
+
+  ctx_options = TLS_OPTIONS.merge(options.ssl)
+  @sni_hostname = ctx_options.delete(:hostname) || @hostname
+
+  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
+    # externally initiated ssl socket
+    @ctx = @io.context
+    @state = :negotiated
+  else
+    @ctx = OpenSSL::SSL::SSLContext.new
+    @ctx.set_params(ctx_options) unless ctx_options.empty?
+
+    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
+      @ctx.session_cache_mode =
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+    end
+
+    yield(self) if block_given?
+  end
+
+  @verify_hostname = @ctx.verify_hostname
+end
+
+# Resolver::Multi#lazy_resolve (lib/httpx/resolver/multi.rb)
 
 def lazy_resolve(connection)
   # @resolvers = [#<HTTPX::Resolver::Native ...>, ...]
@@ -837,7 +956,7 @@ def lazy_resolve(connection)
   end
 end
 
-# (lib/httpx/session.rb)
+# Session#try_clone_connection (lib/httpx/session.rb)
 
 def try_clone_connection(connection, selector, family)
   connection.family ||= family
@@ -857,7 +976,7 @@ def try_clone_connection(connection, selector, family)
   new_connection
 end
 
-# (lib/httpx/resolver/native.rb)
+# Resolver::Native#<< (lib/httpx/resolver/native.rb)
 
 def <<(connection)
   if @nameserver.nil? # DNSサーバが存在しない場合はResolveError
@@ -896,8 +1015,9 @@ def resolve(connection = nil, hostname = nil)
     end if connection.peer.non_ascii_hostname
 
     # hostnameに候補を格納
-    hostname = generate_candidates(hostname).each do |name|
-      # (lib/httpx/resolver/native.rb)
+    hostname = generate_candidates(hostname).each do |name| # => Resolver::Native#generate_candidates
+
+      # Resolver::Native#generate_candidates (lib/httpx/resolver/native.rb)
       #   def generate_candidates(name)
       #     return [name] if name.end_with?(".")
       #
@@ -926,9 +1046,9 @@ def resolve(connection = nil, hostname = nil)
     # encode_dns_queryでDNSクエリをエンコードして、@write_bufferに書き込む
     # (この後selectorがソケットに書き込みイベントを発火させることで送信される) (Resolver::Native#dwrite)
     # @write_buffer = #<HTTPX::Buffer:0x000000012036e9c8 @buffer="", @limit=512>
-    @write_buffer << encode_dns_query(hostname)
+    @write_buffer << encode_dns_query(hostname) # => Resolver#encode_dns_query
 
-    # (lib/httpx/resolver.rb)
+    # Resolver#encode_dns_query (lib/httpx/resolver.rb)
     #  def encode_dns_query(hostname, type: Resolv::DNS::Resource::IN::A, message_id: generate_id)
     #    Resolv::DNS::Message.new(message_id).tap do |query|
     #      query.rd = 1
@@ -943,12 +1063,8 @@ def resolve(connection = nil, hostname = nil)
     close_or_resolve
   end
 end
-```
 
-### `Session#select_connection`
-
-```
-# (lib/httpx/session.rb)
+# Session#select_connection (lib/httpx/session.rb)
 
 alias_method :select_resolver, :select_connection
 
@@ -960,14 +1076,47 @@ def select_connection(connection, selector)
   selector.register(connection)
 end
 
-# (lib/httpx/session.rb)
+# Session#pin_connection (lib/httpx/session.rb)
 def pin_connection(connection, selector)
   connection.current_session = self
   connection.current_selector = selector
 end
 ```
 
-## `Connection#send`
+#### `Resolver#on(:resolve)` / `Resolver#on(:error)`
+
+```ruby
+# Resolver::Resolver#set_resolver_callbacks (lib/httpx/resolver/resolver.rb)
+
+def set_resolver_callbacks
+  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
+  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
+  on(:close, &method(:close_resolver)) # リゾルバをcloseする
+end
+
+def resolve_connection(connection)
+  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
+  # => Session#on_resolver_connection
+end
+
+def emit_connection_error(connection, error)
+  return connection.handle_connect_error(error) if connection.connecting?
+  connection.emit(:error, error) # => Connection#on(:error)
+end
+
+def close_resolver(resolver)
+  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
+end
+
+def on_resolver_close(resolver, selector)
+  return if resolver.closed?
+
+  deselect_resolver(resolver, selector) # selectorからresolverを取得
+  resolver.close unless resolver.closed? # resolverをclose
+end
+```
+
+### `Connection#send`
 
 ```ruby
 # (lib/httpx/connection.rb)
@@ -1005,9 +1154,9 @@ def parser
 end
 
 def build_parser(protocol = @io.protocol)
-  parser = self.class.parser_type(protocol).new(@write_buffer, @options)
+  parser = self.class.parser_type(protocol).new(@write_buffer, @options) # => Connection#parser_type
 
-  # (lib/httpx/connection.rb)
+  # Connection#parser_type (lib/httpx/connection.rb)
   #   def parser_type(protocol)
   #     case protocol
   #     when "h2" then HTTP2
@@ -1026,9 +1175,9 @@ def send_request_to_parser(request)
   request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
   parser.send(request) # 送信 => Connection::HTTP1#send / Connection::HTTP2#send
 
-  set_request_timeouts(request)
+  set_request_timeouts(request) # => Connection#set_request_timeouts
 
-  # (lib/httpx/connection.rb)
+  # Connection#set_request_timeouts (lib/httpx/connection.rb)
   #   def set_request_timeouts(request)
   #     set_request_write_timeout(request)
   #     set_request_read_timeout(request)
@@ -1064,25 +1213,28 @@ end
 def set_parser_callbacks(parser)
   # レスポンスを受信したとき
   parser.on(:response) do |request, response|
+    # request = #<HTTPX::Request>
+    # response = #<Response>
+
     # レスポンスヘッダをパースし、Alt-Svcが含まれている場合
     AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
-      emit(:altsvc, alt_origin, origin, alt_params) # :altsvcイベントを発火
+      emit(:altsvc, alt_origin, origin, alt_params) # => Connection#on(:altsvc)
     end
 
     @response_received_at = Utils.now # この接続で最後にレスポンスを受信した時刻
     @inflight -= 1 # 送信済みかつレスポンス待ちのリクエストのカウントを減算
-    request.emit(:response, response) # HTTPX::Requestオブジェクトに対して:responseイベントを発火
+    request.emit(:response, response) # => Request#on(:response)
   end
 
   # ALTSVCフレームを受信した場合
   parser.on(:altsvc) do |alt_origin, origin, alt_params|
-    emit(:altsvc, alt_origin, origin, alt_params) # :altsvcイベントを発火
+    emit(:altsvc, alt_origin, origin, alt_params) # => Connection#on(:altsvc)
   end
 
   # PINGフレームを受信した時
-  parser.on(:pong, &method(:send_pending)) # @pendingに積まれたリクエストを送信する
+  parser.on(:pong, &method(:send_pending)) # @pendingに積まれたリクエストを送信する => Connection#send_pending
 
-  # (lib/httpx/connection.rb)
+  # Connection#send_pending (lib/httpx/connection.rb)
   #   def send_pending
   #     while !@write_buffer.full? && (request = @pending.shift)
   #       send_request_to_parser(request)
@@ -1091,7 +1243,7 @@ def set_parser_callbacks(parser)
 
   # PUSH_PROMISEフレームを受信した時
   parser.on(:promise) do |request, stream|
-    request.emit(:promise, parser, stream) # :promiseイベントを発火
+    request.emit(:promise, parser, stream) # => Request#on(:promise)
   end
 
   # GOAWAYフレームを受信した時 (HTTP/2)
@@ -1118,24 +1270,24 @@ def set_parser_callbacks(parser)
       @exhausted = false
     when :closing
       once(:closed) do # closeしたら
-        idling
+        idling # => Connection#idling
         @exhausted = false
       end
     end
 
-    # (lib/httpx/connection.rb)
-    #  def idling
-    #    purge_after_closed # ソケットを閉じる、読み取り用のバッファを空にする、タイムアウト設定ををリセット
-    #    @write_buffer.clear # 未送信リクエストを空にする
-    #    transition(:idle) # 状態を:idle = 再利用可能な状態に変更
-    #    @parser = nil if @parser
-    #  end
+    # Connection#idling (lib/httpx/connection.rb)
+    #   def idling
+    #     purge_after_closed # ソケットを閉じる、読み取り用のバッファを空にする、タイムアウト設定ををリセット
+    #     @write_buffer.clear # 未送信リクエストを空にする
+    #     transition(:idle) # 状態を:idle = 再利用可能な状態に変更
+    #     @parser = nil if @parser
+    #   end
     #
-    #  def purge_after_closed
-    #    @io.close if @io
-    #    @read_buffer.clear
-    #    @timeout = nil
-    #  end
+    #   def purge_after_closed
+    #     @io.close if @io
+    #     @read_buffer.clear
+    #     @timeout = nil
+    #   end
   end
 
   # ORIGINフレームを受信した時
@@ -1148,16 +1300,16 @@ def set_parser_callbacks(parser)
   # 接続がcloseしたとき
   parser.on(:close) do |force|
     if force # 強制終了
-      reset
+      reset # => Connection#reset
 
-      # (lib/httpx/connection.rb)
+      # Connection#reset (lib/httpx/connection.rb)
       #   def reset
       #     return if @state == :closing || @state == :closed
       #     transition(:closing)
       #     transition(:closed)
       #   end
 
-      emit(:terminate) # :terminateイベントを発火
+      emit(:terminate) # => Connection#on(:terminate)
     end
   end
 
@@ -1229,7 +1381,7 @@ def set_parser_callbacks(parser)
     # 上記の2ケース以外はエラーをリクエストに紐づけてレスポンスとして返す
     response = ErrorResponse.new(request, error)
     request.response = response
-    request.emit(:response, response)
+    request.emit(:response, response) # => Request#on(:response)
   end
 end
 ```
@@ -1280,9 +1432,9 @@ def send(request, head = false)
   unless (stream = @streams[request])
     # なければ新しいストリーム (HTTP2::Client::Stream) を作成
     stream = @connection.new_stream
-    handle_stream(stream, request)
+    handle_stream(stream, request) # => Connection::HTTP2#handle_stream
 
-    # (lib/httpx/connection/http2.rb)
+    # Connection::HTTP2#handle_stream (lib/httpx/connection/http2.rb)
     #   def handle_stream(stream, request)
     #     request.on(:refuse, &method(:on_stream_refuse).curry(3)[stream, request])
     #     stream.on(:close, &method(:on_stream_close).curry(3)[stream, request])
@@ -1392,6 +1544,67 @@ def join_trailers(stream, request)
 end
 ```
 
+## `Request#on(:response)`
+
+```ruby
+# Resolver::HTTPS#resolve (lib/httpx/resolver/https.rb)
+#   Resolver::HTTPS#<<から呼ばれる (DoHを利用するなど)
+
+def resolve(connection = @connections.first, hostname = nil) # @connections = HTTPSコネクションのプール
+  return unless connection
+
+  # ホスト名と接続のマッピングが存在する場合はそれを再利用する
+  hostname ||= @queries.key(connection)
+
+  if hostname.nil?
+    hostname = connection.peer.host # ホスト名を取得
+    # log
+    hostname = @resolver.generate_candidates(hostname).each do |name|
+      # 検索候補一つ一つに接続を紐付けて保存
+      @queries[name.to_s] = connection
+    end.first.to_s # 最初の候補をホスト名として返す
+  else
+    @queries[hostname] = connection # ホスト名に接続をマッピングし直す
+  end
+
+  log { "resolver #{FAMILY_TYPES[@record_type]}: query for #{hostname}" }
+
+  begin
+    # DoHサーバへのリクエストを構築
+    request = build_request(hostname)
+
+    request.on(:response, &method(:on_response).curry(2)[request])
+    request.on(:promise, &method(:on_promise))
+
+    @requests[request] = hostname # このリクエストとホスト名を紐付ける
+    resolver_connection.send(request)
+    @connections << connection # この名前解決を発行した接続を保存
+  rescue ResolveError, Resolv::DNS::EncodeError => e
+    reset_hostname(hostname)
+    emit_resolve_error(connection, connection.peer.host, e)
+  end
+end
+
+def on_response(request, response)
+  response.raise_for_status # => Response#raise_for_status
+
+  # Response#raise_for_status (lib/httpx/response.rb)
+  #   def raise_for_status
+  #     return self unless (err = error)
+  #     raise err
+  #   end
+rescue StandardError => e
+  hostname = @requests.delete(request)
+  connection = reset_hostname(hostname)
+  emit_resolve_error(connection, connection.peer.host, e)
+else
+  # @type var response: HTTPX::Response
+  parse(request, response)
+ensure
+  @requests.delete(request)
+end
+```
+
 ## `Session#receive_requests`
 
 ```ruby
@@ -1409,15 +1622,15 @@ def receive_requests(requests, selector)
     catch(:coalesced) {
       selector.next_tick # => Selector#next_tick
     } until (
-      response = fetch_response(request, selector, request.options)
+      response = fetch_response(request, selector, request.options) # => Session#fetch_response
 
-      # (lib/httpx/session.rb)
+      # Session#fetch_response (lib/httpx/session.rb)
       #   def fetch_response(request, _selector, _options)
       #     @responses.delete(request)
       #   end
     )
 
-    request.emit(:complete, response) # リクエストに対して:completeイベントを通知
+    request.emit(:complete, response) # => Request#on(:complete)
     responses << response
     requests.shift
 
@@ -1431,7 +1644,7 @@ def receive_requests(requests, selector)
     # ここでリクエストを処理することでエラーを回収する
     while (request = requests.shift)
       response = fetch_response(request, selector, request.options)
-      request.emit(:complete, response) if response
+      request.emit(:complete, response) if response # => Request#on(:complete)
       responses << response
     end
     break
@@ -1563,7 +1776,7 @@ def call
   end
   nil
 rescue StandardError => e
-  emit(:error, e)
+  emit(:error, e) # => Connection#on(:error)
   raise e
 end
 
@@ -1584,10 +1797,42 @@ def handle_transition(nextstate)
     @connected_at = Utils.now # 接続完了時刻
     send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信
     @timeout = @current_timeout = parser.timeout
-    emit(:open)
+    emit(:open) # => Connection#on(:open)
   # ...
   end
   @state = nextstate
+end
+```
+
+#### `Connection#on(:open)`
+
+```ruby
+# (lib/httpx/plugins/callbacks.rb)
+
+def do_init_connection(connection, selector)
+  super
+
+  # Connection#on(:open)
+  connection.on(:open) do
+    next unless connection.current_session == self
+
+    emit_or_callback_error(:connection_opened, connection.origin, connection.io.socket)
+  end
+  # ...
+end
+
+%i[
+  connection_opened connection_closed
+  request_error
+  request_started request_body_chunk request_completed
+  response_started response_body_chunk response_completed
+].each do |meth|
+  class_eval(<<-MOD, __FILE__, __LINE__ + 1)
+    def on_#{meth}(&blk)   # def on_connection_opened(&blk)
+      on(:#{meth}, &blk)   #   on(:connection_opened, &blk)
+      self                 #   self
+    end                    # end
+  MOD
 end
 ```
 
@@ -1601,9 +1846,9 @@ def connect
 
   if !@io || @io.closed?
     transition(:idle)
-    @io = build_socket
+    @io = build_socket # => TCP#build_socket
 
-    # (lib/httpx/io/tcp.rb)
+    # TCP#build_socket (lib/httpx/io/tcp.rb)
     #   def build_socket
     #     @ip = @addresses[@ip_index] # @ip_index = アドレス在庫の位置を示すインデックス
     #     Socket.new(@ip.family, :STREAM, 0)
@@ -1743,7 +1988,7 @@ def protocol
   # Returns the ALPN protocol string that was finally selected by the server during the handshake
 
   # superの場合
-  # (lib/httpx/io/tcp.rb)
+  # TCP#protocol (lib/httpx/io/tcp.rb)
   #   def protocol
   #     @fallback_protocol
   #     # => @options.fallback_protocol (TCP#initialize)
@@ -1775,7 +2020,7 @@ def consume
       # 何かのきっかけで状態が:idleに戻った場合は即終了
       return if @state == :idle
 
-      parser.consume # Connection::HTTP1#consume / Connection::HTTP2#consume
+      parser.consume # => Connection::HTTP1#consume / Connection::HTTP2#consume
 
       # 終了条件
       # @pending.empty? = 送信待ちのリクエストがない
@@ -1813,20 +2058,20 @@ def consume
           break # このtickではこれ以上読み取るものがないのでループを抜ける
         end
 
-        parser << @read_buffer.to_s # 読み取ったデータをパーサに渡す
+        parser << @read_buffer.to_s # 読み取ったデータをパーサに渡す => Connection::HTTP1#<< / Connection::HTTP2#<<
 
-        # (lib/httpx/connection/http1.rb)
+        # Connection::HTTP1#<< (lib/httpx/connection/http1.rb)
         #   def <<(data)
         #     @parser << data # => Parser::HTTP1#<<
         #   end
         #
-        # (lib/httpx/parser/http1.rb)
+        # Parser::HTTP1#<< (lib/httpx/parser/http1.rb)
         #   def <<(chunk)
         #     @buffer << chunk
         #     parse
         #   end
-
-        # (lib/httpx/connection/http2.rb)
+        #
+        # Connection::HTTP2#<< (lib/httpx/connection/http2.rb)
         #   def <<(data)
         #     @connection << data # => (http-2) HTTP2::Client#<<
         #   end
@@ -1902,7 +2147,7 @@ def consume
   end
 end
 
-# (lib/httpx/connection/http1.rb)
+# Connection::HTTP1#consume (lib/httpx/connection/http1.rb)
 
 def consume
   # リクエスト数の上限 (ほぼつねに1)
@@ -1938,7 +2183,7 @@ def handle(request)
   end
 end
 
-# (lib/httpx/connection/http2.rb)
+# Connection::HTTP2#consume (lib/httpx/connection/http2.rb)
 
 def consume
   # すべてのストリームが対象
@@ -1990,7 +2235,7 @@ def interests
 
   nil
 rescue StandardError => e
-  emit(:error, e)
+  emit(:error, e) # => Connection#on(:error)
   nil
 end
 ```
@@ -2036,200 +2281,6 @@ module HTTPX
       @callbacks[type]
     end
   end
-end
-```
-
-## 全体の流れ
-1. `HTTPX.get` -> `Chainable#request`
-2. `Session#request`
-    - `Session#build_requests`
-    - `Session#send_requests`
-      - `Session#get_current_selector`
-      - `Session#_send_requests`
-        - `Session#send_request`
-          - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
-            - (新しい接続の場合) `Session#do_init_connection`
-              - `Session#resolve_connection`
-                - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
-                  - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
-                - `Resolver::Multi#lazy_resolve` 新規に名前解決
-                  - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
-                  - `Session#select_connection`
-          - `Connection#send`
-            - `Connection#send_request_to_parser`
-              - `Connection::HTTP1#send`
-              - `Connection::HTTP2#send`
-          - `Request#emit<:response>`発火
-      - `Session#receive_requests` `send_requests`後、即時実行
-        - `Selector#next_tick` レスポンスの待機
-          - `Selector#select`
-            - `Connection#call`
-              - `Connection#connect`
-                - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれている?
-              - `Connection#consume`
-                - `Connection#parser` HTTPパーサの作成
-                  - `Connection#set_parser_callbacks`
-                    - `Connection#emit<:altsvc, :terminate>`発火
-                    - `Request#emit<:response, :promise>`発火
-          - `Connection#interests`
-        - `Session#fetch_response`
-        - `Request#emit<:complete>`発火
-
-### コールバックの設定
-TODO それぞれemitしている箇所に引っ越す
-
-#### `Request#on`
-- `:response`
-- `:promise`
-- `:complete` (`Connection#set_request_timeout`でセットされている?)
-
-```ruby
-# (lib/httpx/session.rb)
-
-# Session#request -> #build_requests -> #build_requestから呼ばれる
-def set_request_callbacks(request)
-  request.on(:response, &method(:on_response).curry(2)[request]) # リクエストに対してレスポンスを紐づける
-  request.on(:promise, &method(:on_promise)) # PUSH_PROMISEフレームを明示的に拒否する (http-2)
-end
-
-def on_response(request, response)
-  @responses[request] = response
-end
-
-def on_promise(_, stream)
-  stream.refuse
-end
-```
-
-#### `Resolver::Native#on`
-- `:resolve`
-- `:error`
-
-```ruby
-# (lib/httpx/resolver/resolver.rb)
-
-# Resolver::Resolver#initializeから呼ばれる
-def set_resolver_callbacks
-  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
-  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
-  on(:close, &method(:close_resolver)) # リゾルバをcloseする
-end
-
-def resolve_connection(connection)
-  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
-  # => Session#on_resolver_connection
-end
-
-def emit_connection_error(connection, error)
-  return connection.handle_connect_error(error) if connection.connecting?
-  connection.emit(:error, error)
-end
-
-def close_resolver(resolver)
-  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
-end
-
-def on_resolver_close(resolver, selector)
-  return if resolver.closed?
-
-  deselect_resolver(resolver, selector) # selectorからresolverを取得
-  resolver.close unless resolver.closed? # resolverをclose
-end
-```
-
-#### `Connection#on`
-- `:altsvc`
-- `:terminate`
-- `:open`
-
-```ruby
-# (lib/httpx/connection.rb)
-
-# Connection#initializeから呼ばれる
-def initialize
-  # ...
-  on(:terminate) do # 接続のライフサイクルの終了処理
-    next if @exhausted # この接続の最大リクエスト数に達したら以降の処理をスキップ (将来的に再利用される)
-
-    current_session = @current_session
-    current_selector = @current_selector
-
-    # :terminateイベントは:closeイベントのあとに呼ばれることがあり、
-    # この時点ですでに接続がコネクションプールに返却済みの可能性がある。その場合は何もしない
-    next unless current_session && current_selector
-
-    current_session.deselect_connection(self, current_selector)
-
-    # (lib/httpx/session.rb)
-    #   def deselect_connection(connection, selector, cloned = false)
-    #     selector.deregister(connection) # selectorの監視対象からこの接続を除外する
-    #     # when connections coalesce
-    #     return if connection.state == :idle # 再利用待ちの場合は何もしない
-    #     return if cloned # この接続がtry_clone_connectionで生成された場合は別の接続に統合されるので何もしない
-    #     return if @closing && connection.state == :closed # このセッションがclose中で接続がclosedなら何もしない
-    #     @pool.checkin_connection(connection) # この接続をコネクションプールに返却する
-    #   end
-  end
-
-  on(:altsvc) do |alt_origin, origin, alt_params| # 新しいAlt-Svc先へ接続を張り直す
-    build_altsvc_connection(alt_origin, origin, alt_params)
-  end
-  # ...
-end
-
-def build_altsvc_connection(alt_origin, origin, alt_params)
-  # HTTPS -> HTTP への切り替えはできないので何もしない
-  return if @origin.scheme == "https" && alt_origin.scheme != "https"
-
-  # サーバから返って来たAlt-Svcを取得
-  altsvc = AltSvc.cached_altsvc_set(origin, alt_params.merge("origin" => alt_origin))
-
-  return unless altsvc
-
-  # 接続オプションを引き継いで新しい接続を取得
-  alt_options = @options.merge(ssl: @options.ssl.merge(hostname: URI(origin).host))
-  connection = @current_session.find_connection(alt_origin, @current_selector, alt_options)
-
-  # 取得した接続がこの接続と同じものなら何もしない
-  # advertised altsvc is the same origin being used, ignore
-  return if connection == self
-
-  connection.extend(AltSvc::ConnectionMixin) unless connection.is_a?(AltSvc::ConnectionMixin)
-  log(level: 1) { "#{origin} alt-svc: #{alt_origin}" }
-
-  # この接続から新しい接続へ、未送信のリクエストなどを移行する
-  connection.merge(self)
-  terminate # この接続は終了
-rescue UnsupportedSchemeError
-  altsvc["noop"] = true
-  nil
-end
-```
-
-```ruby
-# (lib/httpx/plugins/callbacks.rb)
-def do_init_connection(connection, selector)
-  super
-  connection.on(:open) do
-    next unless connection.current_session == self
-
-    emit_or_callback_error(:connection_opened, connection.origin, connection.io.socket)
-  end
-  # ...
-end
-
-%i[
-  connection_opened connection_closed
-  request_error
-  request_started request_body_chunk request_completed
-  response_started response_body_chunk response_completed
-].each do |meth|
-  class_eval(<<-MOD, __FILE__, __LINE__ + 1)
-    def on_#{meth}(&blk)   # def on_connection_opened(&blk)
-      on(:#{meth}, &blk)   #   on(:connection_opened, &blk)
-      self                 #   self
-    end                    # end
-  MOD
 end
 ```
 
