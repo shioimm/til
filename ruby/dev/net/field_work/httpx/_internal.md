@@ -9,16 +9,21 @@
       - `Session#_send_requests`
         - `Session#send_request`
           - `Session#find_connection` 再利用できる接続もしくは新しい接続を取得する
-            - `Pool#acquire_connection` 再利用できる接続を取得
-            - `Pool#checkout_connection` 新しい接続を取得
+            - `Pool#acquire_connection` 再利用できるConnectionを取得
+            - `Pool#checkout_connection` `Connection.new`を呼び出す
             - 接続の状態に応じた処理
               - `when :idle` 新規接続
                 - `Session#do_init_connection`
                   - `Session#resolve_connection`
                     - `Session#find_resolver_for` 再利用できるresolverもしくは新しいresolverを取得
-                    - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用 WIP
-                      - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
-                    - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                    - `Resolver::Multi#early_resolve` 取得済みのアドレスがある場合はそれを利用する
+                      - `Resolver::Resolver#emit_addresses`
+                        - `Resolver::Resolver#emit_resolved_connection`
+                          - `Connection#addresses=` このConnectionのioをセット
+                            - `Connection#build_socket` このConnectionのioとなる`TCP.new`もしくは`SSL.new`を呼び出す
+                          - `Resolver::Resolver#on(:resolve)`
+                        - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
+                    - `Resolver::Multi#lazy_resolve` 新規に名前解決 WIP
                       - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
                       - `Session#select_connection`
               - `when :open` # 宛先と接続済み
@@ -721,26 +726,26 @@ end
 
 # Resolver::Multi#early_resolve (lib/httpx/resolver/multi.rb)
 
-# WIP ここから続き
 def early_resolve(connection)
   # 接続先ホスト名
   hostname = connection.peer.host
 
-  # キャッシュがある場合: すでにこのconnectionに関連付けられたAddrinfo(s)、もしくはIP文字列があればそれを取得
-  # なければfalseを返す
+  # キャッシュがある場合
+  # すでにこのconnectionに関連付けられたIPAddr(s)、もしくはIP文字列から取得できるIPAddr(s) をaddressesに格納
+  # なければここでfalseを返す
   addresses = @resolver_options[:cache] && (connection.addresses || HTTPX::Resolver.nolookup_resolve(hostname))
   return false unless addresses
 
   resolved = false
 
-  # Addrinfo(s)をアドレスファミリごとにグルーピングし、IPv6を優先するように並び替え
+  # Addrinfo(s)をアドレスファミリごとにグルーピングし、IPv6 -> IPv4の順になるように並び替え
   addresses.group_by(&:family).sort { |(f1, _), (f2, _)| f2 <=> f1 }.each do |family, addrs|
     # アドレスファミリに対応するリゾルバを選択
     resolver = @resolvers.find { |r| r.family == family } || @resolvers.first
 
     next unless resolver # this should ever happen
 
-    # リゾルバに対し、このconnectionの名前解決が完了したことを通知
+    # resolverに対し、このconnectionの名前解決が完了したことを通知
     resolver.emit_addresses(connection, family, addrs, true) # => Resolver::Resolver#emit_addresses
 
     resolved = true
@@ -752,7 +757,7 @@ end
 # Resolver::Resolver#emit_addresses (lib/httpx/resolver/resolver.rb)
 
 def emit_addresses(connection, family, addresses, early_resolve = false)
-  # addressesをIPAddrに変換
+  # addressesをIPAddr(s) に変換
   addresses.map! do |address|
     address.is_a?(IPAddr) ? address : IPAddr.new(address.to_s)
   end
@@ -760,20 +765,13 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
   # connectionに対してこのaddressesと同じ内容のアドレスリストが設定されている場合はreturn
   return if !early_resolve && connection.addresses && !addresses.intersect?(connection.addresses)
 
-  log do
-    "resolver #{FAMILY_TYPES[RECORD_TYPES[family]]}: " \
-      "answer #{connection.peer.host}: #{addresses.inspect} (early resolve: #{early_resolve})"
-  end
-
   # HEのための遅延? (アドレスリストをかたまりで渡している気がする...)
-  if !early_resolve && # early_resolveからの呼び出しの場合はtrue
-     @current_selector && selectorが存在する
-     family == Socket::AF_INET && # IPv4
-     !connection.io && # 接続済みではない
-     connection.options.ip_families.size > 1 && # IPv4 / IPv6両方をサポートしている
+  if !early_resolve &&                                 # Resolver::Multi#early_resolveからの呼び出しの場合はtrue
+     @current_selector &&                              # selectorが存在する
+     family == Socket::AF_INET &&                      # IPv4
+     !connection.io &&                                 # 接続済みではない
+     connection.options.ip_families.size > 1 &&        # IPv4 / IPv6両方をサポートしている
      addresses.first.to_s != connection.peer.host.to_s # 接続先ホストがIPアドレスではない
-
-    log { "resolver #{FAMILY_TYPES[RECORD_TYPES[family]]}: applying resolution delay..." }
 
     # 50ms後に名前解決を通知
     @current_selector.after(0.05) do
@@ -783,7 +781,8 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
       end
     end
   else
-    # 名前可決を通知 => Resolver::Resolver#emit_resolved_connection
+    # Resolver::Multi#early_resolveからの呼び出しの場合はこちら
+    # resolverに対し、このconnectionの名前可決を通知 => Resolver::Resolver#emit_resolved_connection
     emit_resolved_connection(connection, addresses, early_resolve)
   end
 end
@@ -799,8 +798,9 @@ def emit_resolved_connection(connection, addresses, early_resolve)
     return if connection.state == :closed
 
     emit(:resolve, connection) # => Resolver::Resolver#on(:resolve)
+
   rescue StandardError => e # SocketErrorやIOErrorが発生した場合
-    if early_resolve
+    if early_resolve # Resolver::Multi#early_resolveからの呼び出しの場合はこちら
       # connectionの状態をリセットして例外を呼び出し元に伝搬する
       connection.force_reset
       throw(:resolve_error, e)
@@ -813,10 +813,28 @@ end
 # Connection#addresses= (lib/httpx/connection.rb)
 
 def addresses=(addrs)
-  if @io
-    @io.add_addresses(addrs)
+  if @io # 外部から指定されているオプションのioがある場合はConnectionをinitializeした時に@io = build_socket済み
+    @io.add_addresses(addrs) # => TCP#add_addresses
+
+    # TCP#add_addresses (lib/httpx/io/tcp.rb)
+    #   def add_addresses(addrs)
+    #     return if addrs.empty?
+    #
+    #     addrs = addrs.map { |addr| addr.is_a?(IPAddr) ? addr : IPAddr.new(addr) }
+    #
+    #     ip_index = @ip_index || (@addresses.size - 1)
+    #     if addrs.first.ipv6?
+    #       # should be the next in line
+    #       @addresses = [*@addresses[0, ip_index], *addrs, *@addresses[ip_index..-1]]
+    #     else
+    #       @addresses.unshift(*addrs)
+    #       @ip_index += addrs.size if @ip_index
+    #     end
+    #   end
+
   else
-    @io = build_socket(addrs)
+    # 外部から指定されているオプションのioがない場合はここで初めてソケットを作成
+    @io = build_socket(addrs) # => Connection#build_socket
   end
 end
 
@@ -897,6 +915,7 @@ end
 
 # Resolver::Multi#lazy_resolve (lib/httpx/resolver/multi.rb)
 
+# WIP ここから続き
 def lazy_resolve(connection)
   # @resolvers = [#<HTTPX::Resolver::Native ...>, ...]
   @resolvers.each do |resolver|
