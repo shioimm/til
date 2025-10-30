@@ -15,8 +15,8 @@
               - `when :idle` 新規接続
                 - `Session#do_init_connection`
                   - `Session#resolve_connection`
-                    - `Session#find_resolver_for` WIP
-                    - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用
+                    - `Session#find_resolver_for` 再利用できるresolverもしくは新しいresolverを取得
+                    - `Resolver::Multi#early_resolve` 取得済みのアドレスを利用 WIP
                       - 条件によって`Resolver::Native#emit<:resolve, :error>`を発火
                     - `Resolver::Multi#lazy_resolve` 新規に名前解決
                       - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
@@ -654,8 +654,8 @@ end
 
 # Session#find_resolver_for (lib/httpx/session.rb)
 
-# WIP ここから続き
 def find_resolver_for(connection, selector)
+  # selectorの監視対象の中から既に同じ設定で動作しているresolverを探す
   resolver = selector.find_resolver(connection.options) # => Selector#find_resolver
 
   # Selector#find_resolver (lib/httpx/selector.rb)
@@ -697,11 +697,13 @@ def find_resolver_for(connection, selector)
     #         res.options == options
     #       end
     #       resolvers.delete_at(idx) if idx
-    #     end || checkout_new_resolver(resolver_type, options) # なければ新しいResolverを作成
+    #     end ||
+    #     # なければ新しいResolverを作成 => Pool#checkout_new_resolver
+    #     checkout_new_resolver(resolver_type, options)
     #
-    #     # (lib/httpx/pool.rb)
+    #     # Pool#checkout_new_resolver (lib/httpx/pool.rb)
     #     #   def checkout_new_resolver(resolver_type, options)
-    #     #     if resolver_type.multi?
+    #     #     if resolver_type.multi? # Resolver::System以外はtrueっぽい... (Resolver::Resolver#multi?)
     #     #       Resolver::Multi.new(resolver_type, options)
     #     #     else
     #     #       resolver_type.new(options)
@@ -709,6 +711,7 @@ def find_resolver_for(connection, selector)
     #     #   end
     #   end
 
+    # resolver = #<HTTPX::Resolver::Multi> など
     resolver.current_session = self
     resolver.current_selector = selector
   end
@@ -718,6 +721,7 @@ end
 
 # Resolver::Multi#early_resolve (lib/httpx/resolver/multi.rb)
 
+# WIP ここから続き
 def early_resolve(connection)
   # 接続先ホスト名
   hostname = connection.peer.host
@@ -1809,7 +1813,7 @@ def call
   case @state
   when :idle # 接続開始時
     connect # => Connection#connect
-    consume # => Connection#consume WIP
+    consume # => Connection#consume
   when :closed
     return
   when :closing
