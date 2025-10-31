@@ -23,7 +23,9 @@
                             - `Connection#build_socket` このConnectionのioとなる`TCP.new`もしくは`SSL.new`を呼び出す
                           - `Resolver::Resolver#on(:resolve)`
                         - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
-                    - `Resolver::Multi#lazy_resolve` 新規に名前解決 WIP
+                    - `Resolver::Multi#lazy_resolve` 新規に名前解決
+                      - `Session#try_clone_connection` アドレスファミリごとにConnectionにfamilyをセット
+                      - `Resolver::Native#<<` WIP
                       - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
                       - `Session#select_connection`
               - `when :open` # 宛先と接続済み
@@ -915,14 +917,14 @@ end
 
 # Resolver::Multi#lazy_resolve (lib/httpx/resolver/multi.rb)
 
-# WIP ここから続き
 def lazy_resolve(connection)
   # @resolvers = [#<HTTPX::Resolver::Native ...>, ...]
   @resolvers.each do |resolver|
     # resolverに対してこの接続を名前解決する対象として登録する
     resolver << @current_session.try_clone_connection(connection, @current_selector, resolver.family)
-    # => Resolver::Native#<<
     # => Session#try_clone_connection
+    # => Resolver::Native#<<
+
     next if resolver.empty?
 
     @current_session.select_resolver(resolver, @current_selector) # => Session#select_connection
@@ -932,25 +934,30 @@ end
 # Session#try_clone_connection (lib/httpx/session.rb)
 
 def try_clone_connection(connection, selector, family)
+  # ここでconnection.familyが設定され、Session#do_init_connectionの実行条件が外れる
   connection.family ||= family
 
-  # アドレスファミリが同じ場合はそのconnectionを返す
+  # try_clone_connectionはアドレスファミリごとに一回ずつ呼ばれそう。
+  # 初回は当然connection.family == familyになるのでここでconnectionをそのまま返す。
+  # 2回目は最初のconnectionに紐づける形で別のアドレスファミリを紐づける新しいconnectionを作成し、
+  # こちらに対してもdo_init_connectionを呼ぶ
   return connection if connection.family == family
 
-  # アドレスファミリが異なる場合、connectionを複製してアドレスファミリを設定
+  # connectionを複製し、名前解決するアドレスファミリを設定
   new_connection = connection.class.new(connection.origin, connection.options)
   new_connection.family = family
 
-  # 元のconnectionと新しいnew_connectionを関連づける (同じ宛先に対するIPv6/IPv4接続を関連づける)
+  # 元のconnectionと新しいconnectionを関連づける (同じ宛先に対するIPv6/IPv4接続を関連づける)
   connection.sibling = new_connection
 
-  # 複製したnew_connectionをresolverに登録して名前解決を開始
+  # new_connectionでdo_init_connection -> Session#resolve_connection、つまり名前解決をする
   do_init_connection(new_connection, selector) # => Session#do_init_connection
   new_connection
 end
 
 # Resolver::Native#<< (lib/httpx/resolver/native.rb)
 
+# WIP ここから続き
 def <<(connection)
   if @nameserver.nil? # DNSサーバが存在しない場合はResolveError
     ex = ResolveError.new("No available nameserver")
