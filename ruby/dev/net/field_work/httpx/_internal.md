@@ -12,7 +12,7 @@
             - `Pool#acquire_connection` 再利用できるConnectionを取得
             - `Pool#checkout_connection` `Connection.new`を呼び出す
             - 接続の状態に応じた処理
-              - `when :idle` 新規接続
+              - `when :idle` 新規接続の場合
                 - `Session#do_init_connection`
                   - `Session#resolve_connection`
                     - `Session#find_resolver_for` 再利用できるresolverもしくは新しいresolverを取得
@@ -27,15 +27,15 @@
                       - `Session#try_clone_connection` アドレスファミリごとにConnectionにfamilyをセット
                       - `Resolver::Native#<<` このresolverの`@connections`にconnectionを追加してresolv
                         - `Resolver::Native#resolve` このresolverの`@write_buffer`にDNSクエリを書き込む
-                      - `Session#select_connection`
-              - `when :open` # 宛先と接続済み
+                      - `Session#select_connection` このconnectionに対して、このsessionとselectorを紐づける
+              - `when :open` 宛先と接続済みの場合
                   - `Session#select_connection` (指定のioがある場合) 接続をselectorの監視の対象にする
-                  - `Session#pin_connection` 接続をselectorに紐づける
-              - `when :closed` # 接続がclose済み
+                  - `Session#pin_connection` このconnectionに対して、このsessionとselectorを紐づける
+              - `when :closed` 接続がclose済みの場合
                   - 状態を`:idle`に戻して再初期化し、再利用できるようにする
-              - `when :closing` # 接続終了中
+              - `when :closing` 接続終了中の場合
                   - `:closed`イベント発火後に状態を`:idle`に戻して再初期化し、再利用できるようにする
-          - `Connection#send`
+          - `Connection#send` WIP
             - `Connection#send_request_to_parser`
               - `Connection::HTTP1#send`
               - `Connection::HTTP2#send`
@@ -402,7 +402,7 @@ def find_connection(request_uri, selector, options)
       # options.ioがある場合は
       # すでにConnection#initializeの中でbuild_socketしているのですぐに監視を開始できるのであった
     else
-      # この接続に対してこのセッションとこのselectorを紐づける
+      # このconnectionに対して、このsessionとselectorを紐づける
       pin_connection(connection, selector) # => Session#pin_connection
     end
   when :closed # connectionがclose済み、再利用可能
@@ -417,7 +417,7 @@ def find_connection(request_uri, selector, options)
       select_connection(connection, selector) # => Session#select_connection
     end
   else
-    # この接続に対してこのセッションとこのselectorを紐づける
+    # このconnectionに対して、このsessionとselectorを紐づける
     pin_connection(connection, selector) # => Session#pin_connection
   end
 
@@ -1057,17 +1057,17 @@ end
 alias_method :select_resolver, :select_connection
 
 def select_connection(connection, selector)
-  # この接続に対して、このセッションとselectorを紐づける
+  # このconnectionに対して、このsessionとselectorを紐づける
   pin_connection(connection, selector) # => Session#pin_connection
 
-  # このselectorにこの接続を登録する
+  # このselectorにこのconnectionを登録する
   selector.register(connection)
 end
 
 # Session#pin_connection (lib/httpx/session.rb)
 def pin_connection(connection, selector)
-  connection.current_session = self
-  connection.current_selector = selector
+  connection.current_session = self # このconnectionに対して、このsessionを紐づける
+  connection.current_selector = selector # このconnectionに対して、このselectorを紐づける
 end
 ```
 
@@ -1203,6 +1203,7 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
+# WIP ここから続き
 def send(request)
   # この接続が他の接続に合流している場合、合流先の接続を利用して送信を行う
   return @coalesced_connection.send(request) if @coalesced_connection
