@@ -25,8 +25,8 @@
                         - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
                     - `Resolver::Multi#lazy_resolve` 新規に名前解決
                       - `Session#try_clone_connection` アドレスファミリごとにConnectionにfamilyをセット
-                      - `Resolver::Native#<<` WIP
-                      - `Resolver::Native#resolve` DNSクエリをバッファに書き込む
+                      - `Resolver::Native#<<` このresolverの`@connections`にconnectionを追加してresolv
+                        - `Resolver::Native#resolve` このresolverの`@write_buffer`にDNSクエリを書き込む
                       - `Session#select_connection`
               - `when :open` # 宛先と接続済み
                   - `Session#select_connection` (指定のioがある場合) 接続をselectorの監視の対象にする
@@ -920,10 +920,9 @@ end
 def lazy_resolve(connection)
   # @resolvers = [#<HTTPX::Resolver::Native ...>, ...]
   @resolvers.each do |resolver|
-    # resolverに対してこの接続を名前解決する対象として登録する
     resolver << @current_session.try_clone_connection(connection, @current_selector, resolver.family)
-    # => Session#try_clone_connection
-    # => Resolver::Native#<<
+    # => Session#try_clone_connection # connection (もしくは新しいconnection) にアドレスファミリをセット
+    # => Resolver::Native#<< # このresolverの@connectionsにconnectionを追加し、@write_bufferにDNSクエリを書き込む
 
     next if resolver.empty?
 
@@ -957,7 +956,6 @@ end
 
 # Resolver::Native#<< (lib/httpx/resolver/native.rb)
 
-# WIP ここから続き
 def <<(connection)
   if @nameserver.nil? # DNSサーバが存在しない場合はResolveError
     ex = ResolveError.new("No available nameserver")
@@ -965,34 +963,30 @@ def <<(connection)
     connection.force_reset
     throw(:resolve_error, ex)
   else
-    # @connectionsにconnectionを追加してresolv
     @connections << connection
     resolve # => Resolver::Native#resolve
   end
 end
 
+# Resolver::Native#resolve (lib/httpx/resolver/native.rb)
+
 def resolve(connection = nil, hostname = nil)
   # @connectionsを先頭からたどり、closeした接続が残っている場合は取り除く
   @connections.shift until @connections.empty? || @connections.first.state != :closed
 
-  # まだクエリが発行されていないconnectionを取得、なければエラー
+  # @queriesは { "ホスト名" => connection, ... } みたいなハッシュ
+  # まだクエリが発行されていないconnectionを取得
   connection ||= @connections.find { |c| !@queries.value?(c) }
-  raise Error, "no URI to resolve" unless connection
+  raise Error, "no URI to resolve" unless connection # すべてのconnectionに対してクエリを発行済みの場合はエラー
 
-  # 書き込みバッファが空でない場合は何もしない
+  # 書き込みバッファに値が入っている場合は何もしない (書き込みバッファは一つしかない?)
   return unless @write_buffer.empty?
 
   # 引数に指定がなければ@queriesに登録されているホスト名を取得
   hostname ||= @queries.key(connection)
 
-  if hostname.nil? # hostnameが未指定の場合
-    # connectionのpeer.hostから取得
-    hostname = connection.peer.host
-
-    log do
-      "resolver #{FAMILY_TYPES[@record_type]}: " \
-        "resolve IDN #{connection.peer.non_ascii_hostname} as #{hostname}"
-    end if connection.peer.non_ascii_hostname
+  if hostname.nil? # hostnameが未指定、もしくはクエリ未発行の場合
+    hostname = connection.peer.host # connectionのpeer.hostをhostnameとする
 
     # hostnameに候補を格納
     hostname = generate_candidates(hostname).each do |name| # => Resolver::Native#generate_candidates
@@ -1002,36 +996,50 @@ def resolve(connection = nil, hostname = nil)
       #     return [name] if name.end_with?(".")
       #
       #     candidates = []
-      #     name_parts = name.scan(/[^.]+/)
-      #     candidates = [name] if @ndots <= name_parts.size - 1
-      #     candidates.concat(@search.map { |domain| [*name_parts, *domain].join(".") })
-      #     fname = "#{name}."
-      #     candidates << fname unless candidates.include?(fname)
+      #     name_parts = name.scan(/[^.]+/) # "example.com"の場合 ["example", "com"]
       #
-      #     candidates
+      #     # Resolver::Native#initialize
+      #     #   @ndots = @resolver_options.fetch(:ndots, 1) # => 1
+      #     #   @search = Array(@resolver_options[:search]).map { |srch| srch.scan(/[^.]+/) } # => []
+      #
+      #     candidates = [name] if @ndots <= name_parts.size - 1 # true
+      #     candidates.concat(@search.map { |domain| [*name_parts, *domain].join(".") }) # false
+      #     fname = "#{name}."
+      #     candidates << fname unless candidates.include?(fname) # true
+      #
+      #     candidates  # => ["example.com", "example.com."]
       #   end
 
-      # @queriesにconnectionを登録
       @queries[name] = connection
-    end.first # generate_candidatesが返す最初の候補をクエリ対象とする
+    end.first
+
+    # ...なので、このループを抜けると
+    #   @queries = { "example.com" => connection, "example.com." => connection } みたいになる
+    #   hostname = "example.com"
+    # みたいになっている
   else
-    # @queriesにconnectionを登録
+    # hostnameがある場合は単に@queriesにhostname / connectionの組みを登録するだけ
     @queries[hostname] = connection
   end
 
   @name = hostname
-  log { "resolver #{FAMILY_TYPES[@record_type]}: query for #{hostname}" }
 
   begin
     # encode_dns_queryでDNSクエリをエンコードして、@write_bufferに書き込む
-    # (この後selectorがソケットに書き込みイベントを発火させることで送信される) (Resolver::Native#dwrite)
-    # @write_buffer = #<HTTPX::Buffer:0x000000012036e9c8 @buffer="", @limit=512>
-    @write_buffer << encode_dns_query(hostname) # => Resolver#encode_dns_query
+    # @write_buffer = #<HTTPX::Buffer:0x000000012036e9c8 @buffer="", @limit=512> この@bufferの初期値は"".b
+
+    @write_buffer << encode_dns_query(hostname)
+    # => Resolver#encode_dns_query
+    # => Buffer#<<
 
     # Resolver#encode_dns_query (lib/httpx/resolver.rb)
     #  def encode_dns_query(hostname, type: Resolv::DNS::Resource::IN::A, message_id: generate_id)
     #    Resolv::DNS::Message.new(message_id).tap do |query|
-    #      query.rd = 1
+    #      # query = #<Resolv::DNS::Message:0x0000000104934388
+    #      #           @id=2, @qr=0, @opcode=0, @aa=0, @tc=0, @rd=0, @ra=0, @rcode=0,
+    #      #           @question=[], @answer=[], @authority=[], @additional=[]>
+    #
+    #      query.rd = 1 # 再起問合せを有効化
     #      query.add_question(hostname, type)
     #    end.encode
     #  end
