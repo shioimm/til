@@ -37,18 +37,10 @@
                   - `:closed`イベント発火後に状態を`:idle`に戻して再初期化し、再利用できるようにする
           - `Connection#send` `@pending`にリクエストを積む
           - `Request#emit(:response)` リクエスト中のエラー発生時に発火
-      - `Session#receive_requests` WIP
-        - `Selector#next_tick` レスポンスの待機
+      - `Session#receive_requests`
+        - `Selector#next_tick` 監視中のIOの準備完了をIO一つ分待機する
           - `Selector#select`
-            - `Connection#call`
-              - `Connection#connect`
-                - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれている?
-              - `Connection#consume`
-                - `Connection#parser` HTTPパーサの作成
-                  - `Connection#set_parser_callbacks`
-                    - `Connection#emit<:altsvc, :terminate>`発火
-                    - `Request#emit(:response, :promise)`発火
-          - `Connection#interests`
+            - `Selector#select_one` / `Selector#select_many` WIP
         - `Session#fetch_response`
         - `Request#emit<:complete>`発火
 
@@ -1699,19 +1691,21 @@ end
 ```ruby
 # (lib/httpx/session.rb)
 
-# WIP
-# 元のリクエストの送信順にresponsesを整列して返す
 def receive_requests(requests, selector)
-  # @type var responses: Array[response]
+  # ここに到達した時点ではまだリクエストの送信を行なっていない可能性がある
+
   responses = []
 
   loop do
-    request = requests.first # 先頭のリクエストを取得
-    return responses unless request # リクエストが空になったらレスポンスを返す
+    request = requests.first # リクエストをひとつ取得する
+
+    # リクエストが空になったらレスポンスを返す
+    return responses unless request
 
     catch(:coalesced) {
       selector.next_tick # => Selector#next_tick
     } until (
+      # WIP Selector#next_tickを読み終わったらここから続き
       response = fetch_response(request, selector, request.options) # => Session#fetch_response
 
       # Session#fetch_response (lib/httpx/session.rb)
@@ -1749,7 +1743,7 @@ end
 ```ruby
 # (lib/httpx/selector.rb)
 
-def next_tick
+def next_tick # IOに対して読み書きする用事が残っている場合、ここがそのエンドポイントになる
   catch(:jump_tick) do
     timeout = next_timeout # 次のタイムアウトまでの残り時間を取得
 
@@ -1777,6 +1771,8 @@ rescue Exception # rubocop:disable Lint/RescueException
   raise
 end
 
+# Selector#select (lib/httpx/selector.rb)
+
 def select(interval, &block)
   return if interval.nil? && @selectables.empty? # 監視対象が空の場合は何もしない
 
@@ -1785,28 +1781,38 @@ def select(interval, &block)
   select_many(interval, &block) # 監視対象のIOが複数 => Selector#select_many
 end
 
+# Selector#select_one (lib/httpx/selector.rb)
+
+# WIP
 def select_one(interval)
   io = @selectables.first
   return unless io
 
-  # どんなイベントを待つかによってwait_readable / wait_writable / waitを呼び出す
   interests = io.interests
+
+  # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
+  # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:wを返す
+
   result = case interests
-           when :r then io.to_io.wait_readable(interval)
-           when :w then io.to_io.wait_writable(interval)
-           when :rw then io.to_io.wait(interval, :read_write)
+           when :r then io.to_io.wait_readable(interval) # 読み込み可能になるまでブロック
+           when :w then io.to_io.wait_writable(interval) # 書き込み可能になるまでブロック
+           when :rw then io.to_io.wait(interval, :read_write) # 読み書き可能になるまでブロック?
            when nil then return
   end
 
-  unless result || interval.nil?
-    # タイムアウト発生時の処理
+  unless result || interval.nil? # タイムアウト発生時の処理
     io.handle_socket_timeout(interval) unless @is_timer_interval
     return
   end
 
-  # next_tickの中でselect(timeout, &:call)のように呼び出している。のでこの場合はio.call
+  # Selector#next_tickでselect(timeout, &:call)のようにブロックを渡している
+
+  # 1回目: => Resolver::Native#call
+
   yield io
 end
+
+# Selector#select_many (lib/httpx/selector.rb)
 
 def select_many(interval, &block)
   r, w = nil
@@ -1830,7 +1836,7 @@ def select_many(interval, &block)
     return
   end
 
-  # 読み書き可能なIOに対して.callを読んでいく
+  # Selector#next_tickでselect(timeout, &:call)のようにブロックを渡している
   if writers
     readers.each do |io|
       yield io
@@ -1843,6 +1849,70 @@ def select_many(interval, &block)
   else
     readers.each(&block) if readers
   end
+end
+
+# Resolver::Native#interests (lib/httpx/resolver/native.rb)
+
+def interests
+  case @state
+  when :idle
+    transition(:open)
+  when :closed
+    transition(:idle)
+    transition(:open)
+  end
+  calculate_interests # => Resolver::Native#interests
+
+  # Resolver::Native#calculate_interests (lib/httpx/resolver/native.rb)
+  #   def calculate_interests
+  #      return :w unless @write_buffer.empty?
+  #      return :r unless @queries.empty?
+  #      nil
+  #    end
+end
+
+# Resolver::Native#call (lib/httpx/resolver/native.rb)
+
+# WIP
+def call
+  case @state
+  when :open
+    consume # => Resolver::Native#consume
+  end
+end
+
+# Resolver::Native#consume (lib/httpx/resolver/native.rb)
+
+def consume
+  loop do
+    dread if calculate_interests == :r
+
+    break unless calculate_interests == :w
+
+    # do_retry
+    dwrite
+
+    break unless calculate_interests == :r
+  end
+rescue Errno::EHOSTUNREACH => e
+  @ns_index += 1
+  nameserver = @nameserver
+  if nameserver && @ns_index < nameserver.size
+    log do
+      "resolver #{FAMILY_TYPES[@record_type]}: " \
+        "failed resolving on nameserver #{@nameserver[@ns_index - 1]} (#{e.message})"
+    end
+    transition(:idle)
+    @timeouts.clear
+    retry
+  else
+    handle_error(e)
+    emit(:close, self)
+  end
+rescue NativeResolveError => e
+  handle_error(e)
+  close_or_resolve
+  retry unless closed?
 end
 ```
 
