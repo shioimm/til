@@ -37,12 +37,15 @@
                   - `:closed`イベント発火後に状態を`:idle`に戻して再初期化し、再利用できるようにする
           - `Connection#send` `@pending`にリクエストを積む
           - `Request#emit(:response)` リクエスト中のエラー発生時に発火
-      - `Session#receive_requests`
+      - `Session#receive_requests` WIP
         - `Selector#next_tick` 監視中のIOの準備完了をIO一つ分待機する
           - `Selector#select`
             - `Selector#select_one` / `Selector#select_many` WIP
-        - `Session#fetch_response`
-        - `Request#emit<:complete>`発火
+              - (1回目) `Resolver::Native#call`
+                - `Resolver::Native#consume`
+                  - `Resolver::Native#dwrite` DNSクエリを送信する
+        - `Session#fetch_response` レスポンスを取得
+        - `Request#emit(:complete)`発火
 
 ## `Chainable#request`
 
@@ -1705,7 +1708,7 @@ def receive_requests(requests, selector)
     catch(:coalesced) {
       selector.next_tick # => Selector#next_tick
     } until (
-      # WIP Selector#next_tickを読み終わったらここから続き
+      # @responsesに値が入る = レスポンスを受信できるまでループ
       response = fetch_response(request, selector, request.options) # => Session#fetch_response
 
       # Session#fetch_response (lib/httpx/session.rb)
@@ -1714,6 +1717,7 @@ def receive_requests(requests, selector)
       #   end
     )
 
+    # WIP ここから続き
     request.emit(:complete, response) # => Request#on(:complete)
     responses << response
     requests.shift
@@ -1783,7 +1787,6 @@ end
 
 # Selector#select_one (lib/httpx/selector.rb)
 
-# WIP
 def select_one(interval)
   io = @selectables.first
   return unless io
@@ -1856,10 +1859,8 @@ end
 def interests
   case @state
   when :idle
-    transition(:open)
-  when :closed
-    transition(:idle)
-    transition(:open)
+    transition(:open) # => Resolver::Native#transition
+  # ...
   end
   calculate_interests # => Resolver::Native#interests
 
@@ -1871,9 +1872,42 @@ def interests
   #    end
 end
 
+# Resolver::Native#transition (lib/httpx/resolver/native.rb)
+
+def transition(nextstate)
+  case nextstate
+  # ...
+  when :open
+    return unless @state == :idle
+    # DNSリクエスト用のソケットを作成する。TCPの場合は接続もする。
+
+    @io ||= build_socket # => Resolver::Native#build_socket
+
+    # Resolver::Native#build_socket (lib/httpx/resolver/native.rb)
+    #   def build_socket
+    #     ip, port = @nameserver[@ns_index]
+    #     port ||= DNS_PORT
+    #
+    #     case @socket_type
+    #     when :udp
+    #       UDP.new(ip, port, @options)
+    #     when :tcp
+    #       origin = URI("tcp://#{ip}:#{port}")
+    #       TCP.new(origin, [ip], @options)
+    #     end
+    #   end
+
+    @io.connect # => UDP#connect
+
+    # UDP#connect (lib/httpx/io/udp.rb)
+    #   def connect; end # UDPに接続はないのであった...
+
+    return unless @io.connected?
+  # ...
+end
+
 # Resolver::Native#call (lib/httpx/resolver/native.rb)
 
-# WIP
 def call
   case @state
   when :open
@@ -1886,22 +1920,14 @@ end
 def consume
   loop do
     dread if calculate_interests == :r
-
     break unless calculate_interests == :w
-
-    # do_retry
-    dwrite
-
+    dwrite # 今からDNSクエリを送信する => Resolver::Native#dwrite
     break unless calculate_interests == :r
   end
 rescue Errno::EHOSTUNREACH => e
   @ns_index += 1
   nameserver = @nameserver
   if nameserver && @ns_index < nameserver.size
-    log do
-      "resolver #{FAMILY_TYPES[@record_type]}: " \
-        "failed resolving on nameserver #{@nameserver[@ns_index - 1]} (#{e.message})"
-    end
     transition(:idle)
     @timeouts.clear
     retry
@@ -1913,6 +1939,83 @@ rescue NativeResolveError => e
   handle_error(e)
   close_or_resolve
   retry unless closed?
+end
+
+# Resolver::Native#dwrite (lib/httpx/resolver/native.rb)
+
+def dwrite
+  loop do
+    return if @write_buffer.empty?
+    # リクエストを送信し終わった後、@write_bufferが空になったらループ後ここでreturnする
+
+    # @io = #<HTTPX::UDP>
+    siz = @io.write(@write_buffer) # DNSクエリを送信
+
+    unless siz
+      ex = EOFError.new("descriptor closed")
+      ex.set_backtrace(caller)
+      raise ex
+    end
+
+    return unless siz.positive?
+
+    # リクエストを送信し終わった後、一定時間内にレスポンスがなければ再送
+    schedule_retry if @write_buffer.empty? # => Resolver::Native#schedule_retry
+
+    return if @state == :closed
+  end
+end
+
+# Resolver::Native#schedule_retry (lib/httpx/resolver/native.rb)
+
+def schedule_retry
+  h = @name
+  return unless h
+
+  connection = @queries[h]
+  timeouts = @timeouts[h]
+  timeout = timeouts.shift
+
+  @timer = @current_selector.after(timeout) do
+    next unless @connections.include?(connection)
+    do_retry(h, connection, timeout) # => Resolver::Native#do_retry
+  end
+end
+
+# Resolver::Native#do_retry (lib/httpx/resolver/native.rb)
+
+def do_retry(h, connection, interval)
+  timeouts = @timeouts[h]
+
+  if !timeouts.empty?
+    # must downgrade to tcp AND retry on same host as last
+    downgrade_socket
+    resolve(connection, h)
+  elsif @ns_index + 1 < @nameserver.size
+    # try on the next nameserver
+    @ns_index += 1
+    transition(:idle)
+    @timeouts.clear
+    resolve(connection, h)
+  else
+    @timeouts.delete(h)
+    reset_hostname(h, reset_candidates: false)
+
+    unless @queries.empty?
+      resolve(connection)
+      return
+    end
+
+    @connections.delete(connection)
+    host = connection.peer.host
+
+    # This loop_time passed to the exception is bogus. Ideally we would pass the total
+    # resolve timeout, including from the previous retries.
+    ex = ResolveTimeoutError.new(interval, "Timed out while resolving #{host}")
+    ex.set_backtrace(ex ? ex.backtrace : caller)
+    emit_resolve_error(connection, host, ex)
+    close_or_resolve
+  end
 end
 ```
 
