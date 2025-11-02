@@ -40,10 +40,13 @@
       - `Session#receive_requests` WIP
         - `Selector#next_tick` 監視中のIOの準備完了をIO一つ分待機する
           - `Selector#select`
-            - `Selector#select_one` / `Selector#select_many` WIP
+            - `Selector#select_one` / `Selector#select_many`
               - (1回目) `Resolver::Native#call`
                 - `Resolver::Native#consume`
                   - `Resolver::Native#dwrite` DNSクエリを送信する
+                    - `Resolver::Native#schedule_retry`
+                      - `Timer#after` WIP
+                      - `Resolver::Native#do_retry`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -1976,11 +1979,38 @@ def schedule_retry
   timeouts = @timeouts[h]
   timeout = timeouts.shift
 
-  @timer = @current_selector.after(timeout) do
+  @timer = @current_selector.after(timeout) do # => Timer#after
     next unless @connections.include?(connection)
     do_retry(h, connection, timeout) # => Resolver::Native#do_retry
   end
 end
+
+# Timer#after (lib/httpx/timers.rb)
+
+# WIP 続きはここから
+def after(interval_in_secs, cb = nil, &blk)
+  return unless interval_in_secs
+
+  callback = cb || blk
+
+  # I'm assuming here that most requests will have the same
+  # request timeout, as in most cases they share common set of
+  # options. A user setting different request timeouts for 100s of
+  # requests will already have a hard time dealing with that.
+  unless (interval = @intervals.find { |t| t.interval == interval_in_secs })
+    interval = Interval.new(interval_in_secs)
+    interval.on_empty { @intervals.delete(interval) }
+    @intervals << interval
+    @intervals.sort!
+  end
+
+  interval << callback
+
+  @next_interval_at = nil
+
+  Timer.new(interval, callback)
+end
+
 
 # Resolver::Native#do_retry (lib/httpx/resolver/native.rb)
 
