@@ -35,12 +35,9 @@
                   - 状態を`:idle`に戻して再初期化し、再利用できるようにする
               - `when :closing` 接続終了中の場合
                   - `:closed`イベント発火後に状態を`:idle`に戻して再初期化し、再利用できるようにする
-          - `Connection#send` WIP
-            - `Connection#send_request_to_parser`
-              - `Connection::HTTP1#send`
-              - `Connection::HTTP2#send`
-          - `Request#emit<:response>`発火
-      - `Session#receive_requests` `send_requests`後、即時実行
+          - `Connection#send` `@pending`にリクエストを積む
+          - `Request#emit(:response)` リクエスト中のエラー発生時に発火
+      - `Session#receive_requests` WIP
         - `Selector#next_tick` レスポンスの待機
           - `Selector#select`
             - `Connection#call`
@@ -50,7 +47,7 @@
                 - `Connection#parser` HTTPパーサの作成
                   - `Connection#set_parser_callbacks`
                     - `Connection#emit<:altsvc, :terminate>`発火
-                    - `Request#emit<:response, :promise>`発火
+                    - `Request#emit(:response, :promise)`発火
           - `Connection#interests`
         - `Session#fetch_response`
         - `Request#emit<:complete>`発火
@@ -265,7 +262,7 @@ def send_requests(*requests)
   #      @timers=#<HTTPX::Timers:0x000000011c0f05b0 @intervals=[]>,
   #      @selectables=[], @is_timer_interval=false>
   #
-  # なので、ここでselectorには#<HTTPX::Selector>格納されている状態になる
+  # なので、ここでselectorには#<HTTPX::Selector>が格納されている状態になる
 
   begin
     _send_requests(requests, selector) # => Session#_send_requests
@@ -1203,12 +1200,14 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
-# WIP ここから続き
 def send(request)
   # この接続が他の接続に合流している場合、合流先の接続を利用して送信を行う
   return @coalesced_connection.send(request) if @coalesced_connection
 
-  # @parserが存在している = HTTPX::Connection::HTTP2 (HTTP/1の場合はHTTPX::Connection::HTTP1)
+  # initialize時に外部ioを指定していない場合、最初にここに到達した時点では@parserはnilの状態のはず
+  # なのでまったくこのif文を通らずに完了するケースもある
+
+  # @parser = HTTPX::Connection::HTTP2 (HTTP/1の場合はHTTPX::Connection::HTTP1)
   # !@write_buffer.full?  = 送信バッファに空きがある
   if @parser && !@write_buffer.full?
 
@@ -1227,14 +1226,44 @@ def send(request)
     send_request_to_parser(request) # => Connection#send_request_to_parser
 
   else
-    # 現在のリクエストを@pendingキューに追加
-    @pending << request
+    # @parserを初期化していない場合はこっち
+    @pending << request # 現在のリクエストを@pending (配列) に追加するだけ。まだ実際には送信してない
   end
 end
+```
+
+```ruby
+# TODO 以下、実際に呼んでいるところ (多分Connection#send_pending) へ移動させる
+# Connection#send_request_to_parser (lib/httpx/connection.rb)
+
+def send_request_to_parser(request)
+  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
+  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
+  parser.send(request) # 送信
+  # => Connection#parser
+  # => Connection::HTTP1#send / Connection::HTTP2#send
+
+  set_request_timeouts(request) # => Connection#set_request_timeouts
+
+  # Connection#set_request_timeouts (lib/httpx/connection.rb)
+  #   def set_request_timeouts(request)
+  #     set_request_write_timeout(request)
+  #     set_request_read_timeout(request)
+  #     set_request_request_timeout(request)
+  #   end
+
+  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
+
+  transition(:active) # 状態を:activeに変更
+end
+
+# Connection#parser (lib/httpx/connection.rb)
 
 def parser
   @parser ||= build_parser # => Connection#build_parser
 end
+
+# Connection#build_parser (lib/httpx/connection.rb)
 
 def build_parser(protocol = @io.protocol)
   parser = self.class.parser_type(protocol).new(@write_buffer, @options) # => Connection#parser_type
@@ -1253,45 +1282,7 @@ def build_parser(protocol = @io.protocol)
   parser
 end
 
-def send_request_to_parser(request)
-  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
-  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
-  parser.send(request) # 送信 => Connection::HTTP1#send / Connection::HTTP2#send
-
-  set_request_timeouts(request) # => Connection#set_request_timeouts
-
-  # Connection#set_request_timeouts (lib/httpx/connection.rb)
-  #   def set_request_timeouts(request)
-  #     set_request_write_timeout(request)
-  #     set_request_read_timeout(request)
-  #     set_request_request_timeout(request)
-  #   end
-
-  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
-
-  transition(:active) # 状態を:activeに変更
-end
-
-# Connectionに対してtransition(:active)が呼ばれると、
-
-def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
-  case nextstate
-    # ...
-  when :active
-    return unless @state == :inactive
-
-    nextstate = :open
-    @current_session.select_connection(self, @current_selector)
-  # ...
-  end
-  @state = nextstate
-end
-```
-
-### `Connection#set_parser_callbacks`
-
-```ruby
-# (lib/httpx/connection.rb)
+# Connection#set_parser_callbacks (lib/httpx/connection.rb)
 
 def set_parser_callbacks(parser)
   # レスポンスを受信したとき
@@ -1466,6 +1457,21 @@ def set_parser_callbacks(parser)
     request.response = response
     request.emit(:response, response) # => Request#on(:response)
   end
+end
+
+# Connectionに対してtransition(:active)が呼ばれると、
+
+def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
+  case nextstate
+    # ...
+  when :active
+    return unless @state == :inactive
+
+    nextstate = :open
+    @current_session.select_connection(self, @current_selector)
+  # ...
+  end
+  @state = nextstate
 end
 ```
 
@@ -1693,6 +1699,7 @@ end
 ```ruby
 # (lib/httpx/session.rb)
 
+# WIP
 # 元のリクエストの送信順にresponsesを整列して返す
 def receive_requests(requests, selector)
   # @type var responses: Array[response]
