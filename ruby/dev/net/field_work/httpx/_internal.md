@@ -18,11 +18,6 @@
                     - `Session#find_resolver_for` 再利用できるresolverもしくは新しいresolverを取得
                     - `Resolver::Multi#early_resolve` 取得済みのアドレスがある場合はそれを利用する
                       - `Resolver::Resolver#emit_addresses`
-                        - `Resolver::Resolver#emit_resolved_connection`
-                          - `Connection#addresses=` このConnectionのioをセット
-                            - `Connection#build_socket` このConnectionのioとなる`TCP.new`もしくは`SSL.new`を呼び出す
-                          - `Resolver::Resolver#on(:resolve)`
-                        - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
                     - `Resolver::Multi#lazy_resolve` 新規に名前解決
                       - `Session#try_clone_connection` アドレスファミリごとにConnectionにfamilyをセット
                       - `Resolver::Native#<<` このresolverの`@connections`にconnectionを追加してresolv
@@ -50,6 +45,13 @@
                     - `Resolver::Native#parse`
                       - `Resolver::Native#parse_addresses`
                         - `Resolver::Native#emit_addresses`
+                          - `Resolver::Resolver#emit_resolved_connection`
+                            - `Connection#addresses=` このConnectionのioをセット
+                              - `Connection#build_socket` このConnectionのioとなる`TCP.new`or`SSL.new`を呼び出す
+                            - `Resolver::Resolver#on(:resolve)`
+                              - `Resolver::Resolver#resolve_connection`
+                                - `Session#on_resolver_connection` WIP
+                          - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
                         - `Resolver::Native#close_or_resolve`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
@@ -755,191 +757,6 @@ def early_resolve(connection)
   resolved
 end
 
-# Resolver::Resolver#emit_addresses (lib/httpx/resolver/resolver.rb)
-
-def emit_addresses(connection, family, addresses, early_resolve = false)
-  # addressesをIPAddr(s) に変換
-  addresses.map! do |address|
-    address.is_a?(IPAddr) ? address : IPAddr.new(address.to_s)
-  end
-
-  # connectionに対してこのaddressesと同じ内容のアドレスリストが設定されている場合はreturn
-  return if !early_resolve && connection.addresses && !addresses.intersect?(connection.addresses)
-
-  # HEのための遅延? (アドレスリストをかたまりで渡している気がする...)
-  if !early_resolve &&                                 # Resolver::Multi#early_resolveからの呼び出しの場合はtrue
-     @current_selector &&                              # selectorが存在する
-     family == Socket::AF_INET &&                      # IPv4
-     !connection.io &&                                 # 接続済みではない
-     connection.options.ip_families.size > 1 &&        # IPv4 / IPv6両方をサポートしている
-     addresses.first.to_s != connection.peer.host.to_s # 接続先ホストがIPアドレスではない
-
-    # 50ms後に名前解決を通知
-    @current_selector.after(0.05) do # => Timer#after
-      unless connection.addresses && addresses.intersect?(connection.addresses)
-        emit_resolved_connection(connection, addresses, early_resolve)
-        # => Resolver::Resolver#emit_resolved_connection
-      end
-    end
-  else
-    # Resolver::Multi#early_resolveからの呼び出しの場合はこちら
-    # resolverに対し、このconnectionの名前可決を通知 => Resolver::Resolver#emit_resolved_connection
-    emit_resolved_connection(connection, addresses, early_resolve)
-  end
-end
-
-# Timer#after (lib/httpx/timers.rb)
-
-def after(interval_in_secs, cb = nil, &blk)
-  return unless interval_in_secs
-
-  callback = cb || blk
-
-  # interval = Timers::Interval
-  unless (interval = @intervals.find { |t| t.interval == interval_in_secs })
-    interval = Interval.new(interval_in_secs)
-    interval.on_empty { @intervals.delete(interval) }
-    @intervals << interval
-    @intervals.sort!
-  end
-
-  interval << callback # => Timers::Interval#<<
-
-  # Timers::Interval#<< (lib/httpx/timers.rb)
-  #  def <<(callback)
-  #    @callbacks << callback
-  #  end
-
-  @next_interval_at = nil
-  Timer.new(interval, callback)
-end
-
-# Resolver::Resolver#emit_resolved_connection (lib/httpx/resolver/resolver.rb)↲
-
-def emit_resolved_connection(connection, addresses, early_resolve)
-  begin
-    # connectionに解決済みアドレスリストを設定
-    # 以降、connectionはaddressesに対して接続できるようになる
-    connection.addresses = addresses # => Connection#addresses=
-
-    return if connection.state == :closed
-
-    emit(:resolve, connection) # => Resolver::Resolver#on(:resolve)
-
-  rescue StandardError => e # SocketErrorやIOErrorが発生した場合
-    if early_resolve # Resolver::Multi#early_resolveからの呼び出しの場合はこちら
-      # connectionの状態をリセットして例外を呼び出し元に伝搬する
-      connection.force_reset
-      throw(:resolve_error, e)
-    else
-      emit(:error, connection, e) # => Resolver::Resolver#on(:error)
-    end
-  end
-end
-
-# Connection#addresses= (lib/httpx/connection.rb)
-
-def addresses=(addrs)
-  if @io # 外部から指定されているオプションのioがある場合はConnectionをinitializeした時に@io = build_socket済み
-    @io.add_addresses(addrs) # => TCP#add_addresses
-
-    # TCP#add_addresses (lib/httpx/io/tcp.rb)
-    #   def add_addresses(addrs)
-    #     return if addrs.empty?
-    #
-    #     addrs = addrs.map { |addr| addr.is_a?(IPAddr) ? addr : IPAddr.new(addr) }
-    #
-    #     ip_index = @ip_index || (@addresses.size - 1)
-    #     if addrs.first.ipv6?
-    #       # should be the next in line
-    #       @addresses = [*@addresses[0, ip_index], *addrs, *@addresses[ip_index..-1]]
-    #     else
-    #       @addresses.unshift(*addrs)
-    #       @ip_index += addrs.size if @ip_index
-    #     end
-    #   end
-
-  else
-    # 外部から指定されているオプションのioがない場合はここで初めてソケットを作成
-    @io = build_socket(addrs) # => Connection#build_socket
-  end
-end
-
-def build_socket(addrs = nil)
-  # @typeはConnectionのinitialize時にinitialize_typeの呼び出しによって値が決まる
-  case @type
-  when "tcp"
-    TCP.new(peer, addrs, @options) # => TCP#initialize
-  when "ssl"
-    SSL.new(peer, addrs, @options) do |sock| # => SSL#initialize < HTTPX::TCP
-      sock.ssl_session = @ssl_session
-      sock.session_new_cb do |sess|
-        @ssl_session = sess
-        sock.ssl_session = sess
-      end
-    end
-  when "unix"
-    path = Array(addrs).first
-    path = String(path) if path
-    UNIX.new(peer, path, @options)
-  else
-    raise Error, "unsupported transport (#{@type})"
-  end
-end
-
-# TCP#initialize (lib/httpx/io/tcp.rb)
-
-def initialize(origin, addresses, options)
-  # ...
-  if @options.io
-    # ...
-  else
-    add_addresses(addresses)
-  end
-  # ...
-end
-
-def add_addresses(addrs)
-  return if addrs.empty?
-
-  addrs = addrs.map { |addr| addr.is_a?(IPAddr) ? addr : IPAddr.new(addr) }
-  ip_index = @ip_index || (@addresses.size - 1)
-
-  if addrs.first.ipv6?
-    @addresses = [*@addresses[0, ip_index], *addrs, *@addresses[ip_index..-1]]
-  else
-    @addresses.unshift(*addrs)
-    @ip_index += addrs.size if @ip_index
-  end
-end
-
-# SSL#initialize (lib/httpx/io/ssl.rb)
-
-def initialize(_, _, options)
-  super
-
-  ctx_options = TLS_OPTIONS.merge(options.ssl)
-  @sni_hostname = ctx_options.delete(:hostname) || @hostname
-
-  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
-    # externally initiated ssl socket
-    @ctx = @io.context
-    @state = :negotiated
-  else
-    @ctx = OpenSSL::SSL::SSLContext.new
-    @ctx.set_params(ctx_options) unless ctx_options.empty?
-
-    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
-      @ctx.session_cache_mode =
-        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
-    end
-
-    yield(self) if block_given?
-  end
-
-  @verify_hostname = @ctx.verify_hostname
-end
-
 # Resolver::Multi#lazy_resolve (lib/httpx/resolver/multi.rb)
 
 def lazy_resolve(connection)
@@ -1093,133 +910,6 @@ end
 def pin_connection(connection, selector)
   connection.current_session = self # このconnectionに対して、このsessionを紐づける
   connection.current_selector = selector # このconnectionに対して、このselectorを紐づける
-end
-```
-
-#### Session#on_resolver_connection
-すでに宛先のIPアドレス群を取得済み、
-すでにopenしているioを外部からオプションで指定している場合に呼ばれる
-
-```ruby
-# (lib/httpx/session.rb)
-
-def on_resolver_connection(connection, selector)
-  from_pool = false # コネクションプールから取得した接続かどうか
-
-  # selectorの中から同じオリジンに対して接続済み、open済みの接続を取得
-  # なければプール内からマージ可能な接続を取得
-  found_connection = selector.find_mergeable_connection(connection) || begin # => Selector#find_mergeable_connection
-
-    # Selector#find_mergeable_connection (lib/httpx/selector.rb)
-    #   def find_mergeable_connection(connection)
-    #     each_connection.find do |ch|
-    #       ch != connection && ch.mergeable?(connection) # => Connection#mergeable?
-    #     end
-    #   end
-    #
-    # Connection#mergeable? (lib/httpx/connection.rb)
-    #   def mergeable?(connection)
-    #     return false if @state == :closing || @state == :closed || !@io
-    #
-    #     return false unless connection.addresses
-    #
-    #     (
-    #       (open? && @origin == connection.origin) ||
-    #       !(@io.addresses & (connection.addresses || [])).empty?
-    #     ) && @options == connection.options
-    #   end
-
-    from_pool = true
-    @pool.checkout_mergeable_connection(connection) # => Pool#checkout_mergeable_connection
-
-    # Pool#checkout_mergeable_connection (lib/httpx/pool.rb)
-    #   def checkout_mergeable_connection(connection)
-    #     return if connection.options.io
-    #
-    #     @connection_mtx.synchronize do
-    #       idx = @connections.find_index do |ch|
-    #         ch != connection && ch.mergeable?(connection)
-    #       end
-    #       @connections.delete_at(idx) if idx
-    #     end
-    #   end
-
-  end
-
-  # 既存の接続が見つからない場合はconnectionをselector に登録して新規接続を開始し、それを返す
-  return select_connection(connection, selector) unless found_connection # => Session#select_connection
-
-  # 既存の接続がまだopenしている場合
-  if found_connection.open?
-    # 即座に統合
-    coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
-  else
-    # openイベントを待って統合
-    found_connection.once(:open) do
-      coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
-    end
-  end
-
-  # Session#coalesced_connection (lib/httpx/session.rb)
-  #   接続の統合を行う
-  #   conn1 = 同じオリジンに対して接続済み、open済みの既存の接続
-  #   conn2 = 新たに作成しようとしている接続
-  #   selector = 現在のselector
-  #   from_pool = conn1をコネクションプールから取得したかどうか
-  #
-  #   def coalesce_connections(conn1, conn2, selector, from_pool)
-  #     # Connection#coalescable?
-  #     #   - いずれもHTTP/2接続
-  #     #   - 証明書のSANにconn2のホスト名が含まれる
-  #     #   - SNIやALPN が一致している
-  #     #   - プロトコルがTLS であり、サーバ認証済み など
-  #     unless conn1.coalescable?(conn2) # 統合できない場合
-  #       # conn2は独立した接続としてselectorに登録
-  #       select_connection(conn2, selector) # => Session#select_connection
-  #       # conn1をプールから取得した場合は再びプールに戻す
-  #       @pool.checkin_connection(conn1) if from_pool
-  #       return false
-  #     end
-  #
-  #     # conn2をconn1に統合。以降conn2に対するリクエストはconn1に経由で処理される
-  #     conn2.coalesced_connection = conn1
-  #     select_connection(conn1, selector) if from_pool # => Session#select_connection
-  #     deselect_connection(conn2, selector)
-  #     true
-  #   end
-end
-```
-
-#### `Resolver::Resolver#on(:resolve)` / `Resolver::Resolver#on(:error)`
-
-```ruby
-# Resolver::Resolver#set_resolver_callbacks (lib/httpx/resolver/resolver.rb)
-
-def set_resolver_callbacks
-  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
-  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
-  on(:close, &method(:close_resolver)) # リゾルバをcloseする
-end
-
-def resolve_connection(connection)
-  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
-  # => Session#on_resolver_connection
-end
-
-def emit_connection_error(connection, error)
-  return connection.handle_connect_error(error) if connection.connecting?
-  connection.emit(:error, error) # => Connection#on(:error)
-end
-
-def close_resolver(resolver)
-  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
-end
-
-def on_resolver_close(resolver, selector)
-  return if resolver.closed?
-
-  deselect_resolver(resolver, selector) # selectorからresolverを取得
-  resolver.close unless resolver.closed? # resolverをclose
 end
 ```
 
@@ -1891,7 +1581,7 @@ def select_many(interval, &block)
       writers.delete(io)
     end if readers
 
-    writers.each(&block) # => Connection#call
+    writers.each(&block)
   else
     readers.each(&block) if readers
   end
@@ -2220,9 +1910,324 @@ def parse_addresses(addresses)
   #     end
   #   end
 end
+
+# Resolver::Resolver#emit_addresses (lib/httpx/resolver/resolver.rb)
+
+def emit_addresses(connection, family, addresses, early_resolve = false)
+  # addressesをIPAddr(s) に変換
+  addresses.map! do |address|
+    address.is_a?(IPAddr) ? address : IPAddr.new(address.to_s)
+  end
+
+  # connectionに対してこのaddressesと同じ内容のアドレスリストが設定されている場合はreturn
+  return if !early_resolve && connection.addresses && !addresses.intersect?(connection.addresses)
+
+  # HEのための遅延? (アドレスリストをかたまりで渡している気がする...)
+  if !early_resolve &&                                 # Resolver::Multi#early_resolveからの呼び出しの場合はtrue
+     @current_selector &&                              # selectorが存在する
+     family == Socket::AF_INET &&                      # IPv4
+     !connection.io &&                                 # 接続済みではない
+     connection.options.ip_families.size > 1 &&        # IPv4 / IPv6両方をサポートしている
+     addresses.first.to_s != connection.peer.host.to_s # 接続先ホストがIPアドレスではない
+
+    # 50ms後に名前解決を通知
+    @current_selector.after(0.05) do # => Timer#after
+      unless connection.addresses && addresses.intersect?(connection.addresses)
+        emit_resolved_connection(connection, addresses, early_resolve)
+        # => Resolver::Resolver#emit_resolved_connection
+      end
+    end
+  else
+    # Resolver::Multi#early_resolveからの呼び出しの場合はこちら
+    # resolverに対し、このconnectionの名前可決を通知 => Resolver::Resolver#emit_resolved_connection
+    emit_resolved_connection(connection, addresses, early_resolve)
+  end
+end
+
+# Timer#after (lib/httpx/timers.rb)
+
+def after(interval_in_secs, cb = nil, &blk)
+  return unless interval_in_secs
+
+  callback = cb || blk
+
+  # interval = Timers::Interval
+  unless (interval = @intervals.find { |t| t.interval == interval_in_secs })
+    interval = Interval.new(interval_in_secs)
+    interval.on_empty { @intervals.delete(interval) }
+    @intervals << interval
+    @intervals.sort!
+  end
+
+  interval << callback # => Timers::Interval#<<
+
+  # Timers::Interval#<< (lib/httpx/timers.rb)
+  #  def <<(callback)
+  #    @callbacks << callback
+  #  end
+
+  @next_interval_at = nil
+  Timer.new(interval, callback)
+end
+
+# Resolver::Resolver#emit_resolved_connection (lib/httpx/resolver/resolver.rb)↲
+
+def emit_resolved_connection(connection, addresses, early_resolve)
+  begin
+    # connectionに解決済みアドレスリストを設定
+    # 以降、connectionはaddressesに対して接続できるようになる
+    connection.addresses = addresses # => Connection#addresses=
+
+    return if connection.state == :closed
+
+    emit(:resolve, connection) # => Resolver::Resolver#on(:resolve)
+
+  rescue StandardError => e # SocketErrorやIOErrorが発生した場合
+    if early_resolve # Resolver::Multi#early_resolveからの呼び出しの場合はこちら
+      # connectionの状態をリセットして例外を呼び出し元に伝搬する
+      connection.force_reset
+      throw(:resolve_error, e)
+    else
+      emit(:error, connection, e) # => Resolver::Resolver#on(:error)
+    end
+  end
+end
+
+# Connection#addresses= (lib/httpx/connection.rb)
+
+def addresses=(addrs)
+  if @io # 外部から指定されているオプションのioがある場合はConnectionをinitializeした時に@io = build_socket済み
+    @io.add_addresses(addrs) # => TCP#add_addresses
+
+    # TCP#add_addresses (lib/httpx/io/tcp.rb)
+    #   def add_addresses(addrs)
+    #     return if addrs.empty?
+    #
+    #     addrs = addrs.map { |addr| addr.is_a?(IPAddr) ? addr : IPAddr.new(addr) }
+    #
+    #     ip_index = @ip_index || (@addresses.size - 1)
+    #     if addrs.first.ipv6?
+    #       # should be the next in line
+    #       @addresses = [*@addresses[0, ip_index], *addrs, *@addresses[ip_index..-1]]
+    #     else
+    #       @addresses.unshift(*addrs)
+    #       @ip_index += addrs.size if @ip_index
+    #     end
+    #   end
+
+  else
+    # 外部から指定されているオプションのioがない場合はここで初めてソケットを作成
+    @io = build_socket(addrs) # => Connection#build_socket
+  end
+end
+
+def build_socket(addrs = nil)
+  # @typeはConnectionのinitialize時にinitialize_typeの呼び出しによって値が決まる
+  case @type
+  when "tcp"
+    TCP.new(peer, addrs, @options) # => TCP#initialize
+  when "ssl"
+    SSL.new(peer, addrs, @options) do |sock| # => SSL#initialize < HTTPX::TCP
+      sock.ssl_session = @ssl_session
+      sock.session_new_cb do |sess|
+        @ssl_session = sess
+        sock.ssl_session = sess
+      end
+    end
+  when "unix"
+    path = Array(addrs).first
+    path = String(path) if path
+    UNIX.new(peer, path, @options)
+  else
+    raise Error, "unsupported transport (#{@type})"
+  end
+end
+
+# TCP#initialize (lib/httpx/io/tcp.rb)
+
+def initialize(origin, addresses, options)
+  # ...
+  if @options.io
+    # ...
+  else
+    add_addresses(addresses)
+  end
+  # ...
+end
+
+def add_addresses(addrs)
+  return if addrs.empty?
+
+  addrs = addrs.map { |addr| addr.is_a?(IPAddr) ? addr : IPAddr.new(addr) }
+  ip_index = @ip_index || (@addresses.size - 1)
+
+  if addrs.first.ipv6?
+    @addresses = [*@addresses[0, ip_index], *addrs, *@addresses[ip_index..-1]]
+  else
+    @addresses.unshift(*addrs)
+    @ip_index += addrs.size if @ip_index
+  end
+end
+
+# SSL#initialize (lib/httpx/io/ssl.rb)
+
+def initialize(_, _, options)
+  super
+
+  ctx_options = TLS_OPTIONS.merge(options.ssl)
+  @sni_hostname = ctx_options.delete(:hostname) || @hostname
+
+  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
+    # externally initiated ssl socket
+    @ctx = @io.context
+    @state = :negotiated
+  else
+    @ctx = OpenSSL::SSL::SSLContext.new
+    @ctx.set_params(ctx_options) unless ctx_options.empty?
+
+    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
+      @ctx.session_cache_mode =
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+    end
+
+    yield(self) if block_given?
+  end
+
+  @verify_hostname = @ctx.verify_hostname
+end
+```
+
+#### `Resolver::Resolver#on(:resolve)` / `Resolver::Resolver#on(:error)`
+
+```ruby
+# Resolver::Resolver#set_resolver_callbacks (lib/httpx/resolver/resolver.rb)
+
+def set_resolver_callbacks
+  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
+  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
+  on(:close, &method(:close_resolver)) # リゾルバをcloseする
+end
+
+# Resolver::Resolver#resolve_connection (lib/httpx/resolver/resolver.rb)
+
+def resolve_connection(connection)
+  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
+  # => Session#on_resolver_connection
+end
+
+# Session#on_resolver_close (lib/httpx/session.rb)
+
+def on_resolver_close(resolver, selector)
+  return if resolver.closed?
+
+  deselect_resolver(resolver, selector) # selectorからresolverを取得
+  resolver.close unless resolver.closed? # resolverをclose
+end
+
+# Session#on_resolver_connection (lib/httpx/session.rb)
+
+# WIP
+def on_resolver_connection(connection, selector)
+  from_pool = false # コネクションプールから取得した接続かどうか
+
+  # selectorの中から同じオリジンに対して接続済み、open済みの接続を取得
+  # なければプール内からマージ可能な接続を取得
+  found_connection = selector.find_mergeable_connection(connection) || begin # => Selector#find_mergeable_connection
+
+    # Selector#find_mergeable_connection (lib/httpx/selector.rb)
+    #   def find_mergeable_connection(connection)
+    #     each_connection.find do |ch|
+    #       ch != connection && ch.mergeable?(connection) # => Connection#mergeable?
+    #     end
+    #   end
+    #
+    # Connection#mergeable? (lib/httpx/connection.rb)
+    #   def mergeable?(connection)
+    #     return false if @state == :closing || @state == :closed || !@io
+    #
+    #     return false unless connection.addresses
+    #
+    #     (
+    #       (open? && @origin == connection.origin) ||
+    #       !(@io.addresses & (connection.addresses || [])).empty?
+    #     ) && @options == connection.options
+    #   end
+
+    from_pool = true
+    @pool.checkout_mergeable_connection(connection) # => Pool#checkout_mergeable_connection
+
+    # Pool#checkout_mergeable_connection (lib/httpx/pool.rb)
+    #   def checkout_mergeable_connection(connection)
+    #     return if connection.options.io
+    #
+    #     @connection_mtx.synchronize do
+    #       idx = @connections.find_index do |ch|
+    #         ch != connection && ch.mergeable?(connection)
+    #       end
+    #       @connections.delete_at(idx) if idx
+    #     end
+    #   end
+
+  end
+
+  # 既存の接続が見つからない場合はconnectionをselector に登録して新規接続を開始し、それを返す
+  return select_connection(connection, selector) unless found_connection # => Session#select_connection
+
+  # 既存の接続がまだopenしている場合
+  if found_connection.open?
+    # 即座に統合
+    coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
+  else
+    # openイベントを待って統合
+    found_connection.once(:open) do
+      coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
+    end
+  end
+end
+
+# Session#coalesced_connection (lib/httpx/session.rb)
+#   接続の統合を行う
+#   conn1 = 同じオリジンに対して接続済み、open済みの既存の接続
+#   conn2 = 新たに作成しようとしている接続
+#   selector = 現在のselector
+#   from_pool = conn1をコネクションプールから取得したかどうか
+def coalesce_connections(conn1, conn2, selector, from_pool)
+  # Connection#coalescable?
+  #   - いずれもHTTP/2接続
+  #   - 証明書のSANにconn2のホスト名が含まれる
+  #   - SNIやALPN が一致している
+  #   - プロトコルがTLS であり、サーバ認証済み など
+  unless conn1.coalescable?(conn2) # 統合できない場合
+    # conn2は独立した接続としてselectorに登録
+    select_connection(conn2, selector) # => Session#select_connection
+    # conn1をプールから取得した場合は再びプールに戻す
+    @pool.checkin_connection(conn1) if from_pool
+    return false
+  end
+
+  # conn2をconn1に統合。以降conn2に対するリクエストはconn1に経由で処理される
+  conn2.coalesced_connection = conn1
+  select_connection(conn1, selector) if from_pool # => Session#select_connection
+  deselect_connection(conn2, selector)
+  true
+end
+
+# Session#on_resolver_connection (lib/httpx/session.rb)
+
+def emit_connection_error(connection, error)
+  return connection.handle_connect_error(error) if connection.connecting?
+  connection.emit(:error, error) # => Connection#on(:error)
+end
+
+# Resolver::Resolver#close_resolver (lib/httpx/resolver/resolver.rb)
+
+def close_resolver(resolver)
+  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
+end
 ```
 
 ### `Connection#call`
+TODO あとで正しい場所に移動する
 
 ```ruby
 # (lib/httpx/connection.rb)
