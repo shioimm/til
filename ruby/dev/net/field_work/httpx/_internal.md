@@ -45,7 +45,6 @@
                 - `Resolver::Native#consume`
                   - `Resolver::Native#dwrite` DNSクエリを送信する
                     - `Resolver::Native#schedule_retry`
-                      - `Timer#after` WIP
                       - `Resolver::Native#do_retry`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
@@ -771,7 +770,7 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
      addresses.first.to_s != connection.peer.host.to_s # 接続先ホストがIPアドレスではない
 
     # 50ms後に名前解決を通知
-    @current_selector.after(0.05) do
+    @current_selector.after(0.05) do # => Timer#after
       unless connection.addresses && addresses.intersect?(connection.addresses)
         emit_resolved_connection(connection, addresses, early_resolve)
         # => Resolver::Resolver#emit_resolved_connection
@@ -782,6 +781,32 @@ def emit_addresses(connection, family, addresses, early_resolve = false)
     # resolverに対し、このconnectionの名前可決を通知 => Resolver::Resolver#emit_resolved_connection
     emit_resolved_connection(connection, addresses, early_resolve)
   end
+end
+
+# Timer#after (lib/httpx/timers.rb)
+
+def after(interval_in_secs, cb = nil, &blk)
+  return unless interval_in_secs
+
+  callback = cb || blk
+
+  # interval = Timers::Interval
+  unless (interval = @intervals.find { |t| t.interval == interval_in_secs })
+    interval = Interval.new(interval_in_secs)
+    interval.on_empty { @intervals.delete(interval) }
+    @intervals << interval
+    @intervals.sort!
+  end
+
+  interval << callback # => Timers::Interval#<<
+
+  # Timers::Interval#<< (lib/httpx/timers.rb)
+  #  def <<(callback)
+  #    @callbacks << callback
+  #  end
+
+  @next_interval_at = nil
+  Timer.new(interval, callback)
 end
 
 # Resolver::Resolver#emit_resolved_connection (lib/httpx/resolver/resolver.rb)↲
@@ -1812,10 +1837,9 @@ def select_one(interval)
   end
 
   # Selector#next_tickでselect(timeout, &:call)のようにブロックを渡している
+  yield io
 
   # 1回目: => Resolver::Native#call
-
-  yield io
 end
 
 # Selector#select_many (lib/httpx/selector.rb)
@@ -1980,37 +2004,11 @@ def schedule_retry
   timeout = timeouts.shift
 
   @timer = @current_selector.after(timeout) do # => Timer#after
+    # ここに到達しないことがある
     next unless @connections.include?(connection)
     do_retry(h, connection, timeout) # => Resolver::Native#do_retry
   end
 end
-
-# Timer#after (lib/httpx/timers.rb)
-
-# WIP 続きはここから
-def after(interval_in_secs, cb = nil, &blk)
-  return unless interval_in_secs
-
-  callback = cb || blk
-
-  # I'm assuming here that most requests will have the same
-  # request timeout, as in most cases they share common set of
-  # options. A user setting different request timeouts for 100s of
-  # requests will already have a hard time dealing with that.
-  unless (interval = @intervals.find { |t| t.interval == interval_in_secs })
-    interval = Interval.new(interval_in_secs)
-    interval.on_empty { @intervals.delete(interval) }
-    @intervals << interval
-    @intervals.sort!
-  end
-
-  interval << callback
-
-  @next_interval_at = nil
-
-  Timer.new(interval, callback)
-end
-
 
 # Resolver::Native#do_retry (lib/httpx/resolver/native.rb)
 
