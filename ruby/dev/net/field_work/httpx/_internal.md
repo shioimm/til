@@ -46,6 +46,11 @@
                   - `Resolver::Native#dwrite` DNSクエリを送信する
                     - `Resolver::Native#schedule_retry`
                       - `Resolver::Native#do_retry`
+                  - `Resolver::Native#dread` DNSレスポンスを受信 (受信するまでループする)
+                    - `Resolver::Native#parse`
+                      - `Resolver::Native#parse_addresses`
+                        - `Resolver::Native#emit_addresses`
+                        - `Resolver::Native#close_or_resolve`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -1092,8 +1097,8 @@ end
 ```
 
 #### Session#on_resolver_connection
-すでに宛先のIPアドレス群を取得済みなので名前解決の必要がないか、
-すでにopenしているioを外部からオプションで指定している場合にしか呼ばれない
+すでに宛先のIPアドレス群を取得済み、
+すでにopenしているioを外部からオプションで指定している場合に呼ばれる
 
 ```ruby
 # (lib/httpx/session.rb)
@@ -1185,7 +1190,7 @@ def on_resolver_connection(connection, selector)
 end
 ```
 
-#### `Resolver#on(:resolve)` / `Resolver#on(:error)`
+#### `Resolver::Resolver#on(:resolve)` / `Resolver::Resolver#on(:error)`
 
 ```ruby
 # Resolver::Resolver#set_resolver_callbacks (lib/httpx/resolver/resolver.rb)
@@ -1780,14 +1785,25 @@ def next_tick # IOに対して読み書きする用事が残っている場合�
     timeout = next_timeout # 次のタイムアウトまでの残り時間を取得
 
     if timeout && timeout.negative? # タイムアウト済みの場合
-      @timers.fire # 期限切れのタイマーを発火
+      @timers.fire # 期限切れのタイマーを発火 => Timers#fire
+
+      # Timers#fire (lib/httpx/timers.rb)
+      #   def fire(error = nil)
+      #     raise error if error && error.timeout != @intervals.first
+      #     return if @intervals.empty? || !@next_interval_at
+      #
+      #     elapsed_time = Utils.elapsed_time(@next_interval_at)
+      #     @intervals = @intervals.drop_while { |interval| interval.elapse(elapsed_time) <= 0 }
+      #     @next_interval_at = nil if @intervals.empty?
+      #   end
+
       throw(:jump_tick) # 残りの処理をスキップ
     end
 
     begin
       # @selectablesの各要素となっているioが読み書き可能になるとioに対して.callが呼ばれる
       select(timeout, &:call) # => Selector#select
-      @timers.fire
+      @timers.fire # => Timers#fire
     rescue TimeoutError => e
       @timers.fire(e) # 強制的にタイマーを発火
     end
@@ -1945,10 +1961,19 @@ end
 # Resolver::Native#consume (lib/httpx/resolver/native.rb)
 
 def consume
+  # @write_bufferに値が入っていればcalculate_interestsは:w
+  # @write_bufferに値が入っていおらず、@queriesに値が入っていれば:r
   loop do
+    # 3. 2でcalculate_interestsが:rになった場合はDNSレスポンスを読み込もうとする => Resolver::Native#dread
     dread if calculate_interests == :r
+
+    # 4. 3で@queriesが空になったのでcalculate_interestsがniを返し、このループを抜ける
     break unless calculate_interests == :w
-    dwrite # 今からDNSクエリを送信する => Resolver::Native#dwrite
+
+    # 1. 今からDNSクエリを送信する => Resolver::Native#dwrite
+    dwrite
+
+    # 2. @write_bufferが空になったのでcalculate_interestsが:rを返す。次のループへ
     break unless calculate_interests == :r
   end
 rescue Errno::EHOSTUNREACH => e
@@ -2044,6 +2069,156 @@ def do_retry(h, connection, interval)
     emit_resolve_error(connection, host, ex)
     close_or_resolve
   end
+end
+
+# Resolver::Native#dread (lib/httpx/resolver/native.rb)
+
+def dread(wsize = @resolver_options[:packet_size])
+  loop do
+    wsize = @large_packet.capacity if @large_packet
+    siz = @io.read(wsize, @read_buffer) # DNSレスポンスを@read_bufferに読み込む
+
+    unless siz
+      ex = EOFError.new("descriptor closed")
+      ex.set_backtrace(caller)
+      raise ex
+    end
+
+    return unless siz.positive?
+
+    if @socket_type == :tcp
+      # packet may be incomplete, need to keep draining from the socket
+      if @large_packet
+        # large packet buffer already exists, continue pumping
+        @large_packet << @read_buffer
+
+        next unless @large_packet.full?
+
+        parse(@large_packet.to_s) # => Resolver::Native#parse
+        @large_packet = nil
+        # downgrade to udp again
+        downgrade_socket
+        return
+      else
+        size = @read_buffer[0, 2].unpack1("n")
+        buffer = @read_buffer.byteslice(2..-1)
+
+        if size > @read_buffer.bytesize
+          # only do buffer logic if it's worth it, and the whole packet isn't here already
+          @large_packet = Buffer.new(size)
+          @large_packet << buffer
+
+          next
+        else
+          parse(buffer) # => Resolver::Native#parse
+        end
+      end
+    else # udp
+      parse(@read_buffer) # => Resolver::Native#parse
+    end
+
+    return if @state == :closed || !@write_buffer.empty?
+  end
+end
+
+# Resolver::Native#parse (lib/httpx/resolver/native.rb)
+
+def parse(buffer)
+  @timer.cancel
+  code, result = Resolver.decode_dns_answer(buffer)
+
+  case code
+  when :ok
+    parse_addresses(result) # => Resolver::Native#parse_addresses
+  when :no_domain_found
+    # ...
+  when :message_truncated
+    # ...
+  when :dns_error
+    # ...
+  when :decode_error
+    # ...
+  end
+end
+
+# Resolver::Native#parse_addresses (lib/httpx/resolver/native.rb)
+
+def parse_addresses(addresses)
+  if addresses.empty?
+    # no address found, eliminate candidates
+    hostname, connection = @queries.first
+    reset_hostname(hostname)
+    @connections.delete(connection)
+    raise NativeResolveError.new(connection, connection.peer.host)
+  else
+    address = addresses.first
+    name = address["name"]
+    connection = @queries.delete(name)
+
+    unless connection
+      orig_name = name
+      # absolute name
+      name_labels = Resolv::DNS::Name.create(name).to_a
+      name = @queries.each_key.first { |hname| name_labels == Resolv::DNS::Name.create(hname).to_a }
+
+      # probably a retried query for which there's an answer
+      unless name
+        @timeouts.delete(orig_name)
+        return
+      end
+
+      address["name"] = name
+      connection = @queries.delete(name)
+    end
+
+    alias_addresses, addresses = addresses.partition { |addr| addr.key?("alias") }
+
+    if addresses.empty? && !alias_addresses.empty? # CNAME
+      hostname_alias = alias_addresses.first["alias"]
+      # clean up intermediate queries
+      @timeouts.delete(name) unless connection.peer.host == name
+
+      if early_resolve(connection, hostname: hostname_alias)
+        @connections.delete(connection)
+      else
+        if @socket_type == :tcp
+          # must downgrade to udp if tcp
+          @socket_type = @resolver_options.fetch(:socket_type, :udp)
+          transition(:idle)
+          transition(:open)
+        end
+        log { "resolver #{FAMILY_TYPES[@record_type]}: ALIAS #{hostname_alias} for #{name}" }
+        resolve(connection, hostname_alias)
+        return
+      end
+    else
+      # ハッピーパスはここ
+      reset_hostname(name, connection: connection)
+      @timeouts.delete(connection.peer.host)
+      @connections.delete(connection)
+      Resolver.cached_lookup_set(connection.peer.host, @family, addresses) if @resolver_options[:cache]
+
+      catch(:coalesced) {
+        # resolverに対し、このconnectionの名前解決が完了したことを通知
+        emit_addresses(connection, @family, addresses.map { |addr| addr["data"] })
+        # => Resolver::Resolver#emit_addresses
+      }
+    end
+  end
+
+  close_or_resolve # => Resolver::Native#close_or_resolve
+
+  # Resolver::Native#close_or_resolve (lib/httpx/resolver/native.rb)
+  #   def close_or_resolve
+  #     # drop already closed connections
+  #     @connections.shift until @connections.empty? || @connections.first.state != :closed
+  #
+  #     if (@connections - @queries.values).empty?
+  #       emit(:close, self)
+  #     else
+  #       resolve # => Resolver::Native#resolve ここで再起的にもう一つのアドレスファミリの名前解決をしている?
+  #     end
+  #   end
 end
 ```
 
