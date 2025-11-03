@@ -35,25 +35,20 @@
                   - 状態を`:idle`に戻して再初期化し、再利用できるようにする
               - `when :closing` 接続終了中の場合
                   - `:closed`イベント発火後に状態を`:idle`に戻して再初期化し、再利用できるようにする
-          - `Connection#send` WIP
-            - `Connection#send_request_to_parser`
-              - `Connection::HTTP1#send`
-              - `Connection::HTTP2#send`
-          - `Request#emit<:response>`発火
-      - `Session#receive_requests` `send_requests`後、即時実行
-        - `Selector#next_tick` レスポンスの待機
+          - `Connection#send` `@pending`にリクエストを積む
+          - `Request#emit(:response)` リクエスト中のエラー発生時に発火
+      - `Session#receive_requests` WIP
+        - `Selector#next_tick` 監視中のIOの準備完了をIO一つ分待機する
           - `Selector#select`
-            - `Connection#call`
-              - `Connection#connect`
-                - (まだ接続していない場合) `TCP#connect` / `SSL#connect` TODO イベントループで事前に呼ばれている?
-              - `Connection#consume`
-                - `Connection#parser` HTTPパーサの作成
-                  - `Connection#set_parser_callbacks`
-                    - `Connection#emit<:altsvc, :terminate>`発火
-                    - `Request#emit<:response, :promise>`発火
-          - `Connection#interests`
-        - `Session#fetch_response`
-        - `Request#emit<:complete>`発火
+            - `Selector#select_one` / `Selector#select_many`
+              - (1回目) `Resolver::Native#call`
+                - `Resolver::Native#consume`
+                  - `Resolver::Native#dwrite` DNSクエリを送信する
+                    - `Resolver::Native#schedule_retry`
+                      - `Timer#after` WIP
+                      - `Resolver::Native#do_retry`
+        - `Session#fetch_response` レスポンスを取得
+        - `Request#emit(:complete)`発火
 
 ## `Chainable#request`
 
@@ -265,7 +260,7 @@ def send_requests(*requests)
   #      @timers=#<HTTPX::Timers:0x000000011c0f05b0 @intervals=[]>,
   #      @selectables=[], @is_timer_interval=false>
   #
-  # なので、ここでselectorには#<HTTPX::Selector>格納されている状態になる
+  # なので、ここでselectorには#<HTTPX::Selector>が格納されている状態になる
 
   begin
     _send_requests(requests, selector) # => Session#_send_requests
@@ -1203,12 +1198,14 @@ end
 ```ruby
 # (lib/httpx/connection.rb)
 
-# WIP ここから続き
 def send(request)
   # この接続が他の接続に合流している場合、合流先の接続を利用して送信を行う
   return @coalesced_connection.send(request) if @coalesced_connection
 
-  # @parserが存在している = HTTPX::Connection::HTTP2 (HTTP/1の場合はHTTPX::Connection::HTTP1)
+  # initialize時に外部ioを指定していない場合、最初にここに到達した時点では@parserはnilの状態のはず
+  # なのでまったくこのif文を通らずに完了するケースもある
+
+  # @parser = HTTPX::Connection::HTTP2 (HTTP/1の場合はHTTPX::Connection::HTTP1)
   # !@write_buffer.full?  = 送信バッファに空きがある
   if @parser && !@write_buffer.full?
 
@@ -1227,14 +1224,44 @@ def send(request)
     send_request_to_parser(request) # => Connection#send_request_to_parser
 
   else
-    # 現在のリクエストを@pendingキューに追加
-    @pending << request
+    # @parserを初期化していない場合はこっち
+    @pending << request # 現在のリクエストを@pending (配列) に追加するだけ。まだ実際には送信してない
   end
 end
+```
+
+```ruby
+# TODO 以下、実際に呼んでいるところ (多分Connection#send_pending) へ移動させる
+# Connection#send_request_to_parser (lib/httpx/connection.rb)
+
+def send_request_to_parser(request)
+  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
+  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
+  parser.send(request) # 送信
+  # => Connection#parser
+  # => Connection::HTTP1#send / Connection::HTTP2#send
+
+  set_request_timeouts(request) # => Connection#set_request_timeouts
+
+  # Connection#set_request_timeouts (lib/httpx/connection.rb)
+  #   def set_request_timeouts(request)
+  #     set_request_write_timeout(request)
+  #     set_request_read_timeout(request)
+  #     set_request_request_timeout(request)
+  #   end
+
+  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
+
+  transition(:active) # 状態を:activeに変更
+end
+
+# Connection#parser (lib/httpx/connection.rb)
 
 def parser
   @parser ||= build_parser # => Connection#build_parser
 end
+
+# Connection#build_parser (lib/httpx/connection.rb)
 
 def build_parser(protocol = @io.protocol)
   parser = self.class.parser_type(protocol).new(@write_buffer, @options) # => Connection#parser_type
@@ -1253,45 +1280,7 @@ def build_parser(protocol = @io.protocol)
   parser
 end
 
-def send_request_to_parser(request)
-  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
-  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
-  parser.send(request) # 送信 => Connection::HTTP1#send / Connection::HTTP2#send
-
-  set_request_timeouts(request) # => Connection#set_request_timeouts
-
-  # Connection#set_request_timeouts (lib/httpx/connection.rb)
-  #   def set_request_timeouts(request)
-  #     set_request_write_timeout(request)
-  #     set_request_read_timeout(request)
-  #     set_request_request_timeout(request)
-  #   end
-
-  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
-
-  transition(:active) # 状態を:activeに変更
-end
-
-# Connectionに対してtransition(:active)が呼ばれると、
-
-def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
-  case nextstate
-    # ...
-  when :active
-    return unless @state == :inactive
-
-    nextstate = :open
-    @current_session.select_connection(self, @current_selector)
-  # ...
-  end
-  @state = nextstate
-end
-```
-
-### `Connection#set_parser_callbacks`
-
-```ruby
-# (lib/httpx/connection.rb)
+# Connection#set_parser_callbacks (lib/httpx/connection.rb)
 
 def set_parser_callbacks(parser)
   # レスポンスを受信したとき
@@ -1466,6 +1455,21 @@ def set_parser_callbacks(parser)
     request.response = response
     request.emit(:response, response) # => Request#on(:response)
   end
+end
+
+# Connectionに対してtransition(:active)が呼ばれると、
+
+def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
+  case nextstate
+    # ...
+  when :active
+    return unless @state == :inactive
+
+    nextstate = :open
+    @current_session.select_connection(self, @current_selector)
+  # ...
+  end
+  @state = nextstate
 end
 ```
 
@@ -1693,18 +1697,21 @@ end
 ```ruby
 # (lib/httpx/session.rb)
 
-# 元のリクエストの送信順にresponsesを整列して返す
 def receive_requests(requests, selector)
-  # @type var responses: Array[response]
+  # ここに到達した時点ではまだリクエストの送信を行なっていない可能性がある
+
   responses = []
 
   loop do
-    request = requests.first # 先頭のリクエストを取得
-    return responses unless request # リクエストが空になったらレスポンスを返す
+    request = requests.first # リクエストをひとつ取得する
+
+    # リクエストが空になったらレスポンスを返す
+    return responses unless request
 
     catch(:coalesced) {
       selector.next_tick # => Selector#next_tick
     } until (
+      # @responsesに値が入る = レスポンスを受信できるまでループ
       response = fetch_response(request, selector, request.options) # => Session#fetch_response
 
       # Session#fetch_response (lib/httpx/session.rb)
@@ -1713,6 +1720,7 @@ def receive_requests(requests, selector)
       #   end
     )
 
+    # WIP ここから続き
     request.emit(:complete, response) # => Request#on(:complete)
     responses << response
     requests.shift
@@ -1742,7 +1750,7 @@ end
 ```ruby
 # (lib/httpx/selector.rb)
 
-def next_tick
+def next_tick # IOに対して読み書きする用事が残っている場合、ここがそのエンドポイントになる
   catch(:jump_tick) do
     timeout = next_timeout # 次のタイムアウトまでの残り時間を取得
 
@@ -1770,6 +1778,8 @@ rescue Exception # rubocop:disable Lint/RescueException
   raise
 end
 
+# Selector#select (lib/httpx/selector.rb)
+
 def select(interval, &block)
   return if interval.nil? && @selectables.empty? # 監視対象が空の場合は何もしない
 
@@ -1778,28 +1788,37 @@ def select(interval, &block)
   select_many(interval, &block) # 監視対象のIOが複数 => Selector#select_many
 end
 
+# Selector#select_one (lib/httpx/selector.rb)
+
 def select_one(interval)
   io = @selectables.first
   return unless io
 
-  # どんなイベントを待つかによってwait_readable / wait_writable / waitを呼び出す
   interests = io.interests
+
+  # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
+  # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:wを返す
+
   result = case interests
-           when :r then io.to_io.wait_readable(interval)
-           when :w then io.to_io.wait_writable(interval)
-           when :rw then io.to_io.wait(interval, :read_write)
+           when :r then io.to_io.wait_readable(interval) # 読み込み可能になるまでブロック
+           when :w then io.to_io.wait_writable(interval) # 書き込み可能になるまでブロック
+           when :rw then io.to_io.wait(interval, :read_write) # 読み書き可能になるまでブロック?
            when nil then return
   end
 
-  unless result || interval.nil?
-    # タイムアウト発生時の処理
+  unless result || interval.nil? # タイムアウト発生時の処理
     io.handle_socket_timeout(interval) unless @is_timer_interval
     return
   end
 
-  # next_tickの中でselect(timeout, &:call)のように呼び出している。のでこの場合はio.call
+  # Selector#next_tickでselect(timeout, &:call)のようにブロックを渡している
+
+  # 1回目: => Resolver::Native#call
+
   yield io
 end
+
+# Selector#select_many (lib/httpx/selector.rb)
 
 def select_many(interval, &block)
   r, w = nil
@@ -1823,7 +1842,7 @@ def select_many(interval, &block)
     return
   end
 
-  # 読み書き可能なIOに対して.callを読んでいく
+  # Selector#next_tickでselect(timeout, &:call)のようにブロックを渡している
   if writers
     readers.each do |io|
       yield io
@@ -1835,6 +1854,197 @@ def select_many(interval, &block)
     writers.each(&block) # => Connection#call
   else
     readers.each(&block) if readers
+  end
+end
+
+# Resolver::Native#interests (lib/httpx/resolver/native.rb)
+
+def interests
+  case @state
+  when :idle
+    transition(:open) # => Resolver::Native#transition
+  # ...
+  end
+  calculate_interests # => Resolver::Native#interests
+
+  # Resolver::Native#calculate_interests (lib/httpx/resolver/native.rb)
+  #   def calculate_interests
+  #      return :w unless @write_buffer.empty?
+  #      return :r unless @queries.empty?
+  #      nil
+  #    end
+end
+
+# Resolver::Native#transition (lib/httpx/resolver/native.rb)
+
+def transition(nextstate)
+  case nextstate
+  # ...
+  when :open
+    return unless @state == :idle
+    # DNSリクエスト用のソケットを作成する。TCPの場合は接続もする。
+
+    @io ||= build_socket # => Resolver::Native#build_socket
+
+    # Resolver::Native#build_socket (lib/httpx/resolver/native.rb)
+    #   def build_socket
+    #     ip, port = @nameserver[@ns_index]
+    #     port ||= DNS_PORT
+    #
+    #     case @socket_type
+    #     when :udp
+    #       UDP.new(ip, port, @options)
+    #     when :tcp
+    #       origin = URI("tcp://#{ip}:#{port}")
+    #       TCP.new(origin, [ip], @options)
+    #     end
+    #   end
+
+    @io.connect # => UDP#connect
+
+    # UDP#connect (lib/httpx/io/udp.rb)
+    #   def connect; end # UDPに接続はないのであった...
+
+    return unless @io.connected?
+  # ...
+end
+
+# Resolver::Native#call (lib/httpx/resolver/native.rb)
+
+def call
+  case @state
+  when :open
+    consume # => Resolver::Native#consume
+  end
+end
+
+# Resolver::Native#consume (lib/httpx/resolver/native.rb)
+
+def consume
+  loop do
+    dread if calculate_interests == :r
+    break unless calculate_interests == :w
+    dwrite # 今からDNSクエリを送信する => Resolver::Native#dwrite
+    break unless calculate_interests == :r
+  end
+rescue Errno::EHOSTUNREACH => e
+  @ns_index += 1
+  nameserver = @nameserver
+  if nameserver && @ns_index < nameserver.size
+    transition(:idle)
+    @timeouts.clear
+    retry
+  else
+    handle_error(e)
+    emit(:close, self)
+  end
+rescue NativeResolveError => e
+  handle_error(e)
+  close_or_resolve
+  retry unless closed?
+end
+
+# Resolver::Native#dwrite (lib/httpx/resolver/native.rb)
+
+def dwrite
+  loop do
+    return if @write_buffer.empty?
+    # リクエストを送信し終わった後、@write_bufferが空になったらループ後ここでreturnする
+
+    # @io = #<HTTPX::UDP>
+    siz = @io.write(@write_buffer) # DNSクエリを送信
+
+    unless siz
+      ex = EOFError.new("descriptor closed")
+      ex.set_backtrace(caller)
+      raise ex
+    end
+
+    return unless siz.positive?
+
+    # リクエストを送信し終わった後、一定時間内にレスポンスがなければ再送
+    schedule_retry if @write_buffer.empty? # => Resolver::Native#schedule_retry
+
+    return if @state == :closed
+  end
+end
+
+# Resolver::Native#schedule_retry (lib/httpx/resolver/native.rb)
+
+def schedule_retry
+  h = @name
+  return unless h
+
+  connection = @queries[h]
+  timeouts = @timeouts[h]
+  timeout = timeouts.shift
+
+  @timer = @current_selector.after(timeout) do # => Timer#after
+    next unless @connections.include?(connection)
+    do_retry(h, connection, timeout) # => Resolver::Native#do_retry
+  end
+end
+
+# Timer#after (lib/httpx/timers.rb)
+
+# WIP 続きはここから
+def after(interval_in_secs, cb = nil, &blk)
+  return unless interval_in_secs
+
+  callback = cb || blk
+
+  # I'm assuming here that most requests will have the same
+  # request timeout, as in most cases they share common set of
+  # options. A user setting different request timeouts for 100s of
+  # requests will already have a hard time dealing with that.
+  unless (interval = @intervals.find { |t| t.interval == interval_in_secs })
+    interval = Interval.new(interval_in_secs)
+    interval.on_empty { @intervals.delete(interval) }
+    @intervals << interval
+    @intervals.sort!
+  end
+
+  interval << callback
+
+  @next_interval_at = nil
+
+  Timer.new(interval, callback)
+end
+
+
+# Resolver::Native#do_retry (lib/httpx/resolver/native.rb)
+
+def do_retry(h, connection, interval)
+  timeouts = @timeouts[h]
+
+  if !timeouts.empty?
+    # must downgrade to tcp AND retry on same host as last
+    downgrade_socket
+    resolve(connection, h)
+  elsif @ns_index + 1 < @nameserver.size
+    # try on the next nameserver
+    @ns_index += 1
+    transition(:idle)
+    @timeouts.clear
+    resolve(connection, h)
+  else
+    @timeouts.delete(h)
+    reset_hostname(h, reset_candidates: false)
+
+    unless @queries.empty?
+      resolve(connection)
+      return
+    end
+
+    @connections.delete(connection)
+    host = connection.peer.host
+
+    # This loop_time passed to the exception is bogus. Ideally we would pass the total
+    # resolve timeout, including from the previous retries.
+    ex = ResolveTimeoutError.new(interval, "Timed out while resolving #{host}")
+    ex.set_backtrace(ex ? ex.backtrace : caller)
+    emit_resolve_error(connection, host, ex)
+    close_or_resolve
   end
 end
 ```
