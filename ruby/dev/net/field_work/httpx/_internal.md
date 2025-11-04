@@ -42,15 +42,20 @@
                     - `Resolver::Native#schedule_retry`
                       - `Resolver::Native#do_retry`
                   - `Resolver::Native#dread` DNSレスポンスを受信 (受信するまでループする)
-                    - `Resolver::Native#parse`
+                    - `Resolver::Native#parse` DNSレスポンスをパース
                       - `Resolver::Native#parse_addresses`
                         - `Resolver::Native#emit_addresses`
-                          - `Resolver::Resolver#emit_resolved_connection`
+                          - `Resolver::Resolver#emit_resolved_connection` connectionに解決済みアドレスリストを設定
                             - `Connection#addresses=` このConnectionのioをセット
                               - `Connection#build_socket` このConnectionのioとなる`TCP.new`or`SSL.new`を呼び出す
                             - `Resolver::Resolver#on(:resolve)`
                               - `Resolver::Resolver#resolve_connection`
-                                - `Session#on_resolver_connection` WIP
+                                - `Session#on_resolver_connection` 統合可能なConnectionを取得
+                                  - (統合可能なconnectionがない場合) `Session#select_connection`
+                                    - `Selector#register` io、アドレスをセットしたこのConnectionを監視対象とする
+                                      - -> 再び`Selector#next_tick`へ
+                                  - (統合可能なconnectionがある場合) `Session#coalesced_connection`
+                                    - `Session#select_connection`
                           - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
                         - `Resolver::Native#close_or_resolve`
         - `Session#fetch_response` レスポンスを取得
@@ -903,13 +908,22 @@ def select_connection(connection, selector)
   pin_connection(connection, selector) # => Session#pin_connection
 
   # このselectorにこのconnectionを登録する
-  selector.register(connection)
+  selector.register(connection) # => Selector#register
 end
 
 # Session#pin_connection (lib/httpx/session.rb)
+
 def pin_connection(connection, selector)
   connection.current_session = self # このconnectionに対して、このsessionを紐づける
   connection.current_selector = selector # このconnectionに対して、このselectorを紐づける
+end
+
+# Selector#register (lib/httpx/selector.rb)
+
+def register(io)
+  return if @selectables.include?(io)
+
+  @selectables << io # 監視対象にする
 end
 ```
 
@@ -1529,6 +1543,7 @@ def select_one(interval)
 
   # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
   # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:wを返す
+  # 2回目: WIP ここから続き
 
   result = case interests
            when :r then io.to_io.wait_readable(interval) # 読み込み可能になるまでブロック
@@ -1556,6 +1571,9 @@ def select_many(interval, &block)
   # 監視対象のIOをr, wに振り分ける
   @selectables.delete_if do |io|
     interests = io.interests
+
+    # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
+    # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:wを返す
 
     (r ||= []) << io if READABLE.include?(interests)
     (w ||= []) << io if WRITABLE.include?(interests)
@@ -2126,7 +2144,6 @@ end
 
 # Session#on_resolver_connection (lib/httpx/session.rb)
 
-# WIP
 def on_resolver_connection(connection, selector)
   from_pool = false # コネクションプールから取得した接続かどうか
 
@@ -2170,7 +2187,7 @@ def on_resolver_connection(connection, selector)
 
   end
 
-  # 既存の接続が見つからない場合はconnectionをselector に登録して新規接続を開始し、それを返す
+  # 既存の接続が見つからない場合はこのconnectionに対してこのsessionとselectorを紐づける
   return select_connection(connection, selector) unless found_connection # => Session#select_connection
 
   # 既存の接続がまだopenしている場合
@@ -2212,7 +2229,7 @@ def coalesce_connections(conn1, conn2, selector, from_pool)
   true
 end
 
-# Session#on_resolver_connection (lib/httpx/session.rb)
+# Session#emit_connection_error (lib/httpx/session.rb)
 
 def emit_connection_error(connection, error)
   return connection.handle_connect_error(error) if connection.connecting?
