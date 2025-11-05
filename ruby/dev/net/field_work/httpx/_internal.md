@@ -36,7 +36,12 @@
         - `Selector#next_tick` 監視中のIOの準備完了をIO一つ分待機する
           - `Selector#select`
             - `Selector#select_one` / `Selector#select_many`
-              - (1回目) `Resolver::Native#call`
+              - (1回目) `Resolver::Native#interests`
+                - `Resolver::Native#transition`
+                  - `Resolver::Native#build_socket` DNSリクエスト用のソケットを作成
+                    - `UDP#connect`
+                - `Resolver::Native#calculate_interests`
+              - `Resolver::Native#call`
                 - `Resolver::Native#consume`
                   - `Resolver::Native#dwrite` DNSクエリを送信する
                     - `Resolver::Native#schedule_retry`
@@ -58,6 +63,12 @@
                                     - `Session#select_connection`
                           - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
                         - `Resolver::Native#close_or_resolve`
+              - (2回目) `Connection#interests`
+                - `Connection#connect`
+                  - `Connection#transition`
+                    - `Connection#handle_transition`
+                      - `TCP#connect` WIP
+                      - `SSL#connect` WIP
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -1190,21 +1201,6 @@ def set_parser_callbacks(parser)
     request.emit(:response, response) # => Request#on(:response)
   end
 end
-
-# Connectionに対してtransition(:active)が呼ばれると、
-
-def handle_transition(nextstate) # @stateをnextstateにする...んだけど:activeはnextstateを:openにセットしている
-  case nextstate
-    # ...
-  when :active
-    return unless @state == :inactive
-
-    nextstate = :open
-    @current_session.select_connection(self, @current_selector)
-  # ...
-  end
-  @state = nextstate
-end
 ```
 
 ### `HTTPX::Connection::HTTP1#send`
@@ -1543,7 +1539,8 @@ def select_one(interval)
 
   # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
   # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:wを返す
-  # 2回目: WIP ここから続き
+  # 2回目: io = 宛先アドレスがセットされ、監視対象になったIOなので、 => Connection#interests
+  # WIP
 
   result = case interests
            when :r then io.to_io.wait_readable(interval) # 読み込み可能になるまでブロック
@@ -2113,6 +2110,259 @@ def initialize(_, _, options)
 
   @verify_hostname = @ctx.verify_hostname
 end
+
+# Connection#interests (lib/httpx/connection.rb)
+
+def interests
+  if connecting? # => Connection#connecting?
+
+    # Connection#connecting? (lib/httpx/connection.rb)
+    #   def connecting?
+    #     @state == :idle
+    #   end
+
+    connect # => Connection#connect
+
+    # Connection#connect (lib/httpx/connection.rb)
+    #   def connect
+    #    transition(:open) # => Connection#transition
+    #   end
+
+    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+  end
+
+  # connectionの@write_bufferに未送信のデータが残っている場合
+  return :w unless @write_buffer.empty?
+  # すでにHTTP通信を開始している場合はHTTPパーサが監視対象のイベントを判定する
+  return @parser.interests if @parser
+
+  nil
+rescue StandardError => e
+  emit(:error, e) # => Connection#on(:error)
+  nil
+end
+
+# Connection#transition (lib/httpx/connection.rb)
+
+def transition(nextstate)
+  handle_transition(nextstate) # => Connection#handle_transition
+  # ...
+end
+
+# Connection#handle_transition (lib/httpx/connection.rb)
+
+def handle_transition(nextstate)
+  case nextstate
+  when :idle
+    @timeout = @current_timeout = @options.timeout[:connect_timeout]
+    @connected_at = nil
+  when :open
+    return if @state == :closed
+
+    @io.connect # => TCP#connect / SSL#connect 実際に接続処理を行っている箇所
+    close_sibling if @io.state == :connected # ioが接続済みになったら同じオリジンの別接続を閉じる
+    return unless @io.connected? # 非同期接続が完了していない場合はここで返る
+
+    @connected_at = Utils.now # 接続完了時刻
+    send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信
+    @timeout = @current_timeout = parser.timeout
+    emit(:open) # => Connection#on(:open)
+  when :inactive
+    return unless @state == :open
+
+    # do not deactivate connection in use
+    return if @inflight.positive?
+  when :closing
+    return unless @state == :idle || @state == :open
+
+    unless @write_buffer.empty?
+      # preset state before handshake, as error callbacks
+      # may take it back here.
+      @state = nextstate
+      # handshakes, try sending
+      consume
+      @write_buffer.clear
+      return
+    end
+  when :closed
+    return unless @state == :closing
+    return unless @write_buffer.empty?
+
+    purge_after_closed
+    disconnect if @pending.empty?
+  when :already_open
+    nextstate = :open
+    # the first check for given io readiness must still use a timeout.
+    # connect is the reasonable choice in such a case.
+    @timeout = @options.timeout[:connect_timeout]
+    send_pending
+  when :active
+    return unless @state == :inactive
+
+    nextstate = :open
+    # activate
+    @current_session.select_connection(self, @current_selector)
+  end
+  @state = nextstate
+end
+
+# TCP#connect (lib/httpx/io/tcp.rb)
+
+def connect
+  return unless closed?
+
+  if !@io || @io.closed?
+    transition(:idle)
+    @io = build_socket # => TCP#build_socket
+
+    # TCP#build_socket (lib/httpx/io/tcp.rb)
+    #   def build_socket
+    #     @ip = @addresses[@ip_index] # @ip_index = アドレス在庫の位置を示すインデックス
+    #     Socket.new(@ip.family, :STREAM, 0)
+    #   end
+  end
+
+  try_connect # 接続試行
+rescue Errno::ECONNREFUSED,
+       Errno::EADDRNOTAVAIL,
+       Errno::EHOSTUNREACH,
+       SocketError,
+       IOError => e
+  raise e if @ip_index <= 0 # 試行できるアドレスの在庫がないためエラー
+
+  @ip_index -= 1
+  @io = build_socket # ソケットを再作成してリトライ
+  retry
+rescue Errno::ETIMEDOUT => e
+  raise ConnectTimeoutError.new(@options.timeout[:connect_timeout], e.message) if @ip_index <= 0
+
+  @ip_index -= 1
+  @io = build_socket # ソケットを再作成してリトライ
+  retry
+end
+
+def try_connect
+  # ノンブロッキングでTCP接続を試行
+  ret = @io.connect_nonblock(Socket.sockaddr_in(@port, @ip.to_s), exception: false)
+
+  # 上位レイヤのselectorなどで待機するように@interestsをセットする
+  case ret
+  when :wait_readable # (EINPROGRESS以外が発生した場合など)
+    # サーバがすぐにRSTを返した場合 -> エラーの読み取りが必要
+    # 接続完了通知がreadイベントとして届く一部のOS -> イベントの読み取りが必要
+    # この場合は上位レイヤのselectorなどでselectし直す
+    @interests = :r
+    return
+  when :wait_writable # 接続が完了してソケットが書き込み可能になるまで待つ場合
+    @interests = :w
+    return
+  end
+
+  # connect_nonblockが即時成功した場合
+  transition(:connected)
+  @interests = :w # 書き込み可能になるのを待つ
+rescue Errno::EALREADY
+  @interests = :w
+end
+
+# SSL#connect (lib/httpx/io/ssl.rb)
+
+def connect
+  super # SSLクラスはTCPクラスを継承している => TCP#connect
+
+  # この時点で接続に成功している場合、そのソケットはまだ暗号化されていない状態
+
+  return if @state == :negotiated || # TLSハンドシェイクが完了している
+            @state != :connected # TCP接続が完了していない...接続完了後にTLSハンドシェイクするのかな
+
+  unless @io.is_a?(OpenSSL::SSL::SSLSocket)
+    if (hostname_is_ip = (@ip == @sni_hostname)) # @sni_hostname = 証明書検証などに使うホスト名
+      @sni_hostname = @ip.to_string
+      @ctx.verify_hostname = false # 接続先がIPの場合は証明書のSANチェックを無効化
+    end
+
+    # TCPソケットをOpenSSL::SSL::SSLSocketでラップする
+    @io = OpenSSL::SSL::SSLSocket.new(@io, @ctx)
+
+    @io.hostname = @sni_hostname unless hostname_is_ip # SNI拡張でホスト名を送る
+    @io.session = @ssl_session unless ssl_session_expired? # 以前のセッションが有効なら再利用
+    @io.sync_close = true # SSLソケットを閉じるときに内部のTCPソケットも自動で閉じる
+  end
+
+  try_ssl_connect
+end
+
+def try_ssl_connect
+  # ノンブロッキングでTLS接続を試行
+  ret = @io.connect_nonblock(exception: false)
+
+  # 上位レイヤのselectorなどで待機するように@interestsをセットする
+  case ret
+  when :wait_readable
+    @interests = :r # ServerHello待ち
+    return
+  when :wait_writable
+    @interests = :w # 接続待ち
+    return
+  end
+
+  # 即座にハンドシェイクが完了した場合
+
+  # 証明書の検証が有効になっており、ホスト名の検証を行う場合
+  if @ctx.verify_mode != OpenSSL::SSL::VERIFY_NONE && @verify_hostname
+    @io.post_connection_check(@sni_hostname) # => OpenSSL::SSL::SSLSocket#post_connection_check
+  end
+
+  transition(:negotiated)
+  @interests = :w # 接続待ち
+end
+
+# そもそものalpn_protocolsの設定...
+# 明示的にALPNを設定することでハンドシェイクを行うことができる
+TLS_OPTIONS = { alpn_protocols: %w[h2 http/1.1].freeze }
+
+def initialize(_, _, options)
+  super
+  ctx_options = TLS_OPTIONS.merge(options.ssl)
+  @sni_hostname = ctx_options.delete(:hostname) || @hostname
+
+  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
+    @ctx = @io.context
+    @state = :negotiated
+  else
+    @ctx = OpenSSL::SSL::SSLContext.new
+    @ctx.set_params(ctx_options) unless ctx_options.empty?
+    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
+      @ctx.session_cache_mode =
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+    end
+
+    yield(self) if block_given?
+  end
+
+  @verify_hostname = @ctx.verify_hostname
+end
+
+def protocol
+  @io.alpn_protocol || super
+  # @io.alpn_protocol => "h2"
+  # => OpenSSL::SSL::SSLSocket#alpn_protocol
+  # Returns the ALPN protocol string that was finally selected by the server during the handshake
+
+  # superの場合
+  # TCP#protocol (lib/httpx/io/tcp.rb)
+  #   def protocol
+  #     @fallback_protocol
+  #     # => @options.fallback_protocol (TCP#initialize)
+  #     # Options::DEFAULT_OPTIONS[:fallback_protocol] に"http/1.1"が設定されている
+  #   end
+
+rescue StandardError
+  super
+end
+
+# ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
+# build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
 ```
 
 #### `Resolver::Resolver#on(:resolve)` / `Resolver::Resolver#on(:error)`
@@ -2243,55 +2493,6 @@ def close_resolver(resolver)
 end
 ```
 
-### `Connection#call`
-TODO あとで正しい場所に移動する
-
-```ruby
-# (lib/httpx/connection.rb)
-
-def call
-  case @state
-  when :idle # 接続開始時
-    connect # => Connection#connect
-    consume # => Connection#consume
-  when :closed
-    return
-  when :closing
-    consume
-    transition(:closed)
-  when :open
-    consume
-  end
-  nil
-rescue StandardError => e
-  emit(:error, e) # => Connection#on(:error)
-  raise e
-end
-
-def connect
-  transition(:open)
-end
-
-def handle_transition(nextstate)
-  case nextstate
-    # ...
-  when :open
-    return if @state == :closed
-
-    @io.connect # => TCP#connect / SSL#connect 実際に接続処理を行っている箇所
-    close_sibling if @io.state == :connected # ioが接続済みになったら同じオリジンの別接続を閉じる
-    return unless @io.connected? # 非同期接続が完了していない場合はここで返る
-
-    @connected_at = Utils.now # 接続完了時刻
-    send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信
-    @timeout = @current_timeout = parser.timeout
-    emit(:open) # => Connection#on(:open)
-  # ...
-  end
-  @state = nextstate
-end
-```
-
 #### `Connection#on(:open)`
 
 ```ruby
@@ -2324,171 +2525,31 @@ end
 end
 ```
 
-### `TCP#connect`
+TODO あとで正しい場所に移動する
+
+### `Connection#call`
 
 ```ruby
-# (lib/httpx/io/tcp.rb)
+# (lib/httpx/connection.rb)
 
-def connect
-  return unless closed?
-
-  if !@io || @io.closed?
-    transition(:idle)
-    @io = build_socket # => TCP#build_socket
-
-    # TCP#build_socket (lib/httpx/io/tcp.rb)
-    #   def build_socket
-    #     @ip = @addresses[@ip_index] # @ip_index = アドレス在庫の位置を示すインデックス
-    #     Socket.new(@ip.family, :STREAM, 0)
-    #   end
-  end
-
-  try_connect # 接続試行
-rescue Errno::ECONNREFUSED,
-       Errno::EADDRNOTAVAIL,
-       Errno::EHOSTUNREACH,
-       SocketError,
-       IOError => e
-
-  raise e if @ip_index <= 0 # 試行できるアドレスの在庫がないためエラー
-
-  @ip_index -= 1
-  @io = build_socket # ソケットを再作成してリトライ
-  retry
-rescue Errno::ETIMEDOUT => e
-  raise ConnectTimeoutError.new(@options.timeout[:connect_timeout], e.message) if @ip_index <= 0
-
-  @ip_index -= 1
-  @io = build_socket # ソケットを再作成してリトライ
-  retry
-end
-
-def try_connect
-  # ノンブロッキングでTCP接続を試行
-  ret = @io.connect_nonblock(Socket.sockaddr_in(@port, @ip.to_s), exception: false)
-
-  # 上位レイヤのselectorなどで待機するように@interestsをセットする
-  case ret
-  when :wait_readable # (EINPROGRESS以外が発生した場合など)
-    # サーバがすぐにRSTを返した場合 -> エラーの読み取りが必要
-    # 接続完了通知がreadイベントとして届く一部のOS -> イベントの読み取りが必要
-    # この場合は上位レイヤのselectorなどでselectし直す
-    @interests = :r
+def call
+  case @state
+  when :idle # 接続開始時
+    connect # => Connection#connect
+    consume # => Connection#consume
+  when :closed
     return
-  when :wait_writable # 接続が完了してソケットが書き込み可能になるまで待つ場合
-    @interests = :w
-    return
+  when :closing
+    consume
+    transition(:closed)
+  when :open
+    consume
   end
-
-  # connect_nonblockが即時成功した場合
-  transition(:connected)
-  @interests = :w # 書き込み可能になるのを待つ
-rescue Errno::EALREADY
-  @interests = :w
+  nil
+rescue StandardError => e
+  emit(:error, e) # => Connection#on(:error)
+  raise e
 end
-```
-
-### `SSL#connect`
-
-```ruby
-# (lib/httpx/io/ssl.rb)
-
-def connect
-  super # SSLクラスはTCPクラスを継承している => TCP#connect
-
-  # この時点で接続に成功している場合、そのソケットはまだ暗号化されていない状態
-
-  return if @state == :negotiated || # TLSハンドシェイクが完了している
-            @state != :connected # TCP接続が完了していない...接続完了後にTLSハンドシェイクするのかな
-
-  unless @io.is_a?(OpenSSL::SSL::SSLSocket)
-    if (hostname_is_ip = (@ip == @sni_hostname)) # @sni_hostname = 証明書検証などに使うホスト名
-      @sni_hostname = @ip.to_string
-      @ctx.verify_hostname = false # 接続先がIPの場合は証明書のSANチェックを無効化
-    end
-
-    # TCPソケットをOpenSSL::SSL::SSLSocketでラップする
-    @io = OpenSSL::SSL::SSLSocket.new(@io, @ctx)
-
-    @io.hostname = @sni_hostname unless hostname_is_ip # SNI拡張でホスト名を送る
-    @io.session = @ssl_session unless ssl_session_expired? # 以前のセッションが有効なら再利用
-    @io.sync_close = true # SSLソケットを閉じるときに内部のTCPソケットも自動で閉じる
-  end
-
-  try_ssl_connect
-end
-
-def try_ssl_connect
-  # ノンブロッキングでTLS接続を試行
-  ret = @io.connect_nonblock(exception: false)
-
-  # 上位レイヤのselectorなどで待機するように@interestsをセットする
-  case ret
-  when :wait_readable
-    @interests = :r # ServerHello待ち
-    return
-  when :wait_writable
-    @interests = :w # 接続待ち
-    return
-  end
-
-  # 即座にハンドシェイクが完了した場合
-
-  # 証明書の検証が有効になっており、ホスト名の検証を行う場合
-  if @ctx.verify_mode != OpenSSL::SSL::VERIFY_NONE && @verify_hostname
-    @io.post_connection_check(@sni_hostname) # => OpenSSL::SSL::SSLSocket#post_connection_check
-  end
-
-  transition(:negotiated)
-  @interests = :w # 接続待ち
-end
-
-# そもそものalpn_protocolsの設定...
-# 明示的にALPNを設定することでハンドシェイクを行うことができる
-TLS_OPTIONS = { alpn_protocols: %w[h2 http/1.1].freeze }
-
-def initialize(_, _, options)
-  super
-  ctx_options = TLS_OPTIONS.merge(options.ssl)
-  @sni_hostname = ctx_options.delete(:hostname) || @hostname
-
-  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
-    @ctx = @io.context
-    @state = :negotiated
-  else
-    @ctx = OpenSSL::SSL::SSLContext.new
-    @ctx.set_params(ctx_options) unless ctx_options.empty?
-    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
-      @ctx.session_cache_mode =
-        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
-    end
-
-    yield(self) if block_given?
-  end
-
-  @verify_hostname = @ctx.verify_hostname
-end
-
-def protocol
-  @io.alpn_protocol || super
-  # @io.alpn_protocol => "h2"
-  # => OpenSSL::SSL::SSLSocket#alpn_protocol
-  # Returns the ALPN protocol string that was finally selected by the server during the handshake
-
-  # superの場合
-  # TCP#protocol (lib/httpx/io/tcp.rb)
-  #   def protocol
-  #     @fallback_protocol
-  #     # => @options.fallback_protocol (TCP#initialize)
-  #     # Options::DEFAULT_OPTIONS[:fallback_protocol] に"http/1.1"が設定されている
-  #   end
-
-rescue StandardError
-  super
-end
-
-# ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
-# build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
 ```
 
 ### `Connection#consume`
@@ -2701,30 +2762,6 @@ def handle(request, stream)
     # requestの状態をdoneに遷移
     request.transition(:done)
   end
-end
-```
-
-### `Connection#interests`
-
-```ruby
-# (lib/httpx/connection.rb)
-
-def interests
-  # まだ接続していない場合はconnectを開始
-  if connecting? # @state == :idle (#initializeの中で:idleにセットされる)
-    connect
-    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
-  end
-
-  # 未送信のデータが書き込みバッファに残っている場合は書き込み可能(:w)イベントを監視する
-  return :w unless @write_buffer.empty?
-  # すでにHTTP通信を開始している場合はHTTPパーサ自身が監視対象のイベントを判定する
-  return @parser.interests if @parser
-
-  nil
-rescue StandardError => e
-  emit(:error, e) # => Connection#on(:error)
-  nil
 end
 ```
 
