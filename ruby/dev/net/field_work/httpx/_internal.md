@@ -66,9 +66,9 @@
               - (2回目) `Connection#interests`
                 - `Connection#connect`
                   - `Connection#transition`
-                    - `Connection#handle_transition`
-                      - `TCP#connect` WIP
-                      - `SSL#connect` WIP
+                    - `Connection#handle_transition` 接続試行を開始
+                      - `TCP#connect`
+                      - `SSL#connect`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -1538,9 +1538,9 @@ def select_one(interval)
   interests = io.interests
 
   # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
-  # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:wを返す
+  # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:w
   # 2回目: io = 宛先アドレスがセットされ、監視対象になったIOなので、 => Connection#interests
-  # WIP
+  # ioのconnect_nonblockがwait_writableを返した場合は:w
 
   result = case interests
            when :r then io.to_io.wait_readable(interval) # 読み込み可能になるまでブロック
@@ -1558,6 +1558,7 @@ def select_one(interval)
   yield io
 
   # 1回目: => Resolver::Native#call
+  # 2回目: => Connection#call WIP
 end
 
 # Selector#select_many (lib/httpx/selector.rb)
@@ -2128,7 +2129,8 @@ def interests
     #    transition(:open) # => Connection#transition
     #   end
 
-    return @io.interests if connecting? # connect実行後に接続完了しなかった場合
+    # connect実行後に接続完了しなかった場合
+    return @io.interests if connecting? # => TCP#interests / SSL#interests
   end
 
   # connectionの@write_bufferに未送信のデータが残っている場合
@@ -2206,6 +2208,10 @@ def handle_transition(nextstate)
   @state = nextstate
 end
 
+# TCP#interests / SSL#interests (lib/httpx/io/tcp.rb)
+
+attr_reader :ip, :port, :addresses, :state, :interests
+
 # TCP#connect (lib/httpx/io/tcp.rb)
 
 def connect
@@ -2253,16 +2259,36 @@ def try_connect
     # この場合は上位レイヤのselectorなどでselectし直す
     @interests = :r
     return
-  when :wait_writable # 接続が完了してソケットが書き込み可能になるまで待つ場合
+  when :wait_writable # 接続が完了してソケットが書き込み可能になるまで待つ場合 (通常はここ)
     @interests = :w
     return
   end
 
   # connect_nonblockが即時成功した場合
-  transition(:connected)
+  transition(:connected) # => TCP#transition
   @interests = :w # 書き込み可能になるのを待つ
 rescue Errno::EALREADY
   @interests = :w
+end
+
+# TCP#transition (lib/httpx/io/tcp.rb)
+
+def transition(nextstate)
+  case nextstate
+  # when :idle
+  when :connected
+    return unless @state == :idle
+  when :closed
+    return unless @state == :connected
+  end
+
+  do_transition(nextstate) # => TCP#do_transition
+
+  # TCP#do_transition (lib/httpx/io/tcp.rb)
+  #   def do_transition(nextstate)
+  #     log(level: 1) { log_transition_state(nextstate) }
+  #     @state = nextstate
+  #   end
 end
 
 # SSL#connect (lib/httpx/io/ssl.rb)
@@ -2289,8 +2315,10 @@ def connect
     @io.sync_close = true # SSLソケットを閉じるときに内部のTCPソケットも自動で閉じる
   end
 
-  try_ssl_connect
+  try_ssl_connect # => SSL#try_ssl_connect
 end
+
+# SSL#try_ssl_connect (lib/httpx/io/ssl.rb)
 
 def try_ssl_connect
   # ノンブロッキングでTLS接続を試行
@@ -2313,8 +2341,23 @@ def try_ssl_connect
     @io.post_connection_check(@sni_hostname) # => OpenSSL::SSL::SSLSocket#post_connection_check
   end
 
-  transition(:negotiated)
+  transition(:negotiated) # => SSL#transition
   @interests = :w # 接続待ち
+end
+
+# SSL#transition (lib/httpx/io/ssl.rb)
+
+def transition(nextstate)
+  case nextstate
+  when :negotiated
+    return unless @state == :connected
+
+  when :closed
+    return unless @state == :negotiated ||
+                  @state == :connected
+  end
+
+  do_transition(nextstate) # => TCP#do_transition
 end
 
 # そもそものalpn_protocolsの設定...
@@ -2363,174 +2406,8 @@ end
 
 # ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
 # build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
-```
 
-#### `Resolver::Resolver#on(:resolve)` / `Resolver::Resolver#on(:error)`
-
-```ruby
-# Resolver::Resolver#set_resolver_callbacks (lib/httpx/resolver/resolver.rb)
-
-def set_resolver_callbacks
-  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
-  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
-  on(:close, &method(:close_resolver)) # リゾルバをcloseする
-end
-
-# Resolver::Resolver#resolve_connection (lib/httpx/resolver/resolver.rb)
-
-def resolve_connection(connection)
-  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
-  # => Session#on_resolver_connection
-end
-
-# Session#on_resolver_close (lib/httpx/session.rb)
-
-def on_resolver_close(resolver, selector)
-  return if resolver.closed?
-
-  deselect_resolver(resolver, selector) # selectorからresolverを取得
-  resolver.close unless resolver.closed? # resolverをclose
-end
-
-# Session#on_resolver_connection (lib/httpx/session.rb)
-
-def on_resolver_connection(connection, selector)
-  from_pool = false # コネクションプールから取得した接続かどうか
-
-  # selectorの中から同じオリジンに対して接続済み、open済みの接続を取得
-  # なければプール内からマージ可能な接続を取得
-  found_connection = selector.find_mergeable_connection(connection) || begin # => Selector#find_mergeable_connection
-
-    # Selector#find_mergeable_connection (lib/httpx/selector.rb)
-    #   def find_mergeable_connection(connection)
-    #     each_connection.find do |ch|
-    #       ch != connection && ch.mergeable?(connection) # => Connection#mergeable?
-    #     end
-    #   end
-    #
-    # Connection#mergeable? (lib/httpx/connection.rb)
-    #   def mergeable?(connection)
-    #     return false if @state == :closing || @state == :closed || !@io
-    #
-    #     return false unless connection.addresses
-    #
-    #     (
-    #       (open? && @origin == connection.origin) ||
-    #       !(@io.addresses & (connection.addresses || [])).empty?
-    #     ) && @options == connection.options
-    #   end
-
-    from_pool = true
-    @pool.checkout_mergeable_connection(connection) # => Pool#checkout_mergeable_connection
-
-    # Pool#checkout_mergeable_connection (lib/httpx/pool.rb)
-    #   def checkout_mergeable_connection(connection)
-    #     return if connection.options.io
-    #
-    #     @connection_mtx.synchronize do
-    #       idx = @connections.find_index do |ch|
-    #         ch != connection && ch.mergeable?(connection)
-    #       end
-    #       @connections.delete_at(idx) if idx
-    #     end
-    #   end
-
-  end
-
-  # 既存の接続が見つからない場合はこのconnectionに対してこのsessionとselectorを紐づける
-  return select_connection(connection, selector) unless found_connection # => Session#select_connection
-
-  # 既存の接続がまだopenしている場合
-  if found_connection.open?
-    # 即座に統合
-    coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
-  else
-    # openイベントを待って統合
-    found_connection.once(:open) do
-      coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
-    end
-  end
-end
-
-# Session#coalesced_connection (lib/httpx/session.rb)
-#   接続の統合を行う
-#   conn1 = 同じオリジンに対して接続済み、open済みの既存の接続
-#   conn2 = 新たに作成しようとしている接続
-#   selector = 現在のselector
-#   from_pool = conn1をコネクションプールから取得したかどうか
-def coalesce_connections(conn1, conn2, selector, from_pool)
-  # Connection#coalescable?
-  #   - いずれもHTTP/2接続
-  #   - 証明書のSANにconn2のホスト名が含まれる
-  #   - SNIやALPN が一致している
-  #   - プロトコルがTLS であり、サーバ認証済み など
-  unless conn1.coalescable?(conn2) # 統合できない場合
-    # conn2は独立した接続としてselectorに登録
-    select_connection(conn2, selector) # => Session#select_connection
-    # conn1をプールから取得した場合は再びプールに戻す
-    @pool.checkin_connection(conn1) if from_pool
-    return false
-  end
-
-  # conn2をconn1に統合。以降conn2に対するリクエストはconn1に経由で処理される
-  conn2.coalesced_connection = conn1
-  select_connection(conn1, selector) if from_pool # => Session#select_connection
-  deselect_connection(conn2, selector)
-  true
-end
-
-# Session#emit_connection_error (lib/httpx/session.rb)
-
-def emit_connection_error(connection, error)
-  return connection.handle_connect_error(error) if connection.connecting?
-  connection.emit(:error, error) # => Connection#on(:error)
-end
-
-# Resolver::Resolver#close_resolver (lib/httpx/resolver/resolver.rb)
-
-def close_resolver(resolver)
-  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
-end
-```
-
-#### `Connection#on(:open)`
-
-```ruby
-# (lib/httpx/plugins/callbacks.rb)
-
-def do_init_connection(connection, selector)
-  super
-
-  # Connection#on(:open)
-  connection.on(:open) do
-    next unless connection.current_session == self
-
-    emit_or_callback_error(:connection_opened, connection.origin, connection.io.socket)
-  end
-  # ...
-end
-
-%i[
-  connection_opened connection_closed
-  request_error
-  request_started request_body_chunk request_completed
-  response_started response_body_chunk response_completed
-].each do |meth|
-  class_eval(<<-MOD, __FILE__, __LINE__ + 1)
-    def on_#{meth}(&blk)   # def on_connection_opened(&blk)
-      on(:#{meth}, &blk)   #   on(:connection_opened, &blk)
-      self                 #   self
-    end                    # end
-  MOD
-end
-```
-
-TODO あとで正しい場所に移動する
-
-### `Connection#call`
-
-```ruby
-# (lib/httpx/connection.rb)
+# Connection#call (lib/httpx/connection.rb) WIP
 
 def call
   case @state
@@ -2550,12 +2427,8 @@ rescue StandardError => e
   emit(:error, e) # => Connection#on(:error)
   raise e
 end
-```
 
-### `Connection#consume`
-
-```ruby
-# (lib/httpx/connection.rb)
+# Connection#consume (lib/httpx/connection.rb)
 
 def consume
   return unless @io # ソケットが存在しない場合 (connectが終わっていないなど) は何もしない
@@ -2762,6 +2635,166 @@ def handle(request, stream)
     # requestの状態をdoneに遷移
     request.transition(:done)
   end
+end
+```
+
+#### `Resolver::Resolver#on(:resolve)` / `Resolver::Resolver#on(:error)`
+
+```ruby
+# Resolver::Resolver#set_resolver_callbacks (lib/httpx/resolver/resolver.rb)
+
+def set_resolver_callbacks
+  on(:resolve, &method(:resolve_connection)) # 既存の接続を返す、あるいは新規接続を開始してその接続を返す
+  on(:error, &method(:emit_connection_error)) # DNSレベルの失敗をconnectionに通知する
+  on(:close, &method(:close_resolver)) # リゾルバをcloseする
+end
+
+# Resolver::Resolver#resolve_connection (lib/httpx/resolver/resolver.rb)
+
+def resolve_connection(connection)
+  @current_session.__send__(:on_resolver_connection, connection, @current_selector)
+  # => Session#on_resolver_connection
+end
+
+# Session#on_resolver_close (lib/httpx/session.rb)
+
+def on_resolver_close(resolver, selector)
+  return if resolver.closed?
+
+  deselect_resolver(resolver, selector) # selectorからresolverを取得
+  resolver.close unless resolver.closed? # resolverをclose
+end
+
+# Session#on_resolver_connection (lib/httpx/session.rb)
+
+def on_resolver_connection(connection, selector)
+  from_pool = false # コネクションプールから取得した接続かどうか
+
+  # selectorの中から同じオリジンに対して接続済み、open済みの接続を取得
+  # なければプール内からマージ可能な接続を取得
+  found_connection = selector.find_mergeable_connection(connection) || begin # => Selector#find_mergeable_connection
+
+    # Selector#find_mergeable_connection (lib/httpx/selector.rb)
+    #   def find_mergeable_connection(connection)
+    #     each_connection.find do |ch|
+    #       ch != connection && ch.mergeable?(connection) # => Connection#mergeable?
+    #     end
+    #   end
+    #
+    # Connection#mergeable? (lib/httpx/connection.rb)
+    #   def mergeable?(connection)
+    #     return false if @state == :closing || @state == :closed || !@io
+    #
+    #     return false unless connection.addresses
+    #
+    #     (
+    #       (open? && @origin == connection.origin) ||
+    #       !(@io.addresses & (connection.addresses || [])).empty?
+    #     ) && @options == connection.options
+    #   end
+
+    from_pool = true
+    @pool.checkout_mergeable_connection(connection) # => Pool#checkout_mergeable_connection
+
+    # Pool#checkout_mergeable_connection (lib/httpx/pool.rb)
+    #   def checkout_mergeable_connection(connection)
+    #     return if connection.options.io
+    #
+    #     @connection_mtx.synchronize do
+    #       idx = @connections.find_index do |ch|
+    #         ch != connection && ch.mergeable?(connection)
+    #       end
+    #       @connections.delete_at(idx) if idx
+    #     end
+    #   end
+
+  end
+
+  # 既存の接続が見つからない場合はこのconnectionに対してこのsessionとselectorを紐づける
+  return select_connection(connection, selector) unless found_connection # => Session#select_connection
+
+  # 既存の接続がまだopenしている場合
+  if found_connection.open?
+    # 即座に統合
+    coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
+  else
+    # openイベントを待って統合
+    found_connection.once(:open) do
+      coalesce_connections(found_connection, connection, selector, from_pool) # => Session#coalesced_connection
+    end
+  end
+end
+
+# Session#coalesced_connection (lib/httpx/session.rb)
+#   接続の統合を行う
+#   conn1 = 同じオリジンに対して接続済み、open済みの既存の接続
+#   conn2 = 新たに作成しようとしている接続
+#   selector = 現在のselector
+#   from_pool = conn1をコネクションプールから取得したかどうか
+def coalesce_connections(conn1, conn2, selector, from_pool)
+  # Connection#coalescable?
+  #   - いずれもHTTP/2接続
+  #   - 証明書のSANにconn2のホスト名が含まれる
+  #   - SNIやALPN が一致している
+  #   - プロトコルがTLS であり、サーバ認証済み など
+  unless conn1.coalescable?(conn2) # 統合できない場合
+    # conn2は独立した接続としてselectorに登録
+    select_connection(conn2, selector) # => Session#select_connection
+    # conn1をプールから取得した場合は再びプールに戻す
+    @pool.checkin_connection(conn1) if from_pool
+    return false
+  end
+
+  # conn2をconn1に統合。以降conn2に対するリクエストはconn1に経由で処理される
+  conn2.coalesced_connection = conn1
+  select_connection(conn1, selector) if from_pool # => Session#select_connection
+  deselect_connection(conn2, selector)
+  true
+end
+
+# Session#emit_connection_error (lib/httpx/session.rb)
+
+def emit_connection_error(connection, error)
+  return connection.handle_connect_error(error) if connection.connecting?
+  connection.emit(:error, error) # => Connection#on(:error)
+end
+
+# Resolver::Resolver#close_resolver (lib/httpx/resolver/resolver.rb)
+
+def close_resolver(resolver)
+  @current_session.__send__(:on_resolver_close, resolver, @current_selector)
+end
+```
+
+#### `Connection#on(:open)`
+
+```ruby
+# (lib/httpx/plugins/callbacks.rb)
+
+def do_init_connection(connection, selector)
+  super
+
+  # Connection#on(:open)
+  connection.on(:open) do
+    next unless connection.current_session == self
+
+    emit_or_callback_error(:connection_opened, connection.origin, connection.io.socket)
+  end
+  # ...
+end
+
+%i[
+  connection_opened connection_closed
+  request_error
+  request_started request_body_chunk request_completed
+  response_started response_body_chunk response_completed
+].each do |meth|
+  class_eval(<<-MOD, __FILE__, __LINE__ + 1)
+    def on_#{meth}(&blk)   # def on_connection_opened(&blk)
+      on(:#{meth}, &blk)   #   on(:connection_opened, &blk)
+      self                 #   self
+    end                    # end
+  MOD
 end
 ```
 
