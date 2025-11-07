@@ -2413,6 +2413,9 @@ def call
   case @state
   when :idle # 接続開始時
     connect # => Connection#connect
+    # Connection#interestsの中で呼んでいるのでもう一回Connection#try_connectを呼び直す
+    # 接続完了している場合はcase ret節を抜けてtransition(:connected)に移行する
+
     consume # => Connection#consume
   when :closed
     return
