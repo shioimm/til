@@ -75,7 +75,12 @@
                   - `Connection#connect`
                     - `Connection#transition(:open)`
                       - `Connection#handle_transition` 接続確立を確認
-                        - `Connection#send_pending` WIP
+                        - `Connection#send_pending`
+                          - `Connection#send_request_to_parser`
+                            - `Connection#parser`
+                              - `Connection#build_parser`
+                                - `Connection#set_parser_callbacks` WIP
+                            - `Connection::HTTP1#send` / `Connection::HTTP2#send`
                   - `Connection#consume`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
@@ -2218,7 +2223,8 @@ end
 
 # Connection#send_pending (lib/httpx/connection.rb)
 
-def send_pending WIP
+def send_pending
+  # @write_bufferが空いていて、未送信のリクエストが残っている間
   while !@write_buffer.full? && (request = @pending.shift)
     send_request_to_parser(request) # => Connection#send_request_to_parser
   end
@@ -2274,6 +2280,7 @@ end
 
 # Connection#set_parser_callbacks (lib/httpx/connection.rb)
 
+# WIP
 def set_parser_callbacks(parser)
   # レスポンスを受信したとき
   parser.on(:response) do |request, response|
