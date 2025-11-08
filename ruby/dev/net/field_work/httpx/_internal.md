@@ -32,43 +32,51 @@
                   - `:closed`イベント発火後に状態を`:idle`に戻して再初期化し、再利用できるようにする
           - `Connection#send` `@pending`にリクエストを積む
           - `Request#emit(:response)` リクエスト中のエラー発生時に発火
-      - `Session#receive_requests` WIP
+      - `Session#receive_requests`
         - `Selector#next_tick` 監視中のIOの準備完了をIO一つ分待機する
           - `Selector#select`
             - `Selector#select_one` / `Selector#select_many`
-              - (1回目) `Resolver::Native#interests`
-                - `Resolver::Native#transition`
-                  - `Resolver::Native#build_socket` DNSリクエスト用のソケットを作成
-                    - `UDP#connect`
-                - `Resolver::Native#calculate_interests`
-              - `Resolver::Native#call`
-                - `Resolver::Native#consume`
-                  - `Resolver::Native#dwrite` DNSクエリを送信する
-                    - `Resolver::Native#schedule_retry`
-                      - `Resolver::Native#do_retry`
-                  - `Resolver::Native#dread` DNSレスポンスを受信 (受信するまでループする)
-                    - `Resolver::Native#parse` DNSレスポンスをパース
-                      - `Resolver::Native#parse_addresses`
-                        - `Resolver::Native#emit_addresses`
-                          - `Resolver::Resolver#emit_resolved_connection` connectionに解決済みアドレスリストを設定
-                            - `Connection#addresses=` このConnectionのioをセット
-                              - `Connection#build_socket` このConnectionのioとなる`TCP.new`or`SSL.new`を呼び出す
-                            - `Resolver::Resolver#on(:resolve)`
-                              - `Resolver::Resolver#resolve_connection`
-                                - `Session#on_resolver_connection` 統合可能なConnectionを取得
-                                  - (統合可能なconnectionがない場合) `Session#select_connection`
-                                    - `Selector#register` io、アドレスをセットしたこのConnectionを監視対象とする
-                                      - -> 再び`Selector#next_tick`へ
-                                  - (統合可能なconnectionがある場合) `Session#coalesced_connection`
-                                    - `Session#select_connection`
-                          - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
-                        - `Resolver::Native#close_or_resolve`
-              - (2回目) `Connection#interests`
-                - `Connection#connect`
-                  - `Connection#transition`
-                    - `Connection#handle_transition` 接続試行を開始
-                      - `TCP#connect`
-                      - `SSL#connect`
+              - (1回目)
+                - `Resolver::Native#interests`
+                  - `Resolver::Native#transition`
+                    - `Resolver::Native#build_socket` DNSリクエスト用のソケットを作成
+                      - `UDP#connect`
+                  - `Resolver::Native#calculate_interests`
+                - `Resolver::Native#call`
+                  - `Resolver::Native#consume`
+                    - `Resolver::Native#dwrite` DNSクエリを送信する
+                      - `Resolver::Native#schedule_retry`
+                        - `Resolver::Native#do_retry`
+                    - `Resolver::Native#dread` DNSレスポンスを受信 (受信するまでループする)
+                      - `Resolver::Native#parse` DNSレスポンスをパース
+                        - `Resolver::Native#parse_addresses`
+                          - `Resolver::Native#emit_addresses`
+                            - `Resolver::Resolver#emit_resolved_connection` connectionに解決済みアドレスリストを設定
+                              - `Connection#addresses=` このConnectionのioをセット
+                                - `Connection#build_socket` このConnectionのioとなる`TCP.new`or`SSL.new`を呼び出す
+                              - `Resolver::Resolver#on(:resolve)`
+                                - `Resolver::Resolver#resolve_connection`
+                                  - `Session#on_resolver_connection` 統合可能なConnectionを取得
+                                    - (統合可能なconnectionがない場合) `Session#select_connection`
+                                      - `Selector#register` io、アドレスをセットしたこのConnectionを監視対象とする
+                                        - -> 再び`Selector#next_tick`へ
+                                    - (統合可能なconnectionがある場合) `Session#coalesced_connection`
+                                      - `Session#select_connection`
+                            - IOErrorなどが発生した場合は`Resolver::Resolver#on(:error)`を発火
+                          - `Resolver::Native#close_or_resolve`
+              - (2回目)
+                - `Connection#interests`
+                  - `Connection#connect`
+                    - `Connection#transition(:open)`
+                      - `Connection#handle_transition` 接続試行を開始
+                        - `TCP#connect`
+                        - `SSL#connect`
+                - `Connection#call`
+                  - `Connection#connect`
+                    - `Connection#transition(:open)`
+                      - `Connection#handle_transition` 接続確立を確認
+                        - `Connection#send_pending` WIP
+                  - `Connection#consume`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -975,233 +983,7 @@ def send(request)
 end
 ```
 
-```ruby
-# TODO 以下、実際に呼んでいるところ (多分Connection#send_pending) へ移動させる
-# Connection#send_request_to_parser (lib/httpx/connection.rb)
-
-def send_request_to_parser(request)
-  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
-  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
-  parser.send(request) # 送信
-  # => Connection#parser
-  # => Connection::HTTP1#send / Connection::HTTP2#send
-
-  set_request_timeouts(request) # => Connection#set_request_timeouts
-
-  # Connection#set_request_timeouts (lib/httpx/connection.rb)
-  #   def set_request_timeouts(request)
-  #     set_request_write_timeout(request)
-  #     set_request_read_timeout(request)
-  #     set_request_request_timeout(request)
-  #   end
-
-  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
-
-  transition(:active) # 状態を:activeに変更
-end
-
-# Connection#parser (lib/httpx/connection.rb)
-
-def parser
-  @parser ||= build_parser # => Connection#build_parser
-end
-
-# Connection#build_parser (lib/httpx/connection.rb)
-
-def build_parser(protocol = @io.protocol)
-  parser = self.class.parser_type(protocol).new(@write_buffer, @options) # => Connection#parser_type
-
-  # Connection#parser_type (lib/httpx/connection.rb)
-  #   def parser_type(protocol)
-  #     case protocol
-  #     when "h2" then HTTP2
-  #     when "http/1.1" then HTTP1
-  #     else
-  #       raise Error, "unsupported protocol (##{protocol})"
-  #     end
-  #   end
-
-  set_parser_callbacks(parser) # => Connection#set_parser_callbacks
-  parser
-end
-
-# Connection#set_parser_callbacks (lib/httpx/connection.rb)
-
-def set_parser_callbacks(parser)
-  # レスポンスを受信したとき
-  parser.on(:response) do |request, response|
-    # request = #<HTTPX::Request>
-    # response = #<Response>
-
-    # レスポンスヘッダをパースし、Alt-Svcが含まれている場合
-    AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
-      emit(:altsvc, alt_origin, origin, alt_params) # => Connection#on(:altsvc)
-    end
-
-    @response_received_at = Utils.now # この接続で最後にレスポンスを受信した時刻
-    @inflight -= 1 # 送信済みかつレスポンス待ちのリクエストのカウントを減算
-    request.emit(:response, response) # => Request#on(:response)
-  end
-
-  # ALTSVCフレームを受信した場合
-  parser.on(:altsvc) do |alt_origin, origin, alt_params|
-    emit(:altsvc, alt_origin, origin, alt_params) # => Connection#on(:altsvc)
-  end
-
-  # PINGフレームを受信した時
-  parser.on(:pong, &method(:send_pending)) # @pendingに積まれたリクエストを送信する => Connection#send_pending
-
-  # Connection#send_pending (lib/httpx/connection.rb)
-  #   def send_pending
-  #     while !@write_buffer.full? && (request = @pending.shift)
-  #       send_request_to_parser(request)
-  #     end
-  #   end
-
-  # PUSH_PROMISEフレームを受信した時
-  parser.on(:promise) do |request, stream|
-    request.emit(:promise, parser, stream) # => Request#on(:promise)
-  end
-
-  # GOAWAYフレームを受信した時 (HTTP/2)
-  # 送信可能なリクエスト数の上限 (Keep-Aliveの上限値など) に達した時 (HTTP/1)
-  parser.on(:exhausted) do
-    # この接続ではこれ以上送信できない
-
-    @exhausted = true
-    current_session = @current_session
-    current_selector = @current_selector
-
-    begin
-      parser.close
-      @pending.concat(parser.pending) # 未送信・送信途中のリクエストがあれば@pendingに追加
-    ensure
-      # parser.closeなどの副作用で@current_session / @current_selectorなどの値が変わるかもしれない
-      @current_session = current_session
-      @current_selector = current_selector
-    end
-
-    case @state # この接続の状態
-    when :closed
-      idling
-      @exhausted = false
-    when :closing
-      once(:closed) do # closeしたら
-        idling # => Connection#idling
-        @exhausted = false
-      end
-    end
-
-    # Connection#idling (lib/httpx/connection.rb)
-    #   def idling
-    #     purge_after_closed # ソケットを閉じる、読み取り用のバッファを空にする、タイムアウト設定ををリセット
-    #     @write_buffer.clear # 未送信リクエストを空にする
-    #     transition(:idle) # 状態を:idle = 再利用可能な状態に変更
-    #     @parser = nil if @parser
-    #   end
-    #
-    #   def purge_after_closed
-    #     @io.close if @io
-    #     @read_buffer.clear
-    #     @timeout = nil
-    #   end
-  end
-
-  # ORIGINフレームを受信した時
-  # (この接続でどのオリジン = ホスト名を扱えるか。接続の合流に使用する)
-  parser.on(:origin) do |origin|
-    # @originsにホスト名を追加する
-    @origins |= [origin]
-  end
-
-  # 接続がcloseしたとき
-  parser.on(:close) do |force|
-    if force # 強制終了
-      reset # => Connection#reset
-
-      # Connection#reset (lib/httpx/connection.rb)
-      #   def reset
-      #     return if @state == :closing || @state == :closed
-      #     transition(:closing)
-      #     transition(:closed)
-      #   end
-
-      emit(:terminate) # => Connection#on(:terminate)
-    end
-  end
-
-  # クローズハンドシェイクが完了した時 (GOAWAYフレーム受信後にすべてのストリームがcloseした場合など)
-  parser.on(:close_handshake) do
-    consume
-  end
-
-  # 接続、またはストリームがプロトコルレベルでリセットによって中断された時 (RST_STREAM, TCP RSTなど)
-  parser.on(:reset) do
-    # 未完了のリクエストを@pendingに戻す
-    @pending.concat(parser.pending) unless parser.empty?
-
-    # 一時退避 (resetを呼ぶと@current_sessionがクリアされるため)
-    current_session = @current_session
-    current_selector = @current_selector
-
-    reset
-
-    # 未送信のリクエストがあれば再送準備
-    unless @pending.empty?
-      idling
-      @current_session = current_session
-      @current_selector = current_selector
-    end
-  end
-
-  # このリクエストに対してタイムアウトの監視が始まる時
-  parser.on(:current_timeout) do
-    # @current_timeout = 現在処理中のリクエストのタイムアウト
-    # @timeout = この接続全体のタイムアウト
-    # parser.timeout = このリクエスト単位の残り時間
-    @current_timeout = @timeout = parser.timeout
-  end
-
-  # この接続に対してKeep-Alive (HTTP/1)、Ping、Goaway、Idle (HTTP/2) のタイマーが設定された時
-  parser.on(:timeout) do |tout|
-    @timeout = tout
-  end
-
-  # HTTPパーサからエラー通知を受けた時
-  parser.on(:error) do |request, error|
-    case error
-    when :http_1_1_required # サーバがALPN negotiationを拒否し、HTTP/1.1 requiredを返した場合
-
-      current_session = @current_session
-      current_selector = @current_selector
-      parser.close # このパーサではもはや通信できない
-
-      # 同じSessionとSelectorから別の接続を取得
-      other_connection = current_session.find_connection(
-        @origin,
-        current_selector,
-        @options.merge(ssl: { alpn_protocols: %w[http/1.1] }) # ALPNの候補を"http/1.1"に限定
-      )
-
-      # この接続が保持している情報を新しい接続に引き継ぐ
-      # @pending, @origins, @sibling, @coalesced_connectionなど
-      other_connection.merge(self)
-
-      request.transition(:idle) # リクエストの状態をidle に戻す
-      other_connection.send(request) # 新しい接続を利用して再送
-      next # parser.on(:error)ブロックから抜ける
-
-    when OperationTimeoutError # read / write / connectがOperationTimeoutErrorに達した場合
-      next unless request.active_timeouts.empty? # リクエストの個別のtimeout時間内の場合は何もしない
-    end
-
-    # 上記の2ケース以外はエラーをリクエストに紐づけてレスポンスとして返す
-    response = ErrorResponse.new(request, error)
-    request.response = response
-    request.emit(:response, response) # => Request#on(:response)
-  end
-end
-```
+# TODO 以下、実際に呼んでいるところへ移動させる
 
 ### `HTTPX::Connection::HTTP1#send`
 
@@ -2166,7 +1948,7 @@ def handle_transition(nextstate)
     return unless @io.connected? # 非同期接続が完了していない場合はここで返る
 
     @connected_at = Utils.now # 接続完了時刻
-    send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信
+    send_pending # @pendingに積まれたリクエストを@write_bufferがいっぱいになるまで送信 => Connection#send_pending
     @timeout = @current_timeout = parser.timeout
     emit(:open) # => Connection#on(:open)
   when :inactive
@@ -2407,12 +2189,18 @@ end
 # ...なので、ハンドシェイク・プロトコルの選択はOpenSSLに任せていて、HTTPX側ではその結果を扱えるようになっている
 # build_parser(protocol = @io.protocol) で選択されたプロトコルに基づいてHTTPパーサを設定する
 
-# Connection#call (lib/httpx/connection.rb) WIP
+# Connection#call (lib/httpx/connection.rb)
 
 def call
   case @state
   when :idle # 接続開始時
     connect # => Connection#connect
+    # transition(:open)
+    # -> @io.connect
+    #   Connection#interestsの中で呼んでいるのでもう一回Connection#try_connectを呼び直す
+    #   そうするとcase ret節を抜けてtransition(:connected)に移行する
+    # -> send_pending (=> Connection#send_pending)
+
     consume # => Connection#consume
   when :closed
     return
@@ -2426,6 +2214,239 @@ def call
 rescue StandardError => e
   emit(:error, e) # => Connection#on(:error)
   raise e
+end
+
+# Connection#send_pending (lib/httpx/connection.rb)
+
+def send_pending WIP
+  while !@write_buffer.full? && (request = @pending.shift)
+    send_request_to_parser(request) # => Connection#send_request_to_parser
+  end
+end
+
+# Connection#send_request_to_parser (lib/httpx/connection.rb)
+
+def send_request_to_parser(request)
+  @inflight += 1 # 送信済みかつレスポンス未受信のリクエスト数をカウント
+  request.peer_address = @io.ip # 送信先IPアドレスをリクエストに指定
+  parser.send(request) # 送信
+  # => Connection#parser
+  # => Connection::HTTP1#send / Connection::HTTP2#send
+
+  set_request_timeouts(request) # => Connection#set_request_timeouts
+
+  # Connection#set_request_timeouts (lib/httpx/connection.rb)
+  #   def set_request_timeouts(request)
+  #     set_request_write_timeout(request)
+  #     set_request_read_timeout(request)
+  #     set_request_request_timeout(request)
+  #   end
+
+  return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
+
+  transition(:active) # 状態を:activeに変更
+end
+
+# Connection#parser (lib/httpx/connection.rb)
+
+def parser
+  @parser ||= build_parser # => Connection#build_parser
+end
+
+# Connection#build_parser (lib/httpx/connection.rb)
+
+def build_parser(protocol = @io.protocol)
+  parser = self.class.parser_type(protocol).new(@write_buffer, @options) # => Connection#parser_type
+
+  # Connection#parser_type (lib/httpx/connection.rb)
+  #   def parser_type(protocol)
+  #     case protocol
+  #     when "h2" then HTTP2
+  #     when "http/1.1" then HTTP1
+  #     else
+  #       raise Error, "unsupported protocol (##{protocol})"
+  #     end
+  #   end
+
+  set_parser_callbacks(parser) # => Connection#set_parser_callbacks
+  parser
+end
+
+# Connection#set_parser_callbacks (lib/httpx/connection.rb)
+
+def set_parser_callbacks(parser)
+  # レスポンスを受信したとき
+  parser.on(:response) do |request, response|
+    # request = #<HTTPX::Request>
+    # response = #<Response>
+
+    # レスポンスヘッダをパースし、Alt-Svcが含まれている場合
+    AltSvc.emit(request, response) do |alt_origin, origin, alt_params|
+      emit(:altsvc, alt_origin, origin, alt_params) # => Connection#on(:altsvc)
+    end
+
+    @response_received_at = Utils.now # この接続で最後にレスポンスを受信した時刻
+    @inflight -= 1 # 送信済みかつレスポンス待ちのリクエストのカウントを減算
+    request.emit(:response, response) # => Request#on(:response)
+  end
+
+  # ALTSVCフレームを受信した場合
+  parser.on(:altsvc) do |alt_origin, origin, alt_params|
+    emit(:altsvc, alt_origin, origin, alt_params) # => Connection#on(:altsvc)
+  end
+
+  # PINGフレームを受信した時
+  parser.on(:pong, &method(:send_pending)) # @pendingに積まれたリクエストを送信する => Connection#send_pending
+
+  # Connection#send_pending (lib/httpx/connection.rb)
+  #   def send_pending
+  #     while !@write_buffer.full? && (request = @pending.shift)
+  #       send_request_to_parser(request)
+  #     end
+  #   end
+
+  # PUSH_PROMISEフレームを受信した時
+  parser.on(:promise) do |request, stream|
+    request.emit(:promise, parser, stream) # => Request#on(:promise)
+  end
+
+  # GOAWAYフレームを受信した時 (HTTP/2)
+  # 送信可能なリクエスト数の上限 (Keep-Aliveの上限値など) に達した時 (HTTP/1)
+  parser.on(:exhausted) do
+    # この接続ではこれ以上送信できない
+
+    @exhausted = true
+    current_session = @current_session
+    current_selector = @current_selector
+
+    begin
+      parser.close
+      @pending.concat(parser.pending) # 未送信・送信途中のリクエストがあれば@pendingに追加
+    ensure
+      # parser.closeなどの副作用で@current_session / @current_selectorなどの値が変わるかもしれない
+      @current_session = current_session
+      @current_selector = current_selector
+    end
+
+    case @state # この接続の状態
+    when :closed
+      idling
+      @exhausted = false
+    when :closing
+      once(:closed) do # closeしたら
+        idling # => Connection#idling
+        @exhausted = false
+      end
+    end
+
+    # Connection#idling (lib/httpx/connection.rb)
+    #   def idling
+    #     purge_after_closed # ソケットを閉じる、読み取り用のバッファを空にする、タイムアウト設定ををリセット
+    #     @write_buffer.clear # 未送信リクエストを空にする
+    #     transition(:idle) # 状態を:idle = 再利用可能な状態に変更
+    #     @parser = nil if @parser
+    #   end
+    #
+    #   def purge_after_closed
+    #     @io.close if @io
+    #     @read_buffer.clear
+    #     @timeout = nil
+    #   end
+  end
+
+  # ORIGINフレームを受信した時
+  # (この接続でどのオリジン = ホスト名を扱えるか。接続の合流に使用する)
+  parser.on(:origin) do |origin|
+    # @originsにホスト名を追加する
+    @origins |= [origin]
+  end
+
+  # 接続がcloseしたとき
+  parser.on(:close) do |force|
+    if force # 強制終了
+      reset # => Connection#reset
+
+      # Connection#reset (lib/httpx/connection.rb)
+      #   def reset
+      #     return if @state == :closing || @state == :closed
+      #     transition(:closing)
+      #     transition(:closed)
+      #   end
+
+      emit(:terminate) # => Connection#on(:terminate)
+    end
+  end
+
+  # クローズハンドシェイクが完了した時 (GOAWAYフレーム受信後にすべてのストリームがcloseした場合など)
+  parser.on(:close_handshake) do
+    consume
+  end
+
+  # 接続、またはストリームがプロトコルレベルでリセットによって中断された時 (RST_STREAM, TCP RSTなど)
+  parser.on(:reset) do
+    # 未完了のリクエストを@pendingに戻す
+    @pending.concat(parser.pending) unless parser.empty?
+
+    # 一時退避 (resetを呼ぶと@current_sessionがクリアされるため)
+    current_session = @current_session
+    current_selector = @current_selector
+
+    reset
+
+    # 未送信のリクエストがあれば再送準備
+    unless @pending.empty?
+      idling
+      @current_session = current_session
+      @current_selector = current_selector
+    end
+  end
+
+  # このリクエストに対してタイムアウトの監視が始まる時
+  parser.on(:current_timeout) do
+    # @current_timeout = 現在処理中のリクエストのタイムアウト
+    # @timeout = この接続全体のタイムアウト
+    # parser.timeout = このリクエスト単位の残り時間
+    @current_timeout = @timeout = parser.timeout
+  end
+
+  # この接続に対してKeep-Alive (HTTP/1)、Ping、Goaway、Idle (HTTP/2) のタイマーが設定された時
+  parser.on(:timeout) do |tout|
+    @timeout = tout
+  end
+
+  # HTTPパーサからエラー通知を受けた時
+  parser.on(:error) do |request, error|
+    case error
+    when :http_1_1_required # サーバがALPN negotiationを拒否し、HTTP/1.1 requiredを返した場合
+
+      current_session = @current_session
+      current_selector = @current_selector
+      parser.close # このパーサではもはや通信できない
+
+      # 同じSessionとSelectorから別の接続を取得
+      other_connection = current_session.find_connection(
+        @origin,
+        current_selector,
+        @options.merge(ssl: { alpn_protocols: %w[http/1.1] }) # ALPNの候補を"http/1.1"に限定
+      )
+
+      # この接続が保持している情報を新しい接続に引き継ぐ
+      # @pending, @origins, @sibling, @coalesced_connectionなど
+      other_connection.merge(self)
+
+      request.transition(:idle) # リクエストの状態をidle に戻す
+      other_connection.send(request) # 新しい接続を利用して再送
+      next # parser.on(:error)ブロックから抜ける
+
+    when OperationTimeoutError # read / write / connectがOperationTimeoutErrorに達した場合
+      next unless request.active_timeouts.empty? # リクエストの個別のtimeout時間内の場合は何もしない
+    end
+
+    # 上記の2ケース以外はエラーをリクエストに紐づけてレスポンスとして返す
+    response = ErrorResponse.new(request, error)
+    request.response = response
+    request.emit(:response, response) # => Request#on(:response)
+  end
 end
 
 # Connection#consume (lib/httpx/connection.rb)
