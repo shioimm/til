@@ -75,8 +75,32 @@
                   - `Connection#connect`
                     - `Connection#transition(:open)`
                       - `Connection#handle_transition` 接続確立を確認
-                        - `Connection#send_pending` WIP
+                        - `Connection#send_pending`
+                          - `Connection#send_request_to_parser`
+                            - `Connection#parser`
+                              - `Connection#build_parser`
+                                - `Connection#set_parser_callbacks`
+                            - `Connection::HTTP1#send`
+                              - `Connection#transition(:active)`
+                            - `Connection::HTTP2#send`
+                              - まだこのリクエストに対応するストリームが存在しない場合
+                                - `Connection::HTTP2#handle`
+                                  - `Connection::HTTP2#join_headers`
+                                  - `Connection::HTTP2#join_body`
+                                  - `Connection::HTTP2#join_trailers`
+                              - `Connection#transition(:active)`
                   - `Connection#consume`
+                    - `Connection::HTTP1#consume`
+                      - `Connection::HTTP1::handle`
+                        - `Connection::HTTP1#join_headers`
+                        - `Connection::HTTP1#join_body`
+                        - `Connection::HTTP1#join_trailers`
+                    - `Connection::HTTP2#consume`
+                      - まだこのリクエストの送信が完了していない場合
+                        - `Connection::HTTP2#handle`
+                          - `Connection::HTTP2#join_headers`
+                          - `Connection::HTTP2#join_body`
+                          - `Connection::HTTP2#join_trailers`
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -983,166 +1007,6 @@ def send(request)
 end
 ```
 
-# TODO 以下、実際に呼んでいるところへ移動させる
-
-### `HTTPX::Connection::HTTP1#send`
-
-```ruby
-# (lib/httpx/connection/http1.rb)
-# parser.sendとして呼ばれている
-
-def send(request)
-  # Keep-Aliveヘッダなどでサーバから指定されたリクエスト数の上限値を超えている場合
-  unless @max_requests.positive?
-    @pending << request # このリクエストを@pendingに積む (新しい接続を利用して送信される)
-    return
-  end
-
-  # 同じリクエストがすでに送信キューに入っている場合は重複して追加しないようにする
-  return if @requests.include?(request)
-
-  @requests << request # 送信キューにこのリクエストを追加
-  @pipelining = true if @requests.size > 1 # リクエストが2件以上溜まったらパイプライニングを有効化
-
-  # selectorがこの接続の@ioをwritableと判断すると実際の書き込みが行われる
-end
-```
-
-### `HTTPX::Connection::HTTP2#send`
-
-```ruby
-# (lib/httpx/connection/http2.rb)
-# parser.sendとして呼ばれている
-
-def send(request, head = false)
-  # 同時オープン可能なストリーム数を確認し、新しいストリームを開けるかを判定
-  unless can_buffer_more_requests?
-    # このリクエストを@pendingに積む (新しい接続を利用して送信される)
-    if head # 優先再送
-      @pending.unshift(request)
-    else
-      @pending << request
-    end
-
-    return false
-  end
-
-  # すでにこのリクエストに対応するストリームが存在すれば再利用する (stream)
-  unless (stream = @streams[request])
-    # なければ新しいストリーム (HTTP2::Client::Stream) を作成
-    stream = @connection.new_stream
-    handle_stream(stream, request) # => Connection::HTTP2#handle_stream
-
-    # Connection::HTTP2#handle_stream (lib/httpx/connection/http2.rb)
-    #   def handle_stream(stream, request)
-    #     request.on(:refuse, &method(:on_stream_refuse).curry(3)[stream, request])
-    #     stream.on(:close, &method(:on_stream_close).curry(3)[stream, request])
-    #
-    #     stream.on(:half_close) do
-    #       log(level: 2) { "#{stream.id}: waiting for response..." }
-    #     end
-    #
-    #     stream.on(:altsvc, &method(:on_altsvc).curry(2)[request.origin])
-    #     stream.on(:headers, &method(:on_stream_headers).curry(3)[stream, request])
-    #     stream.on(:data, &method(:on_stream_data).curry(3)[stream, request])
-    #   end
-
-    @streams[request] = stream # リクエストとストリームを1:1で紐づけ
-    @max_requests -= 1 # 利用可能なストリーム枠を減らす
-  end
-
-  handle(request, stream) # フレームを生成、送信 => Connection::HTTP2#handle
-  true
-rescue ::HTTP2::Error::StreamLimitExceeded # サーバからRST_STREAMが返ってきた場合など (ストリームの上限)
-  @pending.unshift(request) # リクエストを再試行できるように@pendingの先頭に戻す
-  false
-end
-
-def handle(request, stream)
-  catch(:buffer_full) do # 送信バッファがいっぱいになったら一時停止
-    # リクエストのステートを:idle -> :headersに移行
-    request.transition(:headers)
-    # HEADERSフレームを構築してストリームへ書き込み
-    join_headers(stream, request) if request.state == :headers # => Connection::HTTP2#join_headers
-
-    # リクエストのステートを:headers -> :bodyに移行
-    request.transition(:body)
-    # DATAフレームを構築してストリームへ書き込み
-    join_body(stream, request) if request.state == :body # => Connection::HTTP2#join_body
-
-    # リクエストのステートを:body -> :trailersに移行
-    request.transition(:trailers)
-    # TRAILERSフレームを構築してストリームへ書き込み
-    join_trailers(stream, request) if request.state == :trailers && !request.body.empty?
-    # => Connection::HTTP2#join_trailers
-
-    # リクエストのステートを:trailers -> :doneに移行
-    request.transition(:done)
-  end
-end
-
-def join_headers(stream, request)
-  # 擬似ヘッダを作成
-  extra_headers = set_protocol_headers(request)
-
-  # HTTP/2のforbidden headerである"host"ヘッダが含まれている場合は警告を出し、authorityヘッダに書き換える
-  if request.headers.key?("host")
-    log { "forbidden \"host\" header found (#{request.headers["host"]}), will use it as authority..." }
-    extra_headers[":authority"] = request.headers["host"]
-  end
-
-  log(level: 1, color: :yellow) do
-    request.headers.merge(extra_headers).each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
-  end
-
-  # ストリームにヘッダをHEADERSフレームとして書き込む
-  stream.headers(request.headers.each(extra_headers), end_stream: request.body.empty?)
-end
-
-def join_body(stream, request)
-  return if request.body.empty?
-
-  # @drains (途中で送信を中断したリクエストの残り) もしくは直接リクエストからボディのチャンクを取得
-  chunk = @drains.delete(request) || request.drain_body
-
-  while chunk # チャンクごとに送信
-    next_chunk = request.drain_body
-
-    log(level: 1, color: :green) { "#{stream.id}: -> DATA: #{chunk.bytesize} bytes..." }
-    log(level: 2, color: :green) { "#{stream.id}: -> #{chunk.inspect}" }
-
-    # ストリームにチャンクをDATAフレームとして書き込む
-    stream.data(chunk, end_stream: !(next_chunk || request.trailers? || request.callbacks_for?(:trailers)))
-
-    # 次のチャンクがあり、かつ送信バッファがいっぱいの場合
-    if next_chunk && (@buffer.full? || request.body.unbounded_body?)
-      @drains[request] = next_chunk # 次のチャンクを@drainsに保存
-      throw(:buffer_full)
-    end
-
-    chunk = next_chunk
-  end
-
-  return unless (error = request.drain_error)
-  on_stream_refuse(stream, request, error) # ストリーム拒否
-end
-
-def join_trailers(stream, request)
-  unless request.trailers?
-    # トレーラがなく、かつトレーラ送信時に呼び出されるコールバックが設定されている場合は空のDATAフレームを送信
-    stream.data("", end_stream: true) if request.callbacks_for?(:trailers)
-    return
-  end
-
-  log(level: 1, color: :yellow) do
-    request.trailers.each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
-  end
-
-  # ストリームにトレーラヘッダをHEADERSフレームとして書き込む
-  stream.headers(request.trailers.each, end_stream: true)
-end
-```
-
 ## `Request#on(:response)`
 
 ```ruby
@@ -1984,7 +1848,6 @@ def handle_transition(nextstate)
     return unless @state == :inactive
 
     nextstate = :open
-    # activate
     @current_session.select_connection(self, @current_selector)
   end
   @state = nextstate
@@ -2218,7 +2081,8 @@ end
 
 # Connection#send_pending (lib/httpx/connection.rb)
 
-def send_pending WIP
+def send_pending
+  # @write_bufferが空いていて、未送信のリクエストが残っている間
   while !@write_buffer.full? && (request = @pending.shift)
     send_request_to_parser(request) # => Connection#send_request_to_parser
   end
@@ -2244,7 +2108,9 @@ def send_request_to_parser(request)
 
   return unless @state == :inactive # 通常は@state == :idleなのでここでreturn
 
-  transition(:active) # 状態を:activeに変更
+  transition(:active) # => Connection#transition
+  # handle_transitionに:openを渡すと@current_session.select_connection(self, @current_selector)が実行され、
+  # selectorの監視対象にこのconnectionの@ioが追加される
 end
 
 # Connection#parser (lib/httpx/connection.rb)
@@ -2449,6 +2315,161 @@ def set_parser_callbacks(parser)
   end
 end
 
+# Connection::HTTP1#send (lib/httpx/connection/http1.rb)
+# parser.sendとして呼ばれている
+
+def send(request)
+  # Keep-Aliveヘッダなどでサーバから指定されたリクエスト数の上限値を超えている場合
+  unless @max_requests.positive?
+    @pending << request # このリクエストを@pendingに積む
+    return
+  end
+
+  # 同じリクエストがすでに送信キューに入っている場合は重複して追加しないようにする
+  return if @requests.include?(request)
+
+  @requests << request # 送信キューにこのリクエストを追加
+  @pipelining = true if @requests.size > 1 # リクエストが2件以上溜まったらパイプライニングを有効化
+
+  # selectorがこの接続の@ioをwritableと判断すると実際の書き込みが行われる
+end
+
+# Connection::HTTP2#send (lib/httpx/connection/http2.rb)
+# parser.sendとして呼ばれている
+
+def send(request, head = false)
+  # 同時オープン可能なストリーム数を確認し、新しいストリームを開けるかを判定
+  unless can_buffer_more_requests?
+    # このリクエストを@pendingに積む (新しい接続を利用して送信される)
+    if head # 優先再送
+      @pending.unshift(request)
+    else
+      @pending << request
+    end
+
+    return false
+  end
+
+  # すでにこのリクエストに対応するストリームが存在すれば再利用する (stream)
+  unless (stream = @streams[request])
+    # なければ新しいストリーム (HTTP2::Client::Stream) を作成
+    stream = @connection.new_stream
+    handle_stream(stream, request) # => Connection::HTTP2#handle_stream
+
+    # Connection::HTTP2#handle_stream (lib/httpx/connection/http2.rb)
+    #   def handle_stream(stream, request)
+    #     request.on(:refuse, &method(:on_stream_refuse).curry(3)[stream, request])
+    #     stream.on(:close, &method(:on_stream_close).curry(3)[stream, request])
+    #
+    #     stream.on(:half_close) do
+    #       log(level: 2) { "#{stream.id}: waiting for response..." }
+    #     end
+    #
+    #     stream.on(:altsvc, &method(:on_altsvc).curry(2)[request.origin])
+    #     stream.on(:headers, &method(:on_stream_headers).curry(3)[stream, request])
+    #     stream.on(:data, &method(:on_stream_data).curry(3)[stream, request])
+    #   end
+
+    @streams[request] = stream # リクエストとストリームを1:1で紐づけ
+    @max_requests -= 1 # 利用可能なストリーム枠を減らす
+  end
+
+  handle(request, stream) # フレームを生成、送信 => Connection::HTTP2#handle
+  true
+rescue ::HTTP2::Error::StreamLimitExceeded # サーバからRST_STREAMが返ってきた場合など (ストリームの上限)
+  @pending.unshift(request) # リクエストを再試行できるように@pendingの先頭に戻す
+  false
+end
+
+# Connection::HTTP2#handle (lib/httpx/connection/http2.rb)
+
+def handle(request, stream)
+  catch(:buffer_full) do # 送信バッファがいっぱいになったら一時停止
+    request.transition(:headers)
+    # HEADERSフレームを構築してストリームへ書き込み
+    join_headers(stream, request) if request.state == :headers # => Connection::HTTP2#join_headers
+
+    request.transition(:body)
+    # DATAフレームを構築してストリームへ書き込み
+    join_body(stream, request) if request.state == :body # => Connection::HTTP2#join_body
+
+    request.transition(:trailers)
+    # TRAILERSフレームを構築してストリームへ書き込み
+    join_trailers(stream, request) if request.state == :trailers && !request.body.empty?
+    # => Connection::HTTP2#join_trailers
+
+    # リクエストのステートを:trailers -> :doneに移行
+    request.transition(:done)
+  end
+end
+
+# Connection::HTTP2#join_headers (lib/httpx/connection/http2.rb)
+
+def join_headers(stream, request)
+  # 擬似ヘッダを作成
+  extra_headers = set_protocol_headers(request)
+
+  # HTTP/2のforbidden headerである"host"ヘッダが含まれている場合は警告を出し、authorityヘッダに書き換える
+  if request.headers.key?("host")
+    log { "forbidden \"host\" header found (#{request.headers["host"]}), will use it as authority..." }
+    extra_headers[":authority"] = request.headers["host"]
+  end
+
+  log(level: 1, color: :yellow) do
+    request.headers.merge(extra_headers).each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
+  end
+
+  # ストリームにヘッダをHEADERSフレームとして書き込む
+  stream.headers(request.headers.each(extra_headers), end_stream: request.body.empty?)
+end
+
+# Connection::HTTP2#join_body (lib/httpx/connection/http2.rb)
+
+def join_body(stream, request)
+  return if request.body.empty?
+
+  # @drains (途中で送信を中断したリクエストの残り) もしくは直接リクエストからボディのチャンクを取得
+  chunk = @drains.delete(request) || request.drain_body
+
+  while chunk # チャンクごとに送信
+    next_chunk = request.drain_body
+
+    log(level: 1, color: :green) { "#{stream.id}: -> DATA: #{chunk.bytesize} bytes..." }
+    log(level: 2, color: :green) { "#{stream.id}: -> #{chunk.inspect}" }
+
+    # ストリームにチャンクをDATAフレームとして書き込む
+    stream.data(chunk, end_stream: !(next_chunk || request.trailers? || request.callbacks_for?(:trailers)))
+
+    # 次のチャンクがあり、かつ送信バッファがいっぱいの場合
+    if next_chunk && (@buffer.full? || request.body.unbounded_body?)
+      @drains[request] = next_chunk # 次のチャンクを@drainsに保存
+      throw(:buffer_full)
+    end
+
+    chunk = next_chunk
+  end
+
+  return unless (error = request.drain_error)
+  on_stream_refuse(stream, request, error) # ストリーム拒否
+end
+
+# Connection::HTTP2#join_trailers (lib/httpx/connection/http2.rb)
+
+def join_trailers(stream, request)
+  unless request.trailers?
+    # トレーラがなく、かつトレーラ送信時に呼び出されるコールバックが設定されている場合は空のDATAフレームを送信
+    stream.data("", end_stream: true) if request.callbacks_for?(:trailers)
+    return
+  end
+
+  log(level: 1, color: :yellow) do
+    request.trailers.each.map { |k, v| "#{stream.id}: -> HEADER: #{k}: #{v}" }.join("\n")
+  end
+
+  # ストリームにトレーラヘッダをHEADERSフレームとして書き込む
+  stream.headers(request.trailers.each, end_stream: true)
+end
+
 # Connection#consume (lib/httpx/connection.rb)
 
 def consume
@@ -2611,15 +2632,16 @@ def handle(request)
   catch(:buffer_full) do
     # requestの状態をheadersに遷移
     request.transition(:headers)
-    join_headers(request) if request.state == :headers
+    join_headers(request) if request.state == :headers # => Connection::HTTP1#join_headers
 
     # requestの状態をbodyに遷移
     request.transition(:body)
-    join_body(request) if request.state == :body
+    join_body(request) if request.state == :body # => Connection::HTTP1#join_body
 
     # requestの状態をtransitionに遷移
     request.transition(:trailers)
     join_trailers(request) if request.body.chunked? && request.state == :trailers
+    # => Connection::HTTP1#join_trailers
 
     # requestの状態をdoneに遷移
     request.transition(:done)
@@ -2635,26 +2657,6 @@ def consume
 
     # request.stateが:doneではないrequestをhandle
     handle(request, stream)
-  end
-end
-
-def handle(request, stream)
-  # 状態を遷移させつつソケットにリクエストを書き込む
-  catch(:buffer_full) do
-    # requestの状態をheadersに遷移
-    request.transition(:headers)
-    join_headers(stream, request) if request.state == :headers
-
-    # requestの状態をbodyに遷移
-    request.transition(:body)
-    join_body(stream, request) if request.state == :body
-
-    # requestの状態をtrailersに遷移
-    request.transition(:trailers)
-    join_trailers(stream, request) if request.state == :trailers && !request.body.empty?
-
-    # requestの状態をdoneに遷移
-    request.transition(:done)
   end
 end
 ```
