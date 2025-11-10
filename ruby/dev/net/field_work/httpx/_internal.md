@@ -22,9 +22,9 @@
                       - `Session#try_clone_connection` アドレスファミリごとにConnectionにfamilyをセット
                       - `Resolver::Native#<<` このresolverの`@connections`にconnectionを追加してresolv
                         - `Resolver::Native#resolve` このresolverの`@write_buffer`にDNSクエリを書き込む
-                      - `Session#select_connection` このconnectionに対して、このsessionとselectorを紐づける
+                      - `Session#select_connection` このconnectionをselectorの監視の対象にする
               - `when :open` 宛先と接続済みの場合
-                  - `Session#select_connection` (指定のioがある場合) 接続をselectorの監視の対象にする
+                  - `Session#select_connection` (指定のioがある場合) このconnectionをselectorの監視の対象にする
                   - `Session#pin_connection` このconnectionに対して、このsessionとselectorを紐づける
               - `when :closed` 接続がclose済みの場合
                   - 状態を`:idle`に戻して再初期化し、再利用できるようにする
@@ -80,27 +80,38 @@
                             - `Connection#parser`
                               - `Connection#build_parser`
                                 - `Connection#set_parser_callbacks`
-                            - `Connection::HTTP1#send`
+                            - (HTTP/1の場合)
+                              - `Connection::HTTP1#send` `@requests`にリクエストを追加する
                               - `Connection#transition(:active)`
-                            - `Connection::HTTP2#send`
-                              - まだこのリクエストに対応するストリームが存在しない場合
-                                - `Connection::HTTP2#handle`
-                                  - `Connection::HTTP2#join_headers`
-                                  - `Connection::HTTP2#join_body`
-                                  - `Connection::HTTP2#join_trailers`
+                                - `Session#select_connection`
+                                  - `Selector#register` このconnectionを監視対象とする
+                            - (HTTP/2の場合)
+                              - `Connection::HTTP2#send`
+                                - まだこのリクエストに対応するストリームが存在しない場合
+                                  - `Connection::HTTP2#handle`
+                                    - (以下、`@buffer` (`@write_buffer`) にリクエストを書き込んでいるはず)
+                                    - `Connection::HTTP2#join_headers`
+                                    - `Connection::HTTP2#join_body`
+                                    - `Connection::HTTP2#join_trailers`
                               - `Connection#transition(:active)`
+                                - `Session#select_connection`
+                                  - `Selector#register` このconnectionを監視対象とする
                   - `Connection#consume`
-                    - `Connection::HTTP1#consume`
-                      - `Connection::HTTP1::handle`
-                        - `Connection::HTTP1#join_headers`
-                        - `Connection::HTTP1#join_body`
-                        - `Connection::HTTP1#join_trailers`
-                    - `Connection::HTTP2#consume`
-                      - まだこのリクエストの送信が完了していない場合
-                        - `Connection::HTTP2#handle`
-                          - `Connection::HTTP2#join_headers`
-                          - `Connection::HTTP2#join_body`
-                          - `Connection::HTTP2#join_trailers`
+                    - (HTTP/1の場合)
+                      - `Connection::HTTP1#consume`
+                        - `Connection::HTTP1::handle` `@buffer` (`@write_buffer`) にリクエストを書き込む
+                          - `Connection::HTTP1#join_headers`
+                          - `Connection::HTTP1#join_body`
+                          - `Connection::HTTP1#join_trailers`
+                    - (HTTP/2の場合)
+                      - `Connection::HTTP2#consume`
+                        - まだこのリクエストの送信が完了していない場合
+                          - `Connection::HTTP2#handle`
+                            - (以下、`@buffer` (`@write_buffer`) にリクエストを書き込んでいるはず)
+                            - `Connection::HTTP2#join_headers`
+                            - `Connection::HTTP2#join_body`
+                            - `Connection::HTTP2#join_trailers`
+                - -> 再び`Selector#next_tick`へ
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -2122,7 +2133,10 @@ end
 # Connection#build_parser (lib/httpx/connection.rb)
 
 def build_parser(protocol = @io.protocol)
-  parser = self.class.parser_type(protocol).new(@write_buffer, @options) # => Connection#parser_type
+  parser = self.class.parser_type(protocol).new(@write_buffer, @options)
+  # => Connection#parser_type
+  # => Connection::HTTP1#initialize
+  # => Connection::HTTP2#initialize
 
   # Connection#parser_type (lib/httpx/connection.rb)
   #   def parser_type(protocol)
@@ -2137,6 +2151,31 @@ def build_parser(protocol = @io.protocol)
   set_parser_callbacks(parser) # => Connection#set_parser_callbacks
   parser
 end
+
+# Connection::HTTP2#initialize (lib/httpx/connection/http2.rb)
+
+def initialize(buffer, options)
+  # ...
+  init_connection # => Connection::HTTP2#init_connection
+  # ...
+end
+
+# Connection::HTTP2#init_connection (lib/httpx/connection/http2.rb)
+
+def init_connection
+  @connection = ::HTTP2::Client.new(@settings)
+  @connection.on(:frame, &method(:on_frame)) # => Connection::HTTP2#on_frame
+
+  # Connection::HTTP2#on_frame (lib/httpx/connection/http2.rb)
+  #   def on_frame(bytes)
+  #     @buffer << bytes
+  #   end
+
+  # ...
+end
+
+# Connection::HTTP2#initializeで呼び出している#init_connectionが
+
 
 # Connection#set_parser_callbacks (lib/httpx/connection.rb)
 
@@ -2374,7 +2413,9 @@ def send(request, head = false)
     @max_requests -= 1 # 利用可能なストリーム枠を減らす
   end
 
-  handle(request, stream) # フレームを生成、送信 => Connection::HTTP2#handle
+  handle(request, stream) # => Connection::HTTP2#handle
+  # HTTP2::Client::Streamの実装によるが、@buffer (@write_buffer) にフレームを表す値を書き込んでいるんでは
+
   true
 rescue ::HTTP2::Error::StreamLimitExceeded # サーバからRST_STREAMが返ってきた場合など (ストリームの上限)
   @pending.unshift(request) # リクエストを再試行できるように@pendingの先頭に戻す
@@ -2623,12 +2664,14 @@ def consume
     next if request.state == :done
 
     # request.stateが:doneではないrequestをhandle
-    handle(request)
+    handle(request) # => Connection::HTTP1#handle
   end
 end
 
+# Connection::HTTP1#handle (lib/httpx/connection/http1.rb)
+
 def handle(request)
-  # 状態を遷移させつつソケットにリクエストを書き込む
+  # 状態を遷移させつつ@bufferにリクエストを書き込む
   catch(:buffer_full) do
     # requestの状態をheadersに遷移
     request.transition(:headers)
@@ -2646,6 +2689,45 @@ def handle(request)
     # requestの状態をdoneに遷移
     request.transition(:done)
   end
+end
+
+# Connection::HTTP1#join_headers (lib/httpx/connection/http1.rb)
+
+def join_headers(request)
+  headline = join_headline(request)
+  @buffer << headline << CRLF
+  log(color: :yellow) { "<- HEADLINE: #{headline.chomp.inspect}" }
+  extra_headers = set_protocol_headers(request)
+  join_headers2(request.headers.each(extra_headers))
+  log { "<- " }
+  @buffer << CRLF
+end
+
+# Connection::HTTP1#join_body (lib/httpx/connection/http1.rb)
+
+def join_body(request)
+  return if request.body.empty?
+
+  while (chunk = request.drain_body)
+    log(color: :green) { "<- DATA: #{chunk.bytesize} bytes..." }
+    log(level: 2, color: :green) { "<- #{chunk.inspect}" }
+    @buffer << chunk
+    throw(:buffer_full, request) if @buffer.full?
+  end
+
+  return unless (error = request.drain_error)
+
+  raise error
+end
+
+# Connection::HTTP1#join_trailers (lib/httpx/connection/http1.rb)
+
+def join_trailers(request)
+  return unless request.trailers? && request.callbacks_for?(:trailers)
+
+  join_headers2(request.trailers)
+  log { "<- " }
+  @buffer << CRLF
 end
 
 # Connection::HTTP2#consume (lib/httpx/connection/http2.rb)
