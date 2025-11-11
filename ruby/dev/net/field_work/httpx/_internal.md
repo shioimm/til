@@ -118,7 +118,15 @@
                 - `Connection#call`
                   - `Connection#consume` 読み取りループでレスポンスを取得
                     - `Connection::HTTP1#<<`
-                      - `Parser::HTTP1#parse` WIP
+                        - `Parser::HTTP1#parse_headline`
+                        - `Parser::HTTP1#parse_headers`
+                          - `Connection::HTTP1#on_headers`
+                            - `Connection::HTTP1#dispatch`
+                              - `Connection#on(:response)`
+                        - `Parser::HTTP1#parse_data`
+                          - `Connection::HTTP1#on_data`
+                            - `Connection::HTTP1#dispatch`
+                              - `Connection#on(:response)`
                     - `Connection::HTTP2#<<`
                       - `HTTP2::Client#<<`
         - `Session#fetch_response` レスポンスを取得
@@ -1109,7 +1117,6 @@ def receive_requests(requests, selector)
       selector.next_tick # => Selector#next_tick
     } until (
       # @responsesに値が入る = レスポンスを受信できるまでループ
-      # その前にどこかでRequest#emit(:response) (Request#on_response) が呼ばれているはず...
       response = fetch_response(request, selector, request.options) # => Session#fetch_response
 
       # Session#fetch_response (lib/httpx/session.rb)
@@ -2768,16 +2775,19 @@ end
 # Parser::HTTP1#parse (lib/httpx/parser/http1.rb)
 
 def parse
+  # @bufferが空になるまで読み切る
   loop do
     state = @state
     case @state
     when :idle
       parse_headline # => Parser::HTTP1#parse_headline
+      # HTTPバージョンとステータスコードを取得
     when :headers, :trailers
       parse_headers # => Parser::HTTP1#parse_headers
     when :data
       parse_data # => Parser::HTTP1#parse_data
     end
+
     return if @buffer.empty? || state == @state
   end
 end
@@ -2790,6 +2800,7 @@ def parse_headline
 
   (m = %r{\AHTTP(?:/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?}in.match(@buffer)) ||
     raise(Error, "wrong head line format")
+
   version, code, _ = m.captures
   raise(Error, "unsupported HTTP version (HTTP/#{version})") unless version && VERSIONS.include?(version)
 
@@ -2814,6 +2825,7 @@ def parse_headers
 
     line.lstrip!
     buffer = @buffer = buffer.byteslice((idx + 1)..-1)
+
     if line.empty?
       case @state
       when :headers
@@ -2840,7 +2852,31 @@ def parse_headers
         #     end
         #   end
 
-        @observer.on_headers(headers)
+        @observer.on_headers(headers) # => Connection::HTTP#on_headers
+
+        # Connection::HTTP#on_headers (lib/httpx/connection/http1.rb)
+        #   def on_headers(h)
+        #     @request = @requests.first
+        #
+        #     return if @request.response
+        #
+        #     headers = @request.options.headers_class.new(h)
+        #     response = @request.options.response_class.new(@request,
+        #                                                    @parser.status_code,
+        #                                                    @parser.http_version.join("."),
+        #                                                    headers)
+        #
+        #     @request.response = response
+        #     on_complete if response.finished? # => Connection::HTTP1#on_complete
+        #   end
+        #
+        # Connection::HTTP1#on_complete (lib/httpx/connection/http1.rb)
+        #   def on_complete
+        #     request = @request
+        #     return unless request
+        #     dispatch # => Connection::HTTP1#dispatch
+        #   end
+
         return unless @state == :headers
 
         # state might have been reset
@@ -2876,19 +2912,20 @@ end
 def parse_data
   if @buffer.respond_to?(:each)
     @buffer.each do |chunk|
-      @observer.on_data(chunk)
+      @observer.on_data(chunk) # => Connection::HTTP1#on_data
     end
   elsif @content_length
     # @type var data: String
     data = @buffer.byteslice(0, @content_length)
     @buffer = @buffer.byteslice(@content_length..-1) || "".b
     @content_length -= data.bytesize
-    @observer.on_data(data)
+    @observer.on_data(data) # => Connection::HTTP1#on_data
     data.clear
   else
-    @observer.on_data(@buffer)
+    @observer.on_data(@buffer) # => Connection::HTTP1#on_data
     @buffer.clear
   end
+
   return unless no_more_data?
 
   @buffer = @buffer.to_s
@@ -2896,6 +2933,60 @@ def parse_data
     nextstate(:trailers)
   else
     nextstate(:complete)
+  end
+end
+
+# Connection::HTTP1#on_data
+
+def on_data(chunk)
+  request = @request
+  return unless request
+  response = request.response
+  response << chunk
+rescue StandardError => e
+  error_response = ErrorResponse.new(request, e)
+  request.response = error_response
+  dispatch # => Connection::HTTP1#dispatch
+end
+
+# Connection::HTTP1#dispatch (lib/httpx/connection/http1.rb)
+
+def dispatch
+  request = @request
+
+  if request.expects?
+    @parser.reset!
+    return handle(request)
+  end
+
+  @request = nil
+  @requests.shift
+
+  response = request.response
+  response.finish! unless response.is_a?(ErrorResponse)
+  emit(:response, request, response) # @responseにレスポンスを格納する => Connection#on(:response)
+
+  if @parser.upgrade?
+    response << @parser.upgrade_data
+    throw(:called)
+  end
+
+  @parser.reset!
+  @max_requests -= 1
+
+  if response.is_a?(ErrorResponse)
+    disable
+  else
+    manage_connection(request, response)
+  end
+
+  if exhausted?
+    @pending.concat(@requests)
+    @requests.clear
+
+    emit(:exhausted)
+  else
+    send(@pending.shift) unless @pending.empty?
   end
 end
 ```
