@@ -117,8 +117,13 @@
                 - `Connection#interests`
                 - `Connection#call`
                   - `Connection#consume` 読み取りループでレスポンスを取得
+                    - `Connection::HTTP1#<<`
+                      - `Parser::HTTP1#parse` WIP
+                    - `Connection::HTTP2#<<`
+                      - `HTTP2::Client#<<`
         - `Session#fetch_response` レスポンスを取得
-        - `Request#emit(:complete)`発火
+        - `Request#emit(:complete)` 発火
+        - レスポンスを配列として返す
 
 ## `Chainable#request`
 
@@ -1104,6 +1109,7 @@ def receive_requests(requests, selector)
       selector.next_tick # => Selector#next_tick
     } until (
       # @responsesに値が入る = レスポンスを受信できるまでループ
+      # その前にどこかでRequest#emit(:response) (Request#on_response) が呼ばれているはず...
       response = fetch_response(request, selector, request.options) # => Session#fetch_response
 
       # Session#fetch_response (lib/httpx/session.rb)
@@ -1112,7 +1118,6 @@ def receive_requests(requests, selector)
       #   end
     )
 
-    # WIP ここから続き
     request.emit(:complete, response) # => Request#on(:complete)
     responses << response
     requests.shift
@@ -2589,7 +2594,7 @@ def consume
         # Parser::HTTP1#<< (lib/httpx/parser/http1.rb)
         #   def <<(chunk)
         #     @buffer << chunk
-        #     parse
+        #     parse # => Parser::HTTP1#parse
         #   end
         #
         # Connection::HTTP2#<< (lib/httpx/connection/http2.rb)
@@ -2757,6 +2762,140 @@ def consume
 
     # request.stateが:doneではないrequestをhandle
     handle(request, stream)
+  end
+end
+
+# Parser::HTTP1#parse (lib/httpx/parser/http1.rb)
+
+def parse
+  loop do
+    state = @state
+    case @state
+    when :idle
+      parse_headline # => Parser::HTTP1#parse_headline
+    when :headers, :trailers
+      parse_headers # => Parser::HTTP1#parse_headers
+    when :data
+      parse_data # => Parser::HTTP1#parse_data
+    end
+    return if @buffer.empty? || state == @state
+  end
+end
+
+# Parser::HTTP1#parse_headline (lib/httpx/parser/http1.rb)
+
+def parse_headline
+  idx = @buffer.index("\n")
+  return unless idx
+
+  (m = %r{\AHTTP(?:/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?}in.match(@buffer)) ||
+    raise(Error, "wrong head line format")
+  version, code, _ = m.captures
+  raise(Error, "unsupported HTTP version (HTTP/#{version})") unless version && VERSIONS.include?(version)
+
+  @http_version = version.split(".").map(&:to_i)
+  @status_code = code.to_i
+  raise(Error, "wrong status code (#{@status_code})") unless (100..599).cover?(@status_code)
+
+  @buffer = @buffer.byteslice((idx + 1)..-1)
+  nextstate(:headers)
+end
+
+# Parser::HTTP1#parse_headers (lib/httpx/parser/http1.rb)
+
+def parse_headers
+  headers = @headers
+  buffer = @buffer
+
+  while (idx = buffer.index("\n"))
+    # @type var line: String
+    line = buffer.byteslice(0..idx)
+    raise Error, "wrong header format" if line.start_with?("\s", "\t")
+
+    line.lstrip!
+    buffer = @buffer = buffer.byteslice((idx + 1)..-1)
+    if line.empty?
+      case @state
+      when :headers
+        prepare_data(headers) # => Parser::HTTP1#prepare_data
+
+        # Parser::HTTP1#prepare_data (lib/httpx/parser/http1.rb)
+        #
+        #   def prepare_data(headers)
+        #     @upgrade = headers.key?("upgrade")
+        #
+        #     @_has_trailers = headers.key?("trailer")
+        #
+        #     if (tr_encodings = headers["transfer-encoding"])
+        #       tr_encodings.reverse_each do |tr_encoding|
+        #         tr_encoding.split(/ *, */).each do |encoding|
+        #           case encoding
+        #           when "chunked"
+        #             @buffer = Transcoder::Chunker::Decoder.new(@buffer, @_has_trailers)
+        #           end
+        #         end
+        #       end
+        #     else
+        #       @content_length = headers["content-length"][0].to_i if headers.key?("content-length")
+        #     end
+        #   end
+
+        @observer.on_headers(headers)
+        return unless @state == :headers
+
+        # state might have been reset
+        # in the :headers callback
+        nextstate(:data)
+        headers.clear
+      when :trailers
+        @observer.on_trailers(headers)
+        headers.clear
+        nextstate(:complete)
+      end
+      return
+    end
+
+    separator_index = line.index(":")
+    raise Error, "wrong header format" unless separator_index
+
+    # @type var key: String
+    key = line.byteslice(0..(separator_index - 1))
+
+    key.rstrip! # was lstripped previously!
+    # @type var value: String
+    value = line.byteslice((separator_index + 1)..-1)
+    value.strip!
+    raise Error, "wrong header format" if value.nil?
+
+    (headers[key.downcase] ||= []) << value
+  end
+end
+
+# Parser::HTTP1#parse_data (lib/httpx/parser/http1.rb)
+
+def parse_data
+  if @buffer.respond_to?(:each)
+    @buffer.each do |chunk|
+      @observer.on_data(chunk)
+    end
+  elsif @content_length
+    # @type var data: String
+    data = @buffer.byteslice(0, @content_length)
+    @buffer = @buffer.byteslice(@content_length..-1) || "".b
+    @content_length -= data.bytesize
+    @observer.on_data(data)
+    data.clear
+  else
+    @observer.on_data(@buffer)
+    @buffer.clear
+  end
+  return unless no_more_data?
+
+  @buffer = @buffer.to_s
+  if @_has_trailers
+    nextstate(:trailers)
+  else
+    nextstate(:complete)
   end
 end
 ```
