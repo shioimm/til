@@ -111,7 +111,12 @@
                             - `Connection::HTTP2#join_headers`
                             - `Connection::HTTP2#join_body`
                             - `Connection::HTTP2#join_trailers`
+                    - 書き込みループの中で`@io.write`
                 - -> 再び`Selector#next_tick`へ
+              - (3回目)
+                - `Connection#interests`
+                - `Connection#call`
+                  - `Connection#consume` 読み取りループでレスポンスを取得
         - `Session#fetch_response` レスポンスを取得
         - `Request#emit(:complete)`発火
 
@@ -1196,8 +1201,10 @@ def select_one(interval)
 
   # 1回目: io = 名前解決を行うためのIOなので、=> Resolver::Native#interests
   # Resolver::Native#resolveで@write_bufferに値が書き込まれているので:w
-  # 2回目: io = 宛先アドレスがセットされ、監視対象になったIOなので、 => Connection#interests
-  # ioのconnect_nonblockがwait_writableを返した場合は:w
+  # 2回目: io = 宛先アドレスがセットされ、接続待ちのため監視対象になったIOなので、 => Connection#interests
+  # TCP#try_connectでioのconnect_nonblockがwait_writableを返した場合は:w
+  # 3回目: io = 書き込み待ちで監視対象になった後リクエストを送信したIOなので => Connection#interests
+  # Connection::HTTP1#interests / Connection::HTTP2#interestsが:rを返す
 
   result = case interests
            when :r then io.to_io.wait_readable(interval) # 読み込み可能になるまでブロック
@@ -1215,7 +1222,8 @@ def select_one(interval)
   yield io
 
   # 1回目: => Resolver::Native#call
-  # 2回目: => Connection#call WIP
+  # 2回目: => Connection#call (リクエストの送信まで完了)
+  # 3回目: => Connection#call
 end
 
 # Selector#select_many (lib/httpx/selector.rb)
@@ -1790,8 +1798,9 @@ def interests
     return @io.interests if connecting? # => TCP#interests / SSL#interests
   end
 
-  # connectionの@write_bufferに未送信のデータが残っている場合
+  # connectionの@write_bufferに未送信のデータが格納されている場合
   return :w unless @write_buffer.empty?
+
   # すでにHTTP通信を開始している場合はHTTPパーサが監視対象のイベントを判定する
   return @parser.interests if @parser
 
@@ -2067,7 +2076,7 @@ end
 
 def call
   case @state
-  when :idle # 接続開始時
+  when :idle # 接続開始時はここ
     connect # => Connection#connect
     # transition(:open)
     # -> @io.connect
@@ -2081,9 +2090,10 @@ def call
   when :closing
     consume
     transition(:closed)
-  when :open
-    consume
+  when :open # 接続確立後はここ
+    consume # => Connection#consume
   end
+
   nil
 rescue StandardError => e
   emit(:error, e) # => Connection#on(:error)
@@ -2521,7 +2531,6 @@ def consume
     epiped = false
 
     loop do
-      # connection may have
       # 何かのきっかけで状態が:idleに戻った場合は即終了
       return if @state == :idle
 
@@ -2543,6 +2552,13 @@ def consume
       write_drained = nil # 未書き込みのデータがあるかどうか
 
       # --- 読み取りループ ---
+
+      # 実行条件
+      # unless (
+      #   (ints = interests).nil? || # 監視対象がない
+      #    ints == :w ||             # 書き込み待ちを監視中
+      #    @state == :closing        # 接続状態がclosing
+      # ) && !epiped                 # 別ストリームの処理中ではない
 
       loop do
         # 最大@window_sizeバイト分を読み取って@read_bufferに格納
@@ -2590,11 +2606,13 @@ def consume
         # @pendingも@inflightも残っていない場合は処理すべきリクエストがないためここで終了
         return if @pending.empty? && @inflight.zero?
       end unless ((ints = interests).nil? || ints == :w || @state == :closing) && !epiped
-      # 読み込み待ちの状態、かつ接続状態がclosingではなく、かつ別ストリームの処理中ではない場合にループを実行
 
       # --- 読み取りループここまで ---
 
       # --- 書き込みループ ---
+
+      # 実行条件
+      # unless (ints = interests) == :r
 
       loop do
         # 書き込みバッファが空の場合
@@ -2639,7 +2657,7 @@ def consume
 
       # --- 書き込みループここまで ---
 
-      send_pending if @state == :open # @pendingに積まれたリクエストを送信する
+      send_pending if @state == :open # 未送信のデータがある場合は@write_bufferにデータを追加
 
       # (ints != :r || read_drained) = 読み込むデータがない
       # (ints != :w || write_drained) = 書き込むデータがない
