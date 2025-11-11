@@ -1,48 +1,62 @@
 # net-http 現地調査 (202509時点)
 https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
-### `HTTP.get`
+## 全体の流れ
+- `HTTP.get` public
+  - `HTTP.get_response` public
+    - `HTTP.start` / `HTTP#start` public
+      - `HTTP#do_start` WIP
+    - `Net::HTTP#request_get` public
+
+## `HTTP.get`
 
 ```ruby
+# (lib/net/http.rb)
+
 def HTTP.get(uri_or_host, path_or_headers = nil, port = nil)
   get_response(uri_or_host, path_or_headers, port).body
+  # => Net::HTTP.get_response (lib/net/http.rb)
+  # => Net::HTTPResponse#body (lib/net/http/response.rb)
 end
 ```
 
-### `Net::HTTP.get_response`
+## `Net::HTTP.get_response`
 
 ```ruby
-module Net
-  class HTTP < Protocol
-    def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
-      if path_or_headers && !path_or_headers.is_a?(Hash)
-        # Net::HTTP.get_response("www.example.com", "index.html")
-        # HTTPSは使わないパターン
+# (lib/net/http.rb)
 
-        host = uri_or_host
-        path = path_or_headers
+def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
+  if path_or_headers && !path_or_headers.is_a?(Hash)
+    # Net::HTTP.get_response("www.example.com", "index.html")
+    # HTTPSは使わないパターン
 
-        new(host, port || HTTP.default_port).start {|http|
-          return http.request_get(path, &block)
-        }
-      else
-        # Net::HTTP.get_response(URI("https://www.example.com/index.html"), { "Accept" => "text/html" })
+    host = uri_or_host
+    path = path_or_headers
 
-        uri = uri_or_host
-        headers = path_or_headers
+    new(host, port || HTTP.default_port).start { |http|
+      return http.request_get(path, &block) # => Net::HTTP#request_get
+    }
+    # => Net::HTTP#initialize (lib/net/http.rb)
+    # => Net::HTTP#start (lib/net/http.rb)
+  else
+    # Net::HTTP.get_response(URI("https://www.example.com/index.html"), { "Accept" => "text/html" })
 
-        start(uri.hostname, uri.port, :use_ssl => uri.scheme == 'https') {|http|
-          return http.request_get(uri, headers, &block)
-        }
-      end
-    end
+    uri = uri_or_host
+    headers = path_or_headers
+
+    start(uri.hostname, uri.port, :use_ssl => uri.scheme == 'https') { |http|
+      return http.request_get(uri, headers, &block) # => Net::HTTP#request_get
+    }
+    # => Net::HTTP.start (lib/net/http.rb)
   end
 end
 ```
 
-### `Net::HTTP.start`
+## `Net::HTTP.start`
 
 ```ruby
+# (lib/net/http.rb)
+
 def HTTP.start(address, *arg, &block) # :yield: +http+
   arg.pop if opt = Hash.try_convert(arg[-1])
   port, p_addr, p_port, p_user, p_pass = *arg
@@ -64,28 +78,39 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
     end
   end
 
-  http.start(&block)
+  http.start(&block) # => Net::HTTP#start
 end
 ```
 
-### `Net::HTTP.start`
+## Net::HTTP#start (lib/net/http.rb)
 
 ```ruby
-def start  # :yield: http
+# (lib/net/http.rb)
+
+def start
   raise IOError, 'HTTP session already opened' if @started
 
   if block_given?
     begin
-      do_start
-      return yield(self)
+      do_start # => Net::HTTP#do_start
+      return yield(self) # 呼び出し側ではブロック内でNet::HTTP#request_getを呼んでいる
     ensure
-      do_finish
+      do_finish # => Net::HTTP#do_finish
+
+      # Net::HTTP#do_finish (lib/net/http.rb)
+      #   def do_finish
+      #     @started = false
+      #     @socket.close if @socket
+      #     @socket = nil
+      #   end
     end
   end
 
-  do_start
+  do_start # => Net::HTTP#do_start (lib/net/http.rb)
   self
 end
+
+# WIP
 
 def do_start
   connect
