@@ -7,7 +7,16 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
     - `HTTP.start` / `HTTP#start` public
       - `HTTP#do_start`
         - `HTTP#connect`
-    - `Net::HTTP#request_get` public WIP
+    - `HTTP#request_get` public WIP
+      - `HTTP#request` public
+        - `HTTPGenericRequest#set_body_internal`
+        - `HTTP#transport_request`
+          - `HTTP#begin_transport`
+            - `HTTPGenericRequest#update_uri`
+          - `HTTPGenericRequest#exec`
+          - `HTTPResponse.read_new`
+          - `HTTPResponse#reading_body`
+          = `HTTP#end_transport`
 
 ### 気づいたこと
 - すでにresolvライブラリに依存している
@@ -19,12 +28,12 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
 def HTTP.get(uri_or_host, path_or_headers = nil, port = nil)
   get_response(uri_or_host, path_or_headers, port).body
-  # => Net::HTTP.get_response (lib/net/http.rb)
-  # => Net::HTTPResponse#body (lib/net/http/response.rb)
+  # => HTTP.get_response (lib/net/http.rb)
+  # => HTTPResponse#body (lib/net/http/response.rb)
 end
 ```
 
-## `Net::HTTP.get_response`
+## `HTTP.get_response`
 
 ```ruby
 # (lib/net/http.rb)
@@ -38,10 +47,10 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
     path = path_or_headers
 
     new(host, port || HTTP.default_port).start { |http|
-      return http.request_get(path, &block) # => Net::HTTP#request_get
+      return http.request_get(path, &block) # => HTTP#request_get
     }
-    # => Net::HTTP#initialize (lib/net/http.rb)
-    # => Net::HTTP#start (lib/net/http.rb)
+    # => HTTP#initialize (lib/net/http.rb)
+    # => HTTP#start (lib/net/http.rb)
   else
     # Net::HTTP.get_response(URI("https://www.example.com/index.html"), { "Accept" => "text/html" })
 
@@ -49,14 +58,14 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
     headers = path_or_headers
 
     start(uri.hostname, uri.port, :use_ssl => uri.scheme == 'https') { |http|
-      return http.request_get(uri, headers, &block) # => Net::HTTP#request_get
+      return http.request_get(uri, headers, &block) # => HTTP#request_get
     }
-    # => Net::HTTP.start (lib/net/http.rb)
+    # => HTTP.start (lib/net/http.rb)
   end
 end
 ```
 
-## `Net::HTTP.start`
+## `HTTP.start`
 
 ```ruby
 # (lib/net/http.rb)
@@ -82,11 +91,11 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
     end
   end
 
-  http.start(&block) # => Net::HTTP#start
+  http.start(&block) # => HTTP#start
 end
 ```
 
-## Net::HTTP#start (lib/net/http.rb)
+## HTTP#start (lib/net/http.rb)
 
 ```ruby
 # (lib/net/http.rb)
@@ -96,12 +105,12 @@ def start
 
   if block_given?
     begin
-      do_start # => Net::HTTP#do_start
-      return yield(self) # 呼び出し側ではブロック内でNet::HTTP#request_getを呼んでいる
+      do_start # => HTTP#do_start
+      return yield(self) # 呼び出し側ではブロック内でHTTP#request_getを呼んでいる
     ensure
-      do_finish # => Net::HTTP#do_finish
+      do_finish # => HTTP#do_finish
 
-      # Net::HTTP#do_finish (lib/net/http.rb)
+      # HTTP#do_finish (lib/net/http.rb)
       #   def do_finish
       #     @started = false
       #     @socket.close if @socket
@@ -110,21 +119,21 @@ def start
     end
   end
 
-  do_start # => Net::HTTP#do_start
+  do_start # => HTTP#do_start
   self
 end
 
-# Net::HTTP#do_start (lib/net/http.rb)
+# HTTP#do_start (lib/net/http.rb)
 
 def do_start
-  connect # => Net::HTTP#connect
+  connect # => HTTP#connect
   @started = true
 end
 
-# Net::HTTP#connect (lib/net/http.rb)
+# HTTP#connect (lib/net/http.rb)
 
 def connect
-  if use_ssl? # @use_ssl => Net::HTTP#use_ssl (lib/net/http.rb)
+  if use_ssl? # @use_ssl => HTTP#use_ssl (lib/net/http.rb)
     # reference early to load OpenSSL before connecting,
     # as OpenSSL may take time to load.
     @ssl_context = OpenSSL::SSL::SSLContext.new
@@ -155,10 +164,10 @@ def connect
   # --- TCP接続ここまで ---
 
   # --- TLS接続 ---
-  if use_ssl?
+  if use_ssl? # @use_ssl => HTTP#use_ssl (lib/net/http.rb)
 
     # --- フォワードプロキシ接続 ---
-    if proxy? # !!(@proxy_from_env ? proxy_uri : @proxy_address) => Net::HTTP#proxy? (lib/net/http.rb)
+    if proxy? # !!(@proxy_from_env ? proxy_uri : @proxy_address) => HTTP#proxy? (lib/net/http.rb)
       if @proxy_use_ssl # プロキシに対してTLSで接続
         proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
         ssl_socket_connect(proxy_sock, @open_timeout) # このメソッドはどこに定義されているんだろう
@@ -271,18 +280,33 @@ end
 ## `HTTP#request_get`
 
 ```ruby
-# WIP
+# (lib/net/http.rb)
 
 # path       = #<URI::HTTPS https://www.example.com/index.html>
 # initheader = { "Accept" => "text/html" }
 def request_get(path, initheader = nil, &block) # :yield: +response+
   # class Get は class Net::HTTPRequest < Net::HTTPGenericRequest で定義されている
   request(Get.new(path, initheader), &block)
+  # => HTTP#request
+  # => class Net::HTTPRequest
+
+  # class Net::HTTPRequest (lib/net/http/request.rb)
+  #   class Net::HTTPRequest < Net::HTTPGenericRequest
+  #    def initialize(path, initheader = nil)
+  #      super self.class::METHOD,
+  #            self.class::REQUEST_HAS_BODY,
+  #            self.class::RESPONSE_HAS_BODY,
+  #            path, initheader
+  #    end
+  #  end
 end
 ```
+
 ### `HTTP#request`
 
-```
+```ruby
+# (lib/net/http.rb)
+
 # req = #<Net::HTTP::Get GET>
 # req.instance_variables
 #   => [:@method,
@@ -295,11 +319,11 @@ end
 #       :@body,
 #       :@body_stream,
 #       :@body_data]
-def request(req, body = nil, &block)  # :yield: +response+
-  if !started?
-    start {
+def request(req, body = nil, &block)
+  if !started? # @started => HTTP#started? (lib/net/http.rb)
+    start { # => HTTP#start (lib/net/http.rb)
       req['connection'] ||= 'close'
-      return request(req, body, &block)
+      return request(req, body, &block) # => HTTP#request (lib/net/http.rb)
     }
   end
 
@@ -307,21 +331,51 @@ def request(req, body = nil, &block)  # :yield: +response+
     req.proxy_basic_auth(proxy_user, proxy_pass)
   end
 
-  req.set_body_internal(body)
-  res = transport_request(req, &block)
+  req.set_body_internal(body) # => HTTPGenericRequest#set_body_internal
 
-  if sspi_auth?(res)
+  # HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
+  #   def set_body_internal(str)
+  #     raise ArgumentError, "both of body argument and HTTPRequest#body set" if str and (@body or @body_stream)
+  #     # どういう状況?と思ったらHTTPGenericRequest#body=もしくは#body_stream=で値がセットされていることがあるらしい
+  #     # 柔軟すぎでは????
+  #
+  #     self.body = str if str
+  #
+  #     if @body.nil? && @body_stream.nil? && @body_data.nil? && request_body_permitted?
+  #       self.body = ''
+  #     end
+  #   end
+
+  res = transport_request(req, &block) # => HTTP#transport_request
+
+  if sspi_auth?(res) # => HTTP#sspi_auth?
+
+    # HTTP#sspi_auth? (lib/net/http.rb)
+    #
+    #   def sspi_auth?(res)
+    #     return false unless @sspi_enabled
+    #     if res.kind_of?(HTTPProxyAuthenticationRequired) and
+    #         proxy? and res["Proxy-Authenticate"].include?("Negotiate")
+    #       begin
+    #         require 'win32/sspi'
+    #         true
+    #       rescue LoadError
+    #         false
+    #       end
+    #     else
+    #       false
+    #     end
+    #   end
+
     sspi_auth(req)
-    res = transport_request(req, &block)
+    res = transport_request(req, &block) # => HTTP#transport_request
   end
 
   res
 end
-```
 
-### `HTTP#transport_request`
+# HTTP#transport_request (lib/net/http.rb)
 
-```ruby
 # req = #<Net::HTTP::Get GET>
 # req.instance_variables
 #   => [:@method,
@@ -336,81 +390,14 @@ end
 #       :@body_data]
 def transport_request(req)
   count = 0
+
   begin
-    begin_transport req
-
-    # def begin_transport(req)
-    #   if @socket.closed? # ソケットが閉じている場合は接続しなおす
-    #     connect
-    #   elsif @last_communicated # Keep-Aliveがタイムアウトしている場合はソケットを閉じてから接続し直す
-    #     if @last_communicated + @keep_alive_timeout < Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    #       debug 'Conn close because of keep_alive_timeout'
-    #       @socket.close
-    #       connect
-    #     elsif @socket.io.to_io.wait_readable(0) && @socket.eof? # ソケットがEOFの場合は接続しなおす
-    #       debug "Conn close because of EOF"
-    #       @socket.close
-    #       connect
-    #     end
-    #   end
-
-    #   if not req.response_body_permitted? and @close_on_empty_response
-    #     req['connection'] ||= 'close'
-    #   end
-
-    #   req.update_uri address, port, use_ssl?
-    #   req['host'] ||= addr_port()
-    # end
+    begin_transport req # => HTTP#begin_transport
 
     res = catch(:response) {
       begin
         # @socketにリクエストを書き込む
-        req.exec(@socket, @curr_http_version, edit_path(req.path))
-
-        # Net::HTTPGenericRequest#exec
-        # def exec(sock, ver, path)   #:nodoc: internal use only
-        #   if @body
-        #     send_request_with_body sock, ver, path, @body
-        #
-        #     # Net::HTTPGenericRequest#send_request_with_body
-        #     # def send_request_with_body(sock, ver, path, body)
-        #     #   self.content_length = body.bytesize
-        #     #   delete 'Transfer-Encoding'
-        #     #   supply_default_content_type
-        #     #
-        #     #   write_header sock, ver, path
-        #     #   wait_for_continue sock, ver if sock.continue_timeout
-        #     #   sock.write body
-        #     # end
-        #
-        #   elsif @body_stream
-        #     send_request_with_body_stream sock, ver, path, @body_stream
-        #   elsif @body_data
-        #     send_request_with_body_data sock, ver, path, @body_data
-        #   else
-        #     write_header sock, ver, path
-        #
-        #     # Net::HTTPGenericRequest#write_header
-        #     # def write_header(sock, ver, path)
-        #     #   reqline = "#{@method} #{path} HTTP/#{ver}"
-        #     #
-        #     #   if /[\r\n]/ =~ reqline
-        #     #     raise ArgumentError, "A Request-Line must not contain CR or LF"
-        #     #   end
-        #     #
-        #     #   buf = +''
-        #     #   buf << reqline << "\r\n"
-        #     #
-        #     #   each_capitalized do |k,v|
-        #     #     buf << "#{k}: #{v}\r\n"
-        #     #   end
-        #     #
-        #     #   buf << "\r\n"
-        #     #   sock.write buf
-        #     # end
-        #   end
-        # end
-
+        req.exec(@socket, @curr_http_version, edit_path(req.path)) # => HTTPGenericRequest#exec
       rescue Errno::EPIPE
         # Failure when writing full request, but we can probably
         # still read the received response.
@@ -418,36 +405,7 @@ def transport_request(req)
 
       begin
         # @socket からレスポンスを読み込む
-        res = HTTPResponse.read_new(@socket)
-
-        # HTTPResponse.read_new
-        # def read_new(sock)   #:nodoc: internal use only
-        #   httpv, code, msg = read_status_line(sock)
-        #
-        #   # HTTPResponse.read_status_line
-        #   # def read_status_line(sock)
-        #   #   str = sock.readline
-        #   #   m = /\AHTTP(?:\/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?\z/in.match(str) or
-        #   #     raise Net::HTTPBadResponse, "wrong status line: #{str.dump}"
-        #   #   m.captures
-        #   # end
-        #
-        #   # ここでレスポンスステータスごとにクラスが分かれてしまっている
-        #   res = response_class(code).new(httpv, code, msg)
-        #
-        #   # HTTPResponse.response_class
-        #   # def response_class(code)
-        #   #   CODE_TO_OBJ[code] or            # Net::HTTPResponse::CODE_TO_OBJとして定義されている
-        #   #   CODE_CLASS_TO_OBJ[code[0,1]] or # Net::HTTPResponse::CODE_CLASS_TO_OBJとして定義されている
-        #   #   Net::HTTPUnknownResponse
-        #   # end
-        #
-        #   each_response_header(sock) do |k,v|
-        #     res.add_field k, v
-        #   end
-        #
-        #   res
-        # end
+        res = HTTPResponse.read_new(@socket) # => HTTPResponse.read_new
 
         res.decode_content = req.decode_content
         res.body_encoding = @response_body_encoding
@@ -459,7 +417,7 @@ def transport_request(req)
       res
     }
 
-    res.reading_body(@socket, req.response_body_permitted?) {
+    res.reading_body(@socket, req.response_body_permitted?) { # => HTTPResponse#reading_body
       if block_given?
         count = max_retries # Don't restart in the middle of a download
         yield res
@@ -483,12 +441,180 @@ def transport_request(req)
     raise
   end
 
-  end_transport req, res
+  end_transport req, res # => HTTP#end_transport
   res
 rescue => exception
   debug "Conn close because of error #{exception}"
   @socket.close if @socket
   raise exception
+end
+
+# HTTP#begin_transport (lib/net/http.rb)
+
+def begin_transport(req)
+  if @socket.closed? # ソケットが閉じている場合は接続しなおす
+    connect # => HTTP#connect
+  elsif @last_communicated # 過去にtransport_requestを実行している場合
+
+    if @last_communicated + @keep_alive_timeout < Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      # Keep-Aliveがタイムアウトしている場合はソケットを閉じて接続し直す
+      debug 'Conn close because of keep_alive_timeout'
+      @socket.close
+      connect # => HTTP#connect
+    elsif @socket.io.to_io.wait_readable(0) && @socket.eof?
+      # ソケットがEOFの場合はソケットを閉じて接続し直す
+      debug "Conn close because of EOF"
+      @socket.close
+      connect # => HTTP#connect
+    end
+
+  end
+
+  if not req.response_body_permitted? and @close_on_empty_response
+    req['connection'] ||= 'close'
+  end
+
+  req.update_uri address, port, use_ssl? # => HTTPGenericRequest#update_uri
+  req['host'] ||= addr_port()
+end
+
+# HTTPGenericRequest#update_uri (lib/net/http/generic_request.rb)
+
+def update_uri(addr, port, ssl) # :nodoc: internal use only
+  # reflect the connection and @path to @uri
+  return unless @uri
+
+  if ssl
+    scheme = 'https'
+    klass = URI::HTTPS
+  else
+    scheme = 'http'
+    klass = URI::HTTP
+  end
+
+  if host = self['host']
+    host.sub!(/:.*/m, '')
+  elsif host = @uri.host
+  else
+   host = addr
+  end
+  # convert the class of the URI
+  if @uri.is_a?(klass)
+    @uri.host = host
+    @uri.port = port
+  else
+    @uri = klass.new(
+      scheme, @uri.userinfo,
+      host, port, nil,
+      @uri.path, nil, @uri.query, nil)
+  end
+end
+
+# HTTPGenericRequest#exec (lib/net/http/generic_request.rb)
+
+def exec(sock, ver, path)   #:nodoc: internal use only
+  if @body
+    send_request_with_body sock, ver, path, @body
+
+    # Net::HTTPGenericRequest#send_request_with_body
+    # def send_request_with_body(sock, ver, path, body)
+    #   self.content_length = body.bytesize
+    #   delete 'Transfer-Encoding'
+    #   supply_default_content_type
+    #
+    #   write_header sock, ver, path
+    #   wait_for_continue sock, ver if sock.continue_timeout
+    #   sock.write body
+    # end
+
+  elsif @body_stream
+    send_request_with_body_stream sock, ver, path, @body_stream
+  elsif @body_data
+    send_request_with_body_data sock, ver, path, @body_data
+  else
+    write_header sock, ver, path
+
+    # Net::HTTPGenericRequest#write_header
+    # def write_header(sock, ver, path)
+    #   reqline = "#{@method} #{path} HTTP/#{ver}"
+    #
+    #   if /[\r\n]/ =~ reqline
+    #     raise ArgumentError, "A Request-Line must not contain CR or LF"
+    #   end
+    #
+    #   buf = +''
+    #   buf << reqline << "\r\n"
+    #
+    #   each_capitalized do |k,v|
+    #     buf << "#{k}: #{v}\r\n"
+    #   end
+    #
+    #   buf << "\r\n"
+    #   sock.write buf
+    # end
+  end
+end
+
+# HTTPResponse.read_new (lib/net/http/response.rb)
+
+def read_new(sock)   #:nodoc: internal use only
+  httpv, code, msg = read_status_line(sock)
+
+  # HTTPResponse.read_status_line
+  # def read_status_line(sock)
+  #   str = sock.readline
+  #   m = /\AHTTP(?:\/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?\z/in.match(str) or
+  #     raise Net::HTTPBadResponse, "wrong status line: #{str.dump}"
+  #   m.captures
+  # end
+
+  # ここでレスポンスステータスごとにクラスが分かれてしまっている
+  res = response_class(code).new(httpv, code, msg)
+
+  # HTTPResponse.response_class
+  # def response_class(code)
+  #   CODE_TO_OBJ[code] or            # Net::HTTPResponse::CODE_TO_OBJとして定義されている
+  #   CODE_CLASS_TO_OBJ[code[0,1]] or # Net::HTTPResponse::CODE_CLASS_TO_OBJとして定義されている
+  #   Net::HTTPUnknownResponse
+  # end
+
+  each_response_header(sock) do |k,v|
+    res.add_field k, v
+  end
+
+  res
+end
+
+# HTTPResponse#reading_body (lib/net/http/response.rb)
+
+def reading_body(sock, reqmethodallowbody)  #:nodoc: internal use only
+  @socket = sock
+  @body_exist = reqmethodallowbody && self.class.body_permitted?
+  begin
+    yield
+    self.body   # ensure to read body
+  ensure
+    @socket = nil
+  end
+end
+
+# HTTP#end_transport (lib/net/http.rb)
+
+def end_transport(req, res)
+  @curr_http_version = res.http_version
+  @last_communicated = nil
+  if @socket.closed?
+    debug 'Conn socket closed'
+  elsif not res.body and @close_on_empty_response
+    debug 'Conn close'
+    @socket.close
+  elsif keep_alive?(req, res)
+    debug 'Conn keep-alive'
+    @last_communicated = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  else
+    debug 'Conn close'
+    @socket.close
+  end
 end
 ```
 
