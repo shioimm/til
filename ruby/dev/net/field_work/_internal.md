@@ -7,13 +7,15 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
     - `HTTP.start` / `HTTP#start` public
       - `HTTP#do_start`
         - `HTTP#connect`
-    - `HTTP#request_get` public WIP
+    - `HTTP#request_get` public
+      - `HTTPRequest#initialize` -> `HTTPGenericRequest#initialize`
+        - `HTTPHeader#initialize_http_header`
       - `HTTP#request` public
         - `HTTPGenericRequest#set_body_internal`
         - `HTTP#transport_request`
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri`
-          - `HTTPGenericRequest#exec`
+          - `HTTPGenericRequest#exec` WIP
           - `HTTPResponse.read_new`
           - `HTTPResponse#reading_body`
           = `HTTP#end_transport`
@@ -168,9 +170,10 @@ def connect
 
     # --- フォワードプロキシ接続 ---
     if proxy? # !!(@proxy_from_env ? proxy_uri : @proxy_address) => HTTP#proxy? (lib/net/http.rb)
+
       if @proxy_use_ssl # プロキシに対してTLSで接続
         proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
-        ssl_socket_connect(proxy_sock, @open_timeout) # このメソッドはどこに定義されているんだろう
+        ssl_socket_connect(proxy_sock, @open_timeout) # このメソッドはどこに定義されているんだろ
       else
         proxy_sock = s
       end
@@ -273,6 +276,7 @@ rescue => exception
     debug "Conn close because of connect error #{exception}"
     s.close
   end
+
   raise
 end
 ```
@@ -288,17 +292,98 @@ def request_get(path, initheader = nil, &block) # :yield: +response+
   # class Get は class Net::HTTPRequest < Net::HTTPGenericRequest で定義されている
   request(Get.new(path, initheader), &block)
   # => HTTP#request
-  # => class Net::HTTPRequest
+  # => HTTPRequest#initialize
+end
 
-  # class Net::HTTPRequest (lib/net/http/request.rb)
-  #   class Net::HTTPRequest < Net::HTTPGenericRequest
-  #    def initialize(path, initheader = nil)
-  #      super self.class::METHOD,
-  #            self.class::REQUEST_HAS_BODY,
-  #            self.class::RESPONSE_HAS_BODY,
-  #            path, initheader
-  #    end
-  #  end
+# HTTPRequest#initialize (lib/net/http/request.rb)
+
+def initialize(path, initheader = nil)
+  super self.class::METHOD,
+        self.class::REQUEST_HAS_BODY,
+        self.class::RESPONSE_HAS_BODY,
+        path, initheader
+end
+
+# HTTPGenericRequest#initialize (lib/net/http/generic_request.rb)
+
+ def initialize(m, reqbody, resbody, uri_or_path, initheader = nil) # :nodoc:
+    @method = m
+    @request_has_body = reqbody
+    @response_has_body = resbody
+
+    if URI === uri_or_path then
+      raise ArgumentError, "not an HTTP URI" unless URI::HTTP === uri_or_path
+
+      hostname = uri_or_path.hostname
+      raise ArgumentError, "no host component for URI" unless (hostname && hostname.length > 0)
+      @uri = uri_or_path.dup
+      host = @uri.hostname.dup
+      host << ":" << @uri.port.to_s if @uri.port != @uri.default_port
+      @path = uri_or_path.request_uri
+      raise ArgumentError, "no HTTP request path given" unless @path
+
+    else
+
+      @uri = nil
+      host = nil
+      raise ArgumentError, "no HTTP request path given" unless uri_or_path
+      raise ArgumentError, "HTTP request path is empty" if uri_or_path.empty?
+      @path = uri_or_path.dup
+
+    end
+
+    @decode_content = false
+
+    if Net::HTTP::HAVE_ZLIB then
+      if !initheader ||
+         !initheader.keys.any? { |k|
+           %w[accept-encoding range].include? k.downcase
+         } then
+        @decode_content = true if @response_has_body
+
+        initheader = initheader ? initheader.dup : {}
+        initheader["accept-encoding"] = "gzip;q=1.0,deflate;q=0.6,identity;q=0.3"
+      end
+    end
+
+    initialize_http_header initheader # => HTTPHeader#initialize_http_header
+
+    self['Accept'] ||= '*/*'
+    self['User-Agent'] ||= 'Ruby'
+    self['Host'] ||= host if host
+    @body = nil
+    @body_stream = nil
+    @body_data = nil
+  end
+end
+
+# HTTPHeader#initialize_http_header (lib/net/http/header.rb)
+
+def initialize_http_header(initheader)
+  @header = {}
+  return unless initheader
+
+  initheader.each do |key, value|
+    if value.nil?
+      warn "net/http: nil HTTP header: #{key}", uplevel: 3 if $VERBOSE
+    else
+      value = value.strip # raise error for invalid byte sequences
+
+      if key.to_s.bytesize > MAX_KEY_LENGTH
+        raise ArgumentError, "too long (#{key.bytesize} bytes) header: #{key[0, 30].inspect}..."
+      end
+
+      if value.to_s.bytesize > MAX_FIELD_LENGTH
+        raise ArgumentError, "header #{key} has too long field value: #{value.bytesize}"
+      end
+
+      if value.count("\r\n") > 0
+        raise ArgumentError, "header #{key} has field value #{value.inspect}, this cannot include CR/LF"
+      end
+
+      @header[key.downcase.to_s] = [value]
+    end
+  end
 end
 ```
 
@@ -471,16 +556,26 @@ def begin_transport(req)
   end
 
   if not req.response_body_permitted? and @close_on_empty_response
+    # @response_has_body => HTTPGenericRequest#response_body_permitted? (lib/net/http/generic_request.rb)
     req['connection'] ||= 'close'
   end
 
   req.update_uri address, port, use_ssl? # => HTTPGenericRequest#update_uri
-  req['host'] ||= addr_port()
+  req['host'] ||= addr_port() # => HTTP#addr_port
+
+  # HTTP#addr_port (lib/net/http.rb)
+  #
+  #   def addr_port
+  #     addr = address
+  #     addr = "[#{addr}]" if addr.include?(":")
+  #     default_port = use_ssl? ? HTTP.https_default_port : HTTP.http_default_port
+  #     default_port == port ? addr : "#{addr}:#{port}"
+  #   end
 end
 
 # HTTPGenericRequest#update_uri (lib/net/http/generic_request.rb)
 
-def update_uri(addr, port, ssl) # :nodoc: internal use only
+def update_uri(addr, port, ssl)
   # reflect the connection and @path to @uri
   return unless @uri
 
@@ -495,22 +590,27 @@ def update_uri(addr, port, ssl) # :nodoc: internal use only
   if host = self['host']
     host.sub!(/:.*/m, '')
   elsif host = @uri.host
+    # do nothing
   else
    host = addr
   end
-  # convert the class of the URI
-  if @uri.is_a?(klass)
+
+  # @uriにはHTTPGenericRequest#initialize時にuri_or_pathが格納されている
+  if @uri.is_a?(klass) # URI::HTTPS or URI::HTTP
     @uri.host = host
     @uri.port = port
   else
-    @uri = klass.new(
-      scheme, @uri.userinfo,
+    @uri = klass.new( # URI::HTTPS or URI::HTTP
+      scheme,
+      @uri.userinfo,
       host, port, nil,
-      @uri.path, nil, @uri.query, nil)
+      @uri.path, nil, @uri.query, nil
+    )
   end
 end
 
 # HTTPGenericRequest#exec (lib/net/http/generic_request.rb)
+# WIP ここから続き
 
 def exec(sock, ver, path)   #:nodoc: internal use only
   if @body
