@@ -5,8 +5,12 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 - `HTTP.get` public
   - `HTTP.get_response` public
     - `HTTP.start` / `HTTP#start` public
-      - `HTTP#do_start` WIP
-    - `Net::HTTP#request_get` public
+      - `HTTP#do_start`
+        - `HTTP#connect`
+    - `Net::HTTP#request_get` public WIP
+
+### 気づいたこと
+- すでにresolvライブラリに依存している
 
 ## `HTTP.get`
 
@@ -106,19 +110,21 @@ def start
     end
   end
 
-  do_start # => Net::HTTP#do_start (lib/net/http.rb)
+  do_start # => Net::HTTP#do_start
   self
 end
 
-# WIP
+# Net::HTTP#do_start (lib/net/http.rb)
 
 def do_start
-  connect
+  connect # => Net::HTTP#connect
   @started = true
 end
 
+# Net::HTTP#connect (lib/net/http.rb)
+
 def connect
-  if use_ssl?
+  if use_ssl? # @use_ssl => Net::HTTP#use_ssl (lib/net/http.rb)
     # reference early to load OpenSSL before connecting,
     # as OpenSSL may take time to load.
     @ssl_context = OpenSSL::SSL::SSLContext.new
@@ -132,7 +138,9 @@ def connect
     conn_port = port
   end
 
+  # --- TCP接続 ---
   debug "opening connection to #{conn_addr}:#{conn_port}..."
+
   s = Timeout.timeout(@open_timeout, Net::OpenTimeout) {
     begin
       TCPSocket.open(conn_addr, conn_port, @local_host, @local_port)
@@ -144,11 +152,16 @@ def connect
   s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
 
   debug "opened"
+  # --- TCP接続ここまで ---
+
+  # --- TLS接続 ---
   if use_ssl?
-    if proxy? # !!(@proxy_from_env ? proxy_uri : @proxy_address)
+
+    # --- フォワードプロキシ接続 ---
+    if proxy? # !!(@proxy_from_env ? proxy_uri : @proxy_address) => Net::HTTP#proxy? (lib/net/http.rb)
       if @proxy_use_ssl # プロキシに対してTLSで接続
         proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
-        ssl_socket_connect(proxy_sock, @open_timeout)
+        ssl_socket_connect(proxy_sock, @open_timeout) # このメソッドはどこに定義されているんだろう
       else
         proxy_sock = s
       end
@@ -173,6 +186,7 @@ def connect
       HTTPResponse.read_new(proxy_sock).value
       # assuming nothing left in buffers after successful CONNECT response
     end
+    # --- プロキシ接続ここまで ---
 
     ssl_parameters = Hash.new
     iv_list = instance_variables
@@ -205,8 +219,7 @@ def connect
     # Server Name Indication (SNI) RFC 3546/6066
     case @address
     when Resolv::IPv4::Regex, Resolv::IPv6::Regex
-      # don't set SNI, as IP addresses in SNI is not valid
-      # per RFC 6066, section 3.
+      # don't set SNI, as IP addresses in SNI is not valid per RFC 6066, section 3.
 
       # Avoid openssl warning
       @ssl_context.verify_hostname = false
@@ -215,6 +228,7 @@ def connect
     end
 
     debug "starting SSL for #{conn_addr}:#{conn_port}..."
+
     s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
     s.sync_close = true
     s.hostname = ssl_host_address if s.respond_to?(:hostname=) && ssl_host_address
@@ -224,7 +238,7 @@ def connect
       s.session = @ssl_session
     end
 
-    # オリジンサーバとに対してTLSで接続
+    # オリジンサーバに対してTLSで接続
     ssl_socket_connect(s, @open_timeout)
 
     if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
@@ -233,9 +247,10 @@ def connect
 
     debug "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
   end
+  # --- TLS接続ここまで ---
 
   @socket = BufferedIO.new(
-    s,
+    s, # TCPもしくはTLSで接続確立したソケット
     read_timeout: @read_timeout,
     write_timeout: @write_timeout,
     continue_timeout: @continue_timeout,
@@ -243,7 +258,7 @@ def connect
   )
 
   @last_communicated = nil
-  on_connect
+  on_connect # => 空っぽだった...
 rescue => exception
   if s
     debug "Conn close because of connect error #{exception}"
@@ -253,9 +268,11 @@ rescue => exception
 end
 ```
 
-### `HTTP#request_get`
+## `HTTP#request_get`
 
 ```ruby
+# WIP
+
 # path       = #<URI::HTTPS https://www.example.com/index.html>
 # initheader = { "Accept" => "text/html" }
 def request_get(path, initheader = nil, &block) # :yield: +response+
