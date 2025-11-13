@@ -15,7 +15,10 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
         - `HTTP#transport_request`
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri`
-          - `HTTPGenericRequest#exec` WIP
+          - `HTTPGenericRequest#exec`
+            - `HTTPGenericRequest#send_request_with_body`
+              - `HTTPGenericRequest#supply_default_content_type`
+              - `HTTPGenericRequest#write_header`
           - `HTTPResponse.read_new`
           - `HTTPResponse#reading_body`
           = `HTTP#end_transport`
@@ -610,48 +613,108 @@ def update_uri(addr, port, ssl)
 end
 
 # HTTPGenericRequest#exec (lib/net/http/generic_request.rb)
-# WIP ここから続き
 
 def exec(sock, ver, path)   #:nodoc: internal use only
   if @body
-    send_request_with_body sock, ver, path, @body
-
-    # Net::HTTPGenericRequest#send_request_with_body
-    # def send_request_with_body(sock, ver, path, body)
-    #   self.content_length = body.bytesize
-    #   delete 'Transfer-Encoding'
-    #   supply_default_content_type
-    #
-    #   write_header sock, ver, path
-    #   wait_for_continue sock, ver if sock.continue_timeout
-    #   sock.write body
-    # end
-
+    send_request_with_body sock, ver, path, @body # => HTTPGenericRequest#send_request_with_body
   elsif @body_stream
+    # WIP ここから続き
     send_request_with_body_stream sock, ver, path, @body_stream
   elsif @body_data
     send_request_with_body_data sock, ver, path, @body_data
   else
-    write_header sock, ver, path
+    write_header sock, ver, path # => HTTPGenericRequest#write_header
+  end
+end
 
-    # Net::HTTPGenericRequest#write_header
-    # def write_header(sock, ver, path)
-    #   reqline = "#{@method} #{path} HTTP/#{ver}"
-    #
-    #   if /[\r\n]/ =~ reqline
-    #     raise ArgumentError, "A Request-Line must not contain CR or LF"
-    #   end
-    #
-    #   buf = +''
-    #   buf << reqline << "\r\n"
-    #
-    #   each_capitalized do |k,v|
-    #     buf << "#{k}: #{v}\r\n"
-    #   end
-    #
-    #   buf << "\r\n"
-    #   sock.write buf
-    # end
+# HTTPGenericRequest#send_request_with_body (lib/net/http/generic_request.rb)
+
+def send_request_with_body(sock, ver, path, body)
+  self.content_length = body.bytesize
+  delete 'Transfer-Encoding'
+  supply_default_content_type # => HTTPGenericRequest#supply_default_content_type
+  write_header sock, ver, path # => HTTPGenericRequest#write_header
+  wait_for_continue sock, ver if sock.continue_timeout # => HTTPGenericRequest#wait_for_continue
+  sock.write body
+end
+
+# HTTPGenericRequest#supply_default_content_type (lib/net/http/generic_request.rb)
+
+def supply_default_content_type
+  return if content_type() # => HTTPHeader#content_type
+  set_content_type 'application/x-www-form-urlencoded' # => HTTPHeader#set_content_type
+end
+
+# HTTPHeader#content_type (lib/net/http/header.rb)
+
+def content_type
+  main = main_type() # => HTTPHeader#main_type
+
+  # HTTPHeader#main_type (lib/net/http/header.rb)
+  #
+  #   def main_type
+  #     return nil unless @header['content-type']
+  #     self['Content-Type'].split(';').first.to_s.split('/')[0].to_s.strip
+  #   end
+
+  return nil unless main
+
+  sub = sub_type()
+
+  # HTTPHeader#sub_type (lib/net/http/header.rb)
+  #
+  #   def sub_type
+  #     return nil unless @header['content-type']
+  #     _, sub = *self['Content-Type'].split(';').first.to_s.split('/')
+  #     return nil unless sub
+  #     sub.strip
+  #   end
+
+  if sub
+    "#{main}/#{sub}"
+  else
+    main
+  end
+end
+
+# HTTPHeader#set_content_type (lib/net/http/header.rb)
+
+def set_content_type(type, params = {})
+  @header['content-type'] = [type + params.map{|k,v|"; #{k}=#{v}"}.join('')]
+end
+
+# HTTPGenericRequest#write_header (lib/net/http/generic_request.rb)
+
+def write_header(sock, ver, path)
+  reqline = "#{@method} #{path} HTTP/#{ver}"
+
+  if /[\r\n]/ =~ reqline
+    raise ArgumentError, "A Request-Line must not contain CR or LF"
+  end
+
+  buf = +''
+  buf << reqline << "\r\n"
+
+  each_capitalized do |k,v|
+    buf << "#{k}: #{v}\r\n"
+  end
+
+  buf << "\r\n"
+  sock.write buf
+end
+
+# HTTPGenericRequest#wait_for_continue (lib/net/http/generic_request.rb)
+
+def wait_for_continue(sock, ver)
+  if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
+    if sock.io.to_io.wait_readable(sock.continue_timeout)
+      res = Net::HTTPResponse.read_new(sock)
+
+      unless res.kind_of?(Net::HTTPContinue)
+        res.decode_content = @decode_content
+        throw :response, res
+      end
+    end
   end
 end
 
