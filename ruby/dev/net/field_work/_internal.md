@@ -19,6 +19,11 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
             - `HTTPGenericRequest#send_request_with_body`
               - `HTTPGenericRequest#supply_default_content_type`
               - `HTTPGenericRequest#write_header`
+              - `sock.write`
+            - `HTTPGenericRequest#send_request_with_body_stream`
+              - `HTTPGenericRequest#supply_default_content_type`
+              - `HTTPGenericRequest#write_header`
+              - `IO.copy_stream`
           - `HTTPResponse.read_new`
           - `HTTPResponse#reading_body`
           = `HTTP#end_transport`
@@ -618,9 +623,9 @@ def exec(sock, ver, path)   #:nodoc: internal use only
   if @body
     send_request_with_body sock, ver, path, @body # => HTTPGenericRequest#send_request_with_body
   elsif @body_stream
-    # WIP ここから続き
-    send_request_with_body_stream sock, ver, path, @body_stream
+    send_request_with_body_stream sock, ver, path, @body_stream # => HTTPGenericRequest#send_request_with_body_stream
   elsif @body_data
+    # WIP ここから続き
     send_request_with_body_data sock, ver, path, @body_data
   else
     write_header sock, ver, path # => HTTPGenericRequest#write_header
@@ -683,6 +688,49 @@ def set_content_type(type, params = {})
   @header['content-type'] = [type + params.map{|k,v|"; #{k}=#{v}"}.join('')]
 end
 
+# HTTPGenericRequest#wait_for_continue (lib/net/http/generic_request.rb)
+
+def wait_for_continue(sock, ver)
+  if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
+    if sock.io.to_io.wait_readable(sock.continue_timeout)
+      res = Net::HTTPResponse.read_new(sock)
+
+      unless res.kind_of?(Net::HTTPContinue)
+        res.decode_content = @decode_content
+        throw :response, res
+      end
+    end
+  end
+end
+
+# HTTPGenericRequest#send_request_with_body_stream (lib/net/http/generic_request.rb)
+
+def send_request_with_body_stream(sock, ver, path, f)
+  unless content_length() or chunked?
+    raise ArgumentError, "Content-Length not given and Transfer-Encoding is not `chunked'"
+  end
+
+  supply_default_content_type # => HTTPGenericRequest#supply_default_content_type
+  write_header sock, ver, path # => HTTPGenericRequest#write_header
+  wait_for_continue sock, ver if sock.continue_timeout # => HTTPGenericRequest#wait_for_continue
+
+  if chunked?
+    # HTTPHeader#chunked? (lib/net/http/header.rb)
+    #
+    #   def chunked?
+    #     return false unless @header['transfer-encoding']
+    #     field = self['Transfer-Encoding']
+    #     (/(?:\A|[^\-\w])chunked(?![\-\w])/i =~ field) ? true : false
+    #   end
+
+    chunker = Chunker.new(sock)
+    IO.copy_stream(f, chunker)
+    chunker.finish
+  else
+    IO.copy_stream(f, sock)
+  end
+end
+
 # HTTPGenericRequest#write_header (lib/net/http/generic_request.rb)
 
 def write_header(sock, ver, path)
@@ -701,21 +749,6 @@ def write_header(sock, ver, path)
 
   buf << "\r\n"
   sock.write buf
-end
-
-# HTTPGenericRequest#wait_for_continue (lib/net/http/generic_request.rb)
-
-def wait_for_continue(sock, ver)
-  if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
-    if sock.io.to_io.wait_readable(sock.continue_timeout)
-      res = Net::HTTPResponse.read_new(sock)
-
-      unless res.kind_of?(Net::HTTPContinue)
-        res.decode_content = @decode_content
-        throw :response, res
-      end
-    end
-  end
 end
 
 # HTTPResponse.read_new (lib/net/http/response.rb)
