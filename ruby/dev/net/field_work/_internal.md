@@ -12,7 +12,7 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
         - `HTTPHeader#initialize_http_header`
       - `HTTP#request` public
         - `HTTPGenericRequest#set_body_internal`
-        - `HTTP#transport_request`
+        - `HTTP#transport_request` WIP
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri`
           - `HTTPGenericRequest#exec`
@@ -28,8 +28,12 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
               - `HTTPGenericRequest#write_header`
             - `HTTPGenericRequest#write_header`
           - `HTTPResponse.read_new`
-          - `HTTPResponse#reading_body`
-          = `HTTP#end_transport`
+            - `HTTPResponse.read_status_line`
+            - `HTTPResponse.response_class`
+            - `HTTPResponse.each_response_header`
+              - `HTTPHeader#add_field`
+          - `HTTPResponse#reading_body` WIP
+          - `HTTP#end_transport`
 
 ### 気づいたこと
 - すでにresolvライブラリに依存している
@@ -797,39 +801,107 @@ end
 
 # HTTPResponse.read_new (lib/net/http/response.rb)
 
-def read_new(sock)   #:nodoc: internal use only
-  httpv, code, msg = read_status_line(sock)
+def read_new(sock)
+  # ステータスラインを取得
+  httpv, code, msg = read_status_line(sock) # => HTTPResponse.read_status_line
 
-  # HTTPResponse.read_status_line
-  # def read_status_line(sock)
-  #   str = sock.readline
-  #   m = /\AHTTP(?:\/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?\z/in.match(str) or
-  #     raise Net::HTTPBadResponse, "wrong status line: #{str.dump}"
-  #   m.captures
-  # end
+  # ここでレスポンスステータスごとにクラスが分かれている
+  res = response_class(code).new(httpv, code, msg) # => HTTPResponse.response_class
 
-  # ここでレスポンスステータスごとにクラスが分かれてしまっている
-  res = response_class(code).new(httpv, code, msg)
-
-  # HTTPResponse.response_class
-  # def response_class(code)
-  #   CODE_TO_OBJ[code] or            # Net::HTTPResponse::CODE_TO_OBJとして定義されている
-  #   CODE_CLASS_TO_OBJ[code[0,1]] or # Net::HTTPResponse::CODE_CLASS_TO_OBJとして定義されている
-  #   Net::HTTPUnknownResponse
-  # end
-
-  each_response_header(sock) do |k,v|
-    res.add_field k, v
+  each_response_header(sock) do |k,v| # => HTTPResponse.each_response_header
+    res.add_field k, v # => HTTPHeader#add_field
   end
 
   res
 end
 
+# HTTPResponse.read_status_line (lib/net/http/response.rb)
+
+def read_status_line(sock)
+  str = sock.readline
+  m = /\AHTTP(?:\/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?\z/in.match(str) or
+    raise Net::HTTPBadResponse, "wrong status line: #{str.dump}"
+  m.captures
+end
+
+# HTTPResponse.response_class (lib/net/http/response.rb)
+
+def response_class(code)
+  CODE_TO_OBJ[code] or            # Net::HTTPResponse::CODE_TO_OBJとして定義されている
+  CODE_CLASS_TO_OBJ[code[0,1]] or # Net::HTTPResponse::CODE_CLASS_TO_OBJとして定義されている
+  Net::HTTPUnknownResponse
+end
+
+# HTTPResponse.each_response_header (lib/net/http/response.rb)
+
+def each_response_header(sock)
+  key = value = nil
+
+  while true
+    line = sock.readuntil("\n", true).sub(/\s+\z/, '')
+
+    break if line.empty?
+
+    if line[0] == ?\s or line[0] == ?\t and value
+      value << ' ' unless value.empty?
+      value << line.strip
+    else
+      yield key, value if key
+      key, value = line.strip.split(/\s*:\s*/, 2)
+      raise Net::HTTPBadResponse, 'wrong header line format' if value.nil?
+    end
+  end
+
+  yield key, value if key
+end
+
+# HTTPHeader#add_field (lib/net/http/header.rb)
+
+def add_field(key, val)
+  stringified_downcased_key = key.downcase.to_s
+
+  if @header.key?(stringified_downcased_key)
+    append_field_value(@header[stringified_downcased_key], val) # => HTTPHeader#append_field_value
+  else
+    set_field(key, val) # => HTTPHeader#set_field
+  end
+end
+
+# HTTPHeader#append_field_value (lib/net/http/header.rb)
+
+def append_field_value(ary, val)
+  case val
+  when Enumerable
+    val.each{ |x| append_field_value(ary, x) } # => HTTPHeader#append_field_value
+  else
+    val = val.to_s
+    raise ArgumentError, 'header field value cannot include CR/LF' if /[\r\n]/n.match?(val.b)
+    ary.push val
+  end
+end
+
+# HTTPHeader#set_field (lib/net/http/header.rb)
+
+def set_field(key, val)
+  case val
+  when Enumerable
+    ary = []
+    append_field_value(ary, val) # => HTTPHeader#append_field_value
+    @header[key.downcase.to_s] = ary
+  else
+    val = val.to_s # for compatibility use to_s instead of to_str
+    raise ArgumentError, 'header field value cannot include CR/LF' if val.b.count("\r\n") > 0
+    @header[key.downcase.to_s] = [val]
+  end
+end
+
 # HTTPResponse#reading_body (lib/net/http/response.rb)
 
+# WIP ここから
 def reading_body(sock, reqmethodallowbody)  #:nodoc: internal use only
   @socket = sock
   @body_exist = reqmethodallowbody && self.class.body_permitted?
+
   begin
     yield
     self.body   # ensure to read body
