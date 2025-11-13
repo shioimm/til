@@ -24,6 +24,9 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
               - `HTTPGenericRequest#supply_default_content_type`
               - `HTTPGenericRequest#write_header`
               - `IO.copy_stream`
+            - `HTTPGenericRequest#send_request_with_body_data`
+              - `HTTPGenericRequest#write_header`
+            - `HTTPGenericRequest#write_header`
           - `HTTPResponse.read_new`
           - `HTTPResponse#reading_body`
           = `HTTP#end_transport`
@@ -426,19 +429,6 @@ def request(req, body = nil, &block)
 
   req.set_body_internal(body) # => HTTPGenericRequest#set_body_internal
 
-  # HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
-  #   def set_body_internal(str)
-  #     raise ArgumentError, "both of body argument and HTTPRequest#body set" if str and (@body or @body_stream)
-  #     # どういう状況?と思ったらHTTPGenericRequest#body=もしくは#body_stream=で値がセットされていることがあるらしい
-  #     # 柔軟すぎでは????
-  #
-  #     self.body = str if str
-  #
-  #     if @body.nil? && @body_stream.nil? && @body_data.nil? && request_body_permitted?
-  #       self.body = ''
-  #     end
-  #   end
-
   res = transport_request(req, &block) # => HTTP#transport_request
 
   if sspi_auth?(res) # => HTTP#sspi_auth?
@@ -465,6 +455,30 @@ def request(req, body = nil, &block)
   end
 
   res
+end
+
+
+# HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
+
+def set_body_internal(str)
+  raise ArgumentError, "both of body argument and HTTPRequest#body set" if str and (@body or @body_stream)
+  # どういう状況?と思ったらHTTPGenericRequest#body=もしくは#body_stream=で値がセットされていることがあるらしい
+  # 柔軟すぎでは????
+
+  self.body = str if str # => HTTPGenericRequest#body=
+
+  if @body.nil? && @body_stream.nil? && @body_data.nil? && request_body_permitted?
+    self.body = '' # => HTTPGenericRequest#body=
+  end
+end
+
+# HTTPGenericRequest#body= (lib/net/http/generic_request.rb)
+
+def body=(str)
+  @body = str
+  @body_stream = nil
+  @body_data = nil
+  str
 end
 
 # HTTP#transport_request (lib/net/http.rb)
@@ -619,14 +633,13 @@ end
 
 # HTTPGenericRequest#exec (lib/net/http/generic_request.rb)
 
-def exec(sock, ver, path)   #:nodoc: internal use only
-  if @body
+def exec(sock, ver, path)
+  if @body # HTTPGenericRequest#set_body_internalか、外部からHTTPGenericRequest#body=が呼ばれた場合
     send_request_with_body sock, ver, path, @body # => HTTPGenericRequest#send_request_with_body
-  elsif @body_stream
+  elsif @body_stream # 外部からHTTPGenericRequest#body_stream=が呼ばれた場合。ボディがIOストリーム
     send_request_with_body_stream sock, ver, path, @body_stream # => HTTPGenericRequest#send_request_with_body_stream
-  elsif @body_data
-    # WIP ここから続き
-    send_request_with_body_data sock, ver, path, @body_data
+  elsif @body_data # よくわからない
+    send_request_with_body_data sock, ver, path, @body_data # => HTTPGenericRequest#send_request_with_body_data
   else
     write_header sock, ver, path # => HTTPGenericRequest#write_header
   end
@@ -728,6 +741,37 @@ def send_request_with_body_stream(sock, ver, path, f)
     chunker.finish
   else
     IO.copy_stream(f, sock)
+  end
+end
+
+# HTTPGenericRequest#send_request_with_body_data (lib/net/http/generic_request.rb)
+
+def send_request_with_body_data(sock, ver, path, params)
+  if /\Amultipart\/form-data\z/i !~ self.content_type
+    self.content_type = 'application/x-www-form-urlencoded'
+    return send_request_with_body(sock, ver, path, URI.encode_www_form(params))
+    # => HTTPGenericRequest#send_request_with_body
+  end
+
+  opt = @form_option.dup
+  require 'securerandom' unless defined?(SecureRandom)
+  opt[:boundary] ||= SecureRandom.urlsafe_base64(40)
+  self.set_content_type(self.content_type, boundary: opt[:boundary])
+
+  if chunked?
+    write_header sock, ver, path # => HTTPGenericRequest#write_header
+    encode_multipart_form_data(sock, params, opt)
+  else
+    require 'tempfile'
+    file = Tempfile.new('multipart')
+    file.binmode
+    encode_multipart_form_data(file, params, opt)
+    file.rewind
+    self.content_length = file.size
+
+    write_header sock, ver, path # => HTTPGenericRequest#write_header
+    IO.copy_stream(file, sock)
+    file.close(true)
   end
 end
 
