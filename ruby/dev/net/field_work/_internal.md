@@ -33,6 +33,9 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
             - `HTTPResponse.each_response_header`
               - `HTTPHeader#add_field`
           - `HTTPResponse#reading_body` WIP
+            - `HTTPResponse#body`
+              - `HTTPResponse#read_body`
+                - `HTTPResponse#read_body_0`
           - `HTTP#end_transport`
 
 ### 気づいたこと
@@ -897,16 +900,78 @@ end
 
 # HTTPResponse#reading_body (lib/net/http/response.rb)
 
-# WIP ここから
-def reading_body(sock, reqmethodallowbody)  #:nodoc: internal use only
-  @socket = sock
+def reading_body(sock, reqmethodallowbody)
+  @socket = sock # ここで再代入しているのはensureで初期化するから?
   @body_exist = reqmethodallowbody && self.class.body_permitted?
 
   begin
     yield
-    self.body   # ensure to read body
+    self.body # => HTTPResponse##body
   ensure
     @socket = nil
+  end
+end
+
+# HTTPResponse#body (lib/net/http/response.rb)
+
+def body
+  read_body() # => HTTPResponse#read_body
+end
+
+# HTTPResponse#read_body (lib/net/http/response.rb)
+
+def read_body(dest = nil, &block)
+  if @read
+    raise IOError, "#{self.class}\#read_body called twice" if dest or block
+    return @body
+  end
+  to = procdest(dest, block)
+  stream_check
+  if @body_exist
+    read_body_0 to
+    @body = to
+  else
+    @body = nil
+  end
+  @read = true
+  return if @body.nil?
+
+  case enc = @body_encoding
+  when Encoding, false, nil
+    # Encoding: force given encoding
+    # false/nil: do not force encoding
+  else
+    # other value: detect encoding from body
+    enc = detect_encoding(@body)
+  end
+
+  @body.force_encoding(enc) if enc
+
+  @body
+end
+
+# HTTPResponse#read_body_0 (lib/net/http/response.rb)
+
+def read_body_0(dest)
+  inflater do |inflate_body_io|
+    if chunked?
+      read_chunked dest, inflate_body_io
+      return
+    end
+
+    @socket = inflate_body_io
+
+    clen = content_length()
+    if clen
+      @socket.read clen, dest, @ignore_eof
+      return
+    end
+    clen = range_length()
+    if clen
+      @socket.read clen, dest
+      return
+    end
+    @socket.read_all dest
   end
 end
 
