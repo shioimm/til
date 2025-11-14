@@ -12,13 +12,28 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
         - `HTTPHeader#initialize_http_header`
       - `HTTP#request` public
         - `HTTPGenericRequest#set_body_internal`
-        - `HTTP#transport_request`
+        - `HTTP#transport_request` WIP
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri`
-          - `HTTPGenericRequest#exec` WIP
+          - `HTTPGenericRequest#exec`
+            - `HTTPGenericRequest#send_request_with_body`
+              - `HTTPGenericRequest#supply_default_content_type`
+              - `HTTPGenericRequest#write_header`
+              - `sock.write`
+            - `HTTPGenericRequest#send_request_with_body_stream`
+              - `HTTPGenericRequest#supply_default_content_type`
+              - `HTTPGenericRequest#write_header`
+              - `IO.copy_stream`
+            - `HTTPGenericRequest#send_request_with_body_data`
+              - `HTTPGenericRequest#write_header`
+            - `HTTPGenericRequest#write_header`
           - `HTTPResponse.read_new`
-          - `HTTPResponse#reading_body`
-          = `HTTP#end_transport`
+            - `HTTPResponse.read_status_line`
+            - `HTTPResponse.response_class`
+            - `HTTPResponse.each_response_header`
+              - `HTTPHeader#add_field`
+          - `HTTPResponse#reading_body` WIP
+          - `HTTP#end_transport`
 
 ### 気づいたこと
 - すでにresolvライブラリに依存している
@@ -418,19 +433,6 @@ def request(req, body = nil, &block)
 
   req.set_body_internal(body) # => HTTPGenericRequest#set_body_internal
 
-  # HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
-  #   def set_body_internal(str)
-  #     raise ArgumentError, "both of body argument and HTTPRequest#body set" if str and (@body or @body_stream)
-  #     # どういう状況?と思ったらHTTPGenericRequest#body=もしくは#body_stream=で値がセットされていることがあるらしい
-  #     # 柔軟すぎでは????
-  #
-  #     self.body = str if str
-  #
-  #     if @body.nil? && @body_stream.nil? && @body_data.nil? && request_body_permitted?
-  #       self.body = ''
-  #     end
-  #   end
-
   res = transport_request(req, &block) # => HTTP#transport_request
 
   if sspi_auth?(res) # => HTTP#sspi_auth?
@@ -457,6 +459,30 @@ def request(req, body = nil, &block)
   end
 
   res
+end
+
+
+# HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
+
+def set_body_internal(str)
+  raise ArgumentError, "both of body argument and HTTPRequest#body set" if str and (@body or @body_stream)
+  # どういう状況?と思ったらHTTPGenericRequest#body=もしくは#body_stream=で値がセットされていることがあるらしい
+  # 柔軟すぎでは????
+
+  self.body = str if str # => HTTPGenericRequest#body=
+
+  if @body.nil? && @body_stream.nil? && @body_data.nil? && request_body_permitted?
+    self.body = '' # => HTTPGenericRequest#body=
+  end
+end
+
+# HTTPGenericRequest#body= (lib/net/http/generic_request.rb)
+
+def body=(str)
+  @body = str
+  @body_stream = nil
+  @body_data = nil
+  str
 end
 
 # HTTP#transport_request (lib/net/http.rb)
@@ -610,86 +636,272 @@ def update_uri(addr, port, ssl)
 end
 
 # HTTPGenericRequest#exec (lib/net/http/generic_request.rb)
-# WIP ここから続き
 
-def exec(sock, ver, path)   #:nodoc: internal use only
-  if @body
-    send_request_with_body sock, ver, path, @body
-
-    # Net::HTTPGenericRequest#send_request_with_body
-    # def send_request_with_body(sock, ver, path, body)
-    #   self.content_length = body.bytesize
-    #   delete 'Transfer-Encoding'
-    #   supply_default_content_type
-    #
-    #   write_header sock, ver, path
-    #   wait_for_continue sock, ver if sock.continue_timeout
-    #   sock.write body
-    # end
-
-  elsif @body_stream
-    send_request_with_body_stream sock, ver, path, @body_stream
-  elsif @body_data
-    send_request_with_body_data sock, ver, path, @body_data
+def exec(sock, ver, path)
+  if @body # HTTPGenericRequest#set_body_internalか、外部からHTTPGenericRequest#body=が呼ばれた場合
+    send_request_with_body sock, ver, path, @body # => HTTPGenericRequest#send_request_with_body
+  elsif @body_stream # 外部からHTTPGenericRequest#body_stream=が呼ばれた場合。ボディがIOストリーム
+    send_request_with_body_stream sock, ver, path, @body_stream # => HTTPGenericRequest#send_request_with_body_stream
+  elsif @body_data # よくわからない
+    send_request_with_body_data sock, ver, path, @body_data # => HTTPGenericRequest#send_request_with_body_data
   else
-    write_header sock, ver, path
-
-    # Net::HTTPGenericRequest#write_header
-    # def write_header(sock, ver, path)
-    #   reqline = "#{@method} #{path} HTTP/#{ver}"
-    #
-    #   if /[\r\n]/ =~ reqline
-    #     raise ArgumentError, "A Request-Line must not contain CR or LF"
-    #   end
-    #
-    #   buf = +''
-    #   buf << reqline << "\r\n"
-    #
-    #   each_capitalized do |k,v|
-    #     buf << "#{k}: #{v}\r\n"
-    #   end
-    #
-    #   buf << "\r\n"
-    #   sock.write buf
-    # end
+    write_header sock, ver, path # => HTTPGenericRequest#write_header
   end
+end
+
+# HTTPGenericRequest#send_request_with_body (lib/net/http/generic_request.rb)
+
+def send_request_with_body(sock, ver, path, body)
+  self.content_length = body.bytesize
+  delete 'Transfer-Encoding'
+  supply_default_content_type # => HTTPGenericRequest#supply_default_content_type
+  write_header sock, ver, path # => HTTPGenericRequest#write_header
+  wait_for_continue sock, ver if sock.continue_timeout # => HTTPGenericRequest#wait_for_continue
+  sock.write body
+end
+
+# HTTPGenericRequest#supply_default_content_type (lib/net/http/generic_request.rb)
+
+def supply_default_content_type
+  return if content_type() # => HTTPHeader#content_type
+  set_content_type 'application/x-www-form-urlencoded' # => HTTPHeader#set_content_type
+end
+
+# HTTPHeader#content_type (lib/net/http/header.rb)
+
+def content_type
+  main = main_type() # => HTTPHeader#main_type
+
+  # HTTPHeader#main_type (lib/net/http/header.rb)
+  #
+  #   def main_type
+  #     return nil unless @header['content-type']
+  #     self['Content-Type'].split(';').first.to_s.split('/')[0].to_s.strip
+  #   end
+
+  return nil unless main
+
+  sub = sub_type()
+
+  # HTTPHeader#sub_type (lib/net/http/header.rb)
+  #
+  #   def sub_type
+  #     return nil unless @header['content-type']
+  #     _, sub = *self['Content-Type'].split(';').first.to_s.split('/')
+  #     return nil unless sub
+  #     sub.strip
+  #   end
+
+  if sub
+    "#{main}/#{sub}"
+  else
+    main
+  end
+end
+
+# HTTPHeader#set_content_type (lib/net/http/header.rb)
+
+def set_content_type(type, params = {})
+  @header['content-type'] = [type + params.map{|k,v|"; #{k}=#{v}"}.join('')]
+end
+
+# HTTPGenericRequest#wait_for_continue (lib/net/http/generic_request.rb)
+
+def wait_for_continue(sock, ver)
+  if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
+    if sock.io.to_io.wait_readable(sock.continue_timeout)
+      res = Net::HTTPResponse.read_new(sock)
+
+      unless res.kind_of?(Net::HTTPContinue)
+        res.decode_content = @decode_content
+        throw :response, res
+      end
+    end
+  end
+end
+
+# HTTPGenericRequest#send_request_with_body_stream (lib/net/http/generic_request.rb)
+
+def send_request_with_body_stream(sock, ver, path, f)
+  unless content_length() or chunked?
+    raise ArgumentError, "Content-Length not given and Transfer-Encoding is not `chunked'"
+  end
+
+  supply_default_content_type # => HTTPGenericRequest#supply_default_content_type
+  write_header sock, ver, path # => HTTPGenericRequest#write_header
+  wait_for_continue sock, ver if sock.continue_timeout # => HTTPGenericRequest#wait_for_continue
+
+  if chunked?
+    # HTTPHeader#chunked? (lib/net/http/header.rb)
+    #
+    #   def chunked?
+    #     return false unless @header['transfer-encoding']
+    #     field = self['Transfer-Encoding']
+    #     (/(?:\A|[^\-\w])chunked(?![\-\w])/i =~ field) ? true : false
+    #   end
+
+    chunker = Chunker.new(sock)
+    IO.copy_stream(f, chunker)
+    chunker.finish
+  else
+    IO.copy_stream(f, sock)
+  end
+end
+
+# HTTPGenericRequest#send_request_with_body_data (lib/net/http/generic_request.rb)
+
+def send_request_with_body_data(sock, ver, path, params)
+  if /\Amultipart\/form-data\z/i !~ self.content_type
+    self.content_type = 'application/x-www-form-urlencoded'
+    return send_request_with_body(sock, ver, path, URI.encode_www_form(params))
+    # => HTTPGenericRequest#send_request_with_body
+  end
+
+  opt = @form_option.dup
+  require 'securerandom' unless defined?(SecureRandom)
+  opt[:boundary] ||= SecureRandom.urlsafe_base64(40)
+  self.set_content_type(self.content_type, boundary: opt[:boundary])
+
+  if chunked?
+    write_header sock, ver, path # => HTTPGenericRequest#write_header
+    encode_multipart_form_data(sock, params, opt)
+  else
+    require 'tempfile'
+    file = Tempfile.new('multipart')
+    file.binmode
+    encode_multipart_form_data(file, params, opt)
+    file.rewind
+    self.content_length = file.size
+
+    write_header sock, ver, path # => HTTPGenericRequest#write_header
+    IO.copy_stream(file, sock)
+    file.close(true)
+  end
+end
+
+# HTTPGenericRequest#write_header (lib/net/http/generic_request.rb)
+
+def write_header(sock, ver, path)
+  reqline = "#{@method} #{path} HTTP/#{ver}"
+
+  if /[\r\n]/ =~ reqline
+    raise ArgumentError, "A Request-Line must not contain CR or LF"
+  end
+
+  buf = +''
+  buf << reqline << "\r\n"
+
+  each_capitalized do |k,v|
+    buf << "#{k}: #{v}\r\n"
+  end
+
+  buf << "\r\n"
+  sock.write buf
 end
 
 # HTTPResponse.read_new (lib/net/http/response.rb)
 
-def read_new(sock)   #:nodoc: internal use only
-  httpv, code, msg = read_status_line(sock)
+def read_new(sock)
+  # ステータスラインを取得
+  httpv, code, msg = read_status_line(sock) # => HTTPResponse.read_status_line
 
-  # HTTPResponse.read_status_line
-  # def read_status_line(sock)
-  #   str = sock.readline
-  #   m = /\AHTTP(?:\/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?\z/in.match(str) or
-  #     raise Net::HTTPBadResponse, "wrong status line: #{str.dump}"
-  #   m.captures
-  # end
+  # ここでレスポンスステータスごとにクラスが分かれている
+  res = response_class(code).new(httpv, code, msg) # => HTTPResponse.response_class
 
-  # ここでレスポンスステータスごとにクラスが分かれてしまっている
-  res = response_class(code).new(httpv, code, msg)
-
-  # HTTPResponse.response_class
-  # def response_class(code)
-  #   CODE_TO_OBJ[code] or            # Net::HTTPResponse::CODE_TO_OBJとして定義されている
-  #   CODE_CLASS_TO_OBJ[code[0,1]] or # Net::HTTPResponse::CODE_CLASS_TO_OBJとして定義されている
-  #   Net::HTTPUnknownResponse
-  # end
-
-  each_response_header(sock) do |k,v|
-    res.add_field k, v
+  each_response_header(sock) do |k,v| # => HTTPResponse.each_response_header
+    res.add_field k, v # => HTTPHeader#add_field
   end
 
   res
 end
 
+# HTTPResponse.read_status_line (lib/net/http/response.rb)
+
+def read_status_line(sock)
+  str = sock.readline
+  m = /\AHTTP(?:\/(\d+\.\d+))?\s+(\d\d\d)(?:\s+(.*))?\z/in.match(str) or
+    raise Net::HTTPBadResponse, "wrong status line: #{str.dump}"
+  m.captures
+end
+
+# HTTPResponse.response_class (lib/net/http/response.rb)
+
+def response_class(code)
+  CODE_TO_OBJ[code] or            # Net::HTTPResponse::CODE_TO_OBJとして定義されている
+  CODE_CLASS_TO_OBJ[code[0,1]] or # Net::HTTPResponse::CODE_CLASS_TO_OBJとして定義されている
+  Net::HTTPUnknownResponse
+end
+
+# HTTPResponse.each_response_header (lib/net/http/response.rb)
+
+def each_response_header(sock)
+  key = value = nil
+
+  while true
+    line = sock.readuntil("\n", true).sub(/\s+\z/, '')
+
+    break if line.empty?
+
+    if line[0] == ?\s or line[0] == ?\t and value
+      value << ' ' unless value.empty?
+      value << line.strip
+    else
+      yield key, value if key
+      key, value = line.strip.split(/\s*:\s*/, 2)
+      raise Net::HTTPBadResponse, 'wrong header line format' if value.nil?
+    end
+  end
+
+  yield key, value if key
+end
+
+# HTTPHeader#add_field (lib/net/http/header.rb)
+
+def add_field(key, val)
+  stringified_downcased_key = key.downcase.to_s
+
+  if @header.key?(stringified_downcased_key)
+    append_field_value(@header[stringified_downcased_key], val) # => HTTPHeader#append_field_value
+  else
+    set_field(key, val) # => HTTPHeader#set_field
+  end
+end
+
+# HTTPHeader#append_field_value (lib/net/http/header.rb)
+
+def append_field_value(ary, val)
+  case val
+  when Enumerable
+    val.each{ |x| append_field_value(ary, x) } # => HTTPHeader#append_field_value
+  else
+    val = val.to_s
+    raise ArgumentError, 'header field value cannot include CR/LF' if /[\r\n]/n.match?(val.b)
+    ary.push val
+  end
+end
+
+# HTTPHeader#set_field (lib/net/http/header.rb)
+
+def set_field(key, val)
+  case val
+  when Enumerable
+    ary = []
+    append_field_value(ary, val) # => HTTPHeader#append_field_value
+    @header[key.downcase.to_s] = ary
+  else
+    val = val.to_s # for compatibility use to_s instead of to_str
+    raise ArgumentError, 'header field value cannot include CR/LF' if val.b.count("\r\n") > 0
+    @header[key.downcase.to_s] = [val]
+  end
+end
+
 # HTTPResponse#reading_body (lib/net/http/response.rb)
 
+# WIP ここから
 def reading_body(sock, reqmethodallowbody)  #:nodoc: internal use only
   @socket = sock
   @body_exist = reqmethodallowbody && self.class.body_permitted?
+
   begin
     yield
     self.body   # ensure to read body
