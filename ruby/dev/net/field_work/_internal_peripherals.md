@@ -37,7 +37,7 @@ end
 ```ruby
 # (lib/net/protocol.rb)
 
-class BufferedIO   #:nodoc: internal use only
+class BufferedIO
   def initialize(io, read_timeout: 60, write_timeout: 60, continue_timeout: nil, debug_output: nil)
     @io = io
     @read_timeout = read_timeout
@@ -54,6 +54,20 @@ class BufferedIO   #:nodoc: internal use only
   attr_accessor :write_timeout
   attr_accessor :continue_timeout
   attr_accessor :debug_output
+
+  # ...
+end
+```
+
+## `Net::ReadAdapter`
+
+```ruby
+# (lib/net/protocol.rb)
+
+class ReadAdapter
+  def initialize(block)
+    @block = block
+  end
 
   # ...
 end
