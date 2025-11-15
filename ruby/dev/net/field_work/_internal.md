@@ -12,10 +12,10 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
         - `HTTPHeader#initialize_http_header`
       - `HTTP#request` public
         - `HTTPGenericRequest#set_body_internal`
-        - `HTTP#transport_request` WIP
+        - `HTTP#transport_request`
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri`
-          - `HTTPGenericRequest#exec`
+          - `HTTP::{{各HTTPメソッドを表すクラス}}#exec` -> `HTTPGenericRequest#exec`
             - `HTTPGenericRequest#send_request_with_body`
               - `HTTPGenericRequest#supply_default_content_type`
               - `HTTPGenericRequest#write_header`
@@ -32,14 +32,30 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
             - `HTTPResponse.response_class`
             - `HTTPResponse.each_response_header`
               - `HTTPHeader#add_field`
-          - `HTTPResponse#reading_body` WIP
+          - `HTTPResponse#reading_body`
             - `HTTPResponse#body`
               - `HTTPResponse#read_body`
                 - `HTTPResponse#read_body_0`
+                  - `HTTPResponse#inflater`
+                  - (圧縮あり) `HTTPResponse::Inflater#read` WIP
+                  - (圧縮あり) `HTTPResponse::Inflater#read_all` WIP
+                  - (圧縮なし) `Net::BufferedIO#read` WIP
+                  - (圧縮なし) `Net::BufferedIO#read_all` WIP
+                - `HTTPResponse#detect_encoding`
+                - `String#force_encoding`
           - `HTTP#end_transport`
 
 ### 気づいたこと
+- `HTTP#start` -> `HTTP#do_start` -> `HTTP#connect`で接続を行う
+- `HTTP#do_start`実行後に`HTTP#request`を呼び出す
+  - `HTTP#request`に`各HTTPメソッドを表すクラス`のオブジェクトを渡す
+  - `HTTP#request`
+    - -> `HTTP#transport_request`
+    - -> `HTTP#begin_transport`, `HTTP::{{各HTTPメソッドを表すクラス}}#exec` `HTTP#end_transport`
+- 返り値は各HTTPステータスを表すクラスのオブジェクトの場合が多い (`Net::HTTP.get`以外)
 - すでにresolvライブラリに依存している
+- べんりライブラリnet/protocolに依存している
+- パブリックなメソッドが多い、外から制御できる設定値も多い
 
 ## `HTTP.get`
 
@@ -191,12 +207,12 @@ def connect
 
       if @proxy_use_ssl # プロキシに対してTLSで接続
         proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
-        ssl_socket_connect(proxy_sock, @open_timeout) # このメソッドはどこに定義されているんだろ
+        ssl_socket_connect(proxy_sock, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
       else
         proxy_sock = s
       end
 
-      proxy_sock = BufferedIO.new(
+      proxy_sock = BufferedIO.new( # => Net::BufferedIO#initialize (lib/net/protocol.rb)
         proxy_sock,
         read_timeout: @read_timeout,
         write_timeout: @write_timeout,
@@ -269,7 +285,7 @@ def connect
     end
 
     # オリジンサーバに対してTLSで接続
-    ssl_socket_connect(s, @open_timeout)
+    ssl_socket_connect(s, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
 
     if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
       s.post_connection_check(@address)
@@ -279,7 +295,7 @@ def connect
   end
   # --- TLS接続ここまで ---
 
-  @socket = BufferedIO.new(
+  @socket = BufferedIO.new( # => Net::BufferedIO#initialize (lib/net/protocol.rb)
     s, # TCPもしくはTLSで接続確立したソケット
     read_timeout: @read_timeout,
     write_timeout: @write_timeout,
@@ -317,8 +333,8 @@ end
 
 def initialize(path, initheader = nil)
   super self.class::METHOD,
-        self.class::REQUEST_HAS_BODY,
-        self.class::RESPONSE_HAS_BODY,
+        self.class::REQUEST_HAS_BODY,  # リクエストメソッド別クラスごとにtrue / falseで定義されていた...
+        self.class::RESPONSE_HAS_BODY, # こっちも...
         path, initheader
 end
 
@@ -352,16 +368,15 @@ end
 
     @decode_content = false
 
-    if Net::HTTP::HAVE_ZLIB then
-      if !initheader ||
-         !initheader.keys.any? { |k|
-           %w[accept-encoding range].include? k.downcase
-         } then
-        @decode_content = true if @response_has_body
-
-        initheader = initheader ? initheader.dup : {}
-        initheader["accept-encoding"] = "gzip;q=1.0,deflate;q=0.6,identity;q=0.3"
-      end
+    # zlibがある環境、かつ実行時に外部からヘッダが指定されていないかAccept-EncodingかRangeを設定していない場合
+    if Net::HTTP::HAVE_ZLIB && (
+      !initheader ||
+      !initheader.keys.any? { |k| %w[accept-encoding range].include? k.downcase }
+    )
+      @decode_content = true if @response_has_body
+      initheader = initheader ? initheader.dup : {}
+      # Accept-Encoding: gzip, deflate, identityを自動で付与し、受信時に解凍できるようにする
+      initheader["accept-encoding"] = "gzip;q=1.0,deflate;q=0.6,identity;q=0.3"
     end
 
     initialize_http_header initheader # => HTTPHeader#initialize_http_header
@@ -716,7 +731,7 @@ def wait_for_continue(sock, ver)
       res = Net::HTTPResponse.read_new(sock)
 
       unless res.kind_of?(Net::HTTPContinue)
-        res.decode_content = @decode_content
+        res.decode_content = @decode_content # => HTTPResponseインスタンスの@decode_contentに対する設定
         throw :response, res
       end
     end
@@ -906,7 +921,7 @@ def reading_body(sock, reqmethodallowbody)
 
   begin
     yield
-    self.body # => HTTPResponse##body
+    self.body # => HTTPResponse#body
   ensure
     @socket = nil
   end
@@ -920,19 +935,41 @@ end
 
 # HTTPResponse#read_body (lib/net/http/response.rb)
 
-def read_body(dest = nil, &block)
+def read_body(dest = nil, &block) # HTTPResponse#bodyから呼び出している場合、引数は空になる
   if @read
     raise IOError, "#{self.class}\#read_body called twice" if dest or block
     return @body
   end
-  to = procdest(dest, block)
-  stream_check
+
+  to = procdest(dest, block) # => HTTPResponse#procdest
+
+  # HTTPResponse#procdest (lib/net/http/response.rb)
+  #
+  #   def procdest(dest, block)
+  #     raise ArgumentError, 'both arg and block given for HTTP method' if dest and block
+  #
+  #     if block
+  #       Net::ReadAdapter.new(block)
+  #     else
+  #       dest || +'' # # HTTPResponse#read_bodyから呼び出している場合は空文字を返す
+  #     end
+  #   end
+
+  stream_check # => HTTPResponse#stream_check
+
+  # HTTPResponse#stream_check (lib/net/http/response.rb)
+  #
+  #   def stream_check
+  #     raise IOError, 'attempt to read body out of block' if @socket.nil? || @socket.closed?
+  #   end
+
   if @body_exist
-    read_body_0 to
+    read_body_0 to # => HTTPResponse#read_body_0
     @body = to
   else
     @body = nil
   end
+
   @read = true
   return if @body.nil?
 
@@ -942,44 +979,165 @@ def read_body(dest = nil, &block)
     # false/nil: do not force encoding
   else
     # other value: detect encoding from body
-    enc = detect_encoding(@body)
+    enc = detect_encoding(@body) # => HTTPResponse#detect_encoding
   end
 
-  @body.force_encoding(enc) if enc
-
+  @body.force_encoding(enc) if enc # => String#force_encoding
   @body
 end
 
 # HTTPResponse#read_body_0 (lib/net/http/response.rb)
 
 def read_body_0(dest)
-  inflater do |inflate_body_io|
+  inflater do |inflate_body_io| # => HTTPResponse#inflater
     if chunked?
-      read_chunked dest, inflate_body_io
+      read_chunked dest, inflate_body_io # => HTTPResponse#read_chunked
       return
     end
 
+    # inflate_body_ioは解凍されたHTTPResponse::Inflaterインスタンス、もしくはそのままのNet::BufferedIOインスタンス
     @socket = inflate_body_io
+    clen = content_length() # => HTTPHeader#content_length
 
-    clen = content_length()
-    if clen
-      @socket.read clen, dest, @ignore_eof
+    if clen # Content-Lnegth分を読み取る
+      @socket.read clen, dest, @ignore_eof  # => HTTPResponse::Inflater#read, Net::BufferedIO#read
       return
     end
-    clen = range_length()
-    if clen
-      @socket.read clen, dest
+
+    clen = range_length() # => HTTPHeader#range_length
+
+    if clen # Range分を読み取る
+      @socket.read clen, dest # => HTTPResponse::Inflater#read, Net::BufferedIO#read
       return
     end
-    @socket.read_all dest
+
+    @socket.read_all dest # => HTTPResponse::Inflater#read_all, Net::BufferedIO#read_all
   end
+end
+
+# HTTPResponse#inflater (lib/net/http/response.rb)
+
+# レスポンスボディの圧縮を解除しているっぽい
+def inflater
+  # zlibがないので圧縮を扱えない場合
+  return yield @socket unless Net::HTTP::HAVE_ZLIB
+
+  # 実行時に外部からヘッダが指定されていない、またはAccept-EncodingかRangeを設定していない場合
+  return yield @socket unless @decode_content
+
+  # HTTPGenericRequest#initialize (lib/net/http/generic_request.rb)
+  #
+  #   if Net::HTTP::HAVE_ZLIB
+  #     if !initheader || !initheader.keys.any? { |k| %w[accept-encoding range].include? k.downcase }
+  #       # ここでHTTPGenericRequestインスタンスが@decode_contentを保持し、
+  #       @decode_content = true if @response_has_body
+  #       initheader = initheader ? initheader.dup : {}
+  #       initheader["accept-encoding"] = "gzip;q=1.0,deflate;q=0.6,identity;q=0.3"
+  #     end
+  #   end
+  #
+  # HTTPGenericRequest#wait_for_continue (lib/net/http/generic_request.rb)
+  #
+  #   if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
+  #     if sock.io.to_io.wait_readable(sock.continue_timeout)
+  #       res = Net::HTTPResponse.read_new(sock)
+  #
+  #       unless res.kind_of?(Net::HTTPContinue)
+  #         # ここでHTTPResponseインスタンスのdecode_contentに書き戻す
+  #         res.decode_content = @decode_content
+  #         throw :response, res
+  #       end
+  #     end
+  #   end
+  #
+  # この時点で@decode_contentがfalse (初期状態) になっているものはここで return yield @socket される
+
+  # Content-Rangeレスポンスヘッダがある場合
+  return yield @socket if self['content-range']
+
+  v = self['content-encoding']
+
+  # Content-Encodingレスポンスヘッダの値によって解凍したボディや何もしていないボディを利用して読み込み処理を進める
+  case v&.downcase
+  when 'deflate', 'gzip', 'x-gzip' then
+    self.delete 'content-encoding'
+    inflate_body_io = Inflater.new(@socket) # HTTPResponse::Inflater 圧縮されたストリームを逐次解凍するためのラッパ
+
+    begin
+      yield inflate_body_io
+      success = true
+    ensure
+      begin
+        inflate_body_io.finish
+        if self['content-length']
+          self['content-length'] = inflate_body_io.bytes_inflated.to_s
+        end
+      rescue => err
+        # Ignore #finish's error if there is an exception from yield
+        raise err if success
+      end
+    end
+  when 'none', 'identity' then
+    self.delete 'content-encoding'
+    yield @socket
+  else
+    yield @socket
+  end
+end
+
+# HTTPResponse#read_chunked (lib/net/http/response.rb)
+
+def read_chunked(dest, chunk_data_io)
+  total = 0
+
+  while true
+    line = @socket.readline
+    hexlen = line.slice(/[0-9a-fA-F]+/) or raise Net::HTTPBadResponse, "wrong chunk size line: #{line}"
+    len = hexlen.hex
+    break if len == 0
+
+    begin
+      chunk_data_io.read len, dest
+    ensure
+      total += len
+      @socket.read 2   # \r\n
+    end
+  end
+
+  until @socket.readline.empty?
+    # none
+  end
+end
+
+# HTTPResponse#detect_encoding (lib/net/http/response.rb)
+
+def detect_encoding(str, encoding=nil)
+  if encoding
+  elsif encoding = type_params['charset']
+  elsif encoding = check_bom(str)
+  else
+    encoding = case content_type&.downcase
+               when %r{text/x(?:ht)?ml|application/(?:[^+]+\+)?xml}
+                 /\A<xml[ \t\r\n]+
+                   version[ \t\r\n]*=[ \t\r\n]*(?:"[0-9.]+"|'[0-9.]*')[ \t\r\n]+
+                   encoding[ \t\r\n]*=[ \t\r\n]*
+                   (?:"([A-Za-z][\-A-Za-z0-9._]*)"|'([A-Za-z][\-A-Za-z0-9._]*)')/x =~ str
+                 encoding = $1 || $2 || Encoding::UTF_8
+               when %r{text/html.*}
+                 sniff_encoding(str)
+               end
+  end
+
+  return encoding
 end
 
 # HTTP#end_transport (lib/net/http.rb)
 
+# 最後にソケットをクローズしたり、再利用のためのセットアップをしたりする
 def end_transport(req, res)
   @curr_http_version = res.http_version
   @last_communicated = nil
+
   if @socket.closed?
     debug 'Conn socket closed'
   elsif not res.body and @close_on_empty_response
@@ -1041,13 +1199,3 @@ def HTTP.post_form(url, params)
   }
 end
 ```
-
----
-
-### わかったこと
-- `Net::HTTP#start` -> `Net::HTTP#do_start` -> `Net::HTTP#connect`で接続を行う
-- `Net::HTTP#do_start`実行後に`Net::HTTP#request`を呼び出す
-  - `Net::HTTP#request`にHTTPメソッドを表すクラスのオブジェクトを渡す
-  - `Net::HTTP#request` -> `Net::HTTP#transport_request` -> HTTPメソッドを表すオブジェクトに対して`#exec`
-- 基本的にはHTTPステータスを表すクラスのオブジェクトが返り値になる (`Net::HTTP.get`以外)
-- 毎リクエストごとに接続し、書き込みを行う
