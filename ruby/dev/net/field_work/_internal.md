@@ -37,8 +37,10 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
               - `HTTPResponse#read_body`
                 - `HTTPResponse#read_body_0`
                   - `HTTPResponse#inflater`
-                  - (圧縮あり) `HTTPResponse::Inflater#read`
-                  - (圧縮なし) `Net::BufferedIO#read`
+                  - (圧縮あり) `HTTPResponse::Inflater#read` WIP
+                  - (圧縮あり) `HTTPResponse::Inflater#read_all` WIP
+                  - (圧縮なし) `Net::BufferedIO#read` WIP
+                  - (圧縮なし) `Net::BufferedIO#read_all` WIP
                 - `HTTPResponse#detect_encoding`
                 - `String#force_encoding`
           - `HTTP#end_transport`
