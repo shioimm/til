@@ -15,7 +15,7 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
         - `HTTP#transport_request`
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri`
-          - `HTTPGenericRequest#exec`
+          - `HTTP::{{各HTTPメソッドを表すクラス}}#exec` -> `HTTPGenericRequest#exec`
             - `HTTPGenericRequest#send_request_with_body`
               - `HTTPGenericRequest#supply_default_content_type`
               - `HTTPGenericRequest#write_header`
@@ -44,14 +44,16 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
           - `HTTP#end_transport`
 
 ### 気づいたこと
-- `Net::HTTP#start` -> `Net::HTTP#do_start` -> `Net::HTTP#connect`で接続を行う
-- `Net::HTTP#do_start`実行後に`Net::HTTP#request`を呼び出す
-  - `Net::HTTP#request`にHTTPメソッドを表すクラスのオブジェクトを渡す
-  - `Net::HTTP#request` -> `Net::HTTP#transport_request` -> HTTPメソッドを表すオブジェクトに対して`#exec`
-- 基本的にはHTTPステータスを表すクラスのオブジェクトが返り値になる (`Net::HTTP.get`以外)
-- 毎リクエストごとに接続し、書き込みを行う
+- `HTTP#start` -> `HTTP#do_start` -> `HTTP#connect`で接続を行う
+- `HTTP#do_start`実行後に`HTTP#request`を呼び出す
+  - `HTTP#request`に`各HTTPメソッドを表すクラス`のオブジェクトを渡す
+  - `HTTP#request`
+    - -> `HTTP#transport_request`
+    - -> `HTTP#begin_transport`, `HTTP::{{各HTTPメソッドを表すクラス}}#exec` `HTTP#end_transport`
+- 返り値は各HTTPステータスを表すクラスのオブジェクトの場合が多い (`Net::HTTP.get`以外)
 - すでにresolvライブラリに依存している
-- べんりライブラリnet/protocolに依存していた
+- べんりライブラリnet/protocolに依存している
+- パブリックなメソッドが多い、外から制御できる設定値も多い
 
 ## `HTTP.get`
 
@@ -1129,9 +1131,11 @@ end
 
 # HTTP#end_transport (lib/net/http.rb)
 
+# 最後にソケットをクローズしたり、再利用のためのセットアップをしたりする
 def end_transport(req, res)
   @curr_http_version = res.http_version
   @last_communicated = nil
+
   if @socket.closed?
     debug 'Conn socket closed'
   elsif not res.body and @close_on_empty_response
