@@ -36,6 +36,9 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
             - `HTTPResponse#body`
               - `HTTPResponse#read_body`
                 - `HTTPResponse#read_body_0`
+                  - `HTTPResponse#inflater`
+                - `HTTPResponse#detect_encoding`
+                - `String#force_encoding`
           - `HTTP#end_transport`
 
 ### 気づいたこと
@@ -906,7 +909,7 @@ def reading_body(sock, reqmethodallowbody)
 
   begin
     yield
-    self.body # => HTTPResponse##body
+    self.body # => HTTPResponse#body
   ensure
     @socket = nil
   end
@@ -920,19 +923,41 @@ end
 
 # HTTPResponse#read_body (lib/net/http/response.rb)
 
-def read_body(dest = nil, &block)
+def read_body(dest = nil, &block) # HTTPResponse#bodyから呼び出している場合、引数は空になる
   if @read
     raise IOError, "#{self.class}\#read_body called twice" if dest or block
     return @body
   end
-  to = procdest(dest, block)
-  stream_check
+
+  to = procdest(dest, block) # => HTTPResponse#procdest
+
+  # HTTPResponse#procdest (lib/net/http/response.rb)
+  #
+  #   def procdest(dest, block)
+  #     raise ArgumentError, 'both arg and block given for HTTP method' if dest and block
+  #
+  #     if block
+  #       Net::ReadAdapter.new(block)
+  #     else
+  #       dest || +'' # # HTTPResponse#read_bodyから呼び出している場合は空文字を返す
+  #     end
+  #   end
+
+  stream_check # => HTTPResponse#stream_check
+
+  # HTTPResponse#stream_check (lib/net/http/response.rb)
+  #
+  #   def stream_check
+  #     raise IOError, 'attempt to read body out of block' if @socket.nil? || @socket.closed?
+  #   end
+
   if @body_exist
-    read_body_0 to
+    read_body_0 to # => HTTPResponse#read_body_0
     @body = to
   else
     @body = nil
   end
+
   @read = true
   return if @body.nil?
 
@@ -942,18 +967,18 @@ def read_body(dest = nil, &block)
     # false/nil: do not force encoding
   else
     # other value: detect encoding from body
-    enc = detect_encoding(@body)
+    enc = detect_encoding(@body) # => HTTPResponse#detect_encoding
   end
 
-  @body.force_encoding(enc) if enc
-
+  @body.force_encoding(enc) if enc # => String#force_encoding
   @body
 end
 
 # HTTPResponse#read_body_0 (lib/net/http/response.rb)
 
+# WIP ここから続き
 def read_body_0(dest)
-  inflater do |inflate_body_io|
+  inflater do |inflate_body_io| # => HTTPResponse#inflater
     if chunked?
       read_chunked dest, inflate_body_io
       return
@@ -973,6 +998,65 @@ def read_body_0(dest)
     end
     @socket.read_all dest
   end
+end
+
+# HTTPResponse#inflater (lib/net/http/response.rb)
+
+def inflater
+  return yield @socket unless Net::HTTP::HAVE_ZLIB
+  return yield @socket unless @decode_content
+  return yield @socket if self['content-range']
+
+  v = self['content-encoding']
+  case v&.downcase
+  when 'deflate', 'gzip', 'x-gzip' then
+    self.delete 'content-encoding'
+
+    inflate_body_io = Inflater.new(@socket)
+
+    begin
+      yield inflate_body_io
+      success = true
+    ensure
+      begin
+        inflate_body_io.finish
+        if self['content-length']
+          self['content-length'] = inflate_body_io.bytes_inflated.to_s
+        end
+      rescue => err
+        # Ignore #finish's error if there is an exception from yield
+        raise err if success
+      end
+    end
+  when 'none', 'identity' then
+    self.delete 'content-encoding'
+
+    yield @socket
+  else
+    yield @socket
+  end
+end
+
+# HTTPResponse#detect_encoding (lib/net/http/response.rb)
+
+def detect_encoding(str, encoding=nil)
+  if encoding
+  elsif encoding = type_params['charset']
+  elsif encoding = check_bom(str)
+  else
+    encoding = case content_type&.downcase
+               when %r{text/x(?:ht)?ml|application/(?:[^+]+\+)?xml}
+                 /\A<xml[ \t\r\n]+
+                   version[ \t\r\n]*=[ \t\r\n]*(?:"[0-9.]+"|'[0-9.]*')[ \t\r\n]+
+                   encoding[ \t\r\n]*=[ \t\r\n]*
+                   (?:"([A-Za-z][\-A-Za-z0-9._]*)"|'([A-Za-z][\-A-Za-z0-9._]*)')/x =~ str
+                 encoding = $1 || $2 || Encoding::UTF_8
+               when %r{text/html.*}
+                 sniff_encoding(str)
+               end
+  end
+
+  return encoding
 end
 
 # HTTP#end_transport (lib/net/http.rb)
