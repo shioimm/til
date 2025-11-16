@@ -37,7 +37,8 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
               - `HTTPResponse#read_body`
                 - `HTTPResponse#read_body_0`
                   - `HTTPResponse#inflater`
-                  - (圧縮あり) `HTTPResponse::Inflater#read` WIP
+                  - (圧縮あり) `HTTPResponse::Inflater#read`
+                    - `HTTPResponse::Inflater#inflate_adapter`
                   - (圧縮あり) `HTTPResponse::Inflater#read_all` WIP
                   - (圧縮なし) `Net::BufferedIO#read` WIP
                   - (圧縮なし) `Net::BufferedIO#read_all` WIP
@@ -1153,7 +1154,48 @@ def end_transport(req, res)
 end
 ```
 
-### `HTTP.post`
+## `HTTPResponse::Inflater`
+
+```ruby
+# (lib/net/http/response.rb)
+
+class Inflater
+  def initialize(socket)
+    @socket = socket # Net::BufferedIOインスタンス
+    # zlib with automatic gzip detection
+    @inflate = Zlib::Inflate.new(32 + Zlib::MAX_WBITS)
+  end
+
+  # HTTPResponse::Inflater#read (lib/net/http/response.rb)
+
+  def read(clen, dest, ignore_eof = false)
+    temp_dest = inflate_adapter(dest) # => HTTPResponse::Inflater#inflate_adapter
+
+    @socket.read(clen, temp_dest, ignore_eof)
+  end
+
+  # HTTPResponse::Inflater#inflate_adapter (lib/net/http/response.rb)
+
+  def inflate_adapter(dest) # destが空文字の可能性あり
+    if dest.respond_to?(:set_encoding)
+      dest.set_encoding(Encoding::ASCII_8BIT)
+    elsif dest.respond_to?(:force_encoding)
+      dest.force_encoding(Encoding::ASCII_8BIT)
+    end
+
+    block = proc do |compressed_chunk|
+      @inflate.inflate(compressed_chunk) do |chunk| # => Zlib::Inflate#inflate 入力データを展開
+        compressed_chunk.clear
+        dest << chunk
+      end
+    end
+
+    Net::ReadAdapter.new(block) # => Net::ReadAdapter#initialize (lib/net/protocol.rb)
+  end
+end
+```
+
+## `HTTP.post`
 
 ```ruby
 # url    = URI("https://httpbin.org/post")
