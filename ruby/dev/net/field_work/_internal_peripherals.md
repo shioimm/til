@@ -83,6 +83,28 @@ class BufferedIO
     dest
   end
 
+  # Net::BufferedIO#read_all (lib/net/protocol.rb)
+
+  def read_all(dest = ''.b)
+    LOG 'reading all...'
+    read_bytes = 0
+
+    begin
+      while true
+        if s = rbuf_consume_all # => Net::BufferedIO#rbuf_consume_all
+          read_bytes += s.bytesize
+          dest << s
+        end
+
+        rbuf_fill # 実際にバッファから読み込む => Net::BufferedIO#rbuf_fill
+      end
+    rescue EOFError
+      ;
+    end
+    LOG "read #{read_bytes} bytes"
+    dest
+  end
+
   # Net::BufferedIO#rbuf_size (lib/net/protocol.rb)
 
   def rbuf_size
