@@ -1715,7 +1715,7 @@ def addresses=(addrs)
 end
 
 def build_socket(addrs = nil)
-  # @typeはConnectionのinitialize時にinitialize_typeの呼び出しによって値が決まる
+  # @typeはConnection#initialize時にConnection#initialize_typeを呼び出し、uri.schemeによって値が決まる
   case @type
   when "tcp"
     TCP.new(peer, addrs, @options) # => TCP#initialize
