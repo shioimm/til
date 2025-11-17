@@ -39,7 +39,10 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
                   - `HTTPResponse#inflater`
                   - (圧縮あり) `HTTPResponse::Inflater#read`
                     - `HTTPResponse::Inflater#inflate_adapter`
-                  - (圧縮あり) `HTTPResponse::Inflater#read_all` WIP
+                    - `Net::BufferedIO#read` WIP
+                  - (圧縮あり) `HTTPResponse::Inflater#read_all`
+                    - `HTTPResponse::Inflater#inflate_adapter`
+                    - `Net::BufferedIO#read_all`
                   - (圧縮なし) `Net::BufferedIO#read` WIP
                   - (圧縮なし) `Net::BufferedIO#read_all` WIP
                 - `HTTPResponse#detect_encoding`
@@ -1171,7 +1174,15 @@ class Inflater
   def read(clen, dest, ignore_eof = false)
     temp_dest = inflate_adapter(dest) # => HTTPResponse::Inflater#inflate_adapter
 
-    @socket.read(clen, temp_dest, ignore_eof)
+    @socket.read(clen, temp_dest, ignore_eof) # => Net::BufferedIO#read (lib/net/protocol.rb)
+  end
+
+  # HTTPResponse::Inflater#read_all (lib/net/http/response.rb)
+
+  def read_all(dest)
+    temp_dest = inflate_adapter(dest) # => HTTPResponse::Inflater#inflate_adapter
+
+    @socket.read_all temp_dest # => Net::BufferedIO#read_all (lib/net/protocol.rb)
   end
 
   # HTTPResponse::Inflater#inflate_adapter (lib/net/http/response.rb)
