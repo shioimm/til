@@ -1,11 +1,8 @@
+# HTTP/1.1 (TLSなし)
+
+```ruby
 require "httpx"
 
-HOST1 = "http://example.com"
-HOST2 = "https://google.com"
-
-responses = HTTPX.get(HOST1)#, HOST2)
-p responses
-
 GEM_PATH= ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/gems/"
 
 TracePoint.trace(:call) do |tp|
@@ -14,20 +11,10 @@ TracePoint.trace(:call) do |tp|
   end
 end
 
-HTTPX.get(HOST1, ssl: { alpn_protocols: ["http/1.1"] })
+HTTPX.get("http://example.com")
+```
 
-__END__
-
-GEM_PATH= ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/gems/"
-
-TracePoint.trace(:call) do |tp|
-  if tp.path.include? "httpx"
-    p [tp.self.class, tp.defined_class, tp.method_id, "#{tp.path.gsub(GEM_PATH, "")}:#{tp.lineno}"]
-  end
-end
-
-HTTPX.get(HOST1)#, HOST2)
-
+```log
 === セットアップ ===
 
 [Module, HTTPX::Chainable, :get, "3.4.0/gems/httpx-1.4.3/lib/httpx/chainable.rb:9"]
@@ -99,6 +86,7 @@ HTTPX.get(HOST1)#, HOST2)
 [#<Class:0x000000010342abe0>, HTTPX::Request::Body, :initialize, "3.4.0/gems/httpx-1.4.3/lib/httpx/request/body.rb:28"]
 [Class, #<Class:HTTPX::Request::Body>, :initialize_body, "3.4.0/gems/httpx-1.4.3/lib/httpx/request/body.rb:125"]
 [HTTPX::Options, HTTPX::Options, :merge, "3.4.0/gems/httpx-1.4.3/lib/httpx/options.rb:254"]
+
 [HTTPX::Session, HTTPX::Session, :set_request_callbacks, "3.4.0/gems/httpx-1.4.3/lib/httpx/session.rb:274"]
 [#<Class:0x000000010342ae60>, HTTPX::Callbacks, :on, "3.4.0/gems/httpx-1.4.3/lib/httpx/callbacks.rb:5"]
 [#<Class:0x000000010342ae60>, HTTPX::Callbacks, :callbacks, "3.4.0/gems/httpx-1.4.3/lib/httpx/callbacks.rb:28"]
@@ -158,6 +146,7 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::Resolver::Native, HTTPX::Callbacks, :on, "3.4.0/gems/httpx-1.4.3/lib/httpx/callbacks.rb:5"]
 [HTTPX::Resolver::Native, HTTPX::Callbacks, :callbacks, "3.4.0/gems/httpx-1.4.3/lib/httpx/callbacks.rb:28"]
 [HTTPX::Buffer, HTTPX::Buffer, :initialize, "3.4.0/gems/httpx-1.4.3/lib/httpx/buffer.rb:33"]
+
 [HTTPX::Resolver::Multi, HTTPX::Resolver::Multi, :current_session=, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/multi.rb:33"]
 [HTTPX::Resolver::Multi, HTTPX::Resolver::Multi, :current_selector=, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/multi.rb:28"]
 [HTTPX::Resolver::Multi, HTTPX::Resolver::Multi, :early_resolve, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/multi.rb:62"]
@@ -169,6 +158,7 @@ HTTPX.get(HOST1)#, HOST2)
 [Module, #<Class:HTTPX::Utils>, :now, "3.4.0/gems/httpx-1.4.3/lib/httpx/utils.rb:14"]
 [Module, #<Class:HTTPX::Resolver>, :lookup_synchronize, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver.rb:153"]
 [Module, #<Class:HTTPX::Resolver>, :lookup, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver.rb:87"]
+
 [Module, #<Class:HTTPX::Resolver>, :system_resolve, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver.rb:46"]
 [HTTPX::Resolver::Multi, HTTPX::Resolver::Multi, :lazy_resolve, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/multi.rb:84"]
 [HTTPX::Session, HTTPX::Session, :try_clone_connection, "3.4.0/gems/httpx-1.4.3/lib/httpx/session.rb:159"]
@@ -183,6 +173,7 @@ HTTPX.get(HOST1)#, HOST2)
 [Module, #<Class:HTTPX::Resolver>, :generate_id, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver.rb:105"]
 [Module, #<Class:HTTPX::Resolver>, :id_synchronize, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver.rb:157"]
 [Module, #<Class:HTTPX::Resolver>, :encode_dns_query, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver.rb:109"]
+
 [HTTPX::Session, HTTPX::Session, :select_connection, "3.4.0/gems/httpx-1.4.3/lib/httpx/session.rb:126"]
 [HTTPX::Session, HTTPX::Session, :pin_connection, "3.4.0/gems/httpx-1.4.3/lib/httpx/session.rb:131"]
 [HTTPX::Selector, HTTPX::Selector, :register, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:106"]
@@ -195,6 +186,7 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::Selector, HTTPX::Selector, :next_tick, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:29"]
 [HTTPX::Selector, HTTPX::Selector, :next_timeout, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:191"]
 [HTTPX::Timers, HTTPX::Timers, :wait_interval, "3.4.0/gems/httpx-1.4.3/lib/httpx/timers.rb:32"]
+
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :timeout, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:88"]
 [Module, #<Class:HTTPX::Utils>, :now, "3.4.0/gems/httpx-1.4.3/lib/httpx/utils.rb:14"]
 [HTTPX::Selector, HTTPX::Selector, :select, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:114"]
@@ -207,6 +199,7 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::UDP, HTTPX::UDP, :connect, "3.4.0/gems/httpx-1.4.3/lib/httpx/io/udp.rb:20"]
 [HTTPX::UDP, HTTPX::UDP, :connected?, "3.4.0/gems/httpx-1.4.3/lib/httpx/io/udp.rb:22"]
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :calculate_interests, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:100"]
+
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :to_io, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:53"]
 [HTTPX::UDP, HTTPX::UDP, :to_io, "3.4.0/gems/httpx-1.4.3/lib/httpx/io/udp.rb:16"]
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :call, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:57"]
@@ -226,8 +219,10 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :calculate_interests, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:100"]
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :calculate_interests, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:100"]
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :dread, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:200"]
+
 [HTTPX::UDP, HTTPX::UDP, :read, "3.4.0/gems/httpx-1.4.3/lib/httpx/io/udp.rb:51"]
 [HTTPX::Resolver::Native, HTTPX::Resolver::Native, :calculate_interests, "3.4.0/gems/httpx-1.4.3/lib/httpx/resolver/native.rb:100"]
+
 [HTTPX::Timers, HTTPX::Timers, :fire, "3.4.0/gems/httpx-1.4.3/lib/httpx/timers.rb:40"]
 [HTTPX::Session, HTTPX::Session, :fetch_response, "3.4.0/gems/httpx-1.4.3/lib/httpx/session.rb:227"]
 [HTTPX::Selector, HTTPX::Selector, :next_tick, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:29"]
@@ -301,6 +296,7 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::Selector, HTTPX::Selector, :next_tick, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:29"]
 [HTTPX::Selector, HTTPX::Selector, :next_timeout, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:191"]
 [HTTPX::Timers, HTTPX::Timers, :wait_interval, "3.4.0/gems/httpx-1.4.3/lib/httpx/timers.rb:32"]
+
 [#<Class:0x000000010342a820>, HTTPX::Connection, :timeout, "3.4.0/gems/httpx-1.4.3/lib/httpx/connection.rb:308"]
 [HTTPX::Selector, HTTPX::Selector, :select, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:114"]
 [HTTPX::Selector, HTTPX::Selector, :select_one, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:165"]
@@ -547,6 +543,7 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::Connection::HTTP1, HTTPX::Loggable, :log, "3.4.0/gems/httpx-1.4.3/lib/httpx/loggable.rb:18"]
 [Class, #<Class:HTTPX::Headers>, :new, "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:6"]
 [#<Class:0x000000010342b040>, HTTPX::Headers, :initialize, "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:13"]
+
 [#<Class:0x000000010342b040>, HTTPX::Headers, :array_value, "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:162"]
 [#<Class:0x000000010342b040>, HTTPX::Headers, :downcased, "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:171"]
 [#<Class:0x000000010342b040>, HTTPX::Headers, :add, "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:90"]
@@ -589,6 +586,7 @@ HTTPX.get(HOST1)#, HOST2)
 [HTTPX::ContentType, HTTPX::ContentType, :charset, "3.4.0/gems/httpx-1.4.3/lib/httpx/response.rb:222"]
 [#<Class:0x000000010342aaa0>, HTTPX::Response::Body, :initialize_inflaters, "3.4.0/gems/httpx-1.4.3/lib/httpx/response/body.rb:181"]
 [#<Class:0x000000010342b040>, HTTPX::Headers, :key?, "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:148"]
+
 [#<Class:0x000000010342ad20>, HTTPX::Response, :complete?, "3.4.0/gems/httpx-1.4.3/lib/httpx/response.rb:123"]
 [#<Class:0x000000010342ad20>, HTTPX::Response, :bodyless?, "3.4.0/gems/httpx-1.4.3/lib/httpx/response.rb:110"]
 [#<Class:0x000000010342b040>, HTTPX::Headers, :[], "3.4.0/gems/httpx-1.4.3/lib/httpx/headers.rb:68"]
@@ -607,6 +605,7 @@ HTTPX.get(HOST1)#, HOST2)
 [#<Class:0x000000010342ad20>, HTTPX::Response, :<<, "3.4.0/gems/httpx-1.4.3/lib/httpx/response.rb:86"]
 [#<Class:0x000000010342aaa0>, HTTPX::Response::Body, :write, "3.4.0/gems/httpx-1.4.3/lib/httpx/response/body.rb:52"]
 [#<Class:0x000000010342aaa0>, HTTPX::Response::Body, :decode_chunk, "3.4.0/gems/httpx-1.4.3/lib/httpx/response/body.rb:203"]
+
 [#<Class:0x000000010342aaa0>, HTTPX::Response::Body, :transition, "3.4.0/gems/httpx-1.4.3/lib/httpx/response/body.rb:212"]
 [HTTPX::Response::Buffer, HTTPX::Response::Buffer, :initialize, "3.4.0/gems/httpx-1.4.3/lib/httpx/response/buffer.rb:12"]
 [HTTPX::Response::Buffer, HTTPX::Response::Buffer, :write, "3.4.0/gems/httpx-1.4.3/lib/httpx/response/buffer.rb:32"]
@@ -676,33 +675,4 @@ HTTPX.get(HOST1)#, HOST2)
 [#<Class:0x000000010342a960>, HTTPX::Pool, :pop_connection, "3.4.0/gems/httpx-1.4.3/lib/httpx/pool.rb:30"]
 [#<Class:0x000000010342a960>, HTTPX::Pool, :pop_connection, "3.4.0/gems/httpx-1.4.3/lib/httpx/pool.rb:30"]
 [HTTPX::Selector, HTTPX::Selector, :terminate, "3.4.0/gems/httpx-1.4.3/lib/httpx/selector.rb:55"]
-
-[
-  #<Response:240 HTTP/2.0
-    @status=200
-    @headers={
-      "accept-ranges" => ["bytes"], "content-type" => ["text/html"],
-      "etag" => ["\"84238dfc8092e5d9c0dac8ef93371a07:1736799080.121134\""],
-      "last-modified" => ["Mon, 13 Jan 2025 20:11:20 GMT"], "vary" => ["Accept-Encoding"],
-      "content-encoding" => ["gzip"], "content-length" => ["648"],
-      "cache-control" => ["max-age=86000"], "date" => ["Thu, 09 Oct 2025 10:29:59 GMT"],
-      "alt-svc" => ["h3=\":443\"; ma=93600"]
-    }
-    @body=1256>,
-  #<Response:248 HTTP/2.0
-    @status=301
-    @headers={
-      "location" => ["https://www.google.com/"],
-      "content-type" => ["text/html; charset=UTF-8"],
-      "content-security-policy-report-only" => [
-        "object-src 'none';base-uri 'self';script-src 'nonce-d95-7porZbUnHY3nBMAvFQ' 'strict-dynamic' 'report-sample'
-        'unsafe-eval' 'unsafe-inline' https: http:;report-uri https://csp.withgoogle.com/csp/gws/other-hp"
-      ],
-      "date" => ["Thu, 09 Oct 2025 10:29:58 GMT"], "expires" => ["Sat, 08 Nov 2025 10:29:58 GMT"],
-      "cache-control" => ["public, max-age=2592000"],
-      "server" => ["gws"], "content-length" => ["220"],
-      "x-xss-protection" => ["0"], "x-frame-options" => ["SAMEORIGIN"],
-      "alt-svc" => ["h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"]
-    }
-    @body=220>
-]
+```

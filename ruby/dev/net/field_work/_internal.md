@@ -7,15 +7,19 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
     - `HTTP.start` / `HTTP#start` public
       - `HTTP#do_start`
         - `HTTP#connect`
+          - `TCPSocket.open` TCP接続
+          - (TLS接続の場合) `OpenSSL::SSL::SSLSocket.new`
+          - (TLS接続の場合) `Net::Protocol#ssl_socket_connect`
+          - `@socket = BufferedIO.new` TCPもしくはTLSで接続確立したソケットをBufferedIOでラップする
     - `HTTP#request_get` public
       - `HTTPRequest#initialize` -> `HTTPGenericRequest#initialize`
-        - `HTTPHeader#initialize_http_header`
+        - `HTTPHeader#initialize_http_header` リクエストヘッダをセット
       - `HTTP#request` public
-        - `HTTPGenericRequest#set_body_internal`
-        - `HTTP#transport_request`
+        - `HTTPGenericRequest#set_body_internal` リクエストボディをセット
+        - `HTTP#transport_request` リクエストの送信を行う
           - `HTTP#begin_transport`
-            - `HTTPGenericRequest#update_uri`
-          - `HTTP::{{各HTTPメソッドを表すクラス}}#exec` -> `HTTPGenericRequest#exec`
+            - `HTTPGenericRequest#update_uri` `@uri = URI::HTTPS or URI::HTTP.new`をセット
+          - `HTTP::{{各HTTPメソッドを表すクラス}}#exec` -> `HTTPGenericRequest#exec` リクエストを送信する
             - `HTTPGenericRequest#send_request_with_body`
               - `HTTPGenericRequest#supply_default_content_type`
               - `HTTPGenericRequest#write_header`
@@ -27,24 +31,30 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
             - `HTTPGenericRequest#send_request_with_body_data`
               - `HTTPGenericRequest#write_header`
             - `HTTPGenericRequest#write_header`
-          - `HTTPResponse.read_new`
+          - `HTTPResponse.read_new` レスポンスヘッダを読み込む
             - `HTTPResponse.read_status_line`
             - `HTTPResponse.response_class`
             - `HTTPResponse.each_response_header`
               - `HTTPHeader#add_field`
-          - `HTTPResponse#reading_body`
+          - `HTTPResponse#reading_body` レスポンスボディを読み込む
             - `HTTPResponse#body`
               - `HTTPResponse#read_body`
                 - `HTTPResponse#read_body_0`
                   - `HTTPResponse#inflater`
                   - (圧縮あり) `HTTPResponse::Inflater#read`
                     - `HTTPResponse::Inflater#inflate_adapter`
-                  - (圧縮あり) `HTTPResponse::Inflater#read_all` WIP
-                  - (圧縮なし) `Net::BufferedIO#read` WIP
-                  - (圧縮なし) `Net::BufferedIO#read_all` WIP
+                    - `Net::BufferedIO#read`
+                  - (圧縮あり) `HTTPResponse::Inflater#read_all`
+                    - `HTTPResponse::Inflater#inflate_adapter`
+                    - `Net::BufferedIO#read_all`
+                  - (圧縮なし) `Net::BufferedIO#read`
+                    - `Net::BufferedIO#rbuf_fill`
+                    - `Net::BufferedIO#rbuf_consume`
+                  - (圧縮なし) `Net::BufferedIO#read_all`
+                    - `Net::BufferedIO#rbuf_fill`
                 - `HTTPResponse#detect_encoding`
                 - `String#force_encoding`
-          - `HTTP#end_transport`
+          - `HTTP#end_transport` 後処理
 
 ### 気づいたこと
 - `HTTP#start` -> `HTTP#do_start` -> `HTTP#connect`で接続を行う
@@ -1171,7 +1181,15 @@ class Inflater
   def read(clen, dest, ignore_eof = false)
     temp_dest = inflate_adapter(dest) # => HTTPResponse::Inflater#inflate_adapter
 
-    @socket.read(clen, temp_dest, ignore_eof)
+    @socket.read(clen, temp_dest, ignore_eof) # => Net::BufferedIO#read (lib/net/protocol.rb)
+  end
+
+  # HTTPResponse::Inflater#read_all (lib/net/http/response.rb)
+
+  def read_all(dest)
+    temp_dest = inflate_adapter(dest) # => HTTPResponse::Inflater#inflate_adapter
+
+    @socket.read_all temp_dest # => Net::BufferedIO#read_all (lib/net/protocol.rb)
   end
 
   # HTTPResponse::Inflater#inflate_adapter (lib/net/http/response.rb)

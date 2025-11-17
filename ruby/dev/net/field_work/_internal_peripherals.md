@@ -55,6 +55,133 @@ class BufferedIO
   attr_accessor :continue_timeout
   attr_accessor :debug_output
 
+  # Net::BufferedIO#read (lib/net/protocol.rb)
+
+  def read(len, dest = ''.b, ignore_eof = false)
+    LOG "reading #{len} bytes..."
+    read_bytes = 0
+
+    begin
+      while read_bytes + rbuf_size < len # => Net::BufferedIO#rbuf_size
+
+        if s = rbuf_consume_all # => Net::BufferedIO#rbuf_consume_all
+          read_bytes += s.bytesize
+          dest << s
+        end
+
+        rbuf_fill # 実際にバッファから読み込む => Net::BufferedIO#rbuf_fill
+      end
+
+      s = rbuf_consume(len - read_bytes) # => Net::BufferedIO#rbuf_consume
+      read_bytes += s.bytesize
+      dest << s
+    rescue EOFError
+      raise unless ignore_eof
+    end
+
+    LOG "read #{read_bytes} bytes"
+    dest
+  end
+
+  # Net::BufferedIO#read_all (lib/net/protocol.rb)
+
+  def read_all(dest = ''.b)
+    LOG 'reading all...'
+    read_bytes = 0
+
+    begin
+      while true
+        if s = rbuf_consume_all # => Net::BufferedIO#rbuf_consume_all
+          read_bytes += s.bytesize
+          dest << s
+        end
+
+        rbuf_fill # 実際にバッファから読み込む => Net::BufferedIO#rbuf_fill
+      end
+    rescue EOFError
+      ;
+    end
+    LOG "read #{read_bytes} bytes"
+    dest
+  end
+
+  # Net::BufferedIO#rbuf_size (lib/net/protocol.rb)
+
+  def rbuf_size
+    @rbuf.bytesize - @rbuf_offset
+  end
+
+  # Net::BufferedIO#rbuf_consume_all (lib/net/protocol.rb)
+
+  def rbuf_consume_all
+    rbuf_consume if rbuf_size > 0 # => Net::BufferedIO#rbuf_consume
+  end
+
+  # Net::BufferedIO#rbuf_consume (lib/net/protocol.rb)
+
+  # @rbufを消費するイメージ
+  def rbuf_consume(len = nil)
+    if @rbuf_offset == 0 && (len.nil? || len == @rbuf.bytesize)
+      s = @rbuf
+      @rbuf = ''.b
+      @rbuf_offset = 0
+      @rbuf_empty = true
+    elsif len.nil?
+      s = @rbuf.byteslice(@rbuf_offset..-1)
+      @rbuf = ''.b
+      @rbuf_offset = 0
+      @rbuf_empty = true
+    else
+      s = @rbuf.byteslice(@rbuf_offset, len)
+      @rbuf_offset += len
+      @rbuf_empty = @rbuf_offset == @rbuf.bytesize
+      rbuf_flush # => Net::BufferedIO#rbuf_flush
+
+      # Net::BufferedIO#rbuf_flush (lib/net/protocol.rb)
+      #
+      #   def rbuf_flush
+      #     if @rbuf_empty
+      #       @rbuf.clear
+      #       @rbuf_offset = 0
+      #     end
+      #     nil
+      #   end
+    end
+
+    @debug_output << %Q[-> #{s.dump}\n] if @debug_output
+    s
+  end
+
+  # Net::BufferedIO#rbuf_fill (lib/net/protocol.rb)
+
+  # 実際に読み込む
+  def rbuf_fill
+    tmp = @rbuf_empty ? @rbuf : nil
+
+    case rv = @io.read_nonblock(BUFSIZE, tmp, exception: false)
+    when String
+      @rbuf_empty = false
+
+      if rv.equal?(tmp)
+        @rbuf_offset = 0
+      else
+        @rbuf << rv
+        rv.clear
+      end
+      return
+    when :wait_readable
+      (io = @io.to_io).wait_readable(@read_timeout) or raise Net::ReadTimeout.new(io)
+      # continue looping
+    when :wait_writable
+      # OpenSSL::Buffering#read_nonblock may fail with IO::WaitWritable.
+      # http://www.openssl.org/support/faq.html#PROG10
+      (io = @io.to_io).wait_writable(@read_timeout) or raise Net::ReadTimeout.new(io)
+      # continue looping
+    when nil
+      raise EOFError, 'end of file reached'
+    end while true
+  end
+
   # ...
 end
 ```
