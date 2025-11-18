@@ -70,7 +70,15 @@
                     - `Connection#transition(:open)`
                       - `Connection#handle_transition` 接続試行を開始
                         - `TCP#connect`
+                          - `TCP#build_socket`
+                          - `TCP#try_connect`
+                            - `@io.connect_nonblock`
                         - `SSL#connect`
+                          - `TCP#build_socket`
+                          - `TCP#try_connect`
+                            - `@io.connect_nonblock`
+                          - `SSL#try_ssl_connect`
+                            - `@io.connect_nonblock`
                 - `Connection#call`
                   - `Connection#connect`
                     - `Connection#transition(:open)`
@@ -1069,7 +1077,18 @@ def resolve(connection = @connections.first, hostname = nil) # @connections = HT
     request.on(:promise, &method(:on_promise))
 
     @requests[request] = hostname # このリクエストとホスト名を紐付ける
-    resolver_connection.send(request)
+    resolver_connection.send(request) # => Resolver::HTTPS#resolver_connection
+
+    # Resolver::HTTPS#resolver_connection (lib/httpx/resolver/https.rb)
+    #
+    #   def resolver_connection
+    #     @resolver_connection ||= @current_session.find_connection(
+    #       @uri,
+    #       @current_selector,
+    #       @options.merge(ssl: { alpn_protocols: %w[h2] })
+    #     ).tap { |conn|  emit_addresses(conn, @family, @uri_addresses) unless conn.addresses }
+    #   end
+
     @connections << connection # この名前解決を発行した接続を保存
   rescue ResolveError, Resolv::DNS::EncodeError => e
     reset_hostname(hostname)
@@ -1905,7 +1924,7 @@ def connect
     #   end
   end
 
-  try_connect # 接続試行
+  try_connect # 接続試行 => TCP#try_connect
 rescue Errno::ECONNREFUSED,
        Errno::EADDRNOTAVAIL,
        Errno::EHOSTUNREACH,
@@ -1923,6 +1942,8 @@ rescue Errno::ETIMEDOUT => e
   @io = build_socket # ソケットを再作成してリトライ
   retry
 end
+
+# TCP#try_connect (lib/httpx/io/tcp.rb)
 
 def try_connect
   # ノンブロッキングでTCP接続を試行
@@ -2039,28 +2060,32 @@ end
 
 # そもそものalpn_protocolsの設定...
 # 明示的にALPNを設定することでハンドシェイクを行うことができる
-TLS_OPTIONS = { alpn_protocols: %w[h2 http/1.1].freeze }
+class SSL < TCP
+  TLS_OPTIONS = { alpn_protocols: %w[h2 http/1.1].freeze }
 
-def initialize(_, _, options)
-  super
-  ctx_options = TLS_OPTIONS.merge(options.ssl)
-  @sni_hostname = ctx_options.delete(:hostname) || @hostname
+  def initialize(_, _, options)
+    super
+    ctx_options = TLS_OPTIONS.merge(options.ssl) # ここで制御している (Optionsクラスでattr_reader :sslしている)
+    @sni_hostname = ctx_options.delete(:hostname) || @hostname
 
-  if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
-    @ctx = @io.context
-    @state = :negotiated
-  else
-    @ctx = OpenSSL::SSL::SSLContext.new
-    @ctx.set_params(ctx_options) unless ctx_options.empty?
-    unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
-      @ctx.session_cache_mode =
-        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+    if @keep_open && @io.is_a?(OpenSSL::SSL::SSLSocket)
+      @ctx = @io.context
+      @state = :negotiated
+    else
+      @ctx = OpenSSL::SSL::SSLContext.new
+      @ctx.set_params(ctx_options) unless ctx_options.empty?
+      unless @ctx.session_cache_mode.nil? # a dummy method on JRuby
+        @ctx.session_cache_mode =
+          OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+      end
+
+      yield(self) if block_given?
     end
 
-    yield(self) if block_given?
+    @verify_hostname = @ctx.verify_hostname
   end
 
-  @verify_hostname = @ctx.verify_hostname
+  # ...
 end
 
 def protocol
@@ -2156,9 +2181,24 @@ end
 
 def build_parser(protocol = @io.protocol)
   parser = self.class.parser_type(protocol).new(@write_buffer, @options)
+  # => TCP#protocol / SSL#protocol
   # => Connection#parser_type
   # => Connection::HTTP1#initialize
   # => Connection::HTTP2#initialize
+
+  # TCP#protocol (lib/httpx/io/tcp.rb)
+  #
+  #   def protocol
+  #     @fallback_protocol # => @options.fallback_protocol (DEFAULT_OPTIONSでは"http/1.1"が指定されている)
+  #   end
+
+  # SSL#protocol (lib/httpx/io/ssl.rb)
+  #
+  #   def protocol
+  #     @io.alpn_protocol || super # @io = OpenSSL::SSL::SSLSocket
+  #   rescue StandardError
+  #     super
+  #   end
 
   # Connection#parser_type (lib/httpx/connection.rb)
   #   def parser_type(protocol)

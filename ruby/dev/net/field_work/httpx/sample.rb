@@ -3,9 +3,6 @@ require "httpx"
 HOST1 = "http://example.com"
 HOST2 = "https://google.com"
 
-responses = HTTPX.get(HOST1)#, HOST2)
-p responses
-
 GEM_PATH= ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/gems/"
 
 TracePoint.trace(:call) do |tp|
@@ -14,7 +11,7 @@ TracePoint.trace(:call) do |tp|
   end
 end
 
-HTTPX.get(HOST1, ssl: { alpn_protocols: ["http/1.1"] })
+HTTPX.get("https://example.com", ssl: { alpn_protocols: ["http/1.1"] })
 
 __END__
 
