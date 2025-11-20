@@ -1733,6 +1733,8 @@ def addresses=(addrs)
   end
 end
 
+# Connection#build_socket (lib/httpx/connection.rb)
+
 def build_socket(addrs = nil)
   # @typeはConnection#initialize時にConnection#initialize_typeを呼び出し、uri.schemeによって値が決まる
   case @type
