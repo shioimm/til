@@ -9,6 +9,10 @@
   - `Connection#run_request`
     - `Connection#build_request`
       - `Request.create`
+    - `RackBuilder#build_response`
+      - `RackBuilder#build_env`
+        - `Env.new`
+      - `RackBuilder#app` WIP
 
 ## `Faraday.new`
 
@@ -135,15 +139,22 @@ def run_request(method, url, body, headers)
     raise ArgumentError, "unknown http method: #{method}"
   end
 
+  # 呼び出し側 (Connection)
+  #   run_request(:#{method}, url, nil, headers) do |request|
+  #     request.params.update(params) if params
+  #     yield request if block_given?
+  #   end
+
   request = build_request(method) do |req| # => Connection#build_request
     req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
     req.url(url)                if url     # => Request#url
     req.headers.update(headers) if headers # => Utils::Headers#update
-    req.body = body             if body    # Request#body=
+    req.body = body             if body    # => Request#body=
+
     yield(req) if block_given?
   end
 
-  builder.build_response(self, request)
+  builder.build_response(self, request) # self = #<Connection>
   # attr_reader :builder (Faraday::RackBuilder)
   # => RackBuilder#build_response
 end
@@ -155,6 +166,7 @@ def build_request(method)
     req.params  = params.dup  # => Request#params=
     req.headers = headers.dup # => Request#headers=
     req.options = options.dup # => Request#options=
+
     yield(req) if block_given?
   end
 end
@@ -177,6 +189,43 @@ module Faraday
     end
 
     # ...
+  end
+end
+
+# RackBuilder#build_response (lib/faraday/rack_builder.rb)
+
+def build_response(connection, request)
+  app.call(build_env(connection, request))
+  # => RackBuilder#build_env
+  # => RackBuilder#app
+end
+
+# RackBuilder#build_env (lib/faraday/rack_builder.rb)
+
+def build_env(connection, request)
+  exclusive_url = connection.build_exclusive_url(
+    request.path,
+    request.params,
+    request.options.params_encoder
+  )
+
+  Env.new( # => Faraday::Env (lib/faraday/options/env.rb)
+    request.http_method,
+    request.body, exclusive_url,
+    request.options,
+    request.headers,
+    connection.ssl,
+    connection.parallel_manager
+  )
+end
+
+# RackBuilder#app (lib/faraday/rack_builder.rb)
+
+def app
+  @app ||= begin
+    lock!
+    ensure_adapter!
+    to_app
   end
 end
 ```
