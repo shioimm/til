@@ -13,6 +13,7 @@
       - `RackBuilder#build_env`
         - `Env.new`
       - `RackBuilder#app` WIP
+        - `RackBuilder#to_app`
 
 ## `Faraday.new`
 
@@ -223,9 +224,28 @@ end
 
 def app
   @app ||= begin
-    lock!
-    ensure_adapter!
-    to_app
+    lock! # => RackBuilder#lock!
+
+    # RackBuilder#lock! (lib/faraday/rack_builder.rb)
+    #
+    #   def lock! = @handlers.freeze
+
+    ensure_adapter! # => RackBuilder#ensure_adapter!
+
+    # RackBuilder#ensure_adapter! (lib/faraday/rack_builder.rb)
+    #
+    #   def ensure_adapter! = raise MISSING_ADAPTER_ERROR unless @adapter
+
+    to_app # => RackBuilder#to_app
+  end
+end
+
+# RackBuilder#to_app (lib/faraday/rack_builder.rb)
+
+# WIP
+def to_app
+  @handlers.reverse.inject(@adapter.build) do |app, handler|
+    handler.build(app)
   end
 end
 ```
