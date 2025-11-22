@@ -5,6 +5,12 @@
   - `Faraday.default_connection_options`
   - `Utils.deep_merge`
   - `Connection.initialize`
+    - `RackBuilder#initialize`
+      - `RackBuilder#build`
+        - `RackBuilder#request` ハンドラの追加
+          - `RackBuilder#use_symbol`
+            - `RackBuilder#use`
+        - `RackBuilder#adapter` アダプタの追加
 - `Connection#get`
   - `Connection#run_request`
     - `Connection#build_request`
@@ -14,6 +20,7 @@
         - `Env.new`
       - `RackBuilder#app` WIP
         - `RackBuilder#to_app`
+          - `RackBuilder::Handler#build` (`Faraday::Adapter::NetHttp`)
 
 ## `Faraday.new`
 
@@ -60,7 +67,7 @@ def initialize(url = nil, options = nil)
   options = ConnectionOptions.from(options) # => ConnectionOptions
 
   if url.is_a?(Hash) || url.is_a?(ConnectionOptions)
-    options = Utils.deep_merge(options, url)
+    options = Utils.deep_merge(options, url) # => Utils.deep_merge
     url     = options.url
   end
 
@@ -74,7 +81,7 @@ def initialize(url = nil, options = nil)
 
   @builder = options.builder || begin
     # pass an empty block to Builder so it doesn't assume default middleware
-    options.new_builder(block_given? ? proc { |b| } : nil)
+    options.new_builder(block_given? ? proc { |b| } : nil) # => ConnectionOptions#new_builder
   end
 
   self.url_prefix = url || 'http:/'
@@ -103,10 +110,112 @@ module Faraday
     memoized(:ssl) { self.class.options_for(:ssl).new }
     memoized(:builder_class) { RackBuilder } # => RackBuilder
 
+    # ConnectionOptions#new_builder (lib/faraday/options/connection_options.rb)
     def new_builder(block)
-      builder_class.new(&block)
+      builder_class.new(&block) # => RackBuilder#initialize
     end
   end
+end
+```
+
+## `RackBuilder#initialize`
+
+```ruby
+# (lib/faraday/rack_builder.rb)
+
+def initialize(&block)
+  @adapter = nil
+  @handlers = []
+  build(&block) # => RackBuilder#build
+end
+
+# RackBuilder#build (lib/faraday/rack_builder.rb)
+
+def build
+  raise_if_locked # raise StackLocked, LOCK_ERR if locked? => RackBuilder#raise_if_locked
+  block_given? ? yield(self) : request(:url_encoded) # => RackBuilder#request
+  adapter(Faraday.default_adapter, **Faraday.default_adapter_options) unless @adapter # => RackBuilder#adapter
+end
+
+# RackBuilder#request (lib/faraday/rack_builder.rb)
+
+def request(key, ...)
+  use_symbol(Faraday::Request, key, ...) # => RackBuilder#use_symbol
+end
+
+# RackBuilder#use_symbol (lib/faraday/rack_builder.rb)
+
+def use_symbol(mod, key, ...)
+  # mod = Faraday::Request
+  # key = :url_encoded
+  use(mod.lookup_middleware(key), ...)
+  # => MiddlewareRegistry#lookup_middleware (Faraday::Request::UrlEncoded)
+  # => RackBuilder#use
+end
+
+# MiddlewareRegistry#lookup_middleware (lib/faraday/middleware_registry.rb)
+
+# key = :url_encoded
+def lookup_middleware(key)
+  load_middleware(key) || # => MiddlewareRegistry#load_middleware ここではFaraday::Request::UrlEncodedを返す
+    raise(Faraday::Error, "#{key.inspect} is not registered on #{self}")
+
+  # MiddlewareRegistry#load_middleware (lib/faraday/middleware_registry.rb)
+  #
+  #   def load_middleware(key)
+  #     value = registered_middleware[key] # => MiddlewareRegistry#registered_middleware
+  #
+  #     # MiddlewareRegistry#registered_middleware (lib/faraday/middleware_registry.rb)
+  #     #   def registered_middleware = @registered_middleware ||= {}
+  #
+  #     case value
+  #     when Module
+  #       value
+  #     when Symbol, String
+  #       middleware_mutex do
+  #         @registered_middleware[key] = const_get(value)
+  #       end
+  #     when Proc
+  #       middleware_mutex do
+  #         @registered_middleware[key] = value.call
+  #       end
+  #     end
+  #   end
+end
+
+# RackBuilder#use (lib/faraday/rack_builder.rb))
+
+# klass = Faraday::Request::UrlEncoded
+def use(klass, ...)
+  if klass.is_a? Symbol
+    use_symbol(Faraday::Middleware, klass, ...) # => RackBuilder#use_symbol
+  else
+    raise_if_locked # raise StackLocked, LOCK_ERR if locked? => RackBuilder#raise_if_locked
+    raise_if_adapter(klass) # => RackBuilder#raise_if_adapter
+    @handlers << self.class::Handler.new(klass, ...)
+    # RackBuilder::Handler.new(Faraday::Request::UrlEncoded)
+  end
+end
+
+# RackBuilder#adapter (lib/faraday/rack_builder.rb)
+
+# klass = Faraday.default_adapter
+# args = Faraday.default_adapter_options
+
+# (lib/faraday.rb)
+# module Faraday
+#   self.default_adapter = :net_http
+#   self.default_adapter_options = {}
+# end
+
+def adapter(klass = NO_ARGUMENT, *args, &block)
+  return @adapter if klass == NO_ARGUMENT || klass.nil?
+
+  klass = Faraday::Adapter.lookup_middleware(klass) if klass.is_a?(Symbol)
+  # Faraday.default_adapterが:net_httpの場合、klass = Faraday::Adapter::NetHttp
+
+  @adapter = self.class::Handler.new(klass, *args, &block)
+  # RackBuilder::Handler.new(Faraday::Adapter::NetHttp)
 end
 ```
 
@@ -224,17 +333,8 @@ end
 
 def app
   @app ||= begin
-    lock! # => RackBuilder#lock!
-
-    # RackBuilder#lock! (lib/faraday/rack_builder.rb)
-    #
-    #   def lock! = @handlers.freeze
-
-    ensure_adapter! # => RackBuilder#ensure_adapter!
-
-    # RackBuilder#ensure_adapter! (lib/faraday/rack_builder.rb)
-    #
-    #   def ensure_adapter! = raise MISSING_ADAPTER_ERROR unless @adapter
+    lock! # @handlers.freeze => RackBuilder#lock!
+    ensure_adapter! # raise MISSING_ADAPTER_ERROR unless @adapter => RackBuilder#ensure_adapter!
 
     to_app # => RackBuilder#to_app
   end
@@ -244,8 +344,16 @@ end
 
 # WIP
 def to_app
-  @handlers.reverse.inject(@adapter.build) do |app, handler|
-    handler.build(app)
+  # @handlers = [Faraday::Request::UrlEncoded (Faraday::RackBuilder::Handle) ]
+  #   - RackBuilder#initialize時に空配列で初期化される
+  #   - RackBuilder::Handler#insert, RackBuilder::Handler#delete, ...などで操作される
+  #   - @handlersに値を追加するのはRackBuilder#use, RackBuilder#insert
+  # @adapter = Faraday::Adapter::NetHttp (Faraday::RackBuilder::Handler)
+  #   - RackBuilder#initialize時にnilで初期化される
+  #   - RackBuilder#adapterで値が追加される
+  # Rackっぽいアーキテクチャになっている
+  @handlers.reverse.inject(@adapter.build) do |app, handler| # => RackBuilder::Handler#build
+    handler.build(app) # => RackBuilder::Handler#build↲
   end
 end
 ```
