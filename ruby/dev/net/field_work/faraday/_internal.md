@@ -10,7 +10,9 @@
         - `RackBuilder#request` ハンドラの追加
           - `RackBuilder#use_symbol`
             - `RackBuilder#use`
+              - `RackBuilder::Handler#initialize`
         - `RackBuilder#adapter` アダプタの追加
+          - `RackBuilder::Handler#initialize`
 - `Connection#get`
   - `Connection#run_request`
     - `Connection#build_request`
@@ -18,7 +20,7 @@
     - `RackBuilder#build_response`
       - `RackBuilder#build_env`
         - `Env.new`
-      - `RackBuilder#app` WIP
+      - `RackBuilder#app`
         - `RackBuilder#to_app`
           - `RackBuilder::Handler#build` (`Faraday::Adapter::NetHttp`)
 
@@ -192,7 +194,7 @@ def use(klass, ...)
   else
     raise_if_locked # raise StackLocked, LOCK_ERR if locked? => RackBuilder#raise_if_locked
     raise_if_adapter(klass) # => RackBuilder#raise_if_adapter
-    @handlers << self.class::Handler.new(klass, ...)
+    @handlers << self.class::Handler.new(klass, ...) # => RackBuilder::Handler#initialize
     # RackBuilder::Handler.new(Faraday::Request::UrlEncoded)
   end
 end
@@ -214,8 +216,21 @@ def adapter(klass = NO_ARGUMENT, *args, &block)
   klass = Faraday::Adapter.lookup_middleware(klass) if klass.is_a?(Symbol)
   # Faraday.default_adapterが:net_httpの場合、klass = Faraday::Adapter::NetHttp
 
-  @adapter = self.class::Handler.new(klass, *args, &block)
+  @adapter = self.class::Handler.new(klass, *args, &block) # => RackBuilder::Handler#initialize
   # RackBuilder::Handler.new(Faraday::Adapter::NetHttp)
+end
+
+# RackBuilder::Handler#initialize (lib/faraday/rack_builder.rb)
+
+REGISTRY = Faraday::AdapterRegistry.new
+# AdapterRegistryは内部に@lock = Monitorと@constants = {}を持つ。
+# AdapterRegistry#setで指定のキーに任意の値を保存し、AdapterRegistry#getで取り出す
+
+def initialize(klass, *args, &block)
+  @name = klass.to_s # REGISTRY.get(@name) => RackBuilder::Handler#klass
+  REGISTRY.set(klass) if klass.respond_to?(:name)
+  @args = args
+  @block = block
 end
 ```
 
@@ -342,7 +357,6 @@ end
 
 # RackBuilder#to_app (lib/faraday/rack_builder.rb)
 
-# WIP
 def to_app
   # @handlers = [Faraday::Request::UrlEncoded (Faraday::RackBuilder::Handle) ]
   #   - RackBuilder#initialize時に空配列で初期化される
@@ -355,5 +369,13 @@ def to_app
   @handlers.reverse.inject(@adapter.build) do |app, handler| # => RackBuilder::Handler#build
     handler.build(app) # => RackBuilder::Handler#build↲
   end
+end
+
+# RackBuilder::Handler#build (lib/faraday/rack_builder.rb)
+
+def build(app = nil)
+  klass.new(app, *@args, &@block)
+  # Faraday::Request::UrlEncoded.new
+  # Faraday::Adapter::NetHttp.new
 end
 ```
