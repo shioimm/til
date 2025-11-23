@@ -436,7 +436,24 @@ def match_content_type(env)
 
   yield(env.body)
 end
+```
 
-# Adapter::NetHttp#call (どこ???)
-# WIP
+## `Adapter::NetHttp` (faraday-net_http: lib/faraday/adapter/net_http.rb)
+
+```ruby
+module Faraday
+  module NetHttp
+    Faraday::Adapter.register_middleware(net_http: Faraday::Adapter::NetHttp)
+  end
+
+  class Adapter
+    class NetHttp < Faraday::Adapter
+
+    # Adapter::NetHttp#call
+
+    def call
+      # WIP 先にinitializeが呼ばれている箇所を特定したい
+    end
+  end
+end
 ```
