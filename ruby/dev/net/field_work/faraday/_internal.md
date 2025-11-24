@@ -10,7 +10,9 @@
         - `RackBuilder#request` ハンドラの追加
           - `RackBuilder#use_symbol`
             - `RackBuilder#use`
+              - `RackBuilder::Handler#initialize`
         - `RackBuilder#adapter` アダプタの追加
+          - `RackBuilder::Handler#initialize`
 - `Connection#get`
   - `Connection#run_request`
     - `Connection#build_request`
@@ -18,9 +20,12 @@
     - `RackBuilder#build_response`
       - `RackBuilder#build_env`
         - `Env.new`
-      - `RackBuilder#app` WIP
+      - `RackBuilder#app`
         - `RackBuilder#to_app`
           - `RackBuilder::Handler#build` (`Faraday::Adapter::NetHttp`)
+      - `{ハンドラ}#call` (`Request::UrlEncoded#call`)
+        - `Request::UrlEncoded#match_content_type`
+        - `{アダプタ}#call` (`Adapter::NetHttp#call`) WIP
 
 ## `Faraday.new`
 
@@ -140,7 +145,9 @@ end
 # RackBuilder#request (lib/faraday/rack_builder.rb)
 
 def request(key, ...)
-  use_symbol(Faraday::Request, key, ...) # => RackBuilder#use_symbol
+  use_symbol(Faraday::Request, key, ...)
+  # => Faraday::Request
+  # => RackBuilder#use_symbol
 end
 
 # RackBuilder#use_symbol (lib/faraday/rack_builder.rb)
@@ -192,7 +199,8 @@ def use(klass, ...)
   else
     raise_if_locked # raise StackLocked, LOCK_ERR if locked? => RackBuilder#raise_if_locked
     raise_if_adapter(klass) # => RackBuilder#raise_if_adapter
-    @handlers << self.class::Handler.new(klass, ...)
+
+    @handlers << self.class::Handler.new(klass, ...) # => RackBuilder::Handler#initialize
     # RackBuilder::Handler.new(Faraday::Request::UrlEncoded)
   end
 end
@@ -214,8 +222,21 @@ def adapter(klass = NO_ARGUMENT, *args, &block)
   klass = Faraday::Adapter.lookup_middleware(klass) if klass.is_a?(Symbol)
   # Faraday.default_adapterが:net_httpの場合、klass = Faraday::Adapter::NetHttp
 
-  @adapter = self.class::Handler.new(klass, *args, &block)
+  @adapter = self.class::Handler.new(klass, *args, &block) # => RackBuilder::Handler#initialize
   # RackBuilder::Handler.new(Faraday::Adapter::NetHttp)
+end
+
+# RackBuilder::Handler#initialize (lib/faraday/rack_builder.rb)
+
+REGISTRY = Faraday::AdapterRegistry.new
+# AdapterRegistryは内部に@lock = Monitorと@constants = {}を持つ。
+# AdapterRegistry#setで指定のキーに任意の値を保存し、AdapterRegistry#getで取り出す
+
+def initialize(klass, *args, &block)
+  @name = klass.to_s # REGISTRY.get(@name) => RackBuilder::Handler#klass
+  REGISTRY.set(klass) if klass.respond_to?(:name)
+  @args = args
+  @block = block
 end
 ```
 
@@ -305,7 +326,10 @@ end
 # RackBuilder#build_response (lib/faraday/rack_builder.rb)
 
 def build_response(connection, request)
-  app.call(build_env(connection, request))
+  env = build_env(connection, request)
+  # => Request::UrlEncoded#call
+
+  app.call(env)
   # => RackBuilder#build_env
   # => RackBuilder#app
 end
@@ -338,11 +362,18 @@ def app
 
     to_app # => RackBuilder#to_app
   end
+
+  # #<Faraday::Request::UrlEncoded:0x000000011c438128
+  #   @app=#<Faraday::Adapter::NetHttp:0x0000000101423f40
+  #          @ssl_cert_store=nil,
+  #          @app=#<Proc:0x000000011c438240(&:response) (lambda)>,
+  #   @connection_options={},
+  #   @config_block=nil>,
+  #   @options={}>
 end
 
 # RackBuilder#to_app (lib/faraday/rack_builder.rb)
 
-# WIP
 def to_app
   # @handlers = [Faraday::Request::UrlEncoded (Faraday::RackBuilder::Handle) ]
   #   - RackBuilder#initialize時に空配列で初期化される
@@ -354,6 +385,75 @@ def to_app
   # Rackっぽいアーキテクチャになっている
   @handlers.reverse.inject(@adapter.build) do |app, handler| # => RackBuilder::Handler#build
     handler.build(app) # => RackBuilder::Handler#build↲
+  end
+end
+
+# RackBuilder::Handler#build (lib/faraday/rack_builder.rb)
+
+def build(app = nil)
+  klass.new(app, *@args, &@block)
+  # Faraday::Request::UrlEncoded.new
+  # Faraday::Adapter::NetHttp.new
+end
+
+# Request::UrlEncoded#call (lib/faraday/request/url_encoded.rb)
+
+def call(env)
+  match_content_type(env) do |data| # => Request::UrlEncoded#match_content_type
+    # data = env.body
+    params = Faraday::Utils::ParamsHash[data]
+    env.body = params.to_query(env.params_encoder)
+  end
+
+  @app.call env # => Adapter::NetHttp#call
+end
+
+# Request::UrlEncoded#match_content_type (lib/faraday/request/url_encoded.rb)
+
+def match_content_type(env)
+  return unless process_request?(env) # => Request::UrlEncoded#process_request?
+
+  # Request::UrlEncoded#process_request? (lib/faraday/request/url_encoded.rb)
+  #
+  #   def process_request?(env)
+  #     type = request_type(env) # => Request::UrlEncoded#request_type
+  #     env.body && (type.empty? || (type == self.class.mime_type))
+  #   end
+  #
+  # Request::UrlEncoded#request_type (lib/faraday/request/url_encoded.rb)
+  #
+  #   def request_type(env)
+  #     type = env.request_headers[CONTENT_TYPE].to_s
+  #
+  #     type = type.split(';', 2).first if type.index(';')
+  #     type
+  #   end
+
+  # env.request_headers = {"User-Agent" => "Faraday v2.12.2"}
+  # CONTENT_TYPE = "Content-Type"
+  env.request_headers[CONTENT_TYPE] ||= self.class.mime_type
+  return if env.body.respond_to?(:to_str) || env.body.respond_to?(:read)
+
+  yield(env.body)
+end
+```
+
+## `Adapter::NetHttp` (faraday-net_http: lib/faraday/adapter/net_http.rb)
+
+```ruby
+module Faraday
+  module NetHttp
+    Faraday::Adapter.register_middleware(net_http: Faraday::Adapter::NetHttp)
+  end
+
+  class Adapter
+    class NetHttp < Faraday::Adapter
+
+    # Adapter::NetHttp#call
+
+    def call
+      # WIP 先にinitializeが呼ばれている箇所を特定したい
+    end
   end
 end
 ```
