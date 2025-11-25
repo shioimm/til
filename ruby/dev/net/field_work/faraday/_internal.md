@@ -22,7 +22,8 @@
         - `Env.new`
       - `RackBuilder#app`
         - `RackBuilder#to_app`
-          - `RackBuilder::Handler#build` (`Faraday::Adapter::NetHttp`)
+          - `{ハンドラ}#initialize` (`Faraday::Adapter::NetHttp#initialize`)
+          - `{アダプタ}#initialize` (`Faraday::Adapter::UrlEncoded#initialize`)
       - `{ハンドラ}#call` (`Request::UrlEncoded#call`)
         - `Request::UrlEncoded#match_content_type`
         - `{アダプタ}#call` (`Adapter::NetHttp#call`) WIP
@@ -201,7 +202,7 @@ def use(klass, ...)
     raise_if_adapter(klass) # => RackBuilder#raise_if_adapter
 
     @handlers << self.class::Handler.new(klass, ...) # => RackBuilder::Handler#initialize
-    # RackBuilder::Handler.new(Faraday::Request::UrlEncoded)
+    # RackBuilder::Handler.new (Faraday::Request::UrlEncoded#initialize)
   end
 end
 
@@ -223,7 +224,6 @@ def adapter(klass = NO_ARGUMENT, *args, &block)
   # Faraday.default_adapterが:net_httpの場合、klass = Faraday::Adapter::NetHttp
 
   @adapter = self.class::Handler.new(klass, *args, &block) # => RackBuilder::Handler#initialize
-  # RackBuilder::Handler.new(Faraday::Adapter::NetHttp)
 end
 
 # RackBuilder::Handler#initialize (lib/faraday/rack_builder.rb)
@@ -237,6 +237,7 @@ def initialize(klass, *args, &block)
   REGISTRY.set(klass) if klass.respond_to?(:name)
   @args = args
   @block = block
+  # この時点ではまだハンドラにラップしたklassからオブジェクトを生成しない
 end
 ```
 
@@ -327,11 +328,11 @@ end
 
 def build_response(connection, request)
   env = build_env(connection, request)
-  # => Request::UrlEncoded#call
+  # => RackBuilder#build_env
 
   app.call(env)
-  # => RackBuilder#build_env
   # => RackBuilder#app
+  # => Request::UrlEncoded#call
 end
 
 # RackBuilder#build_env (lib/faraday/rack_builder.rb)
@@ -391,9 +392,10 @@ end
 # RackBuilder::Handler#build (lib/faraday/rack_builder.rb)
 
 def build(app = nil)
+  # ハンドラでラップしたクラスのオブジェクトを生成する
+  # - Faraday::Request::UrlEncoded.new
+  # - Faraday::Adapter::NetHttp.new (=> Adapter::NetHttp#initialize)
   klass.new(app, *@args, &@block)
-  # Faraday::Request::UrlEncoded.new
-  # Faraday::Adapter::NetHttp.new
 end
 
 # Request::UrlEncoded#call (lib/faraday/request/url_encoded.rb)
@@ -448,11 +450,26 @@ module Faraday
 
   class Adapter
     class NetHttp < Faraday::Adapter
+      # Adapter::NetHttp#initialize (lib/faraday/adapter/net_http.rb)
 
-    # Adapter::NetHttp#call
+      def initialize(app = nil, opts = {}, &block)
+        @ssl_cert_store = nil
+        super(app, opts, &block) # => Adapter#initialize
 
-    def call
-      # WIP 先にinitializeが呼ばれている箇所を特定したい
+        # Adapter#initialize (faraday: lib/faraday/adapter.rb)
+        #
+        #  def initialize(_app = nil, opts = {}, &block)
+        #    @app = lambda(&:response)
+        #    @connection_options = opts
+        #    @config_block = block
+        #  end
+      end
+
+      # Adapter::NetHttp#call (lib/faraday/adapter/net_http.rb)
+
+      def call
+        # WIP
+      end
     end
   end
 end
