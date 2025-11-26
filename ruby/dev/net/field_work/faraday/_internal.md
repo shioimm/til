@@ -27,6 +27,13 @@
       - `{ハンドラ}#call` (`Request::UrlEncoded#call`)
         - `Request::UrlEncoded#match_content_type`
         - `{アダプタ}#call` (`Adapter::NetHttp#call`) WIP
+          - `Adapter#call`
+          - `Adapter#connection`
+            - `Adapter::NetHttp#build_connection`
+              - `Adapter::NetHttp#net_http_connection`
+              - `Adapter::NetHttp#configure_ssl`
+              - `Adapter::NetHttp#configure_request`
+
 
 ## `Faraday.new`
 
@@ -467,10 +474,90 @@ module Faraday
 
       # Adapter::NetHttp#call (lib/faraday/adapter/net_http.rb)
 
-      def call
-        # WIP
+      def call(env)
+        super
+
+        # Adapter#call (faraday: lib/faraday/adapter.rb)
+        #
+        #   def call(env)
+        #     env.clear_body if env.needs_body?
+        #     env.response = Response.new # => Response#initialize
+        #   end
+
+        connection(env) do |http| # => Adapter#connection
+          perform_request(http, env)
+        rescue *NET_HTTP_EXCEPTIONS => e
+          raise Faraday::SSLError, e if defined?(OpenSSL) && e.is_a?(OpenSSL::SSL::SSLError)
+
+          raise Faraday::ConnectionFailed, e
+        end
+
+        @app.call env
+      rescue Timeout::Error, Errno::ETIMEDOUT => e
+        raise Faraday::TimeoutError, e
       end
     end
   end
 end
+
+# Adapter#connection (faraday: lib/faraday/adapter.rb)
+
+def connection(env)
+  conn = build_connection(env) # => Adapter::NetHttp#build_connection
+  return conn unless block_given?
+
+  yield conn
+end
+
+# Adapter::NetHttp#build_connection (lib/faraday/adapter/net_http.rb)
+
+def build_connection(env)
+  net_http_connection(env).tap do |http| # => Adapter::NetHttp#net_http_connection
+    configure_ssl(http, env[:ssl]) if env[:url].scheme == 'https' && env[:ssl] # => Adapter::NetHttp#configure_ssl
+    configure_request(http, env[:request]) # => Adapter::NetHttp#configure_request
+  end
+end
+
+# Adapter::NetHttp#net_http_connection (lib/faraday/adapter/net_http.rb)
+
+def net_http_connection(env)
+  proxy = env[:request][:proxy]
+  port = env[:url].port || (env[:url].scheme == 'https' ? 443 : 80)
+
+  if proxy
+    Net::HTTP.new(
+      env[:url].hostname,
+      port,
+      proxy[:uri].hostname,
+      proxy[:uri].port,
+      proxy[:user],
+      proxy[:password],
+      nil,
+      proxy[:uri].scheme == 'https'
+    )
+  else
+    Net::HTTP.new(
+      env[:url].hostname,
+      port,
+      nil
+    )
+  end
+end
+
+# Adapter::NetHttp#net_http_connection (lib/faraday/adapter/net_http.rb)
+# WIP
+
+# Adapter::NetHttp#configure_request (lib/faraday/adapter/net_http.rb)
+# WIP
+```
+
+### `Response#initialize`
+
+```ruby
+# (lib/faraday/response.rb)
+
+def initialize(env = nil)
+   @env = Env.from(env) if env
+   @on_complete_callbacks = []
+ end
 ```
