@@ -26,13 +26,14 @@
           - `{アダプタ}#initialize` (`Faraday::Adapter::UrlEncoded#initialize`)
       - `{ハンドラ}#call` (`Request::UrlEncoded#call`)
         - `Request::UrlEncoded#match_content_type`
-        - `{アダプタ}#call` (`Adapter::NetHttp#call`) WIP
+        - `{アダプタ}#call` (`Adapter::NetHttp#call`)
           - `Adapter#call`
           - `Adapter#connection`
             - `Adapter::NetHttp#build_connection`
               - `Adapter::NetHttp#net_http_connection`
               - `Adapter::NetHttp#configure_ssl`
               - `Adapter::NetHttp#configure_request`
+            - `Adapter::NetHttp#perform_request` WIP
 
 
 ## `Faraday.new`
@@ -485,14 +486,14 @@ module Faraday
         #   end
 
         connection(env) do |http| # => Adapter#connection
-          perform_request(http, env)
+          # http = #<Net::HTTP>
+          perform_request(http, env) # => Adapter::NetHttp#perform_request WIP
         rescue *NET_HTTP_EXCEPTIONS => e
           raise Faraday::SSLError, e if defined?(OpenSSL) && e.is_a?(OpenSSL::SSL::SSLError)
-
           raise Faraday::ConnectionFailed, e
         end
 
-        @app.call env
+        @app.call env # @app = lambda(&:response) (Adapter#initialize)
       rescue Timeout::Error, Errno::ETIMEDOUT => e
         raise Faraday::TimeoutError, e
       end
@@ -504,9 +505,16 @@ end
 
 def connection(env)
   conn = build_connection(env) # => Adapter::NetHttp#build_connection
+  # conn = #<Net::HTTP>
+
   return conn unless block_given?
 
   yield conn
+
+  # 呼び出し側
+  #   connection(env) do |http|
+  #     perform_request(http, env)
+  #   end
 end
 
 # Adapter::NetHttp#build_connection (lib/faraday/adapter/net_http.rb)
@@ -544,11 +552,68 @@ def net_http_connection(env)
   end
 end
 
-# Adapter::NetHttp#net_http_connection (lib/faraday/adapter/net_http.rb)
-# WIP
+# Adapter::NetHttp#configure_ssl (lib/faraday/adapter/net_http.rb)
+
+def configure_ssl(http, ssl)
+  http.use_ssl = true if http.respond_to?(:use_ssl=)
+
+  http.verify_mode = ssl_verify_mode(ssl)i # => Adapter::NetHttp#ssl_verify_mode
+  http.cert_store = ssl_cert_store(ssl) # => Adapter::NetHttp#ssl_cert_store
+
+  cert, *extra_chain_cert = ssl[:client_cert]
+  http.cert               = cert             if cert
+  http.extra_chain_cert   = extra_chain_cert if extra_chain_cert.any?
+
+  http.key             = ssl[:client_key]      if ssl[:client_key]
+  http.ca_file         = ssl[:ca_file]         if ssl[:ca_file]
+  http.ca_path         = ssl[:ca_path]         if ssl[:ca_path]
+  http.verify_depth    = ssl[:verify_depth]    if ssl[:verify_depth]
+  http.ssl_version     = ssl[:version]         if ssl[:version]
+  http.min_version     = ssl[:min_version]     if ssl[:min_version]
+  http.max_version     = ssl[:max_version]     if ssl[:max_version]
+  http.verify_hostname = ssl[:verify_hostname] if verify_hostname_enabled?(http, ssl)
+  http.ciphers         = ssl[:ciphers]         if ssl[:ciphers]
+end
 
 # Adapter::NetHttp#configure_request (lib/faraday/adapter/net_http.rb)
+
+def configure_request(http, req)
+  if (sec = request_timeout(:read, req))
+    http.read_timeout = sec
+  end
+
+  if (sec = http.respond_to?(:write_timeout=) &&
+    request_timeout(:write, req))
+    http.write_timeout = sec
+  end
+
+  if (sec = request_timeout(:open, req))
+    http.open_timeout = sec
+  end
+
+  # Only set if Net::Http supports it, since Ruby 2.5.
+  http.max_retries = 0 if http.respond_to?(:max_retries=)
+
+  @config_block&.call(http)
+end
+
+# Adapter::NetHttp#perform_request (lib/faraday/adapter/net_http.rb)
+
 # WIP
+def perform_request(http, env)
+  if env.stream_response?
+    http_response = env.stream_response do |&on_data|
+      request_with_wrapped_block(http, env, &on_data)
+    end
+    http_response.body = nil
+  else
+    http_response = request_with_wrapped_block(http, env)
+  end
+
+  env.response_body = encoded_body(http_response)
+  env.response.finish(env)
+  http_response
+end
 ```
 
 ### `Response#initialize`
