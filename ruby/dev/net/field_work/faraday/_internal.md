@@ -19,7 +19,7 @@
       - `Request.create`
     - `RackBuilder#build_response`
       - `RackBuilder#build_env`
-        - `Env.new`
+        - `Env.new` (`Faraday::Env`)
       - `RackBuilder#app`
         - `RackBuilder#to_app`
           - `{ハンドラ}#initialize` (`Faraday::Adapter::NetHttp#initialize`)
@@ -33,8 +33,13 @@
               - `Adapter::NetHttp#net_http_connection`
               - `Adapter::NetHttp#configure_ssl`
               - `Adapter::NetHttp#configure_request`
-            - `Adapter::NetHttp#perform_request` WIP
-
+            - `Adapter::NetHttp#perform_request`
+              - `Env#stream_response?`
+              - `Adapter::NetHttp#request_with_wrapped_block`
+                - `Net::HTTP#start`
+                  - `Net::HTTP#do_start`
+                  - `Adapter::NetHttp#create_request` WIP
+                  - `Net::HTTP#request`
 
 ## `Faraday.new`
 
@@ -352,7 +357,7 @@ def build_env(connection, request)
     request.options.params_encoder
   )
 
-  Env.new( # => Faraday::Env (lib/faraday/options/env.rb)
+  Env.new( # => Faraday::Env
     request.http_method,
     request.body, exclusive_url,
     request.options,
@@ -360,6 +365,27 @@ def build_env(connection, request)
     connection.ssl,
     connection.parallel_manager
   )
+end
+
+# Faraday::Env (lib/faraday/options/env.rb)
+
+Env = Options.new(:method, :request_body, :url, :request, :request_headers, :ssl, :parallel_manager, :params,
+                  :response, :response_headers, :status, :reason_phrase, :response_body) do
+
+  const_set(:ContentLength,       'Content-Length')
+  const_set(:StatusesWithoutBody, Set.new([204, 304]))
+  const_set(:SuccessfulStatuses,  (200..299))
+  const_set(:MethodsWithBodies,   Set.new(Faraday::METHODS_WITH_BODY.map(&:to_sym)))
+
+  options request: RequestOptions,
+          request_headers: Utils::Headers,
+          response_headers: Utils::Headers
+
+  extend Forwardable
+
+  def_delegators :request, :params_encoder
+
+  # ...
 end
 
 # RackBuilder#app (lib/faraday/rack_builder.rb)
@@ -599,20 +625,82 @@ end
 
 # Adapter::NetHttp#perform_request (lib/faraday/adapter/net_http.rb)
 
-# WIP
+# http = #<Net::HTTP example.com:80 open=false>
+# env  = #<Faraday::Env
+#          @method=:get
+#          @url=#<URI::HTTP http://example.com/index.html>
+#          @request=#<Faraday::RequestOptions (empty)>
+#          @request_headers={"User-Agent" => "Faraday v2.12.2"}
+#          @ssl=#<Faraday::SSLOptions (empty)>
+#          @response=#<Faraday::Response:0x00000001055dbf50
+#          @on_complete_callbacks=[]>
+
 def perform_request(http, env)
-  if env.stream_response?
+  if env.stream_response? # => Env#stream_response?
+
+    # Env#stream_response? (lib/faraday/options/env.rb)
+    #
+    #   def stream_response?
+    #     request.stream_response? # => RequestOptions#stream_response?
+    #   end
+
     http_response = env.stream_response do |&on_data|
-      request_with_wrapped_block(http, env, &on_data)
+      request_with_wrapped_block(http, env, &on_data) # => Adapter::NetHttp#request_with_wrapped_block
     end
+
     http_response.body = nil
   else
-    http_response = request_with_wrapped_block(http, env)
+    http_response = request_with_wrapped_block(http, env) # => Adapter::NetHttp#request_with_wrapped_block
   end
 
   env.response_body = encoded_body(http_response)
   env.response.finish(env)
   http_response
+end
+
+# RequestOptions#stream_response? (lib/faraday/options/request_options.rb)
+
+RequestOptions = Options.new(
+  :params_encoder, :proxy, :bind,
+  :timeout, :open_timeout, :read_timeout, :write_timeout,
+  :boundary, :oauth, :context, :on_data
+)
+
+def stream_response?
+  on_data.is_a?(Proc)
+end
+
+# Adapter::NetHttp#request_with_wrapped_block (lib/faraday/adapter/net_http.rb)
+
+def request_with_wrapped_block(http, env, &block)
+  http.start do |opened_http| # => Net::HTTP#start (Net::HTTP#do_start -> httpをブロック変数としてyield)
+    opened_http.request(create_request(env)) do |response|
+      # => Net::HTTP#request
+      # => (引数) Adapter::NetHttp#create_request
+
+      save_http_response(env, response)
+      response.read_body(&block) if block_given?
+    end
+  end
+end
+
+# Adapter::NetHttp#create_request (lib/faraday/adapter/net_http.rb)
+
+# WIP
+def create_request(env)
+  request = Net::HTTPGenericRequest.new \
+    env[:method].to_s.upcase, # request method
+    !!env[:body], # is there request body
+    env[:method] != :head, # is there response body
+    env[:url].request_uri, # request uri path
+    env[:request_headers] # request headers
+
+  if env[:body].respond_to?(:read)
+    request.body_stream = env[:body]
+  else
+    request.body = env[:body]
+  end
+  request
 end
 ```
 
