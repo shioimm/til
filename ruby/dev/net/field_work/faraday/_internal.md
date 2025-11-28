@@ -38,8 +38,10 @@
               - `Adapter::NetHttp#request_with_wrapped_block`
                 - `Net::HTTP#start`
                   - `Net::HTTP#do_start`
-                  - `Adapter::NetHttp#create_request` WIP
+                  - `Adapter::NetHttp#create_request`
                   - `Net::HTTP#request`
+                    - `Adapter::NetHttp#save_http_response`
+                      - `Adapter#save_response`
 
 ## `Faraday.new`
 
@@ -513,12 +515,14 @@ module Faraday
 
         connection(env) do |http| # => Adapter#connection
           # http = #<Net::HTTP>
-          perform_request(http, env) # => Adapter::NetHttp#perform_request WIP
+          perform_request(http, env) # => Adapter::NetHttp#perform_request
         rescue *NET_HTTP_EXCEPTIONS => e
           raise Faraday::SSLError, e if defined?(OpenSSL) && e.is_a?(OpenSSL::SSL::SSLError)
           raise Faraday::ConnectionFailed, e
         end
 
+        # ここまででレスポンスから得た値がenvにセットされている
+        # WIP
         @app.call env # @app = lambda(&:response) (Adapter#initialize)
       rescue Timeout::Error, Errno::ETIMEDOUT => e
         raise Faraday::TimeoutError, e
@@ -678,7 +682,8 @@ def request_with_wrapped_block(http, env, &block)
       # => Net::HTTP#request
       # => (引数) Adapter::NetHttp#create_request
 
-      save_http_response(env, response)
+      # response = Net::HTTP#transport_requestの返り値 #<Net::HTTPOK 200 OK readbody=false> など
+      save_http_response(env, response) # => Adapter::NetHttp#save_http_response
       response.read_body(&block) if block_given?
     end
   end
@@ -686,21 +691,55 @@ end
 
 # Adapter::NetHttp#create_request (lib/faraday/adapter/net_http.rb)
 
-# WIP
 def create_request(env)
-  request = Net::HTTPGenericRequest.new \
+  request = Net::HTTPGenericRequest.new( # => Net::HTTPGenericRequest#initialize
     env[:method].to_s.upcase, # request method
     !!env[:body], # is there request body
     env[:method] != :head, # is there response body
     env[:url].request_uri, # request uri path
     env[:request_headers] # request headers
+  )
 
   if env[:body].respond_to?(:read)
     request.body_stream = env[:body]
   else
     request.body = env[:body]
   end
+
   request
+end
+
+# Adapter::NetHttp#save_http_response (lib/faraday/adapter/net_http.rb)
+
+def save_http_response(env, http_response)
+  save_response( # => Adapter#save_response
+    env,
+    http_response.code.to_i,
+    nil,
+    nil,
+    http_response.message,
+    finished: false
+  ) do |response_headers| # #<Utils::Headers>
+    http_response.each_header do |key, value| # レスポンスヘッダの値を#<Utils::Headers>にセット
+      response_headers[key] = value
+    end
+  end
+end
+
+# Adapter#save_response (lib/faraday/adapter.rb)
+
+def save_response(env, status, body, headers = nil, reason_phrase = nil, finished: true)
+  env.status = status
+  env.body = body
+  env.reason_phrase = reason_phrase&.to_s&.strip
+
+  env.response_headers = Utils::Headers.new.tap do |response_headers|
+    response_headers.update headers unless headers.nil?
+    yield(response_headers) if block_given?
+  end
+
+  env.response.finish(env) unless env.parallel? || !finished
+  env.response
 end
 ```
 
