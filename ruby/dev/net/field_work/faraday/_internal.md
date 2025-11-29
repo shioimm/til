@@ -470,6 +470,12 @@ def match_content_type(env)
   # env.request_headers = {"User-Agent" => "Faraday v2.12.2"}
   # CONTENT_TYPE = "Content-Type"
   env.request_headers[CONTENT_TYPE] ||= self.class.mime_type
+
+  #   class << self
+  #     attr_accessor :mime_type
+  #   end
+  #   self.mime_type = 'application/x-www-form-urlencoded'
+
   return if env.body.respond_to?(:to_str) || env.body.respond_to?(:read)
 
   yield(env.body)
