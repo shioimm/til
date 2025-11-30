@@ -528,7 +528,6 @@ module Faraday
         end
 
         # ここまででレスポンスから得た値がenvにセットされている
-        # WIP
         @app.call env # @app = lambda(&:response) (Adapter#initialize)
       rescue Timeout::Error, Errno::ETIMEDOUT => e
         raise Faraday::TimeoutError, e
@@ -664,7 +663,7 @@ def perform_request(http, env)
   end
 
   env.response_body = encoded_body(http_response)
-  env.response.finish(env)
+  env.response.finish(env) # => Response#finish
   http_response
 end
 
@@ -744,8 +743,18 @@ def save_response(env, status, body, headers = nil, reason_phrase = nil, finishe
     yield(response_headers) if block_given?
   end
 
-  env.response.finish(env) unless env.parallel? || !finished
+  env.response.finish(env) unless env.parallel? || !finished # => Response#finish
   env.response
+end
+
+# Response#finish (lib/faraday/response.rb)
+
+def finish(env)
+  raise 'response already finished' if finished?
+
+  @env = env.is_a?(Env) ? env : Env.from(env)
+  @on_complete_callbacks.each { |callback| callback.call(@env) }
+  self
 end
 ```
 
