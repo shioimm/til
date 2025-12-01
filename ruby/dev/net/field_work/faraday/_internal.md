@@ -42,6 +42,7 @@
                   - `Net::HTTP#request`
                     - `Adapter::NetHttp#save_http_response`
                       - `Adapter#save_response`
+            - `#<Env>@response`を返す
 
 ## `Faraday.new`
 
@@ -443,6 +444,8 @@ def call(env)
     env.body = params.to_query(env.params_encoder)
   end
 
+  # @app = #<Faraday::Adapter::NetHttp>
+  # env  = #<Faraday::Env>
   @app.call env # => Adapter::NetHttp#call
 end
 
@@ -527,8 +530,10 @@ module Faraday
           raise Faraday::ConnectionFailed, e
         end
 
+        # @app = #<Proc:(&:response) (lambda)> (Adapter#initialize)
+        # env  = #<Faraday::Env>
         # ここまででレスポンスから得た値がenvにセットされている
-        @app.call env # @app = lambda(&:response) (Adapter#initialize)
+        @app.call env # => Envの@responseとして #<Faraday::Response> を返す
       rescue Timeout::Error, Errno::ETIMEDOUT => e
         raise Faraday::TimeoutError, e
       end
