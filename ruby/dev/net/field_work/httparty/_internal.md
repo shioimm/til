@@ -14,6 +14,7 @@
         - `Request#path=`
         - `Request#set_basic_auth_from_uri`
     - `Request#perform` WIP ここから続き
+      - `Request#validate`
 
 ## `HTTParty.get`
 
@@ -102,6 +103,73 @@ def set_basic_auth_from_uri
     username, password = path.userinfo.split(':')
     options[:basic_auth] = {username: username, password: password}
     @credentials_sent = true
+  end
+end
+
+# Request#perform (lib/httparty/request.rb)
+
+def perform(&block)
+  validate # => Request#validate
+  setup_raw_request # WIP
+  chunked_body = nil
+  current_http = http
+
+  self.last_response = current_http.request(@raw_request) do |http_response|
+    if block
+      chunks = []
+
+      http_response.read_body do |fragment|
+        encoded_fragment = encode_text(fragment, http_response['content-type'])
+        chunks << encoded_fragment if !options[:stream_body]
+        block.call ResponseFragment.new(encoded_fragment, http_response, current_http)
+      end
+
+      chunked_body = chunks.join
+    end
+  end
+
+  handle_host_redirection if response_redirects?
+  result = handle_unauthorized
+  result ||= handle_response(chunked_body, &block)
+  result
+end
+
+# Request#validate (lib/httparty/request.rb)
+
+def validate
+  # リダイレクト回数が上限を超えていないか
+  if options[:limit].to_i <= 0
+    raise HTTParty::RedirectionTooDeep.new(last_response), 'HTTP redirects too deep'
+  end
+
+  # 許可されたHTTP メソッドか
+  unless SupportedHTTPMethods.include?(http_method)
+    raise ArgumentError, 'only get, post, patch, put, delete, head, and options methods are supported'
+  end
+
+  # headersはto_hash可能か (Hashにしたい)
+  if options[:headers] && !options[:headers].respond_to?(:to_hash)
+    raise ArgumentError, ':headers must be a hash'
+  end
+
+  # Basic認証とDigest認証が併用されていないか
+  if options[:basic_auth] && options[:digest_auth]
+    raise ArgumentError, 'only one authentication method, :basic_auth or :digest_auth may be used at a time'
+  end
+
+  # basic_authはto_hash可能か (Hashにしたい)
+  if options[:basic_auth] && !options[:basic_auth].respond_to?(:to_hash)
+    raise ArgumentError, ':basic_auth must be a hash'
+  end
+
+  # digest_authはto_hash可能か (Hashにしたい)
+  if options[:digest_auth] && !options[:digest_auth].respond_to?(:to_hash)
+    raise ArgumentError, ':digest_auth must be a hash'
+  end
+
+  # POSTリクエストの場合、queryはto_hash可能か (Hashにしたい)
+  if post? && !options[:query].nil? && !options[:query].respond_to?(:to_hash)
+    raise ArgumentError, ':query must be hash if using HTTP Post'
   end
 end
 ```
