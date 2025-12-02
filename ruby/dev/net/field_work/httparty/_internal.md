@@ -26,6 +26,10 @@
             - `Net::HTTP.new`
             - `ConnectionAdapter#ssl_implied?`
             - `ConnectionAdapter#attach_ssl_certificates`
+      - `#<Net::HTTP>#request(@raw_request)`
+      - `Request#handle_host_redirection`
+      - `Request#handle_unauthorized`
+      - `Request#handle_response`
 
 ## `HTTParty.get`
 
@@ -143,7 +147,7 @@ def perform(&block)
   current_http = http # => Request#http
   # current_http = #<Net::HTTP>
 
-  # WIP
+  # self.last_response = #<Net::HTTP>#request(@raw_request)
   self.last_response = current_http.request(@raw_request) do |http_response|
     if block
       chunks = []
@@ -157,10 +161,14 @@ def perform(&block)
       chunked_body = chunks.join
     end
   end
+  # => self.last_response = #<Net::HTTPOK 200 OK readbody=true> など
 
   handle_host_redirection if response_redirects?
-  result = handle_unauthorized
-  result ||= handle_response(chunked_body, &block)
+  # => Request#response_redirects レスポンスがリダイレクトかどうか
+  # => Request#handle_host_redirection リダイレクト後のドメインが変わったかどうかを@changed_hostsに記録
+
+  result = handle_unauthorized # => Request#handle_unauthorized レスポンスが401 Unauthorizedの場合Digest認証を再送
+  result ||= handle_response(chunked_body, &block) # => Request#handle_response
   result
 end
 
@@ -418,6 +426,61 @@ def attach_ssl_certificates(http, options)
   # This is only Ruby 1.9+
   if options[:ssl_version] && http.respond_to?(:ssl_version=)
     http.ssl_version = options[:ssl_version]
+  end
+end
+
+# Request#response_redirects? (lib/httparty/request.rb)
+
+def response_redirects?
+  case last_response # self.last_response
+  when Net::HTTPNotModified # 304
+    false
+  when Net::HTTPRedirection
+    options[:follow_redirects] && last_response.key?('location')
+  end
+end
+
+# Request#handle_host_redirection (lib/httparty/request.rb)
+
+def handle_host_redirection
+  check_duplicate_location_header
+  redirect_path = options[:uri_adapter].parse(last_response['location']).normalize
+  return if redirect_path.relative? || path.host == redirect_path.host || uri.host == redirect_path.host
+
+  @changed_hosts = true
+end
+
+# Request#handle_unauthorized (lib/httparty/request.rb)
+
+def handle_unauthorized(&block)
+  return unless digest_auth? && response_unauthorized? && response_has_digest_auth_challenge?
+  return if @credentials_sent
+
+  @credentials_sent = true
+  perform(&block) # => Request#perform 401 Unauthorizedの場合もう一回実行
+end
+
+# Request#handle_response (lib/httparty/request.rb)
+
+# WIP
+def handle_response(raw_body, &block)
+  if response_redirects?
+    handle_redirection(&block)
+  else
+    raw_body ||= last_response.body
+
+    body = decompress(raw_body, last_response['content-encoding']) unless raw_body.nil?
+
+    unless body.nil?
+      body = encode_text(body, last_response['content-type'])
+
+      if decompress_content?
+        last_response.delete('content-encoding')
+        raw_body = body
+      end
+    end
+
+    Response.new(self, last_response, lambda { parse_response(body) }, body: raw_body)
   end
 end
 ```
