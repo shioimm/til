@@ -2,11 +2,11 @@ require "httparty"
 
 GEM_PATH = ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/gems/"
 
-TracePoint.trace(:call) do |tp|
-  if tp.path.include? "httparty"
-    p [tp.self.class, tp.defined_class, tp.method_id, "#{tp.path.gsub(GEM_PATH, "")}:#{tp.lineno}"]
-  end
-end
+# TracePoint.trace(:call) do |tp|
+#   if tp.path.include? "httparty"
+#     p [tp.self.class, tp.defined_class, tp.method_id, "#{tp.path.gsub(GEM_PATH, "")}:#{tp.lineno}"]
+#   end
+# end
 
 HTTParty.get("https://example.com/")
 
