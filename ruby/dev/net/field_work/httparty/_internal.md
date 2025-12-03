@@ -30,6 +30,9 @@
       - `Request#handle_host_redirection`
       - `Request#handle_unauthorized`
       - `Request#handle_response`
+        - `Request#decompress` (ボディがある場合)
+          - `Decompressor#decompress_supported_encoding`
+            - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
 
 ## `HTTParty.get`
 
@@ -462,15 +465,25 @@ end
 
 # Request#handle_response (lib/httparty/request.rb)
 
-# WIP
 def handle_response(raw_body, &block)
-  if response_redirects?
-    handle_redirection(&block)
+  if response_redirects? # => Request#response_redirects?
+    handle_redirection(&block) # => Request#handle_redirection
   else
     raw_body ||= last_response.body
 
-    body = decompress(raw_body, last_response['content-encoding']) unless raw_body.nil?
+    unless raw_body.nil?
+      body = decompress(raw_body, last_response['content-encoding']) # => Request#decompress
 
+      # Request#decompress (lib/httparty/request.rb)
+      #
+      # def decompress(body, encoding)
+      #   Decompressor.new(body, encoding).decompress
+      #   # => Decompressor#initialize
+      #   # => Decompressor#decompress
+      # end
+    end
+
+    # WIP
     unless body.nil?
       body = encode_text(body, last_response['content-type'])
 
@@ -481,6 +494,103 @@ def handle_response(raw_body, &block)
     end
 
     Response.new(self, last_response, lambda { parse_response(body) }, body: raw_body)
+  end
+end
+
+# Request#handle_redirection (lib/httparty/request.rb)
+
+def handle_redirection(&block)
+  options[:limit] -= 1 # デフォルトは5
+
+  if options[:logger]
+    logger = HTTParty::Logger.build(options[:logger], options[:log_level], options[:log_format])
+    logger.format(self, last_response)
+  end
+
+  self.path     = last_response['location'] # 次のリクエスト先をセット
+  self.redirect = true
+
+  if last_response.class == Net::HTTPSeeOther
+    # 303 See Otherの場合
+    unless options[:maintain_method_across_redirects] && options[:resend_on_redirect]
+      self.http_method = Net::HTTP::Get # GETに変更
+    end
+  elsif last_response.code != '307' && last_response.code != '308'
+    # 307 Temporary Redirect / 308 Permanent Redirect以外の場合
+    unless options[:maintain_method_across_redirects]
+      self.http_method = Net::HTTP::Get # GETに変更
+    end
+  end
+
+  clear_body if http_method == Net::HTTP::Get # => Request#clear_body
+
+  # Request#clear_body (lib/httparty/request.rb)
+  #
+  #   def clear_body
+  #     options[:body] = nil
+  #     @raw_request.body = nil
+  #   end
+
+  capture_cookies(last_response) # => Request#capture_cookies
+
+  # Request#capture_cookies (lib/httparty/request.rb)
+  #
+  #   def capture_cookies(response)
+  #     return unless response['Set-Cookie']
+  #     cookies_hash = HTTParty::CookieHash.new
+  #
+  #     if options[:headers] && options[:headers].to_hash['Cookie']
+  #       cookies_hash.add_cookies(options[:headers].to_hash['Cookie'])
+  #     end
+  #
+  #     response.get_fields('Set-Cookie').each { |cookie| cookies_hash.add_cookies(cookie) }
+  #     options[:headers] ||= {}
+  #     options[:headers]['Cookie'] = cookies_hash.to_cookie_string
+  #   end
+
+  perform(&block) # => Request#perform リダイレクトの場合もう一回実行
+end
+
+# Decompressor#initialize (lib/httparty/decompressor.rb)
+
+attr_reader :encoding
+
+def initialize(body, encoding)
+  @body = body
+  @encoding = encoding
+end
+
+# Decompressor#decompress (lib/httparty/decompressor.rb)
+
+def decompress
+  return nil if body.nil?
+  return body if encoding.nil? || encoding.strip.empty?
+
+  if supports_encoding?
+    decompress_supported_encoding # => Decompressor#decompress_supported_encoding
+  else
+    nil
+  end
+end
+
+# Decompressor#decompress_supported_encoding (lib/httparty/decompressor.rb)
+
+SupportedEncodings = {
+  'none'     => :none,
+  'identity' => :none,
+  'br'       => :brotli,
+  'compress' => :lzw,
+  'zstd'     => :zstd
+}.freeze
+
+def decompress_supported_encoding
+  method = SupportedEncodings[encoding]
+
+  if respond_to?(method, true)
+    send(method)
+  else
+    raise NotImplementedError,
+          "#{self.class.name} has not implemented a decompression method for #{encoding.inspect} encoding."
   end
 end
 ```
