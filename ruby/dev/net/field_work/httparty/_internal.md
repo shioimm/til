@@ -13,7 +13,7 @@
         - `Request#options=`
         - `Request#path=`
         - `Request#set_basic_auth_from_uri`
-    - `Request#perform` WIP ここから続き
+    - `Request#perform`
       - `Request#validate`
       - `Request#setup_raw_request`
         - `Net::HTTP::{リクエストを表すクラス}`
@@ -36,6 +36,10 @@
         - `Request#encode_text` (ボディがある場合)
           - `TextEncoder#call`
             - `TextEncoder#encoded_text`
+        - `Request#parse_response`
+          - `Parser.call`
+            - `Parser#parse` WIP
+        - `Response#initialize`
 
 ## `HTTParty.get`
 
@@ -256,6 +260,7 @@ def setup_raw_request
   end
 
   @raw_request.instance_variable_set(:@decode_content, decompress_content?)
+  # !options[:skip_decompression] => Request#decompress_content?
 
   if options[:basic_auth] && send_authorization_header?
     @raw_request.basic_auth(username, password)
@@ -486,18 +491,20 @@ def handle_response(raw_body, &block)
       # end
     end
 
-    # WIP
     unless body.nil?
       # Content-TypeをもとにRubyの文字エンコーディングを正しく設定する
       body = encode_text(body, last_response['content-type']) # => Request#encode_text
 
-      if decompress_content?
+      if decompress_content? # !options[:skip_decompression] => Request#decompress_content?
         last_response.delete('content-encoding')
         raw_body = body
       end
     end
 
+    # WIP
     Response.new(self, last_response, lambda { parse_response(body) }, body: raw_body)
+    # => Request#parse_response
+    # => Response#initialize
   end
 end
 
@@ -678,6 +685,44 @@ def charset
 
   if (matchdata = content_type.match(/;\s*charset\s*=\s*"((\\.|[^\\"])+)"/i))
     return matchdata.captures.first.gsub(/\\(.)/, '\1')
+  end
+end
+
+# Request#parse_response (lib/httparty/request.rb)
+
+def parse_response(body)
+  parser.call(body, format) # options[:parser] => デフォルトではParser.call
+end
+
+# Parser.call (lib/httparty/parser.rb)
+
+def self.call(body, format)
+  new(body, format).parse
+end
+
+# Parser#initialize (lib/httparty/parser.rb)
+
+def initialize(body, format)
+  @body = body
+  @format = format
+end
+
+# Parser#parse (lib/httparty/parser.rb)
+
+# WIP
+def parse
+  return nil if body.nil?
+  return nil if body == 'null'
+  return nil if body.valid_encoding? && body.strip.empty?
+
+  if body.valid_encoding? && body.encoding == Encoding::UTF_8
+    @body = body.gsub(/\A#{UTF8_BOM}/, '')
+  end
+
+  if supports_format?
+    parse_supported_format
+  else
+    body
   end
 end
 ```
