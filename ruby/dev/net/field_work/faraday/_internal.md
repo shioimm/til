@@ -44,6 +44,10 @@
                       - `Adapter#save_response`
             - `#<Env>@response`を返す
 
+## 気づいたこと
+- Rack風のインターフェースでミドルウェアを追加できる
+- アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
+
 ## `Faraday.new`
 
 ```ruby

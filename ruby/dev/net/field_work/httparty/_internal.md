@@ -13,7 +13,7 @@
         - `Request#options=`
         - `Request#path=`
         - `Request#set_basic_auth_from_uri`
-    - `Request#perform` WIP ここから続き
+    - `Request#perform`
       - `Request#validate`
       - `Request#setup_raw_request`
         - `Net::HTTP::{リクエストを表すクラス}`
@@ -30,14 +30,55 @@
       - `Request#handle_host_redirection`
       - `Request#handle_unauthorized`
       - `Request#handle_response`
-        - `Request#decompress` (ボディがある場合)
-          - `Decompressor#decompress_supported_encoding`
-            - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
+        - (リダイレクト時)
+          - `Request#handle_redirection`
+        - (非リダイレクト時)
+          - (ボディがある場合) `Request#decompress`
+            - `Decompressor#decompress_supported_encoding`
+              - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
+          - (ボディがある場合) `Request#encode_text`)
+            - `TextEncoder#call`
+              - `TextEncoder#encoded_text`
+          - `Request#parse_response`
+            - `Parser.call`
+              - `Parser#parse`
+                - `Parser#parse_supported_format`
+          - `Response#initialize`
+            - `Response::Headers#initialize`
+
+### 気づいたこと
+- net-httpに実装を移譲しているところが結構ある。使い勝手を良くしたラッパーという感じ
+- faradayやhttpxのようにアダプタを差し替えたりはできないっぽい
+
+#### 追加機能
+- brotli / lzw / zstdなどnet-httpがサポートしていない圧縮形式でも自動解凍できる (`Decompressor`)
+- Content-TypeのcharsetをもとにRubyでのエンコーディングを実施する (`TextEncoder`)
+- 自動リダイレクトさせる (デフォルトでは5回が上限) (`Request#handle_redirection`)
+  - 303、301、302の場合はGETへ変換
+  - 307、308の場合はリクエストメソッドを維持
+- リダイレクト先のドメインが変わったかどうかを保持する (`Request#handle_host_redirection`)
+- Digest認証にて401 Unauthorizedを自動で再送する (`Request#handle_unauthorized`)
+- Cookieを管理する
+  - リクエストヘッダにCookieをセットする (`HTTParty.process_cookies`)
+  - レスポンスヘッダからSet-Cookieを取得し、次のリクエストに含める (`Request#capture_cookies`)
+- レスポンスボディをパースして扱いやすくする (`HTTParty::Parser` / `Response#parsed_response`)
+- レスポンスヘッダで複数値を扱いやすくする (`Response::Headers`)
 
 ## `HTTParty.get`
 
 ```ruby
 # (lib/httparty.rb)
+
+def self.included(base)
+  base.extend ClassMethods
+  base.send :include, ModuleInheritableAttributes
+  base.send(:mattr_inheritable, :default_options)
+  base.send(:mattr_inheritable, :default_cookies)
+  base.instance_variable_set(:@default_options, {})
+  base.instance_variable_set(:@default_cookies, CookieHash.new)
+end
+
+# HTTParty.get (lib/httparty.rb)
 
 def get(path, options = {}, &block)
   perform_request(Net::HTTP::Get, path, options, &block)
@@ -82,15 +123,16 @@ def build_request(http_method, path, options = {})
 
   process_cookies(options) # => HTTParty.process_cookies
 
-  # HTTParty.process_cookies (lib/httparty.rb)
-  #
-  #   def process_cookies(options) #:nodoc:
-  #     return unless options[:cookies] || default_cookies.any?
-  #     options[:headers] ||= headers.dup
-  #     options[:headers]['cookie'] = cookies.merge(options.delete(:cookies) || {}).to_cookie_string
-  #   end
-
   Request.new(http_method, path, options) # => Request#initialize
+end
+
+# HTTParty.process_cookies (lib/httparty.rb)
+
+def process_cookies(options) #:nodoc:
+  return unless options[:cookies] || default_cookies.any?
+
+  options[:headers] ||= headers.dup
+  options[:headers]['cookie'] = cookies.merge(options.delete(:cookies) || {}).to_cookie_string
 end
 
 # Request#initialize (lib/httparty/request.rb)
@@ -156,9 +198,9 @@ def perform(&block)
       chunks = []
 
       http_response.read_body do |fragment|
-        encoded_fragment = encode_text(fragment, http_response['content-type'])
+        encoded_fragment = encode_text(fragment, http_response['content-type']) # => Request#encode_text
         chunks << encoded_fragment if !options[:stream_body]
-        block.call ResponseFragment.new(encoded_fragment, http_response, current_http)
+        block.call(ResponseFragment.new(encoded_fragment, http_response, current_http))
       end
 
       chunked_body = chunks.join
@@ -172,7 +214,7 @@ def perform(&block)
 
   result = handle_unauthorized # => Request#handle_unauthorized レスポンスが401 Unauthorizedの場合Digest認証を再送
   result ||= handle_response(chunked_body, &block) # => Request#handle_response
-  result
+  result # #<Request> を返す
 end
 
 # Request#validate (lib/httparty/request.rb)
@@ -253,8 +295,10 @@ def setup_raw_request
   end
 
   @raw_request.instance_variable_set(:@decode_content, decompress_content?)
+  # !options[:skip_decompression] => Request#decompress_content?
 
-  if options[:basic_auth] && send_authorization_header?
+  # Basic認証あり、かつリダイレクト時にホストが変更されている
+  if options[:basic_auth] && send_authorization_header? # => Request#send_authorization_header?
     @raw_request.basic_auth(username, password)
     @credentials_sent = true
   end
@@ -451,6 +495,14 @@ def handle_host_redirection
   return if redirect_path.relative? || path.host == redirect_path.host || uri.host == redirect_path.host
 
   @changed_hosts = true
+
+  # @changed_hostsはRequest#send_authorization_header?で利用される
+  #
+  # Request#send_authorization_header?
+  #
+  #   def send_authorization_header?
+  #     !@changed_hosts
+  #   end
 end
 
 # Request#handle_unauthorized (lib/httparty/request.rb)
@@ -483,17 +535,19 @@ def handle_response(raw_body, &block)
       # end
     end
 
-    # WIP
     unless body.nil?
-      body = encode_text(body, last_response['content-type'])
+      # Content-TypeをもとにRubyの文字エンコーディングを正しく設定する
+      body = encode_text(body, last_response['content-type']) # => Request#encode_text
 
-      if decompress_content?
+      if decompress_content? # !options[:skip_decompression] => Request#decompress_content?
         last_response.delete('content-encoding')
         raw_body = body
       end
     end
 
     Response.new(self, last_response, lambda { parse_response(body) }, body: raw_body)
+    # => Request#parse_response
+    # => Response#initialize
   end
 end
 
@@ -531,24 +585,25 @@ def handle_redirection(&block)
   #     @raw_request.body = nil
   #   end
 
+  # Set-CookieをパースしてCookie ヘッダを再構築する
   capture_cookies(last_response) # => Request#capture_cookies
 
-  # Request#capture_cookies (lib/httparty/request.rb)
-  #
-  #   def capture_cookies(response)
-  #     return unless response['Set-Cookie']
-  #     cookies_hash = HTTParty::CookieHash.new
-  #
-  #     if options[:headers] && options[:headers].to_hash['Cookie']
-  #       cookies_hash.add_cookies(options[:headers].to_hash['Cookie'])
-  #     end
-  #
-  #     response.get_fields('Set-Cookie').each { |cookie| cookies_hash.add_cookies(cookie) }
-  #     options[:headers] ||= {}
-  #     options[:headers]['Cookie'] = cookies_hash.to_cookie_string
-  #   end
-
   perform(&block) # => Request#perform リダイレクトの場合もう一回実行
+end
+
+# Request#capture_cookies (lib/httparty/request.rb)
+
+def capture_cookies(response)
+  return unless response['Set-Cookie']
+  cookies_hash = HTTParty::CookieHash.new
+
+  if options[:headers] && options[:headers].to_hash['Cookie']
+    cookies_hash.add_cookies(options[:headers].to_hash['Cookie'])
+  end
+
+  response.get_fields('Set-Cookie').each { |cookie| cookies_hash.add_cookies(cookie) }
+  options[:headers] ||= {}
+  options[:headers]['Cookie'] = cookies_hash.to_cookie_string
 end
 
 # Decompressor#initialize (lib/httparty/decompressor.rb)
@@ -592,5 +647,228 @@ def decompress_supported_encoding
     raise NotImplementedError,
           "#{self.class.name} has not implemented a decompression method for #{encoding.inspect} encoding."
   end
+end
+
+# Request#encode_text (lib/httparty/request.rb)
+
+def encode_text(text, content_type)
+  TextEncoder.new(
+    text,
+    content_type: content_type,
+    assume_utf16_is_big_endian: assume_utf16_is_big_endian # デフォルトではtrue
+  ).call
+  # => TextEncoder#initialize
+  # => TextEncoder#call
+end
+
+# TextEncoder#initialize (lib/httparty/text_encoder.rb)
+
+def initialize(text, assume_utf16_is_big_endian: true, content_type: nil)
+  @text = +text # force_encoding時に元のtextを壊さないように複製
+  @content_type = content_type
+  @assume_utf16_is_big_endian = assume_utf16_is_big_endian
+end
+
+# TextEncoder#call (lib/httparty/text_encoder.rb)
+
+def call
+  if can_encode? # ''.respond_to?(:encoding) && charset => TextEncoder#can_encode?
+    encoded_text # => TextEncoder#encoded_text
+  else
+    text
+  end
+end
+
+# TextEncoder#encoded_text (lib/httparty/text_encoder.rb)
+
+def encoded_text
+  if 'utf-16'.casecmp(charset) == 0 # => TextEncoder#charset
+    encode_utf_16 # => TextEncoder#encode_utf_16
+  else
+    encode_with_ruby_encoding # => TextEncoder#encode_with_ruby_encoding
+  end
+end
+
+# TextEncoder#encode_utf_16 (lib/httparty/text_encoder.rb)
+
+def encode_utf_16
+  if text.bytesize >= 2
+    if text.getbyte(0) == 0xFF && text.getbyte(1) == 0xFE
+      return text.force_encoding('UTF-16LE')
+    elsif text.getbyte(0) == 0xFE && text.getbyte(1) == 0xFF
+      return text.force_encoding('UTF-16BE')
+    end
+  end
+
+  if assume_utf16_is_big_endian # option
+    text.force_encoding('UTF-16BE')
+  else
+    text.force_encoding('UTF-16LE')
+  end
+end
+
+# TextEncoder#encode_with_ruby_encoding (lib/httparty/text_encoder.rb)
+
+def encode_with_ruby_encoding
+  encoding = Encoding.find(charset)
+  # Encoding = 組み込みのEncodingクラス
+  # => TextEncoder#charset
+  text.force_encoding(encoding.to_s)
+rescue ArgumentError
+  text
+end
+
+# TextEncoder#charset (lib/httparty/text_encoder.rb)
+
+def charset
+  return nil if content_type.nil?
+
+  if (matchdata = content_type.match(/;\s*charset\s*=\s*([^=,;"\s]+)/i))
+    return matchdata.captures.first
+  end
+
+  if (matchdata = content_type.match(/;\s*charset\s*=\s*"((\\.|[^\\"])+)"/i))
+    return matchdata.captures.first.gsub(/\\(.)/, '\1')
+  end
+end
+
+# Request#parse_response (lib/httparty/request.rb)
+
+def parse_response(body)
+  parser.call(body, format) # options[:parser] => デフォルトではParser.call
+end
+
+# Parser.call (lib/httparty/parser.rb)
+
+def self.call(body, format)
+  new(body, format).parse
+end
+
+# Parser#initialize (lib/httparty/parser.rb)
+
+def initialize(body, format)
+  @body = body
+  @format = format
+end
+
+# Parser#parse (lib/httparty/parser.rb)
+
+def parse
+  return nil if body.nil?
+  return nil if body == 'null'
+  return nil if body.valid_encoding? && body.strip.empty? # => String#valid_encoding?
+
+  if body.valid_encoding? && body.encoding == Encoding::UTF_8
+    @body = body.gsub(/\A#{UTF8_BOM}/, '') # UTF8_BOM = "\xEF\xBB\xBF"
+  end
+
+  if supports_format? # self.class.supports_format?(format) => Parser#supports_format / Parser.supports_format?
+    parse_supported_format # => Parser#parse_supported_format
+  else
+    body
+  end
+end
+
+# Parser.supports_format? (lib/httparty/parser.rb)
+
+def self.supports_format?(format)
+  supported_formats.include?(format)
+
+  # => Parser.supported_format
+  # => Parser.formats
+  #
+  # Parser.formats (lib/httparty/parser.rb)
+  #
+  #   def self.formats
+  #     const_get(:SupportedFormats)
+  #   end
+  #
+  #   SupportedFormats = {
+  #     'text/xml'                    => :xml,   # MultiXml.parse(body)
+  #     'application/xml'             => :xml,   # MultiXml.parse(body)
+  #     'application/json'            => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'application/vnd.api+json'    => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'application/hal+json'        => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'text/json'                   => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'application/javascript'      => :plain, # body
+  #     'text/javascript'             => :plain, # body
+  #     'text/html'                   => :html,  # body
+  #     'text/plain'                  => :plain, # body
+  #     'text/csv'                    => :csv,   # CSV.parse(body)
+  #     'application/csv'             => :csv,   # CSV.parse(body)
+  #     'text/comma-separated-values' => :csv    # CSV.parse(body)
+  #   }
+end
+
+# Parser#parse_supported_format (lib/httparty/parser.rb)
+
+def parse_supported_format
+  if respond_to?(format, true)
+    send(format)
+  else
+    raise NotImplementedError,
+          "#{self.class.name} has not implemented a parsing method for the #{format.inspect} format."
+  end
+end
+
+# Response#initialize (lib/httparty/response.rb)
+
+attr_reader :request, :response, :body, :headers
+
+# request      = #<Request>
+# response     = #<Net::HTTPOK>など。#<Net::HTTP>#request(@raw_request)の返り値 (last_response)
+# parsed_block = lambda { parse_response(body) } Parser#parseを呼ぶ
+# body         = responseに対して#bodyを呼んだ、もしくはそれにエンコーディングしたString
+def initialize(request, response, parsed_block, options = {})
+  @request      = request
+  @response     = response
+  @body         = options[:body] || response.body
+  @parsed_block = parsed_block # レスポンスを整形して表示するときなどに使われているっぽい => Response#parsed_response
+  @headers      = Headers.new(response.to_hash) # => Response::Headers#initialize
+
+  if request.options[:logger]
+    logger = ::HTTParty::Logger.build(
+      request.options[:logger],
+      request.options[:log_level],
+      request.options[:log_format]
+    )
+    logger.format(request, self)
+  end
+
+  throw_exception
+end
+
+# Response::Headers#initialize (lib/httparty/response.rb)
+
+include ::Net::HTTPHeader
+
+def initialize(header_values = nil)
+  @header = {}
+
+  if header_values
+    header_values.each_pair do |k,v|
+      if v.is_a?(Array)
+        v.each do |sub_v|
+          add_field(k, sub_v) # => Net::HTTPHeader#add_field
+        end
+      else
+        add_field(k, v) # => Net::HTTPHeader#add_field
+      end
+    end
+  end
+
+  # Net::HTTPHeader#add_field (net-http: lib/net/http/header.rb)
+  #
+  #   def add_field(key, val)
+  #     stringified_downcased_key = key.downcase.to_s
+  #
+  #     if @header.key?(stringified_downcased_key)
+  #       append_field_value(@header[stringified_downcased_key], val)
+  #     else
+  #       set_field(key, val)
+  #     end
+  #   end
+
+  super(@header)
 end
 ```
