@@ -30,18 +30,21 @@
       - `Request#handle_host_redirection`
       - `Request#handle_unauthorized`
       - `Request#handle_response`
-        - `Request#decompress` (ボディがある場合)
-          - `Decompressor#decompress_supported_encoding`
-            - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
-        - `Request#encode_text` (ボディがある場合)
-          - `TextEncoder#call`
-            - `TextEncoder#encoded_text`
-        - `Request#parse_response`
-          - `Parser.call`
-            - `Parser#parse`
-              - `Parser#parse_supported_format`
-        - `Response#initialize`
-          - `Response::Headers#initialize`
+        - (リダイレクト時)
+          - `Request#handle_redirection`
+        - (非リダイレクト時)
+          - (ボディがある場合) `Request#decompress`
+            - `Decompressor#decompress_supported_encoding`
+              - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
+          - (ボディがある場合) `Request#encode_text`)
+            - `TextEncoder#call`
+              - `TextEncoder#encoded_text`
+          - `Request#parse_response`
+            - `Parser.call`
+              - `Parser#parse`
+                - `Parser#parse_supported_format`
+          - `Response#initialize`
+            - `Response::Headers#initialize`
 
 ### 気づいたこと
 - net-httpに実装を移譲しているところが結構ある。使い勝手を良くしたラッパーという感じ
