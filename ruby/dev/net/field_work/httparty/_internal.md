@@ -41,6 +41,7 @@
             - `Parser#parse`
               - `Parser#parse_supported_format`
         - `Response#initialize`
+          - `Response::Headers#initialize`
 
 ## `HTTParty.get`
 
@@ -180,7 +181,7 @@ def perform(&block)
 
   result = handle_unauthorized # => Request#handle_unauthorized レスポンスが401 Unauthorizedの場合Digest認証を再送
   result ||= handle_response(chunked_body, &block) # => Request#handle_response
-  result
+  result # #<Request> を返す
 end
 
 # Request#validate (lib/httparty/request.rb)
@@ -502,7 +503,6 @@ def handle_response(raw_body, &block)
       end
     end
 
-    # WIP
     Response.new(self, last_response, lambda { parse_response(body) }, body: raw_body)
     # => Request#parse_response
     # => Response#initialize
@@ -766,5 +766,66 @@ def parse_supported_format
     raise NotImplementedError,
           "#{self.class.name} has not implemented a parsing method for the #{format.inspect} format."
   end
+end
+
+# Response#initialize (lib/httparty/response.rb)
+
+attr_reader :request, :response, :body, :headers
+
+# request      = #<Request>
+# response     = #<Net::HTTPOK>など。#<Net::HTTP>#request(@raw_request)の返り値 (last_response)
+# parsed_block = lambda { parse_response(body) } Parser#parseを呼ぶ
+# body         = responseに対して#bodyを呼んだ、もしくはそれにエンコーディングしたString
+def initialize(request, response, parsed_block, options = {})
+  @request      = request
+  @response     = response
+  @body         = options[:body] || response.body
+  @parsed_block = parsed_block # レスポンスを整形して表示するときなどに使われているっぽい => Response#parsed_response
+  @headers      = Headers.new(response.to_hash) # => Response::Headers#initialize
+
+  if request.options[:logger]
+    logger = ::HTTParty::Logger.build(
+      request.options[:logger],
+      request.options[:log_level],
+      request.options[:log_format]
+    )
+    logger.format(request, self)
+  end
+
+  throw_exception
+end
+
+# Response::Headers#initialize (lib/httparty/response.rb)
+
+include ::Net::HTTPHeader
+
+def initialize(header_values = nil)
+  @header = {}
+
+  if header_values
+    header_values.each_pair do |k,v|
+      if v.is_a?(Array)
+        v.each do |sub_v|
+          add_field(k, sub_v) # => Net::HTTPHeader#add_field
+        end
+      else
+        add_field(k, v) # => Net::HTTPHeader#add_field
+      end
+    end
+  end
+
+  # Net::HTTPHeader#add_field (net-http: lib/net/http/header.rb)
+  #
+  #   def add_field(key, val)
+  #     stringified_downcased_key = key.downcase.to_s
+  #
+  #     if @header.key?(stringified_downcased_key)
+  #       append_field_value(@header[stringified_downcased_key], val)
+  #     else
+  #       set_field(key, val)
+  #     end
+  #   end
+
+  super(@header)
 end
 ```
