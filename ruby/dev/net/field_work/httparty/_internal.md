@@ -33,6 +33,9 @@
         - `Request#decompress` (ボディがある場合)
           - `Decompressor#decompress_supported_encoding`
             - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
+        - `Request#encode_text` (ボディがある場合)
+          - `TextEncoder#call`
+            - `TextEncoder#encoded_text`
 
 ## `HTTParty.get`
 
@@ -156,9 +159,9 @@ def perform(&block)
       chunks = []
 
       http_response.read_body do |fragment|
-        encoded_fragment = encode_text(fragment, http_response['content-type'])
+        encoded_fragment = encode_text(fragment, http_response['content-type']) # => Request#encode_text
         chunks << encoded_fragment if !options[:stream_body]
-        block.call ResponseFragment.new(encoded_fragment, http_response, current_http)
+        block.call(ResponseFragment.new(encoded_fragment, http_response, current_http))
       end
 
       chunked_body = chunks.join
@@ -485,7 +488,8 @@ def handle_response(raw_body, &block)
 
     # WIP
     unless body.nil?
-      body = encode_text(body, last_response['content-type'])
+      # Content-TypeをもとにRubyの文字エンコーディングを正しく設定する
+      body = encode_text(body, last_response['content-type']) # => Request#encode_text
 
       if decompress_content?
         last_response.delete('content-encoding')
@@ -591,6 +595,89 @@ def decompress_supported_encoding
   else
     raise NotImplementedError,
           "#{self.class.name} has not implemented a decompression method for #{encoding.inspect} encoding."
+  end
+end
+
+# Request#encode_text (lib/httparty/request.rb)
+
+def encode_text(text, content_type)
+  TextEncoder.new(
+    text,
+    content_type: content_type,
+    assume_utf16_is_big_endian: assume_utf16_is_big_endian # デフォルトではtrue
+  ).call
+  # => TextEncoder#initialize
+  # => TextEncoder#call
+end
+
+# TextEncoder#initialize (lib/httparty/text_encoder.rb)
+
+def initialize(text, assume_utf16_is_big_endian: true, content_type: nil)
+  @text = +text # force_encoding時に元のtextを壊さないように複製
+  @content_type = content_type
+  @assume_utf16_is_big_endian = assume_utf16_is_big_endian
+end
+
+# TextEncoder#call (lib/httparty/text_encoder.rb)
+
+def call
+  if can_encode? # ''.respond_to?(:encoding) && charset => TextEncoder#can_encode?
+    encoded_text # => TextEncoder#encoded_text
+  else
+    text
+  end
+end
+
+# TextEncoder#encoded_text (lib/httparty/text_encoder.rb)
+
+def encoded_text
+  if 'utf-16'.casecmp(charset) == 0 # => TextEncoder#charset
+    encode_utf_16 # => TextEncoder#encode_utf_16
+  else
+    encode_with_ruby_encoding # => TextEncoder#encode_with_ruby_encoding
+  end
+end
+
+# TextEncoder#encode_utf_16 (lib/httparty/text_encoder.rb)
+
+def encode_utf_16
+  if text.bytesize >= 2
+    if text.getbyte(0) == 0xFF && text.getbyte(1) == 0xFE
+      return text.force_encoding('UTF-16LE')
+    elsif text.getbyte(0) == 0xFE && text.getbyte(1) == 0xFF
+      return text.force_encoding('UTF-16BE')
+    end
+  end
+
+  if assume_utf16_is_big_endian # option
+    text.force_encoding('UTF-16BE')
+  else
+    text.force_encoding('UTF-16LE')
+  end
+end
+
+# TextEncoder#encode_with_ruby_encoding (lib/httparty/text_encoder.rb)
+
+def encode_with_ruby_encoding
+  encoding = Encoding.find(charset)
+  # Encoding = 組み込みのEncodingクラス
+  # => TextEncoder#charset
+  text.force_encoding(encoding.to_s)
+rescue ArgumentError
+  text
+end
+
+# TextEncoder#charset (lib/httparty/text_encoder.rb)
+
+def charset
+  return nil if content_type.nil?
+
+  if (matchdata = content_type.match(/;\s*charset\s*=\s*([^=,;"\s]+)/i))
+    return matchdata.captures.first
+  end
+
+  if (matchdata = content_type.match(/;\s*charset\s*=\s*"((\\.|[^\\"])+)"/i))
+    return matchdata.captures.first.gsub(/\\(.)/, '\1')
   end
 end
 ```
