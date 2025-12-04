@@ -38,7 +38,8 @@
             - `TextEncoder#encoded_text`
         - `Request#parse_response`
           - `Parser.call`
-            - `Parser#parse` WIP
+            - `Parser#parse`
+              - `Parser#parse_supported_format`
         - `Response#initialize`
 
 ## `HTTParty.get`
@@ -709,20 +710,61 @@ end
 
 # Parser#parse (lib/httparty/parser.rb)
 
-# WIP
 def parse
   return nil if body.nil?
   return nil if body == 'null'
-  return nil if body.valid_encoding? && body.strip.empty?
+  return nil if body.valid_encoding? && body.strip.empty? # => String#valid_encoding?
 
   if body.valid_encoding? && body.encoding == Encoding::UTF_8
-    @body = body.gsub(/\A#{UTF8_BOM}/, '')
+    @body = body.gsub(/\A#{UTF8_BOM}/, '') # UTF8_BOM = "\xEF\xBB\xBF"
   end
 
-  if supports_format?
-    parse_supported_format
+  if supports_format? # self.class.supports_format?(format) => Parser#supports_format / Parser.supports_format?
+    parse_supported_format # => Parser#parse_supported_format
   else
     body
+  end
+end
+
+# Parser.supports_format? (lib/httparty/parser.rb)
+
+def self.supports_format?(format)
+  supported_formats.include?(format)
+
+  # => Parser.supported_format
+  # => Parser.formats
+  #
+  # Parser.formats (lib/httparty/parser.rb)
+  #
+  #   def self.formats
+  #     const_get(:SupportedFormats)
+  #   end
+  #
+  #   SupportedFormats = {
+  #     'text/xml'                    => :xml,   # MultiXml.parse(body)
+  #     'application/xml'             => :xml,   # MultiXml.parse(body)
+  #     'application/json'            => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'application/vnd.api+json'    => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'application/hal+json'        => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'text/json'                   => :json,  # JSON.parse(body, :quirks_mode => true, :allow_nan => true)
+  #     'application/javascript'      => :plain, # body
+  #     'text/javascript'             => :plain, # body
+  #     'text/html'                   => :html,  # body
+  #     'text/plain'                  => :plain, # body
+  #     'text/csv'                    => :csv,   # CSV.parse(body)
+  #     'application/csv'             => :csv,   # CSV.parse(body)
+  #     'text/comma-separated-values' => :csv    # CSV.parse(body)
+  #   }
+end
+
+# Parser#parse_supported_format (lib/httparty/parser.rb)
+
+def parse_supported_format
+  if respond_to?(format, true)
+    send(format)
+  else
+    raise NotImplementedError,
+          "#{self.class.name} has not implemented a parsing method for the #{format.inspect} format."
   end
 end
 ```
