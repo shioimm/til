@@ -43,10 +43,39 @@
         - `Response#initialize`
           - `Response::Headers#initialize`
 
+### 気づいたこと
+- net-httpに実装を移譲しているところが結構ある。使い勝手を良くしたラッパーという感じ
+- faradayやhttpxのようにアダプタを差し替えたりはできないっぽい
+
+#### 追加機能
+- brotli / lzw / zstdなどnet-httpがサポートしていない圧縮形式でも自動解凍できる (`Decompressor`)
+- Content-TypeのcharsetをもとにRubyでのエンコーディングを実施する (`TextEncoder`)
+- 自動リダイレクトさせる (デフォルトでは5回が上限) (`Request#handle_redirection`)
+  - 303、301、302の場合はGETへ変換
+  - 307、308の場合はリクエストメソッドを維持
+- リダイレクト先のドメインが変わったかどうかを保持する (`Request#handle_host_redirection`)
+- Digest認証にて401 Unauthorizedを自動で再送する (`Request#handle_unauthorized`)
+- Cookieを管理する
+  - リクエストヘッダにCookieをセットする (`HTTParty.process_cookies`)
+  - レスポンスヘッダからSet-Cookieを取得し、次のリクエストに含める (`Request#capture_cookies`)
+- レスポンスボディをパースして扱いやすくする (`HTTParty::Parser` / `Response#parsed_response`)
+- レスポンスヘッダで複数値を扱いやすくする (`Response::Headers`)
+
 ## `HTTParty.get`
 
 ```ruby
 # (lib/httparty.rb)
+
+def self.included(base)
+  base.extend ClassMethods
+  base.send :include, ModuleInheritableAttributes
+  base.send(:mattr_inheritable, :default_options)
+  base.send(:mattr_inheritable, :default_cookies)
+  base.instance_variable_set(:@default_options, {})
+  base.instance_variable_set(:@default_cookies, CookieHash.new)
+end
+
+# HTTParty.get (lib/httparty.rb)
 
 def get(path, options = {}, &block)
   perform_request(Net::HTTP::Get, path, options, &block)
@@ -91,15 +120,16 @@ def build_request(http_method, path, options = {})
 
   process_cookies(options) # => HTTParty.process_cookies
 
-  # HTTParty.process_cookies (lib/httparty.rb)
-  #
-  #   def process_cookies(options) #:nodoc:
-  #     return unless options[:cookies] || default_cookies.any?
-  #     options[:headers] ||= headers.dup
-  #     options[:headers]['cookie'] = cookies.merge(options.delete(:cookies) || {}).to_cookie_string
-  #   end
-
   Request.new(http_method, path, options) # => Request#initialize
+end
+
+# HTTParty.process_cookies (lib/httparty.rb)
+
+def process_cookies(options) #:nodoc:
+  return unless options[:cookies] || default_cookies.any?
+
+  options[:headers] ||= headers.dup
+  options[:headers]['cookie'] = cookies.merge(options.delete(:cookies) || {}).to_cookie_string
 end
 
 # Request#initialize (lib/httparty/request.rb)
@@ -264,7 +294,8 @@ def setup_raw_request
   @raw_request.instance_variable_set(:@decode_content, decompress_content?)
   # !options[:skip_decompression] => Request#decompress_content?
 
-  if options[:basic_auth] && send_authorization_header?
+  # Basic認証あり、かつリダイレクト時にホストが変更されている
+  if options[:basic_auth] && send_authorization_header? # => Request#send_authorization_header?
     @raw_request.basic_auth(username, password)
     @credentials_sent = true
   end
@@ -461,6 +492,14 @@ def handle_host_redirection
   return if redirect_path.relative? || path.host == redirect_path.host || uri.host == redirect_path.host
 
   @changed_hosts = true
+
+  # @changed_hostsはRequest#send_authorization_header?で利用される
+  #
+  # Request#send_authorization_header?
+  #
+  #   def send_authorization_header?
+  #     !@changed_hosts
+  #   end
 end
 
 # Request#handle_unauthorized (lib/httparty/request.rb)
@@ -543,24 +582,25 @@ def handle_redirection(&block)
   #     @raw_request.body = nil
   #   end
 
+  # Set-CookieをパースしてCookie ヘッダを再構築する
   capture_cookies(last_response) # => Request#capture_cookies
 
-  # Request#capture_cookies (lib/httparty/request.rb)
-  #
-  #   def capture_cookies(response)
-  #     return unless response['Set-Cookie']
-  #     cookies_hash = HTTParty::CookieHash.new
-  #
-  #     if options[:headers] && options[:headers].to_hash['Cookie']
-  #       cookies_hash.add_cookies(options[:headers].to_hash['Cookie'])
-  #     end
-  #
-  #     response.get_fields('Set-Cookie').each { |cookie| cookies_hash.add_cookies(cookie) }
-  #     options[:headers] ||= {}
-  #     options[:headers]['Cookie'] = cookies_hash.to_cookie_string
-  #   end
-
   perform(&block) # => Request#perform リダイレクトの場合もう一回実行
+end
+
+# Request#capture_cookies (lib/httparty/request.rb)
+
+def capture_cookies(response)
+  return unless response['Set-Cookie']
+  cookies_hash = HTTParty::CookieHash.new
+
+  if options[:headers] && options[:headers].to_hash['Cookie']
+    cookies_hash.add_cookies(options[:headers].to_hash['Cookie'])
+  end
+
+  response.get_fields('Set-Cookie').each { |cookie| cookies_hash.add_cookies(cookie) }
+  options[:headers] ||= {}
+  options[:headers]['Cookie'] = cookies_hash.to_cookie_string
 end
 
 # Decompressor#initialize (lib/httparty/decompressor.rb)
