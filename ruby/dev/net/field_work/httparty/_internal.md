@@ -32,10 +32,11 @@
       - `Request#handle_response`
         - (リダイレクト時)
           - `Request#handle_redirection`
+            - `Request#capture_cookies`
         - (非リダイレクト時)
           - (ボディがある場合) `Request#decompress`
             - `Decompressor#decompress_supported_encoding`
-              - `Decompressor#{圧縮方式に応じて解凍}` Net::HTTPで対応していない圧縮方式に対応しているっぽい
+              - `Decompressor#{圧縮方式に応じて解凍}`
           - (ボディがある場合) `Request#encode_text`)
             - `TextEncoder#call`
               - `TextEncoder#encoded_text`
@@ -43,6 +44,7 @@
             - `Parser.call`
               - `Parser#parse`
                 - `Parser#parse_supported_format`
+                  - `Parser#{Content-Typeに応じてパース}`
           - `Response#initialize`
             - `Response::Headers#initialize`
 
