@@ -1,18 +1,25 @@
 # faraday 現地調査 (202511時点)
 
 ## 全体の流れ
+- `Faraday.default_adapter`のセット
+- `Faraday.default_adapter_options`のセット
 - `Faraday.new`
   - `Faraday.default_connection_options`
+    - `ConnectionOptions.new`
   - `Utils.deep_merge`
   - `Connection.initialize`
-    - `RackBuilder#initialize`
-      - `RackBuilder#build`
-        - `RackBuilder#request` ハンドラの追加
-          - `RackBuilder#use_symbol`
-            - `RackBuilder#use`
-              - `RackBuilder::Handler#initialize`
-        - `RackBuilder#adapter` アダプタの追加
-          - `RackBuilder::Handler#initialize`
+    - `ConnectionOptions#new_builder`
+      - `RackBuilder#initialize`
+        - `RackBuilder#build`
+          - `RackBuilder#request`
+            - `RackBuilder#use_symbol`
+              - `RackBuilder#use` ハンドラの追加
+                - `Middleware.lookup_middleware` ハンドラの特定
+                - `RackBuilder::Handler#initialize` ハンドラクラスオブジェクトの作成
+          - `RackBuilder#adapter` アダプタの設定
+            - `Middleware.lookup_middleware` アダプタの特定
+            - `RackBuilder::Handler#initialize` アダプタクラスオブジェクトの作成
+    - `Connection#initialize_proxy`
 - `Connection#get`
   - `Connection#run_request`
     - `Connection#build_request`
@@ -52,6 +59,7 @@
 
 ```ruby
 # (lib/faraday.rb)
+# e.g. Faraday.new(url: "http://example.com").get("/index.html")
 
 def new(url = nil, options = {}, &block)
   options = Utils.deep_merge(default_connection_options, options)
@@ -65,13 +73,33 @@ end
 def default_connection_options
   @default_connection_options ||= ConnectionOptions.new # => ConnectionOptions
 end
-```
 
-### `Utils.deep_merge`
+# ConnectionOptions (lib/faraday/options/connection_options.rb)
 
-```ruby
-# (lib/faraday/utils.rb)
+module Faraday
+  ConnectionOptions = Options.new(
+    :request, :proxy, :ssl, :builder, :url,
+    :parallel_manager, :params, :headers,
+    :builder_class
+  ) do
 
+    options request: RequestOptions, ssl: SSLOptions
+    memoized(:request) { self.class.options_for(:request).new }
+    memoized(:ssl) { self.class.options_for(:ssl).new }
+    memoized(:builder_class) { RackBuilder } # => RackBuilder
+  end
+end
+
+# Utils.deep_merge (lib/faraday/utils.rb)
+
+def deep_merge(source, hash)
+  deep_merge!(source.dup, hash) # => Utils.deep_merge!
+end
+
+# Utils.deep_merge! (lib/faraday/utils.rb)
+
+# target = ConnectionOptions
+# hash   = デフォルトでは空Hash
 def deep_merge!(target, hash)
   hash.each do |key, value|
     target[key] = if value.is_a?(Hash) && (target[key].is_a?(Hash) || target[key].is_a?(Options))
@@ -80,7 +108,8 @@ def deep_merge!(target, hash)
                     value
                   end
   end
-  target
+
+  target # ConnectionOptions
 end
 ```
 
@@ -89,8 +118,17 @@ end
 ```ruby
 # (lib/faraday/connection.rb)
 
+# url     = String
+# options = ConnectionOptions
 def initialize(url = nil, options = nil)
-  options = ConnectionOptions.from(options) # => ConnectionOptions
+  options = ConnectionOptions.from(options) # => Options.from
+
+  # Options.from (lib/faraday/options.rb)
+  # valueを元に新しいConnectionOptionsを作成する
+  #
+  #   def self.from(value)
+  #     value ? new.update(value) : new
+  #   end
 
   if url.is_a?(Hash) || url.is_a?(ConnectionOptions)
     options = Utils.deep_merge(options, url) # => Utils.deep_merge
@@ -115,39 +153,21 @@ def initialize(url = nil, options = nil)
   @params.update(options.params)   if options.params
   @headers.update(options.headers) if options.headers
 
-  initialize_proxy(url, options)
+  # プロキシのURLを特定した上でProxyOptionsでラップし@proxyに保存する
+  initialize_proxy(url, options) # => Connection#initialize_proxy
 
   yield(self) if block_given?
 
   @headers[:user_agent] ||= USER_AGENT
 end
 
-# ConnectionOptions (lib/faraday/options/connection_options.rb)
+# ConnectionOptions#new_builder (lib/faraday/options/connection_options.rb)
 
-module Faraday
-  ConnectionOptions = Options.new(
-    :request, :proxy, :ssl, :builder, :url,
-    :parallel_manager, :params, :headers,
-    :builder_class
-  ) do
-
-    options request: RequestOptions, ssl: SSLOptions
-    memoized(:request) { self.class.options_for(:request).new }
-    memoized(:ssl) { self.class.options_for(:ssl).new }
-    memoized(:builder_class) { RackBuilder } # => RackBuilder
-
-    # ConnectionOptions#new_builder (lib/faraday/options/connection_options.rb)
-    def new_builder(block)
-      builder_class.new(&block) # => RackBuilder#initialize
-    end
-  end
+def new_builder(block)
+  builder_class.new(&block) # => RackBuilder#initialize
 end
-```
 
-## `RackBuilder#initialize`
-
-```ruby
-# (lib/faraday/rack_builder.rb)
+# RackBuilder#initialize (lib/faraday/rack_builder.rb)
 
 def initialize(&block)
   @adapter = nil
@@ -160,11 +180,20 @@ end
 def build
   raise_if_locked # raise StackLocked, LOCK_ERR if locked? => RackBuilder#raise_if_locked
   block_given? ? yield(self) : request(:url_encoded) # => RackBuilder#request
-  adapter(Faraday.default_adapter, **Faraday.default_adapter_options) unless @adapter # => RackBuilder#adapter
+
+  # (lib/faraday.rb)
+  # module Faraday
+  #   self.default_adapter = :net_http
+  #   self.default_adapter_options = {}
+  # end
+  adapter(Faraday.default_adapter, **Faraday.default_adapter_options) unless @adapter
+
+  # => RackBuilder#adapter
 end
 
 # RackBuilder#request (lib/faraday/rack_builder.rb)
 
+# key = :url_encoded
 def request(key, ...)
   use_symbol(Faraday::Request, key, ...)
   # => Faraday::Request
@@ -173,47 +202,42 @@ end
 
 # RackBuilder#use_symbol (lib/faraday/rack_builder.rb)
 
+# mod = Faraday::Request
+# key = :url_encoded
 def use_symbol(mod, key, ...)
-  # mod = Faraday::Request
-  # key = :url_encoded
-  use(mod.lookup_middleware(key), ...)
-  # => MiddlewareRegistry#lookup_middleware (Faraday::Request::UrlEncoded)
+  handler = mod.lookup_middleware(key)
+  # => MiddlewareRegistry#lookup_middleware
+  # keyが:url_encodedの場合、handler = Faraday::Adapter::UrlEncoded
+  use(handler, ...)
   # => RackBuilder#use
 end
 
 # MiddlewareRegistry#lookup_middleware (lib/faraday/middleware_registry.rb)
 
-# key = :url_encoded
+# key = :url_encodedなどのハンドラ、もしくは:net_httpなどのアダプタ
 def lookup_middleware(key)
-  load_middleware(key) || # => MiddlewareRegistry#load_middleware ここではFaraday::Request::UrlEncodedを返す
+  load_middleware(key) || # => MiddlewareRegistry#load_middleware
     raise(Faraday::Error, "#{key.inspect} is not registered on #{self}")
+end
 
-  # MiddlewareRegistry#load_middleware (lib/faraday/middleware_registry.rb)
-  #
-  #   def load_middleware(key)
-  #     value = registered_middleware[key] # => MiddlewareRegistry#registered_middleware
-  #
-  #     # MiddlewareRegistry#registered_middleware (lib/faraday/middleware_registry.rb)
-  #     #   def registered_middleware = @registered_middleware ||= {}
-  #
-  #     case value
-  #     when Module
-  #       value
-  #     when Symbol, String
-  #       middleware_mutex do
-  #         @registered_middleware[key] = const_get(value)
-  #       end
-  #     when Proc
-  #       middleware_mutex do
-  #         @registered_middleware[key] = value.call
-  #       end
-  #     end
-  #   end
+# MiddlewareRegistry#load_middleware (lib/faraday/middleware_registry.rb)
+
+def load_middleware(key)
+  value = registered_middleware[key] # => MiddlewareRegistry#registered_middleware
+
+  # MiddlewareRegistry#registered_middleware (lib/faraday/middleware_registry.rb)
+  #   def registered_middleware = @registered_middleware ||= {}
+
+  case value
+  when Module         then value
+  when Symbol, String then middleware_mutex { @registered_middleware[key] = const_get(value) }
+  when Proc           then middleware_mutex { @registered_middleware[key] = value.call }
+  end
 end
 
 # RackBuilder#use (lib/faraday/rack_builder.rb))
 
-# klass = Faraday::Request::UrlEncoded
+# klass = ハンドラを表すシンボルかクラス
 def use(klass, ...)
   if klass.is_a? Symbol
     use_symbol(Faraday::Middleware, klass, ...) # => RackBuilder#use_symbol
@@ -222,28 +246,7 @@ def use(klass, ...)
     raise_if_adapter(klass) # => RackBuilder#raise_if_adapter
 
     @handlers << self.class::Handler.new(klass, ...) # => RackBuilder::Handler#initialize
-    # RackBuilder::Handler.new (Faraday::Request::UrlEncoded#initialize)
   end
-end
-
-# RackBuilder#adapter (lib/faraday/rack_builder.rb)
-
-# klass = Faraday.default_adapter
-# args = Faraday.default_adapter_options
-
-# (lib/faraday.rb)
-# module Faraday
-#   self.default_adapter = :net_http
-#   self.default_adapter_options = {}
-# end
-
-def adapter(klass = NO_ARGUMENT, *args, &block)
-  return @adapter if klass == NO_ARGUMENT || klass.nil?
-
-  klass = Faraday::Adapter.lookup_middleware(klass) if klass.is_a?(Symbol)
-  # Faraday.default_adapterが:net_httpの場合、klass = Faraday::Adapter::NetHttp
-
-  @adapter = self.class::Handler.new(klass, *args, &block) # => RackBuilder::Handler#initialize
 end
 
 # RackBuilder::Handler#initialize (lib/faraday/rack_builder.rb)
@@ -259,12 +262,84 @@ def initialize(klass, *args, &block)
   @block = block
   # この時点ではまだハンドラにラップしたklassからオブジェクトを生成しない
 end
+
+# RackBuilder#adapter (lib/faraday/rack_builder.rb)
+
+# klass = :net_http (Faraday.default_adapter)
+# args  = {}        (Faraday.default_adapter_options)
+def adapter(klass = NO_ARGUMENT, *args, &block)
+  return @adapter if klass == NO_ARGUMENT || klass.nil?
+
+  klass = Faraday::Adapter.lookup_middleware(klass) if klass.is_a?(Symbol)
+  # => Middleware.lookup_middleware
+  # Faraday.default_adapterが:net_httpの場合、klass = Faraday::Adapter::NetHttp
+
+  @adapter = self.class::Handler.new(klass, *args, &block) # => RackBuilder::Handler#initialize
+end
+
+# Connection#initialize_proxy (lib/faraday/connection.rb)
+
+def initialize_proxy(url, options)
+  @manual_proxy = !!options.proxy
+  @proxy =
+    if options.proxy
+      ProxyOptions.from(options.proxy) # => Options.from
+    else
+      proxy_from_env(url) # => Connection#proxy_from_env
+    end
+end
+
+def proxy_from_env(url)
+  return if Faraday.ignore_env_proxy
+
+  uri = nil # この行不要では???
+
+  case url
+  when String
+    uri = Utils.URI(url) # => Utils.URI
+
+    # Utils.URI (lib/faraday/utils.rb)
+    #
+    #   def URI(url) # rubocop:disable Naming/MethodName
+    #     if url.respond_to?(:host)
+    #       url
+    #     elsif url.respond_to?(:to_str)
+    #       default_uri_parser.call(url)
+    #     else
+    #       raise ArgumentError, 'bad argument (expected URI object or URI string)'
+    #     end
+    #   end
+
+    uri = if uri.host.nil?
+            find_default_proxy # => Connection#find_default_proxy
+          else
+            URI.parse("#{uri.scheme}://#{uri.host}").find_proxy
+          end
+  when URI
+    uri = url.find_proxy # URI::Generic#find_proxy
+  when nil
+    uri = find_default_proxy # => Connection#find_default_proxy
+  end
+
+  ProxyOptions.from(uri) if uri
+end
+
+# Connection#find_default_proxy
+
+def find_default_proxy
+  uri = ENV.fetch('http_proxy', nil)
+  return unless uri && !uri.empty?
+
+  uri = "http://#{uri}" unless uri.match?(/^http/i)
+  uri
+end
 ```
 
 ## `Connection#get`
 
 ```ruby
 # (lib/faraday/connection.rb)
+# e.g. Faraday.new(url: "http://example.com").get("/index.html")
 
 class Connection
   # ...
