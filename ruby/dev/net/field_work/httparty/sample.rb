@@ -8,7 +8,8 @@ GEM_PATH = ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/
 #   end
 # end
 
-HTTParty.get("https://example.com/")
+res = HTTParty.get("https://example.com/")
+p res
 
 __END__
 [Module, #<Class:HTTParty>, :get, "3.4.0/gems/httparty-0.22.0/lib/httparty.rb:643"]
