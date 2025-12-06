@@ -7,7 +7,7 @@
   - `Faraday.default_connection_options`
     - `ConnectionOptions.new`
   - `Utils.deep_merge`
-  - `Connection.initialize`
+  - `Connection#initialize`
     - `ConnectionOptions#new_builder`
       - `RackBuilder#initialize`
         - `RackBuilder#build`
@@ -24,6 +24,7 @@
   - `Connection#run_request`
     - `Connection#build_request`
       - `Request.create`
+      - `Connection#proxy_for_request`
     - `RackBuilder#build_response`
       - `RackBuilder#build_env`
         - `Env.new` (`Faraday::Env`)
@@ -54,6 +55,7 @@
 ## 気づいたこと
 - Rack風のインターフェースでミドルウェアを追加できる
 - アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
+- `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
 
 ## `Faraday.new`
 
@@ -343,6 +345,7 @@ end
 
 class Connection
   # ...
+  METHODS_WITH_QUERY = %w[get head delete trace].freeze
   # Connection#get など (lib/faraday/connection.rb)
   METHODS_WITH_QUERY.each do |method| # => Connection#run_request
     class_eval <<-RUBY, __FILE__, __LINE__ + 1
@@ -360,8 +363,9 @@ end
 
 # Connection#run_request (lib/faraday/connection.rb)
 
+METHODS = Set.new %i[get post put delete head patch options trace]
+
 def run_request(method, url, body, headers)
-  # METHODS = Set.new %i[get post put delete head patch options trace]
   unless METHODS.include?(method)
     raise ArgumentError, "unknown http method: #{method}"
   end
@@ -374,15 +378,16 @@ def run_request(method, url, body, headers)
 
   request = build_request(method) do |req| # => Connection#build_request
     req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
-    req.url(url)                if url     # => Request#url
-    req.headers.update(headers) if headers # => Utils::Headers#update
-    req.body = body             if body    # => Request#body=
+    req.url(url)                if url         # => Request#url
+    req.headers.update(headers) if headers     # => Utils::Headers#update
+    req.body = body             if body        # => Request#body=
 
     yield(req) if block_given?
   end
 
+  # WIP
   builder.build_response(self, request) # self = #<Connection>
-  # attr_reader :builder (Faraday::RackBuilder)
+  # attr_reader :builder (#<Faraday::RackBuilder>)
   # => RackBuilder#build_response
 end
 
@@ -409,13 +414,25 @@ module Faraday
     alias_method :member_set, :[]=
     private :member_set
 
-    def self.create(request_method)
+    def self.create(request_method) # request_method = :get など
       new(request_method).tap do |request|
         yield(request) if block_given?
       end
     end
 
     # ...
+  end
+end
+
+# Connection#proxy_for_request
+
+def proxy_for_request(url)
+  return proxy if @manual_proxy # proxy = @proxy デフォルトではinitialize時の#initialize_proxyの返り値
+
+  if url && Utils.URI(url).absolute?
+    proxy_from_env(url)
+  else
+    proxy
   end
 end
 
