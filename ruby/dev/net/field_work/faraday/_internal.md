@@ -22,11 +22,12 @@
     - `Connection#initialize_proxy`
 - `Connection#get`
   - `Connection#run_request`
-    - `Connection#build_request`
+    - `Connection#build_request` リクエストオブジェクトを作成 (まだ送信していない)
       - `Request.create`
       - `Connection#proxy_for_request`
     - `RackBuilder#build_response`
       - `RackBuilder#build_env`
+        - `Connection#build_exclusive_url`
         - `Env.new` (`Faraday::Env`)
       - `RackBuilder#app`
         - `RackBuilder#to_app`
@@ -385,9 +386,10 @@ def run_request(method, url, body, headers)
     yield(req) if block_given?
   end
 
-  # WIP
-  builder.build_response(self, request) # self = #<Connection>
   # attr_reader :builder (#<Faraday::RackBuilder>)
+  # self    = #<Connection>
+  # request = #<Request>
+  builder.build_response(self, request)
   # => RackBuilder#build_response
 end
 
@@ -442,6 +444,7 @@ def build_response(connection, request)
   env = build_env(connection, request)
   # => RackBuilder#build_env
 
+  # WIP
   app.call(env)
   # => RackBuilder#app
   # => Request::UrlEncoded#call
@@ -450,7 +453,8 @@ end
 # RackBuilder#build_env (lib/faraday/rack_builder.rb)
 
 def build_env(connection, request)
-  exclusive_url = connection.build_exclusive_url(
+  # リクエストパスとConnectionの持つurl_prefixを組み合わせて単一のURI オブジェクトに正規化する
+  exclusive_url = connection.build_exclusive_url( # => Connection#build_exclusive_url
     request.path,
     request.params,
     request.options.params_encoder
@@ -458,12 +462,35 @@ def build_env(connection, request)
 
   Env.new( # => Faraday::Env
     request.http_method,
-    request.body, exclusive_url,
+    request.body,
+    exclusive_url,
     request.options,
     request.headers,
     connection.ssl,
     connection.parallel_manager
   )
+end
+
+# Connection#build_exclusive_url (lib/faraday/connection.rb)
+
+def build_exclusive_url(url = nil, params = nil, params_encoder = nil)
+  url  = nil if url.respond_to?(:empty?) && url.empty?
+  base = url_prefix.dup # url_prefix = initialize時にself.url_prefix = url || 'http:/'
+
+  if url && !base.path.end_with?('/')
+    base.path = "#{base.path}/" # ensure trailing slash
+  end
+
+  # Ensure relative url will be parsed correctly (such as `service:search` )
+  url = "./#{url}" if url.respond_to?(:start_with?) && !url.start_with?('http://', 'https://', '/', './', '../')
+  uri = url ? base + url : base
+
+  if params
+    uri.query = params.to_query(params_encoder || options.params_encoder)
+  end
+
+  uri.query = nil if uri.query && uri.query.empty?
+  uri
 end
 
 # Faraday::Env (lib/faraday/options/env.rb)
@@ -489,6 +516,7 @@ end
 
 # RackBuilder#app (lib/faraday/rack_builder.rb)
 
+# WIP
 def app
   @app ||= begin
     lock! # @handlers.freeze => RackBuilder#lock!
