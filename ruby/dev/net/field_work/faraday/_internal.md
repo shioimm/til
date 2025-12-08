@@ -31,9 +31,11 @@
         - `Env.new` (`Faraday::Env`)
       - `RackBuilder#app`
         - `RackBuilder#to_app`
-          - `{ハンドラ}#initialize` (`Faraday::Adapter::NetHttp#initialize`)
-          - `{アダプタ}#initialize` (`Faraday::Adapter::UrlEncoded#initialize`)
-      - `{ハンドラ}#call` (`Request::UrlEncoded#call`)
+          - `{アダプタ}#build` (`Adapter::NetHttp::Handler#build` => `RackBuilder::Handler#build`)
+            - `Adapter::NetHttp#initialize`
+          - `{ハンドラ}#build` (`Adapter::NetHttp::Handler#build` => `RackBuilder::Handler#build`)
+            - `Request::UrlEncoded#initialize`
+      - `{一番外側のハンドラ}#call` (`Request::UrlEncoded#call`)
         - `Request::UrlEncoded#match_content_type`
         - `{アダプタ}#call` (`Adapter::NetHttp#call`)
           - `Adapter#call`
@@ -444,10 +446,9 @@ def build_response(connection, request)
   env = build_env(connection, request)
   # => RackBuilder#build_env
 
-  # WIP
   app.call(env)
   # => RackBuilder#app
-  # => Request::UrlEncoded#call
+  # => {一番外側のハンドラ}#call (Request::UrlEncoded#call)
 end
 
 # RackBuilder#build_env (lib/faraday/rack_builder.rb)
@@ -519,12 +520,15 @@ end
 # WIP
 def app
   @app ||= begin
+    # ここまで追加したハンドラをfreeze
     lock! # @handlers.freeze => RackBuilder#lock!
+    # アダプタがセットされていなければ例外発生
     ensure_adapter! # raise MISSING_ADAPTER_ERROR unless @adapter => RackBuilder#ensure_adapter!
 
     to_app # => RackBuilder#to_app
   end
 
+  # @app = ハンドラがアダプタをラップする構造
   # #<Faraday::Request::UrlEncoded:0x000000011c438128
   #   @app=#<Faraday::Adapter::NetHttp:0x0000000101423f40
   #          @ssl_cert_store=nil,
@@ -536,6 +540,7 @@ end
 
 # RackBuilder#to_app (lib/faraday/rack_builder.rb)
 
+# Rackっぽいアーキテクチャになっている
 def to_app
   # @handlers = [Faraday::Request::UrlEncoded (Faraday::RackBuilder::Handle) ]
   #   - RackBuilder#initialize時に空配列で初期化される
@@ -544,9 +549,12 @@ def to_app
   # @adapter = Faraday::Adapter::NetHttp (Faraday::RackBuilder::Handler)
   #   - RackBuilder#initialize時にnilで初期化される
   #   - RackBuilder#adapterで値が追加される
-  # Rackっぽいアーキテクチャになっている
-  @handlers.reverse.inject(@adapter.build) do |app, handler| # => RackBuilder::Handler#build
-    handler.build(app) # => RackBuilder::Handler#build↲
+
+  builded_adapter = @adapter.build # => Adapter::NetHttp::Handler#build (RackBuilder::Handler#build)
+
+  # ハンドラがアダプタをラップする構造を返す
+  @handlers.reverse.inject(builded_adapter) do |app, handler|
+    handler.build(app) # => Request::UrlEncoded#build (RackBuilder::Handler#build)
   end
 end
 
@@ -554,13 +562,14 @@ end
 
 def build(app = nil)
   # ハンドラでラップしたクラスのオブジェクトを生成する
-  # - Faraday::Request::UrlEncoded.new
-  # - Faraday::Adapter::NetHttp.new (=> Adapter::NetHttp#initialize)
   klass.new(app, *@args, &@block)
+  # => ({アダプタ}.buildの場合) Adapter::NetHttp#initialize (appはnil)
+  # => ({ハンドラ}.buildの場合) Request::UrlEncoded#initialize (appは#<Adapter::NetHttp>)
 end
 
 # Request::UrlEncoded#call (lib/faraday/request/url_encoded.rb)
 
+# WIP
 def call(env)
   match_content_type(env) do |data| # => Request::UrlEncoded#match_content_type
     # data = env.body
@@ -619,6 +628,7 @@ module Faraday
 
   class Adapter
     class NetHttp < Faraday::Adapter
+
       # Adapter::NetHttp#initialize (lib/faraday/adapter/net_http.rb)
 
       def initialize(app = nil, opts = {}, &block)
