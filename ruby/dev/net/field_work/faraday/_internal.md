@@ -518,7 +518,6 @@ end
 
 # RackBuilder#app (lib/faraday/rack_builder.rb)
 
-# WIP
 def app
   @app ||= begin
     # ここまで追加したハンドラをfreeze
@@ -822,15 +821,8 @@ end
 #          @response=#<Faraday::Response:0x00000001055dbf50
 #          @on_complete_callbacks=[]>
 
-# WIP
 def perform_request(http, env)
   if env.stream_response? # => Env#stream_response?
-
-    # Env#stream_response? (lib/faraday/options/env.rb)
-    #
-    #   def stream_response?
-    #     request.stream_response? # => RequestOptions#stream_response?
-    #   end
 
     http_response = env.stream_response do |&on_data|
       request_with_wrapped_block(http, env, &on_data) # => Adapter::NetHttp#request_with_wrapped_block
@@ -844,6 +836,12 @@ def perform_request(http, env)
   env.response_body = encoded_body(http_response)
   env.response.finish(env) # => Response#finish
   http_response
+end
+
+# Env#stream_response? (lib/faraday/options/env.rb)
+
+def stream_response?
+  request.stream_response? # => RequestOptions#stream_response?
 end
 
 # RequestOptions#stream_response? (lib/faraday/options/request_options.rb)
@@ -862,12 +860,14 @@ end
 
 def request_with_wrapped_block(http, env, &block)
   http.start do |opened_http| # => Net::HTTP#start (Net::HTTP#do_start -> httpをブロック変数としてyield)
-    opened_http.request(create_request(env)) do |response|
+    opened_http.request(create_request(env)) do |response| # 実際のHTTPリクエストを送信
       # => Net::HTTP#request
       # => (引数) Adapter::NetHttp#create_request
 
       # response = Net::HTTP#transport_requestの返り値 #<Net::HTTPOK 200 OK readbody=false> など
+      # Net::HTTPResponseをenvでラップする
       save_http_response(env, response) # => Adapter::NetHttp#save_http_response
+
       response.read_body(&block) if block_given?
     end
   end
