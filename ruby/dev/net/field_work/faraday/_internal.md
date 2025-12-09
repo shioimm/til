@@ -37,6 +37,7 @@
             - `Request::UrlEncoded#initialize`
       - `{一番外側のハンドラ}#call` (`Request::UrlEncoded#call`)
         - `Request::UrlEncoded#match_content_type`
+          - `NestedParamsEncoder.encode`
         - `{アダプタ}#call` (`Adapter::NetHttp#call`)
           - `Adapter#call`
           - `Adapter#connection`
@@ -569,12 +570,20 @@ end
 
 # Request::UrlEncoded#call (lib/faraday/request/url_encoded.rb)
 
-# WIP
 def call(env)
   match_content_type(env) do |data| # => Request::UrlEncoded#match_content_type
     # data = env.body
     params = Faraday::Utils::ParamsHash[data]
-    env.body = params.to_query(env.params_encoder)
+    # key=value&... 形式の文字列にする
+    env.body = params.to_query(env.params_encoder) # => Utils::ParamsHash.to_query
+
+    # Utils::ParamsHash.to_query (lib/faraday/utils/params_hash.rb)
+    #
+    #   def to_query(encoder = nil)
+    #     (encoder || Utils.default_params_encoder).encode(self)
+    #     # Utils.default_params_encoder = NestedParamsEncoder
+    #     # => NestedParamsEncoder.encode
+    #   end
   end
 
   # @app = #<Faraday::Adapter::NetHttp>
@@ -585,6 +594,7 @@ end
 # Request::UrlEncoded#match_content_type (lib/faraday/request/url_encoded.rb)
 
 def match_content_type(env)
+  # bodyがあり、かつContent-Typeが未設定かapplication/x-www-form-urlencodedの場合はreturn
   return unless process_request?(env) # => Request::UrlEncoded#process_request?
 
   # Request::UrlEncoded#process_request? (lib/faraday/request/url_encoded.rb)
@@ -615,6 +625,35 @@ def match_content_type(env)
   return if env.body.respond_to?(:to_str) || env.body.respond_to?(:read)
 
   yield(env.body)
+end
+
+# NestedParamsEncoder#encode (lib/faraday/encoders/nested_params_encoder.rb)
+
+def encode(params)
+  return nil if params.nil?
+
+  unless params.is_a?(Array)
+    unless params.respond_to?(:to_hash)
+      raise TypeError, "Can't convert #{params.class} into Hash."
+    end
+
+    params = params.to_hash
+    params = params.map do |key, value|
+      key = key.to_s if key.is_a?(Symbol)
+      [key, value]
+    end
+
+    # Only to be used for non-Array inputs. Arrays should preserve order.
+    params.sort! if @sort_params
+  end
+
+  # The params have form [['key1', 'value1'], ['key2', 'value2']].
+  buffer = +''
+  params.each do |parent, value|
+    encoded_parent = escape(parent)
+    buffer << "#{encode_pair(encoded_parent, value)}&"
+  end
+  buffer.chop
 end
 ```
 
@@ -783,6 +822,7 @@ end
 #          @response=#<Faraday::Response:0x00000001055dbf50
 #          @on_complete_callbacks=[]>
 
+# WIP
 def perform_request(http, env)
   if env.stream_response? # => Env#stream_response?
 
