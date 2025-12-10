@@ -58,6 +58,17 @@
 
 ## 気づいたこと
 - Rack風のインターフェースでミドルウェアを追加できる
+
+| 代表的なミドルウェア            | 役割                                   |
+| - | - |
+| `Faraday::Request::UrlEncoded`  | bodyをx-www-form-urlencodedへ自動変換  |
+| `Faraday::Request::Json`        | bodyをJSONへ変換、ヘッダも追加         |
+| `Faraday::Multipart`関連        | multipart/form-dataを自動生成          |
+| `Faraday::Request::OAuth`       | OAuth1署名を自動生成                   |
+| `Faraday::Middleware::Retry`    | リトライ処理                           |
+| `Faraday::Response::Logger`     | リクエスト・レスポンスログ出力         |
+| `Faraday::Response::RaiseError` | statusに応じて例外発生                 |
+
 - アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
 - `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
 
