@@ -57,7 +57,16 @@
             - `#<Env>@response`を返す
 
 ## 気づいたこと
-- Rack風のインターフェースでミドルウェアを追加できる
+- Rack風のインターフェースで任意のミドルウェアを追加できる
+- Envオブジェクトで状態を一元管理している
+- アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
+- `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
+
+#### 追加機能
+- TLSの設定 (`Adapter::NetHttp#configure_ssl`)
+- タイムアウトの設定 (`Adapter::NetHttp#configure_request`)
+- プロキシの設定 (`Connection#initialize_proxy`, `Connection#proxy_for_request`)
+- ストリームレスポンス (`RequestOptions#on_data`)
 
 | 代表的なミドルウェア            | 役割                                   |
 | - | - |
@@ -68,9 +77,6 @@
 | `Faraday::Middleware::Retry`    | リトライ処理                           |
 | `Faraday::Response::Logger`     | リクエスト・レスポンスログ出力         |
 | `Faraday::Response::RaiseError` | statusに応じて例外発生                 |
-
-- アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
-- `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
 
 ## `Faraday.new`
 
