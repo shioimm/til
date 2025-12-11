@@ -4,6 +4,7 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 ## 全体の流れ
 - `HTTP.get` public
   - `HTTP.get_response` public
+    - `HTTP#initialize`
     - `HTTP.start` / `HTTP#start` public
       - `HTTP#do_start`
         - `HTTP#connect`
@@ -96,8 +97,8 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
     new(host, port || HTTP.default_port).start { |http|
       return http.request_get(path, &block) # => HTTP#request_get
     }
-    # => HTTP#initialize (lib/net/http.rb)
-    # => HTTP#start (lib/net/http.rb)
+    # => HTTP#initialize
+    # => HTTP#start
   else
     # Net::HTTP.get_response(URI("https://www.example.com/index.html"), { "Accept" => "text/html" })
 
@@ -108,6 +109,60 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
       return http.request_get(uri, headers, &block) # => HTTP#request_get
     }
     # => HTTP.start (lib/net/http.rb)
+  end
+end
+
+# HTTP#initialize (lib/net/http.rb)
+
+def initialize(address, port = nil) # :nodoc:
+  defaults = {
+    keep_alive_timeout: 2,
+    close_on_empty_response: false,
+    open_timeout: 60,
+    read_timeout: 60,
+    write_timeout: 60,
+    continue_timeout: nil,
+    max_retries: 1,
+    debug_output: nil,
+    response_body_encoding: false,
+    ignore_eof: true
+  }
+  options = defaults.merge(self.class.default_configuration || {})
+
+  @address = address
+  @port    = (port || HTTP.default_port)
+  @ipaddr = nil
+  @local_host = nil
+  @local_port = nil
+  @curr_http_version = HTTPVersion
+  @keep_alive_timeout = options[:keep_alive_timeout]
+  @last_communicated = nil
+  @close_on_empty_response = options[:close_on_empty_response]
+  @socket  = nil
+  @started = false
+  @open_timeout = options[:open_timeout]
+  @read_timeout = options[:read_timeout]
+  @write_timeout = options[:write_timeout]
+  @continue_timeout = options[:continue_timeout]
+  @max_retries = options[:max_retries]
+  @debug_output = options[:debug_output]
+  @response_body_encoding = options[:response_body_encoding]
+  @ignore_eof = options[:ignore_eof]
+
+  @proxy_from_env = false
+  @proxy_uri      = nil
+  @proxy_address  = nil
+  @proxy_port     = nil
+  @proxy_user     = nil
+  @proxy_pass     = nil
+  @proxy_use_ssl  = nil
+
+  @use_ssl = false
+  @ssl_context = nil
+  @ssl_session = nil
+  @sspi_enabled = false
+  SSL_IVNAMES.each do |ivname|
+    instance_variable_set ivname, nil
   end
 end
 ```
@@ -122,8 +177,9 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
   port, p_addr, p_port, p_user, p_pass = *arg
   p_addr = :ENV if arg.size < 2
   port = https_default_port if !port && opt && opt[:use_ssl]
+  # 443 => HTTP.https_default_port
 
-  http = new(address, port, p_addr, p_port, p_user, p_pass)
+  http = new(address, port, p_addr, p_port, p_user, p_pass) # => HTTP#initialize
   http.ipaddr = opt[:ipaddr] if opt && opt[:ipaddr]
 
   if opt
@@ -131,7 +187,7 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
       opt = {verify_mode: OpenSSL::SSL::VERIFY_PEER}.update(opt)
     end
 
-    http.methods.grep(/\A(\w+)=\z/) do |meth|
+    http.methods.grep(/\A(\w+)=\z/) do |meth| # => HTTP#methods (?)
       key = $1.to_sym
       opt.key?(key) or next
       http.__send__(meth, opt[key])
@@ -187,11 +243,12 @@ def connect
   end
 
   if proxy? then
-    conn_addr = proxy_address
-    conn_port = proxy_port
+    conn_addr = proxy_address # => HTTP#proxy_address
+
+    conn_port = proxy_port # => HTTP#proxy_port
   else
-    conn_addr = conn_address
-    conn_port = port
+    conn_addr = conn_address # => HTTP#conn_address
+    conn_port = port # => attr_reader :port
   end
 
   # --- TCP接続 ---
