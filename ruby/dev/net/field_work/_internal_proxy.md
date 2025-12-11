@@ -14,7 +14,7 @@ proxy.start("example.com") { it.get("/ja/") }
 ```
 
 ```ruby
-(lib/net/http.rb)
+# (lib/net/http.rb)
 
 def HTTP.Proxy(p_addr = :ENV, p_port = nil, p_user = nil, p_pass = nil, p_use_ssl = nil) #:nodoc:
   return self unless p_addr
@@ -41,17 +41,16 @@ end
 
 - `HTTP#connect`内でプロキシの設定を行う
 
-
 ```ruby
-# HTTP#connectへの経路
-#   - Net::HTTP::Proxy -> HTTP.start -> HTTP#start -> HTTP#do_start -> HTTP#connect
+# HTTP#connectにいたる経路
+#   - Net::HTTP::Proxy => HTTP.start -> HTTP#start -> HTTP#do_start -> HTTP#connect
 #   - HTTP.get -> HTTP.get_response` -> HTTP.start -> HTTP#start -> HTTP#do_start -> HTTP#connect
 #   など
 
 # (lib/net/http.rb)
 
 def connect
-  if use_ssl?
+  if use_ssl? # => HTTP#use_ssl?
     @ssl_context = OpenSSL::SSL::SSLContext.new
   end
 
@@ -80,7 +79,7 @@ def connect
   # プロキシを使用する場合、s = プロキシと接続済みの#<TCPSocket>
 
   # --- TLS接続 ---
-  if use_ssl?
+  if use_ssl? # => HTTP#use_ssl?
 
     # --- フォワードプロキシ接続 ---
     if proxy?
@@ -204,11 +203,20 @@ rescue => exception
   raise
 end
 
+# HTTP#use_ssl? (lib/net/http.rb)
+
+def use_ssl?
+  # HTTP#use_ssl= でセットする...忘れそう
+  @use_ssl
+end
+
 # HTTP#proxy? (lib/net/http.rb)
 
 def proxy?
   # HTTP::Proxyを呼び出している場合は@proxy_from_env = trueがセットされている
-  !!(@proxy_from_env ? proxy_uri : @proxy_address) # => HTTP#proxy_uri
+  !!(@proxy_from_env ? proxy_uri : @proxy_address)
+  # @proxy_from_env, @proxy_addressいずれもHTTP,Proxyを呼び出した場合にセットされている。初期値はなし
+  # => HTTP#proxy_uri
 end
 
 # HTTP#proxy_uri (lib/net/http.rb)
@@ -283,5 +291,54 @@ def unescape(value)
 end
 ```
 
-## 要確認
-- `HTTP#request`が直接呼ばれた場合どうなるか
+- `HTTP#request`が直接呼ばれた場合
+
+```ruby
+# HTTP#requestへの経路
+# HTTP#request_get -> HTTP#request
+# HTTP.new => HTTP#request
+
+# (lib/net/http.rb)
+
+def request(req, body = nil, &block)
+  # @startedがfalseyなら内部でHTTP#connectを呼ぶことでプロキシまたはオリジンと接続を行う
+  if !started? # @started => HTTP#started?
+    start { # => HTTP#start -> HTTP#do_start -> HTTP#connect
+      req['connection'] ||= 'close'
+      return request(req, body, &block) # => HTTP#request (lib/net/http.rb)
+    }
+  end
+
+  # プロキシを使用する、かつTLSでは接続しない場合
+  if proxy_user && !use_ssl? # => HTTP#proxy_user / HTTP#use_ssl?
+    # ヘッダにproxy-authorizationをセットする
+    req.proxy_basic_auth(proxy_user, proxy_pass)
+    # => HTTP#proxy_user
+    # => HTTP#proxy_pass
+    # => HTTPHeader#proxy_basic_auth
+  end
+
+  req.set_body_internal(body) # => HTTPGenericRequest#set_body_internal
+
+  res = transport_request(req, &block) # => HTTP#transport_request
+
+  if sspi_auth?(res) # => HTTP#sspi_auth?
+    sspi_auth(req)
+    res = transport_request(req, &block) # => HTTP#transport_request
+  end
+
+  res
+end
+
+# HTTPHeader#proxy_basic_auth (lib/net/http/header.rb)
+
+def proxy_basic_auth(account, password)
+  @header['proxy-authorization'] = [basic_encode(account, password)]
+end
+
+# HTTPHeader#basic_encode (lib/net/http/header.rb)
+
+def basic_encode(account, password)
+  'Basic ' + ["#{account}:#{password}"].pack('m0')
+end
+```

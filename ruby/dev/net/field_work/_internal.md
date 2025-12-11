@@ -95,10 +95,11 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
     path = path_or_headers
 
     new(host, port || HTTP.default_port).start { |http|
-      return http.request_get(path, &block) # => HTTP#request_get
+      return http.request_get(path, &block)
     }
     # => HTTP#initialize
     # => HTTP#start
+    # => HTTP#request_get
   else
     # Net::HTTP.get_response(URI("https://www.example.com/index.html"), { "Accept" => "text/html" })
 
@@ -265,7 +266,6 @@ def connect
 
   if proxy? then
     conn_addr = proxy_address # => HTTP#proxy_address
-
     conn_port = proxy_port # => HTTP#proxy_port
   else
     conn_addr = conn_address # => HTTP#conn_address
@@ -368,7 +368,7 @@ def connect
       ssl_host_address = @address
     end
 
-    # --- クライアントもしくはプロキシからオリジンに対するTLS接続開始 ---
+    # --- クライアントからオリジンに対するTLS接続開始 ---
     debug "starting SSL for #{conn_addr}:#{conn_port}..."
 
     s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
@@ -533,6 +533,7 @@ end
 #       :@body_stream,
 #       :@body_data]
 def request(req, body = nil, &block)
+  # @startedがfalseyなら内部でHTTP#connectを呼ぶことでプロキシまたはオリジンと接続を行う
   if !started? # @started => HTTP#started? (lib/net/http.rb)
     start { # => HTTP#start (lib/net/http.rb)
       req['connection'] ||= 'close'
@@ -573,7 +574,6 @@ def request(req, body = nil, &block)
 
   res
 end
-
 
 # HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
 
