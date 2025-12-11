@@ -114,6 +114,26 @@ end
 
 # HTTP#initialize (lib/net/http.rb)
 
+SSL_ATTRIBUTES = [
+  :ca_file,
+  :ca_path,
+  :cert,
+  :cert_store,
+  :ciphers,
+  :extra_chain_cert,
+  :key,
+  :ssl_timeout,
+  :ssl_version,
+  :min_version,
+  :max_version,
+  :verify_callback,
+  :verify_depth,
+  :verify_mode,
+  :verify_hostname,
+] # :nodoc:
+
+SSL_IVNAMES = SSL_ATTRIBUTES.map { |a| "@#{a}".to_sym } # :nodoc:
+
 def initialize(address, port = nil) # :nodoc:
   defaults = {
     keep_alive_timeout: 2,
@@ -161,6 +181,7 @@ def initialize(address, port = nil) # :nodoc:
   @ssl_context = nil
   @ssl_session = nil
   @sspi_enabled = false
+
   SSL_IVNAMES.each do |ivname|
     instance_variable_set ivname, nil
   end
@@ -251,7 +272,7 @@ def connect
     conn_port = port # => attr_reader :port
   end
 
-  # --- TCP接続 ---
+  # --- オリジンもしくはプロキシへTCP接続開始 ---
   debug "opening connection to #{conn_addr}:#{conn_port}..."
 
   s = Timeout.timeout(@open_timeout, Net::OpenTimeout) {
@@ -296,8 +317,9 @@ def connect
       end
 
       buf << "\r\n"
-      proxy_sock.write(buf)
-      HTTPResponse.read_new(proxy_sock).value
+
+      proxy_sock.write(buf) # => Net::BufferedIO#write
+      HTTPResponse.read_new(proxy_sock).value # => HTTPResponse.read_new
       # assuming nothing left in buffers after successful CONNECT response
     end
     # --- プロキシ接続ここまで ---
@@ -305,6 +327,7 @@ def connect
     ssl_parameters = Hash.new
     iv_list = instance_variables
 
+    # SSL_IVNAMES = SSL設定値一覧。HTTP::SSL_ATTRIBUTES (lib/net/http.rb) がベース。
     SSL_IVNAMES.each_with_index do |ivname, i|
       if iv_list.include?(ivname)
         value = instance_variable_get(ivname)
@@ -315,20 +338,24 @@ def connect
       end
     end
 
-    @ssl_context.set_params(ssl_parameters)
+    # SSL設定値を#<OpenSSL::SSL::SSLContext>にセット
+    @ssl_context.set_params(ssl_parameters) # => OpenSSL::SSL::SSLContext#set_params
 
+    # セッションキャッシュのモードが設定されている場合
     if !@ssl_context.session_cache_mode.nil? # a dummy method on JRuby
       @ssl_context.session_cache_mode =
         OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
     end
 
+    # セッションが生成されたときに呼び出されるコールバックがある場合
     if @ssl_context.respond_to?(:session_new_cb) # not implemented under JRuby
-      @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
+      @ssl_context.session_new_cb = proc { |sock, session| @ssl_session = session } # sockいらないのでは
     end
 
+    # ホスト名に対してサーバ証明書の有効性を確認するかどうか
     # Still do the post_connection_check below even if connecting
     # to IP address
-    verify_hostname = @ssl_context.verify_hostname
+    verify_hostname = @ssl_context.verify_hostname # => OpenSSL::SSL::SSLContext#verify_hostname
 
     # Server Name Indication (SNI) RFC 3546/6066
     case @address
@@ -341,6 +368,7 @@ def connect
       ssl_host_address = @address
     end
 
+    # --- クライアントもしくはプロキシからオリジンに対するTLS接続開始 ---
     debug "starting SSL for #{conn_addr}:#{conn_port}..."
 
     s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
@@ -352,7 +380,6 @@ def connect
       s.session = @ssl_session
     end
 
-    # オリジンサーバに対してTLSで接続
     ssl_socket_connect(s, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
 
     if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
@@ -796,7 +823,7 @@ end
 def wait_for_continue(sock, ver)
   if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
     if sock.io.to_io.wait_readable(sock.continue_timeout)
-      res = Net::HTTPResponse.read_new(sock)
+      res = Net::HTTPResponse.read_new(sock) # => HTTPResponse.read_new
 
       unless res.kind_of?(Net::HTTPContinue)
         res.decode_content = @decode_content # => HTTPResponseインスタンスの@decode_contentに対する設定

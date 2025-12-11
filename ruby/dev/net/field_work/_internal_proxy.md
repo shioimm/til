@@ -50,14 +50,6 @@ end
 
 # (lib/net/http.rb)
 
-    @is_proxy_class = false
-    @proxy_from_env = false
-    @proxy_addr = nil
-    @proxy_port = nil
-    @proxy_user = nil
-    @proxy_pass = nil
-    @proxy_use_ssl = nil
-
 def connect
   if use_ssl?
     @ssl_context = OpenSSL::SSL::SSLContext.new
@@ -71,9 +63,10 @@ def connect
     conn_port = port # => attr_reader :port
   end
 
+  # --- オリジンもしくはプロキシへTCP接続開始 ---
   s = Timeout.timeout(@open_timeout, Net::OpenTimeout) {
     begin
-      # proxy? == trueの場合、接続先がプロキシになる
+      # proxy? == trueの場合、プロキシに対してTCP接続を開始する
       TCPSocket.open(conn_addr, conn_port, @local_host, @local_port)
     rescue => e
       raise e, "Failed to open TCP connection to " +
@@ -82,19 +75,26 @@ def connect
   }
 
   s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+  # --- TCP接続ここまで ---
 
+  # プロキシを使用する場合、s = プロキシと接続済みの#<TCPSocket>
+
+  # --- TLS接続 ---
   if use_ssl?
+
+    # --- フォワードプロキシ接続 ---
     if proxy?
       # @proxy_use_ssl = HTTP.Proxyを呼び出している場合は外部指定の値がセットされる
       # デフォルトではHTTP#initializeでnilがセットされている
       if @proxy_use_ssl
+        # クライアント - プロキシ間をTLSで接続する (@proxy_use_ssl = trueの場合のみのオプション)
         proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
         ssl_socket_connect(proxy_sock, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
       else
         proxy_sock = s
       end
 
-      # proxy_sock = 接続済みの#<TCPSocket>あるいは#<OpenSSL::SSL::SSLSocket>
+      # proxy_sock = プロキシと接続済みの#<TCPSocket>あるいは#<OpenSSL::SSL::SSLSocket>
 
       proxy_sock = BufferedIO.new( # => Net::BufferedIO#initialize (lib/net/protocol.rb)
         proxy_sock,
@@ -104,6 +104,7 @@ def connect
         debug_output: @debug_output
       )
 
+      # オリジンの情報をプロキシに伝える
       buf = +"CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}\r\nHost: #{@address}:#{@port}\r\n"
 
       # 指定のアドレスがプロキシのものであり、該当のプロキシにユーザーが設定されている場合
@@ -112,32 +113,39 @@ def connect
         credential = ["#{proxy_user}:#{proxy_pass}"].pack('m0')
         # => HTTP#proxy_user
         # => HTTP#proxy_pass
-        buf << "Proxy-Authorization: Basic #{credential}\r\n"
+        buf << "Proxy-Authorization: Basic #{credential}\r\n" # CONNECTと同時に送信しても良い (RFC 7235)
       end
 
       buf << "\r\n"
 
+      # プロキシに対してCONNECTリクエストを送信
       proxy_sock.write(buf) # => Net::BufferedIO#write
+      # プロキシから HTTP/1.1 200 Connection Established を受け取る
       HTTPResponse.read_new(proxy_sock).value # => HTTPResponse.read_new レスポンスヘッダを読み込む
       # assuming nothing left in buffers after successful CONNECT response
     end
+    # --- プロキシ接続ここまで ---
 
     ssl_parameters = Hash.new
     iv_list = instance_variables
+
     SSL_IVNAMES.each_with_index do |ivname, i|
       if iv_list.include?(ivname)
         value = instance_variable_get(ivname)
-        unless value.nil?
+
+        if !value.nil?
           ssl_parameters[SSL_ATTRIBUTES[i]] = value
         end
       end
     end
+
     @ssl_context.set_params(ssl_parameters)
-    unless @ssl_context.session_cache_mode.nil? # a dummy method on JRuby
+
+    if !@ssl_context.session_cache_mode.nil? # a dummy method on JRuby
       @ssl_context.session_cache_mode =
-          OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT |
-              OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
     end
+
     if @ssl_context.respond_to?(:session_new_cb) # not implemented under JRuby
       @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
     end
@@ -158,7 +166,7 @@ def connect
       ssl_host_address = @address
     end
 
-    debug "starting SSL for #{conn_addr}:#{conn_port}..."
+    # --- クライアントからオリジンに対するTLS接続開始 ---
     s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
     s.sync_close = true
     s.hostname = ssl_host_address if s.respond_to?(:hostname=) && ssl_host_address
@@ -167,16 +175,25 @@ def connect
        Process.clock_gettime(Process::CLOCK_REALTIME) < @ssl_session.time.to_f + @ssl_session.timeout
       s.session = @ssl_session
     end
-    ssl_socket_connect(s, @open_timeout)
+
+    # CONNECTが完了している場合、s.connect (OpenSSL::SSL::SSLSocket#connect) を呼ぶと
+    # 透過的にクライアントからオリジンに対して送信を行う
+    ssl_socket_connect(s, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
+
     if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
       s.post_connection_check(@address)
     end
-    debug "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
   end
-  @socket = BufferedIO.new(s, read_timeout: @read_timeout,
-                           write_timeout: @write_timeout,
-                           continue_timeout: @continue_timeout,
-                           debug_output: @debug_output)
+  # --- TLS接続ここまで ---
+
+  @socket = BufferedIO.new( # => Net::BufferedIO#initialize (lib/net/protocol.rb)
+    s, # TCPもしくはTLSで接続確立したソケット
+    read_timeout: @read_timeout,
+    write_timeout: @write_timeout,
+    continue_timeout: @continue_timeout,
+    debug_output: @debug_output
+  )
+
   @last_communicated = nil
   on_connect
 rescue => exception
