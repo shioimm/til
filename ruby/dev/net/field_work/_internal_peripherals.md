@@ -38,6 +38,7 @@ end
 # (lib/net/protocol.rb)
 
 class BufferedIO
+  # Net::BufferedIO#initialize (lib/net/protocol.rb)
   def initialize(io, read_timeout: 60, write_timeout: 60, continue_timeout: nil, debug_output: nil)
     @io = io
     @read_timeout = read_timeout
@@ -180,6 +181,63 @@ class BufferedIO
     when nil
       raise EOFError, 'end of file reached'
     end while true
+  end
+
+  # BufferedIO#write (lib/net/protocol.rb)
+
+  def write(*strs)
+    writing { # => BufferedIO#writing
+      write0(*strs) # => BufferedIO#write0
+    }
+  end
+
+  alias << write
+
+  # BufferedIO#writing (lib/net/protocol.rb)
+
+  def writing
+    @written_bytes = 0
+    @debug_output << '<- ' if @debug_output
+    yield
+    @debug_output << "\n" if @debug_output
+    bytes = @written_bytes
+    @written_bytes = nil
+    bytes
+  end
+
+  # BufferedIO#write0 (lib/net/protocol.rb)
+
+  def write0(*strs)
+    @debug_output << strs.map(&:dump).join if @debug_output
+    orig_written_bytes = @written_bytes
+
+    strs.each_with_index do |str, i|
+      need_retry = true
+
+      case len = @io.write_nonblock(str, exception: false)
+      when Integer
+        @written_bytes += len
+        len -= str.bytesize
+
+        if len == 0
+          if strs.size == i+1
+            return @written_bytes - orig_written_bytes
+          else
+            need_retry = false
+            # next string
+          end
+        elsif len < 0
+          str = str.byteslice(len, -len)
+        else # len > 0
+          need_retry = false
+          # next string
+        end
+        # continue looping
+      when :wait_writable
+        (io = @io.to_io).wait_writable(@write_timeout) or raise Net::WriteTimeout.new(io)
+        # continue looping
+      end while need_retry
+    end
   end
 
   # ...

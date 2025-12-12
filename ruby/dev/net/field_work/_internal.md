@@ -4,6 +4,7 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 ## 全体の流れ
 - `HTTP.get` public
   - `HTTP.get_response` public
+    - `HTTP#initialize`
     - `HTTP.start` / `HTTP#start` public
       - `HTTP#do_start`
         - `HTTP#connect`
@@ -94,10 +95,11 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
     path = path_or_headers
 
     new(host, port || HTTP.default_port).start { |http|
-      return http.request_get(path, &block) # => HTTP#request_get
+      return http.request_get(path, &block)
     }
-    # => HTTP#initialize (lib/net/http.rb)
-    # => HTTP#start (lib/net/http.rb)
+    # => HTTP#initialize
+    # => HTTP#start
+    # => HTTP#request_get
   else
     # Net::HTTP.get_response(URI("https://www.example.com/index.html"), { "Accept" => "text/html" })
 
@@ -108,6 +110,81 @@ def HTTP.get_response(uri_or_host, path_or_headers = nil, port = nil, &block)
       return http.request_get(uri, headers, &block) # => HTTP#request_get
     }
     # => HTTP.start (lib/net/http.rb)
+  end
+end
+
+# HTTP#initialize (lib/net/http.rb)
+
+SSL_ATTRIBUTES = [
+  :ca_file,
+  :ca_path,
+  :cert,
+  :cert_store,
+  :ciphers,
+  :extra_chain_cert,
+  :key,
+  :ssl_timeout,
+  :ssl_version,
+  :min_version,
+  :max_version,
+  :verify_callback,
+  :verify_depth,
+  :verify_mode,
+  :verify_hostname,
+] # :nodoc:
+
+SSL_IVNAMES = SSL_ATTRIBUTES.map { |a| "@#{a}".to_sym } # :nodoc:
+
+def initialize(address, port = nil) # :nodoc:
+  defaults = {
+    keep_alive_timeout: 2,
+    close_on_empty_response: false,
+    open_timeout: 60,
+    read_timeout: 60,
+    write_timeout: 60,
+    continue_timeout: nil,
+    max_retries: 1,
+    debug_output: nil,
+    response_body_encoding: false,
+    ignore_eof: true
+  }
+  options = defaults.merge(self.class.default_configuration || {})
+
+  @address = address
+  @port    = (port || HTTP.default_port)
+  @ipaddr = nil
+  @local_host = nil
+  @local_port = nil
+  @curr_http_version = HTTPVersion
+  @keep_alive_timeout = options[:keep_alive_timeout]
+  @last_communicated = nil
+  @close_on_empty_response = options[:close_on_empty_response]
+  @socket  = nil
+  @started = false
+  @open_timeout = options[:open_timeout]
+  @read_timeout = options[:read_timeout]
+  @write_timeout = options[:write_timeout]
+  @continue_timeout = options[:continue_timeout]
+  @max_retries = options[:max_retries]
+  @debug_output = options[:debug_output]
+  @response_body_encoding = options[:response_body_encoding]
+  @ignore_eof = options[:ignore_eof]
+
+  @proxy_from_env = false
+  @proxy_uri      = nil
+  @proxy_address  = nil
+  @proxy_port     = nil
+  @proxy_user     = nil
+  @proxy_pass     = nil
+  @proxy_use_ssl  = nil
+
+  @use_ssl = false
+  @ssl_context = nil
+  @ssl_session = nil
+  @sspi_enabled = false
+
+  SSL_IVNAMES.each do |ivname|
+    instance_variable_set ivname, nil
   end
 end
 ```
@@ -122,8 +199,9 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
   port, p_addr, p_port, p_user, p_pass = *arg
   p_addr = :ENV if arg.size < 2
   port = https_default_port if !port && opt && opt[:use_ssl]
+  # 443 => HTTP.https_default_port
 
-  http = new(address, port, p_addr, p_port, p_user, p_pass)
+  http = new(address, port, p_addr, p_port, p_user, p_pass) # => HTTP#initialize
   http.ipaddr = opt[:ipaddr] if opt && opt[:ipaddr]
 
   if opt
@@ -131,7 +209,7 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
       opt = {verify_mode: OpenSSL::SSL::VERIFY_PEER}.update(opt)
     end
 
-    http.methods.grep(/\A(\w+)=\z/) do |meth|
+    http.methods.grep(/\A(\w+)=\z/) do |meth| # => HTTP#methods (?)
       key = $1.to_sym
       opt.key?(key) or next
       http.__send__(meth, opt[key])
@@ -187,14 +265,14 @@ def connect
   end
 
   if proxy? then
-    conn_addr = proxy_address
-    conn_port = proxy_port
+    conn_addr = proxy_address # => HTTP#proxy_address
+    conn_port = proxy_port # => HTTP#proxy_port
   else
-    conn_addr = conn_address
-    conn_port = port
+    conn_addr = conn_address # => HTTP#conn_address
+    conn_port = port # => attr_reader :port
   end
 
-  # --- TCP接続 ---
+  # --- オリジンもしくはプロキシへTCP接続開始 ---
   debug "opening connection to #{conn_addr}:#{conn_port}..."
 
   s = Timeout.timeout(@open_timeout, Net::OpenTimeout) {
@@ -239,8 +317,9 @@ def connect
       end
 
       buf << "\r\n"
-      proxy_sock.write(buf)
-      HTTPResponse.read_new(proxy_sock).value
+
+      proxy_sock.write(buf) # => Net::BufferedIO#write
+      HTTPResponse.read_new(proxy_sock).value # => HTTPResponse.read_new
       # assuming nothing left in buffers after successful CONNECT response
     end
     # --- プロキシ接続ここまで ---
@@ -248,6 +327,7 @@ def connect
     ssl_parameters = Hash.new
     iv_list = instance_variables
 
+    # SSL_IVNAMES = SSL設定値一覧。HTTP::SSL_ATTRIBUTES (lib/net/http.rb) がベース。
     SSL_IVNAMES.each_with_index do |ivname, i|
       if iv_list.include?(ivname)
         value = instance_variable_get(ivname)
@@ -258,20 +338,24 @@ def connect
       end
     end
 
-    @ssl_context.set_params(ssl_parameters)
+    # SSL設定値を#<OpenSSL::SSL::SSLContext>にセット
+    @ssl_context.set_params(ssl_parameters) # => OpenSSL::SSL::SSLContext#set_params
 
+    # セッションキャッシュのモードが設定されている場合
     if !@ssl_context.session_cache_mode.nil? # a dummy method on JRuby
       @ssl_context.session_cache_mode =
         OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
     end
 
+    # セッションが生成されたときに呼び出されるコールバックがある場合
     if @ssl_context.respond_to?(:session_new_cb) # not implemented under JRuby
-      @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
+      @ssl_context.session_new_cb = proc { |sock, session| @ssl_session = session } # sockいらないのでは
     end
 
+    # ホスト名に対してサーバ証明書の有効性を確認するかどうか
     # Still do the post_connection_check below even if connecting
     # to IP address
-    verify_hostname = @ssl_context.verify_hostname
+    verify_hostname = @ssl_context.verify_hostname # => OpenSSL::SSL::SSLContext#verify_hostname
 
     # Server Name Indication (SNI) RFC 3546/6066
     case @address
@@ -284,6 +368,7 @@ def connect
       ssl_host_address = @address
     end
 
+    # --- クライアントからオリジンに対するTLS接続開始 ---
     debug "starting SSL for #{conn_addr}:#{conn_port}..."
 
     s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
@@ -295,7 +380,6 @@ def connect
       s.session = @ssl_session
     end
 
-    # オリジンサーバに対してTLSで接続
     ssl_socket_connect(s, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
 
     if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
@@ -449,6 +533,7 @@ end
 #       :@body_stream,
 #       :@body_data]
 def request(req, body = nil, &block)
+  # @startedがfalseyなら内部でHTTP#connectを呼ぶことでプロキシまたはオリジンと接続を行う
   if !started? # @started => HTTP#started? (lib/net/http.rb)
     start { # => HTTP#start (lib/net/http.rb)
       req['connection'] ||= 'close'
@@ -489,7 +574,6 @@ def request(req, body = nil, &block)
 
   res
 end
-
 
 # HTTPGenericRequest#set_body_internal (lib/net/http/generic_request.rb)
 
@@ -739,7 +823,7 @@ end
 def wait_for_continue(sock, ver)
   if ver >= '1.1' and @header['expect'] and @header['expect'].include?('100-continue')
     if sock.io.to_io.wait_readable(sock.continue_timeout)
-      res = Net::HTTPResponse.read_new(sock)
+      res = Net::HTTPResponse.read_new(sock) # => HTTPResponse.read_new
 
       unless res.kind_of?(Net::HTTPContinue)
         res.decode_content = @decode_content # => HTTPResponseインスタンスの@decode_contentに対する設定
