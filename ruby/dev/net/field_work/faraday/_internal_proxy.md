@@ -7,15 +7,6 @@ connection = Faraday.new("https://example.com", proxy: "http://proxy.example.com
 connection.get
 ```
 
-- `Faraday.new`ブロック内部で指定する
-
-```ruby
-connection = Faraday.new("https://example.com") { # => Faraday.new
-  it.proxy "http://proxy.example.com"
-}
-connection.get
-```
-
 ```ruby
 # Faraday.new (lib/faraday.rb)
 
@@ -75,6 +66,9 @@ def initialize(url = nil, options = nil)
   @options = options.request
   @ssl = options.ssl
   @default_parallel_manager = options.parallel_manager
+
+  # connectionoptions#proxyの指定があるかないか
+  # connection#url_prefix= / connection#proxy_for_requestから参照される
   @manual_proxy = nil
 
   @builder = options.builder || begin
@@ -93,7 +87,7 @@ def initialize(url = nil, options = nil)
   initialize_proxy(url, options) # => Connection#initialize_proxy
 
   # Faraday.newブロック内部でproxyを指定している場合
-  yield(self) if block_given? # WIP
+  yield(self) if block_given? # => Connection#proxy=
 
   @headers[:user_agent] ||= USER_AGENT
 end
@@ -101,7 +95,10 @@ end
 # Connection#initialize_proxy (lib/faraday/connection.rb)
 
 def initialize_proxy(url, options)
-  @manual_proxy = !!options.proxy # ConnectionOptions#proxyの指定があるかないか
+  # ConnectionOptions#proxyの指定があるかないか
+  # Connection#url_prefix= / Connection#proxy_for_requestから参照される
+  @manual_proxy = !!options.proxy
+
   @proxy =
     if options.proxy # => ConnectionOptions#proxy Faraday.newにproxyキーワードを渡している場合はこちら
       ProxyOptions.from(options.proxy) # => ProxyOptions.from
@@ -200,4 +197,98 @@ end
 connection = Faraday.new("https://example.com")
 connection.proxy = { uri: "http://proxy.example.com:8080" }
 connection.get
+
+# Faraday.newブロック内部でConnection#proxy=
+
+connection = Faraday.new("https://example.com") {
+  it.proxy = "http://proxy.example.com"
+}
+connection.get
+```
+
+
+
+```ruby
+# Connection#proxy= (lib/faraday/connection.rb)
+
+def proxy=(new_value)
+  # connectionoptions#proxyの指定があるかないか
+  # connection#url_prefix= / connection#proxy_for_requestから参照される
+  @manual_proxy = true
+
+  # @proxyに値を設定する
+  @proxy = new_value ? ProxyOptions.from(new_value) : nil
+end
+```
+
+## 設定されたプロキシを利用する
+
+```ruby
+# (lib/faraday/connection.rb)
+# e.g. Faraday.new(url: "http://example.com").get("/index.html")
+
+class Connection
+  # ...
+  METHODS_WITH_QUERY = %w[get head delete trace].freeze
+  # Connection#get など (lib/faraday/connection.rb)
+  METHODS_WITH_QUERY.each do |method| # => Connection#run_request
+    class_eval <<-RUBY, __FILE__, __LINE__ + 1
+      def #{method}(url = nil, params = nil, headers = nil)
+        run_request(:#{method}, url, nil, headers) do |request|
+          request.params.update(params) if params
+          yield request if block_given?
+        end
+      end
+    RUBY
+  end
+
+  # ...
+end
+
+METHODS = Set.new %i[get post put delete head patch options trace]
+
+# Connection#run_request (lib/faraday/connection.rb)
+
+def run_request(method, url, body, headers)
+  unless METHODS.include?(method)
+    raise ArgumentError, "unknown http method: #{method}"
+  end
+
+  # 呼び出し側 (Connection)
+  #   run_request(:#{method}, url, nil, headers) do |request|
+  #     request.params.update(params) if params
+  #     yield request if block_given?
+  #   end
+
+  request = build_request(method) do |req| # => Connection#build_request
+    req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
+    req.url(url)                if url         # => Request#url
+    req.headers.update(headers) if headers     # => Utils::Headers#update
+    req.body = body             if body        # => Request#body=
+
+    yield(req) if block_given?
+  end
+
+  # attr_reader :builder (#<Faraday::RackBuilder>)
+  # self    = #<Connection>
+  # request = #<Request>
+  builder.build_response(self, request)
+  # => RackBuilder#build_response
+end
+
+# Connection#proxy_for_request (lib/faraday/connection.rb)
+
+# WIP
+def proxy_for_request(url)
+  # @manual_proxy = 明示的にプロキシが指定された場合はtrueになっている
+  # attr_reader :proxy
+  # WIP @manual_proxyがある場合どんな値を返す?
+  return proxy if @manual_proxy
+
+  if url && Utils.URI(url).absolute?
+    proxy_from_env(url)
+  else
+    proxy
+  end
+end
 ```
