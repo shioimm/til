@@ -1,4 +1,6 @@
 # faraday 現地調査: プロキシ編 (202512時点)
+- 環境変数からプロキシを自動的に設定する仕組みがある
+
 ## `Faraday.new`で指定 / 環境変数で指定
 - `Faraday.new`にproxyキーワードを指定する
 
@@ -260,9 +262,9 @@ def run_request(method, url, body, headers)
   #     yield request if block_given?
   #   end
 
-  request = build_request(method) do |req| # => Connection#build_request
+  request = build_request(method) do |req| # => Connection#build_request #<Request>を返す
     req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
-    # WIP プロキシがreq.options.proxyに格納された後どう使われるかを確認する
+    # プロキシはreq.optionsの一つとして#<Request>に保持される
 
     req.url(url)                if url         # => Request#url
     req.headers.update(headers) if headers     # => Utils::Headers#update
@@ -294,5 +296,118 @@ def proxy_for_request(url)
   else
     proxy
   end
+end
+
+# RackBuilder#build_response (lib/faraday/rack_builder.rb)
+
+def build_response(connection, request)
+  env = build_env(connection, request)
+  # => RackBuilder#build_env
+
+  app.call(env)
+  # => RackBuilder#app
+  # => {一番外側のハンドラ}#call (Request::UrlEncoded#call)
+  #   -> Adapter::NetHttp#call
+  #   -> Adapter#connection
+  #   -> Adapter::NetHttp#build_connection
+  #   -> Adapter::NetHttp#net_http_connection / Adapter::NetHttp#perform_request
+  #   -> Adapter::NetHttp#request_with_wrapped_block
+end
+
+# RackBuilder#build_env (lib/faraday/rack_builder.rb)
+
+def build_env(connection, request)
+  # リクエストパスとConnectionの持つurl_prefixを組み合わせて単一のURI オブジェクトに正規化する
+  exclusive_url = connection.build_exclusive_url( # => Connection#build_exclusive_url
+    request.path,
+    request.params,
+    request.options.params_encoder
+  )
+
+  Env.new( # => Faraday::Env
+    request.http_method,
+    request.body,
+    exclusive_url,
+    request.options, # プロキシはrequest.optionsの一つとして#<Env>に保持される
+    request.headers,
+    connection.ssl,
+    connection.parallel_manager
+  )
+end
+
+# Adapter::NetHttp#net_http_connection (lib/faraday/adapter/net_http.rb)
+
+def net_http_connection(env)
+  proxy = env[:request][:proxy] # プロキシを取得
+  port = env[:url].port || (env[:url].scheme == 'https' ? 443 : 80)
+
+  if proxy # net-httpの機構を利用してプロキシ設定を行う。
+    Net::HTTP.new(
+      env[:url].hostname,
+      port,
+      proxy[:uri].hostname,
+      proxy[:uri].port,
+      proxy[:user],
+      proxy[:password],
+      nil,
+      proxy[:uri].scheme == 'https'
+    )
+  else
+    Net::HTTP.new(
+      env[:url].hostname,
+      port,
+      nil
+    )
+  end
+end
+
+# Adapter::NetHttp#request_with_wrapped_block (lib/faraday/adapter/net_http.rb)
+
+def request_with_wrapped_block(http, env, &block)
+  http.start do |opened_http| # => Net::HTTP#start (Net::HTTP#do_start -> httpをブロック変数としてyield)
+    opened_http.request(create_request(env)) do |response| # 実際のHTTPリクエストを送信
+      # => Net::HTTP#request
+      # => (引数) Adapter::NetHttp#create_request
+
+      # response = Net::HTTP#transport_requestの返り値 #<Net::HTTPOK 200 OK readbody=false> など
+      # Net::HTTPResponseをenvでラップする
+      save_http_response(env, response) # => Adapter::NetHttp#save_http_response
+
+      response.read_body(&block) if block_given?
+    end
+  end
+end
+
+# Adapter::NetHttp#save_http_response (lib/faraday/adapter/net_http.rb)
+
+def save_http_response(env, http_response)
+  save_response( # => Adapter#save_response
+    env,
+    http_response.code.to_i,
+    nil,
+    nil,
+    http_response.message,
+    finished: false
+  ) do |response_headers| # #<Utils::Headers>
+    http_response.each_header do |key, value| # レスポンスヘッダの値を#<Utils::Headers>にセット
+      response_headers[key] = value
+    end
+  end
+end
+
+# Adapter#save_response (lib/faraday/adapter.rb)
+
+def save_response(env, status, body, headers = nil, reason_phrase = nil, finished: true)
+  env.status = status
+  env.body = body
+  env.reason_phrase = reason_phrase&.to_s&.strip
+
+  env.response_headers = Utils::Headers.new.tap do |response_headers|
+    response_headers.update headers unless headers.nil?
+    yield(response_headers) if block_given?
+  end
+
+  env.response.finish(env) unless env.parallel? || !finished # => Response#finish
+  env.response
 end
 ```
