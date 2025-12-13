@@ -262,6 +262,8 @@ def run_request(method, url, body, headers)
 
   request = build_request(method) do |req| # => Connection#build_request
     req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
+    # WIP プロキシがreq.options.proxyに格納された後どう使われるかを確認する
+
     req.url(url)                if url         # => Request#url
     req.headers.update(headers) if headers     # => Utils::Headers#update
     req.body = body             if body        # => Request#body=
@@ -278,13 +280,15 @@ end
 
 # Connection#proxy_for_request (lib/faraday/connection.rb)
 
-# WIP
 def proxy_for_request(url)
-  # @manual_proxy = 明示的にプロキシが指定された場合はtrueになっている
-  # attr_reader :proxy
-  # WIP @manual_proxyがある場合どんな値を返す?
-  return proxy if @manual_proxy
+  # @manual_proxy = Faraday.newにproxyキーワードを渡すか、Connection#proxy=を明示的に呼び出した場合trueになっている
+  # プロキシを明示的に呼び出した場合、指定された値を持つProxyOptionsを返す
+  return proxy if @manual_proxy # attr_reader :proxy
 
+  # FaradayではFaradayインスタンスを初期化する時とgetなどのメソッドを経由してConnection#run_requestを呼び出す時
+  # それぞれURLを指定できる。
+  # Faradayインスタンスを初期化する時に渡されたURLを元に#proxy_from_envで設定するプロキシを初期値とし、
+  # #run_requestを呼び出す時に渡されたURLがある場合はそれを元に#proxy_from_envで設定するプロキシを利用する
   if url && Utils.URI(url).absolute?
     proxy_from_env(url)
   else

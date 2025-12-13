@@ -57,7 +57,7 @@
             - `#<Env>@response`を返す
 
 ## 気づいたこと
-- Rack風のインターフェースで任意のミドルウェアを追加できる
+run_request- Rack風のインターフェースで任意のミドルウェアを追加できる
 - Envオブジェクトで状態を一元管理している
 - アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
 - `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
@@ -312,6 +312,8 @@ def initialize_proxy(url, options)
     end
 end
 
+# Connection#proxy_from_env (lib/faraday/connection.rb)
+
 def proxy_from_env(url)
   return if Faraday.ignore_env_proxy
 
@@ -446,7 +448,7 @@ module Faraday
   end
 end
 
-# Connection#proxy_for_request
+# Connection#proxy_for_request (lib/faraday/connection.rb)
 
 def proxy_for_request(url)
   return proxy if @manual_proxy # proxy = @proxy デフォルトではinitialize時の#initialize_proxyの返り値
