@@ -3,11 +3,10 @@
 - faradayのようにリクエストごとにプロキシを指定できない
   - というか前提としてクラスのレベルで初期値を保存しており、リクエストごとに同じ初期値を共有するインスタンスを生成する仕組みになっている
 
-## プロキシの設定
+## プロキシの設定を行う
 - `Net::HTTP`インスタンス生成時にプロキシを指定できる
 
 ```ruby
-# WIP
 Net::HTTP.new(
   address,
   port,
@@ -18,6 +17,38 @@ Net::HTTP.new(
   proxy_local_host,
   proxy_use_ssl
 )
+```
+
+```ruby
+# (lib/net/http.rb)
+
+def HTTP.new(address, port = nil, p_addr = :ENV, p_port = nil, p_user = nil, p_pass = nil, p_no_proxy = nil, p_use_ssl = nil)
+  http = super address, port # class HTTPはclass Protocolを継承している
+
+  # WIP
+  if proxy_class? then # from Net::HTTP::Proxy()
+    http.proxy_from_env = @proxy_from_env
+    http.proxy_address  = @proxy_address
+    http.proxy_port     = @proxy_port
+    http.proxy_user     = @proxy_user
+    http.proxy_pass     = @proxy_pass
+    http.proxy_use_ssl  = @proxy_use_ssl
+  elsif p_addr == :ENV then
+    http.proxy_from_env = true
+  else
+    if p_addr && p_no_proxy && !URI::Generic.use_proxy?(address, address, port, p_no_proxy)
+      p_addr = nil
+      p_port = nil
+    end
+    http.proxy_address = p_addr
+    http.proxy_port    = p_port || default_port
+    http.proxy_user    = p_user
+    http.proxy_pass    = p_pass
+    http.proxy_use_ssl = p_use_ssl
+  end
+
+  http
+end
 ```
 
 - `Net::HTTP.Proxy`を経由してプロキシの設定ができる
@@ -60,7 +91,7 @@ def HTTP.Proxy(p_addr = :ENV, p_port = nil, p_user = nil, p_pass = nil, p_use_ss
 end
 ```
 
-## プロキシとの接続
+## プロキシの設定を利用する
 - `HTTP#connect`内でプロキシとの接続を行う
 
 ```ruby
