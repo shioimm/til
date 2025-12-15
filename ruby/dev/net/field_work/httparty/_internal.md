@@ -55,7 +55,6 @@
 #### 追加機能
 - TLSの設定 (`ConnectionAdapter#attach_ssl_certificates`)
 - タイムアウトの設定 (`ConnectionAdapter#connection`)
-- プロキシの設定 (`ConnectionAdapter#connection`)
 - ストリームレスポンス (`Request#perform`)
 - brotli / lzw / zstdなどnet-httpがサポートしていない圧縮形式でも自動解凍できる (`Decompressor`)
 - Content-TypeのcharsetをもとにRubyでのエンコーディングを実施する (`TextEncoder`)

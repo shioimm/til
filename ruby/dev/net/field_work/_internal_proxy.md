@@ -3,8 +3,11 @@
   - `HTTP.Proxy`を明示的に呼び出す
   - `HTTP.new`に明示的にプロキシ情報を渡す
   - 環境変数`http_proxy` / `https_proxy`からプロキシを取得する
-- faradayのようにリクエストごとにプロキシを指定できない
-  - というか前提としてクラスのレベルで初期値を保存しており、リクエストごとに同じ初期値を共有するインスタンスを生成する仕組みになっている
+- 方法によってどのタイミングでプロキシが設定されるかが変わる
+  - `HTTP.Proxy`を明示的に呼び出した場合はクラスのレベルで初期値を保存し、インスタンスの生成時にそれをコピーする
+  - `HTTP.new`に明示的にプロキシ情報を渡した場合、インスタンス生成時に渡した値がセットされる
+  - 環境変数からプロキシを取得した場合、取得した値が`HTTP#connect`時にインスタンスにセットされる
+  - `HTTP#connect`に対して明示的に指定する方法はない
 
 ## プロキシの設定を行う
 - `Net::HTTP`インスタンス生成時にプロキシを指定できる
@@ -90,7 +93,7 @@ def HTTP.new(
   p_no_proxy = nil,
   p_use_ssl = nil
 )
-  http = super(address, port) # class HTTPはclass Protocolを継承している
+  http = super(address, port) # HTTP#initializeが返した#<HTTP>
 
   if proxy_class? then # => HTTP.proxy_class? HTTP.Proxyを使って明示的にプロキシが指定された場合
     # HTTP#initializeで設定された値を上書きする
