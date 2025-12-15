@@ -1,4 +1,5 @@
 # httparty 現地調査: プロキシ編 (202512時点)
+- net-httpに受け渡しているだけではある
 
 ## `HTTParty.get`で指定
 
@@ -30,9 +31,10 @@ end
 # HTTParty.build_request  (lib/httparty.rb)
 
 def build_request(http_method, path, options = {})
+  # 引数optionsにhttp_proxyaddr, http_proxyportなどが格納されている
   options = ModuleInheritableAttributes.hash_deep_dup(default_options).merge(options)
   # => ModuleInheritableAttributes.hash_deep_dup
-  # default_options (Hash) を複製 (値も)
+  # options = { http_proxyaddr:, http_proxyport:, ... }
   # default_optionsはHTTPartyクラスの属性。初期値として空ハッシュがセットされている
   #
   # HTTParty.included (lib/httparty.rb)
@@ -53,7 +55,7 @@ def build_request(http_method, path, options = {})
   #
   #   def initialize(headers, options)
   #     @headers = headers
-  #     @options = options # 指定の値が#<HeadersProcessor>のoptions属性にセットされる
+  #     @options = options # #<HeadersProcessor>のoptions属性にプロキシ情報がセットされる
   #   end
   #
   # HeadersProcessor#call (lib/httparty/headers_processor.rb)
@@ -66,10 +68,13 @@ def build_request(http_method, path, options = {})
 
   process_cookies(options) # => HTTParty.process_cookies
 
+  # optionsにhttp_proxyaddr, http_proxyportなどが格納されている
   Request.new(http_method, path, options) # => Request#initialize
 end
 
 # Request#initialize (lib/httparty/request.rb)
+
+attr_accessor :http_method, :options, :last_response, :redirect, :last_uri
 
 def initialize(http_method, path, o = {})
   @changed_hosts = false
@@ -84,7 +89,7 @@ def initialize(http_method, path, o = {})
     parser: Parser, # HTTParty::Parser
     uri_adapter: URI,
     connection_adapter: ConnectionAdapter # HTTParty::ConnectionAdapter
-  }.merge(o)
+  }.merge(o) # Request#optionsにプロキシ情報がマージされる
   self.path = path
 
   set_basic_auth_from_uri # => Request#set_basic_auth_from_uri
@@ -94,7 +99,6 @@ end
 
 def perform(&block)
   validate # => Request#validate
-  # WIP
   setup_raw_request # => Request#setup_raw_request
 
   chunked_body = nil
@@ -125,6 +129,183 @@ def perform(&block)
   result ||= handle_response(chunked_body, &block) # => Request#handle_response
   result # #<Request> を返す
 end
+
+# Request#setup_raw_request (lib/httparty/request.rb)
+
+def setup_raw_request
+  if options[:headers].respond_to?(:to_hash)
+    headers_hash = options[:headers].to_hash
+  else
+    headers_hash = nil
+  end
+
+  # http_method = self.http_method (Net::HTTP::{リクエストを表すクラス})
+  # uri         = #<URI::HTTPS> など => Request#uri
+  # headers_hashとしてoptionsを渡しているが、この時点ではプロキシの情報は渡していない
+  @raw_request = http_method.new(request_uri(uri), headers_hash) # => Request#request_uri
+
+  # 以下はあまり関係ない
+  @raw_request.body_stream = options[:body_stream] if options[:body_stream]
+
+  if options[:body]
+    body = Body.new( # => Request::Body#initialize
+      options[:body],
+      query_string_normalizer: query_string_normalizer,
+      force_multipart: options[:multipart]
+    )
+
+    if body.multipart?
+      content_type = "multipart/form-data; boundary=#{body.boundary}"
+      @raw_request['Content-Type'] = content_type
+    end
+
+    @raw_request.body = body.call # => Request::Body#call
+  end
+
+  @raw_request.instance_variable_set(:@decode_content, decompress_content?)
+  # !options[:skip_decompression] => Request#decompress_content?
+
+  if options[:basic_auth] && send_authorization_header? # => Request#send_authorization_header?
+    @raw_request.basic_auth(username, password)
+    @credentials_sent = true
+  end
+
+  if digest_auth? && response_unauthorized? && response_has_digest_auth_challenge?
+    setup_digest_auth # => Request#setup_digest_auth
+  end
+end
+
+# Request#http (lib/httparty/request/body.rb)
+
+def http
+  connection_adapter.call(uri, options)
+  # => Request#uri
+  # => Request#connection_adapter
+  # => ConnectionAdapter.call
+end
+
+# Request#uri (lib/httparty/request.rb)
+
+def uri
+  if redirect && path.relative? && path.path[0] != '/'
+    last_uri_host = @last_uri.path.gsub(/[^\/]+$/, '')
+
+    path.path = "/#{path.path}" if last_uri_host[-1] != '/'
+    path.path = "#{last_uri_host}#{path.path}"
+  end
+
+  if path.relative? && path.host
+    new_uri = options[:uri_adapter].parse("#{@last_uri.scheme}:#{path}").normalize
+  elsif path.relative?
+    new_uri = options[:uri_adapter].parse("#{base_uri}#{path}").normalize
+  else
+    new_uri = path.clone
+  end
+
+  # avoid double query string on redirects [#12]
+  unless redirect
+    new_uri.query = query_string(new_uri)
+  end
+
+  unless SupportedURISchemes.include? new_uri.scheme
+    raise UnsupportedURIScheme, "'#{new_uri}' Must be HTTP, HTTPS or Generic"
+  end
+
+  @last_uri = new_uri
+end
+
+# ConnectionAdapter.call (lib/httparty/connection_adapter.rb)
+
+def self.call(uri, options)
+  new(uri, options).connection
+  # => ConnectionAdapter#initialize
+  # => ConnectionAdapter#connection
+end
+
+# ConnectionAdapter#initialize (lib/httparty/connection_adapter.rb)
+
+def initialize(uri, options = {})
+  uri_adapter = options[:uri_adapter] || URI
+  raise ArgumentError, "uri must be a #{uri_adapter}, not a #{uri.class}" unless uri.is_a? uri_adapter
+
+  @uri = uri
+
+  # optionsにプロキシ情報が格納されている
+  @options = OPTION_DEFAULTS.merge(options)
+end
+
+# ConnectionAdapter#connection (lib/httparty/connection_adapter.rb)
+
+def connection
+  host = clean_host(uri.host) # StripIpv6BracketsRegex =~ host ? $1 : host => ConnectionAdapter#strip_ipv6_brackets
+  port = uri.port || (uri.scheme == 'https' ? 443 : 80)
+
+  # http_proxyaddrがセットされていないと無視される
+  if options.key?(:http_proxyaddr)
+    http = Net::HTTP.new(
+      host,
+      port,
+      options[:http_proxyaddr],
+      options[:http_proxyport],
+      options[:http_proxyuser],
+      options[:http_proxypass]
+    )
+  else
+    http = Net::HTTP.new(host, port) # この場合でも環境変数からプロキシを設定しているのでは?
+  end
+
+  # 以下はあまり関係ない
+
+  http.use_ssl = ssl_implied?(uri) # uri.port == 443 || uri.scheme == 'https' => ConnectionAdapter#ssl_implied?
+
+  if http.use_ssl?
+    # httpに対してTLSの設定を行う
+    attach_ssl_certificates(http, options) # => ConnectionAdapter#attach_ssl_certificates
+  end
+
+  if add_timeout?(options[:timeout])
+    http.open_timeout = options[:timeout]
+    http.read_timeout = options[:timeout]
+    http.write_timeout = options[:timeout]
+  end
+
+  if add_timeout?(options[:read_timeout])
+    http.read_timeout = options[:read_timeout]
+  end
+
+  if add_timeout?(options[:open_timeout])
+    http.open_timeout = options[:open_timeout]
+  end
+
+  if add_timeout?(options[:write_timeout])
+    http.write_timeout = options[:write_timeout]
+  end
+
+  if add_max_retries?(options[:max_retries])
+    http.max_retries = options[:max_retries]
+  end
+
+  if options[:debug_output]
+    http.set_debug_output(options[:debug_output])
+  end
+
+  if options[:ciphers]
+    http.ciphers = options[:ciphers]
+  end
+
+  # Bind to a specific local address or port
+  #
+  # @see https://bugs.ruby-lang.org/issues/6617
+  if options[:local_host]
+    http.local_host = options[:local_host]
+  end
+
+  if options[:local_port]
+    http.local_port = options[:local_port]
+  end
+
+  http # => #<Net::HTTP>
+end
 ```
 
 ## クラスレベルで指定
@@ -134,4 +315,16 @@ include HTTParty
 
 base_uri "https://example.com"
 http_proxy "proxy.example.com", 8080
+```
+
+```ruby
+# HTTParty.http_proxy (lib/httparty.rb)
+
+def http_proxy(addr = nil, port = nil, user = nil, pass = nil)
+  default_options[:http_proxyaddr] = addr
+  default_options[:http_proxyport] = port
+  default_options[:http_proxyuser] = user
+  default_options[:http_proxypass] = pass
+  # 使われ方はHTTParty.getに指定した場合と同じ
+end
 ```

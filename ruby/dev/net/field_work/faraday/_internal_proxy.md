@@ -356,7 +356,7 @@ def net_http_connection(env)
     Net::HTTP.new(
       env[:url].hostname,
       port,
-      nil
+      nil # 明示的にnilを渡している (環境変数からすでにプロキシ情報を取得済みなので)
     )
   end
 end
