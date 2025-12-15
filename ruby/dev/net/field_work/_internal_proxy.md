@@ -1,5 +1,8 @@
 # net-http 現地調査: プロキシ編 (202512時点)
-- `@proxy_from_env`といいつつマニュアルで設定した時のみtrueがセットされるようになっている (環境変数は考慮してない)
+- プロキシ宛に接続する方法は以下のいずれか
+  - `HTTP.Proxy`を明示的に呼び出す
+  - `HTTP.new`に明示的にプロキシ情報を渡す
+  - 環境変数`http_proxy` / `https_proxy`からプロキシを取得する
 - faradayのようにリクエストごとにプロキシを指定できない
   - というか前提としてクラスのレベルで初期値を保存しており、リクエストごとに同じ初期値を共有するインスタンスを生成する仕組みになっている
 
@@ -20,34 +23,129 @@ Net::HTTP.new(
 ```
 
 ```ruby
-# (lib/net/http.rb)
+# HTTP#initialize (lib/net/http.rb)
 
-def HTTP.new(address, port = nil, p_addr = :ENV, p_port = nil, p_user = nil, p_pass = nil, p_no_proxy = nil, p_use_ssl = nil)
-  http = super address, port # class HTTPはclass Protocolを継承している
+def initialize(address, port = nil) # :nodoc:
+  defaults = {
+    keep_alive_timeout: 2,
+    close_on_empty_response: false,
+    open_timeout: 60,
+    read_timeout: 60,
+    write_timeout: 60,
+    continue_timeout: nil,
+    max_retries: 1,
+    debug_output: nil,
+    response_body_encoding: false,
+    ignore_eof: true
+  }
+  options = defaults.merge(self.class.default_configuration || {})
 
-  # WIP
-  if proxy_class? then # from Net::HTTP::Proxy()
+  # インスタンスレベルの属性の初期化
+  @address = address
+  @port    = (port || HTTP.default_port)
+  @ipaddr = nil
+  @local_host = nil
+  @local_port = nil
+  @curr_http_version = HTTPVersion
+  @keep_alive_timeout = options[:keep_alive_timeout]
+  @last_communicated = nil
+  @close_on_empty_response = options[:close_on_empty_response]
+  @socket  = nil
+  @started = false
+  @open_timeout = options[:open_timeout]
+  @read_timeout = options[:read_timeout]
+  @write_timeout = options[:write_timeout]
+  @continue_timeout = options[:continue_timeout]
+  @max_retries = options[:max_retries]
+  @debug_output = options[:debug_output]
+  @response_body_encoding = options[:response_body_encoding]
+  @ignore_eof = options[:ignore_eof]
+
+  @proxy_from_env = false
+  @proxy_uri      = nil
+  @proxy_address  = nil
+  @proxy_port     = nil
+  @proxy_user     = nil
+  @proxy_pass     = nil
+  @proxy_use_ssl  = nil
+
+  @use_ssl = false
+  @ssl_context = nil
+  @ssl_session = nil
+  @sspi_enabled = false
+  SSL_IVNAMES.each do |ivname|
+    instance_variable_set ivname, nil
+  end
+end
+
+# HTTP.new (lib/net/http.rb)
+
+def HTTP.new(
+  address,
+  port = nil,
+  p_addr = :ENV,
+  p_port = nil,
+  p_user = nil,
+  p_pass = nil,
+  p_no_proxy = nil,
+  p_use_ssl = nil
+)
+  http = super(address, port) # class HTTPはclass Protocolを継承している
+
+  if proxy_class? then # => HTTP.proxy_class? HTTP.Proxyを使って明示的にプロキシが指定された場合
+    # HTTP#initializeで設定された値を上書きする
     http.proxy_from_env = @proxy_from_env
     http.proxy_address  = @proxy_address
     http.proxy_port     = @proxy_port
     http.proxy_user     = @proxy_user
     http.proxy_pass     = @proxy_pass
     http.proxy_use_ssl  = @proxy_use_ssl
-  elsif p_addr == :ENV then
+  elsif p_addr == :ENV then # デフォルトではここ
     http.proxy_from_env = true
+
+    # 以下はそのまま
+    # @proxy_uri      = nil
+    # @proxy_address  = nil
+    # @proxy_port     = nil
+    # @proxy_user     = nil
+    # @proxy_pass     = nil
+    # @proxy_use_ssl  = nil
   else
+    # p_addrが指定されており、p_no_proxyがtruthyで、かつURI::Generic.use_proxy?がfalseの場合
+    # URI::Generic.use_proxy?が見つからない
     if p_addr && p_no_proxy && !URI::Generic.use_proxy?(address, address, port, p_no_proxy)
       p_addr = nil
       p_port = nil
     end
+
     http.proxy_address = p_addr
     http.proxy_port    = p_port || default_port
     http.proxy_user    = p_user
     http.proxy_pass    = p_pass
     http.proxy_use_ssl = p_use_ssl
+
+    # 以下はそのまま
+    # @proxy_from_env = false
   end
 
   http
+end
+
+# HTTP.proxy_class? (lib/net/http.rb)
+
+# no proxy
+@is_proxy_class = false
+@proxy_from_env = false
+@proxy_addr = nil
+@proxy_port = nil
+@proxy_user = nil
+@proxy_pass = nil
+@proxy_use_ssl = nil
+
+def proxy_class?
+  defined?(@is_proxy_class) ? @is_proxy_class : false
+  # @is_proxy_classはクラス変数。デフォルトではfalse
+  # HTTP.Proxyを呼び出すとtrueがセットされる
 end
 ```
 
@@ -265,22 +363,30 @@ end
 # HTTP#proxy? (lib/net/http.rb)
 
 def proxy?
-  # HTTP::Proxyを呼び出している場合は@proxy_from_env = trueがセットされている
+  # HTTP::Proxyを呼び出している場合、もしくはHTTP.newの第三引数に何も指定しなかった場合は
+  # @proxy_from_env = trueがセットされている。
   !!(@proxy_from_env ? proxy_uri : @proxy_address)
-  # @proxy_from_env, @proxy_addressいずれもHTTP.Proxyを呼び出した場合にセットされている。初期値はなし
+  # @proxy_addressはHTTP.Proxyを呼び出した場合にセットされている。初期値はなし
   # => HTTP#proxy_uri
 end
 
 # HTTP#proxy_uri (lib/net/http.rb)
 
 def proxy_uri # :nodoc:
-  return if @proxy_uri == false
+  return if @proxy_uri == false # falseが代入される経路がなさそう
 
   @proxy_uri ||= URI::HTTP.new(
     "http", nil, address, port, nil, nil, nil, nil, nil
   ).find_proxy || false # => URI::Generic#find_proxy プロキシURIを返す
 
   @proxy_uri || nil
+
+  # :ENVの場合この時点で@proxy_uriにのみ値がセットされている。以下は空
+  # @proxy_address  = nil
+  # @proxy_port     = nil
+  # @proxy_user     = nil
+  # @proxy_pass     = nil
+  # @proxy_use_ssl  = nil
 end
 
 # HTTP#proxy_address (lib/net/http.rb)
@@ -316,7 +422,7 @@ def proxy_user
     user = proxy_uri&.user # => HTTP#proxy_uri / URI::Generic#user
     unescape(user) if user # => HTTP#unescape
   else
-    # HTTP::Proxyを呼び出している場合は外部指定の値がセットされる
+    # HTTP::Proxyを呼び出している場合やHTTP.newでプロキシ情報を渡している場合は外部指定の値がセットされる
     # デフォルトではHTTP#initializeでnilがセットされている
     @proxy_user
   end
@@ -329,7 +435,7 @@ def proxy_pass
     pass = proxy_uri&.password # => HTTP#proxy_uri / URI::Generic#password
     unescape(pass) if pass # => HTTP#unescape
   else
-    # HTTP::Proxyを呼び出している場合は外部指定の値がセットされる
+    # HTTP::Proxyを呼び出している場合やHTTP.newでプロキシ情報を渡している場合は外部指定の値がセットされる
     # デフォルトではHTTP#initializeでnilがセットされている
     @proxy_pass
   end
