@@ -399,7 +399,7 @@ def run_request(method, url, body, headers)
   #     yield request if block_given?
   #   end
 
-  request = build_request(method) do |req| # => Connection#build_request
+  request = build_request(method) do |req| # => Connection#build_request #<Request>を返す
     req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
     req.url(url)                if url         # => Request#url
     req.headers.update(headers) if headers     # => Utils::Headers#update

@@ -1,4 +1,56 @@
 # net-http 現地調査: プロキシ編 (202512時点)
+- `@proxy_from_env`といいつつマニュアルで設定した時のみtrueがセットされるようになっている (環境変数は考慮してない)
+- faradayのようにリクエストごとにプロキシを指定できない
+  - というか前提としてクラスのレベルで初期値を保存しており、リクエストごとに同じ初期値を共有するインスタンスを生成する仕組みになっている
+
+## プロキシの設定を行う
+- `Net::HTTP`インスタンス生成時にプロキシを指定できる
+
+```ruby
+Net::HTTP.new(
+  address,
+  port,
+  proxy_addr,
+  proxy_port,
+  proxy_user,
+  proxy_pass,
+  proxy_local_host,
+  proxy_use_ssl
+)
+```
+
+```ruby
+# (lib/net/http.rb)
+
+def HTTP.new(address, port = nil, p_addr = :ENV, p_port = nil, p_user = nil, p_pass = nil, p_no_proxy = nil, p_use_ssl = nil)
+  http = super address, port # class HTTPはclass Protocolを継承している
+
+  # WIP
+  if proxy_class? then # from Net::HTTP::Proxy()
+    http.proxy_from_env = @proxy_from_env
+    http.proxy_address  = @proxy_address
+    http.proxy_port     = @proxy_port
+    http.proxy_user     = @proxy_user
+    http.proxy_pass     = @proxy_pass
+    http.proxy_use_ssl  = @proxy_use_ssl
+  elsif p_addr == :ENV then
+    http.proxy_from_env = true
+  else
+    if p_addr && p_no_proxy && !URI::Generic.use_proxy?(address, address, port, p_no_proxy)
+      p_addr = nil
+      p_port = nil
+    end
+    http.proxy_address = p_addr
+    http.proxy_port    = p_port || default_port
+    http.proxy_user    = p_user
+    http.proxy_pass    = p_pass
+    http.proxy_use_ssl = p_use_ssl
+  end
+
+  http
+end
+```
+
 - `Net::HTTP.Proxy`を経由してプロキシの設定ができる
 
 ```ruby
@@ -39,7 +91,8 @@ def HTTP.Proxy(p_addr = :ENV, p_port = nil, p_user = nil, p_pass = nil, p_use_ss
 end
 ```
 
-- `HTTP#connect`内でプロキシの設定を行う
+## プロキシの設定を利用する
+- `HTTP#connect`内でプロキシとの接続を行う
 
 ```ruby
 # HTTP#connectにいたる経路
@@ -82,7 +135,6 @@ def connect
   if use_ssl? # => HTTP#use_ssl?
 
     # --- フォワードプロキシ接続 ---
-    if proxy?
       # @proxy_use_ssl = HTTP.Proxyを呼び出している場合は外部指定の値がセットされる
       # デフォルトではHTTP#initializeでnilがセットされている
       if @proxy_use_ssl
@@ -215,7 +267,7 @@ end
 def proxy?
   # HTTP::Proxyを呼び出している場合は@proxy_from_env = trueがセットされている
   !!(@proxy_from_env ? proxy_uri : @proxy_address)
-  # @proxy_from_env, @proxy_addressいずれもHTTP,Proxyを呼び出した場合にセットされている。初期値はなし
+  # @proxy_from_env, @proxy_addressいずれもHTTP.Proxyを呼び出した場合にセットされている。初期値はなし
   # => HTTP#proxy_uri
 end
 
