@@ -55,7 +55,6 @@
 #### 追加機能
 - TLSの設定 (`ConnectionAdapter#attach_ssl_certificates`)
 - タイムアウトの設定 (`ConnectionAdapter#connection`)
-- プロキシの設定 (`ConnectionAdapter#connection`)
 - ストリームレスポンス (`Request#perform`)
 - brotli / lzw / zstdなどnet-httpがサポートしていない圧縮形式でも自動解凍できる (`Decompressor`)
 - Content-TypeのcharsetをもとにRubyでのエンコーディングを実施する (`TextEncoder`)
@@ -106,7 +105,7 @@ def build_request(http_method, path, options = {})
   options = ModuleInheritableAttributes.hash_deep_dup(default_options).merge(options)
   # => ModuleInheritableAttributes.hash_deep_dup
   # default_options (Hash) を複製 (値も)
-  # default_optionsはHTTPartyのattribute
+  # default_optionsはHTTPartyクラスのattribute
 
   HeadersProcessor.new(headers, options).call
   # => HeadersProcessor#initialize
@@ -159,7 +158,7 @@ def initialize(http_method, path, o = {})
   }.merge(o)
   self.path = path
 
-  set_basic_auth_from_uri
+  set_basic_auth_from_uri # => Request#set_basic_auth_from_uri
 end
 
 # Request#set_basic_auth_from_uri (lib/httparty/request.rb)

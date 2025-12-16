@@ -1,5 +1,5 @@
 # faraday 現地調査: プロキシ編 (202512時点)
-- 環境変数からプロキシを自動的に設定する仕組みがある
+- リクエストごとにプロキシを指定できる
 
 ## `Faraday.new`で指定 / 環境変数で指定
 - `Faraday.new`にproxyキーワードを指定する
@@ -356,7 +356,7 @@ def net_http_connection(env)
     Net::HTTP.new(
       env[:url].hostname,
       port,
-      nil
+      nil # 明示的にnilを渡している (環境変数からすでにプロキシ情報を取得済みなので)
     )
   end
 end
