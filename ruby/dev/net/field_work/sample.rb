@@ -1,9 +1,15 @@
 require "net/http"
 
-uri = URI.parse("https://example.com/")
-res = Net::HTTP.get_response("www.example.com", "index.html")
-res = Net::HTTP.get_response(uri, { "Accept" => "text/html" })
-p res
+require "net/http"
+require "openssl"
+
+uri = URI("https://example.com")
+
+http = Net::HTTP.new(uri.host, uri.port)
+http.use_ssl = true
+
+res = http.get("/")
+puts res.body
 
 # uri = URI("https://httpbin.org/post")
 # data = '{ "foo": "bar" }'
