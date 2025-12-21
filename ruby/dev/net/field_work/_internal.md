@@ -209,7 +209,7 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
       opt = {verify_mode: OpenSSL::SSL::VERIFY_PEER}.update(opt)
     end
 
-    http.methods.grep(/\A(\w+)=\z/) do |meth| # => HTTP#methods (?)
+    http.methods.grep(/\A(\w+)=\z/) do |meth| # => ふつうにObject#methodsだった
       key = $1.to_sym
       opt.key?(key) or next
       http.__send__(meth, opt[key])

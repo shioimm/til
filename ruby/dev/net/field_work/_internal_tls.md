@@ -113,6 +113,7 @@ def use_ssl=(flag)
     raise IOError, "use_ssl value changed, but session already started"
   end
 
+  # @use_sslに設定を保存する
   @use_ssl = flag
 end
 ```
@@ -127,6 +128,8 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
   arg.pop if opt = Hash.try_convert(arg[-1])
   port, p_addr, p_port, p_user, p_pass = *arg
   p_addr = :ENV if arg.size < 2
+
+  # 明示的な宛先ポートの指定がなく、use_sslキーワードに値を渡した場合
   port = https_default_port if !port && opt && opt[:use_ssl]
   # 443 => HTTP.https_default_port
 
@@ -135,13 +138,33 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
 
   if opt
     if opt[:use_ssl]
+      # use_sslがtruthyならoptにverify_modeをmergeする
       opt = {verify_mode: OpenSSL::SSL::VERIFY_PEER}.update(opt)
     end
 
-    http.methods.grep(/\A(\w+)=\z/) do |meth| # => HTTP#methods (?)
+    http.methods.grep(/\A(\w+)=\z/) do |meth| # => ふつうにObject#methodsだった
+      # http.methods.grep(/\A(\w+)=\z/) = [
+      #   # TLS関連の設定
+      #     :ca_file=, :ca_path=, :cert_store=, # CA / 検証ストア
+      #     :cert=, :key=, :extra_chain_cert=, # 証明書・鍵
+      #     :ciphers=, :ssl_version=, :max_version=, :min_version=, # TLS バージョン
+      #     :verify_callback=, :verify_depth=, :verify_hostname=, :verify_mode=, # 検証
+      #     :use_ssl=, # TLSを利用する・しない
+      #   # タイムアウトの設定
+      #     :open_timeout=, :read_timeout=, :write_timeout=,
+      #     :continue_timeout=, :keep_alive_timeout=, :ssl_timeout=,
+      #   # プロキシ関連の設定
+      #     :proxy_address=, :proxy_port=, :proxy_user=, :proxy_pass=, :proxy_use_ssl=, :proxy_from_env=,
+      #   # 接続元に関する設定
+      #     :local_host=, :local_port=, :ipaddr=,
+      #   # 通信ロジックの挙動
+      #     :max_retries=, :close_on_empty_response=, :ignore_eof=,
+      #   # レスポンスのデコード
+      #     :response_body_encoding=,
+      # ]
       key = $1.to_sym
       opt.key?(key) or next
-      http.__send__(meth, opt[key])
+      http.__send__(meth, opt[key]) # なので、ここでHTTP#use_ssl=が呼ばれて@use_sslに設定が保存される
     end
   end
 

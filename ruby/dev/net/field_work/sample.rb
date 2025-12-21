@@ -1,7 +1,13 @@
 require "net/http"
 
-require "net/http"
-require "openssl"
+uri = URI.parse("https://example.com/")
+
+Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+  res = http.get("/")
+  puts res.body
+end
+
+__END__
 
 uri = URI("https://example.com")
 
