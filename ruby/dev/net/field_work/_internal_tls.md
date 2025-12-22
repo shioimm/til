@@ -471,53 +471,71 @@ def connect
     # #<OpenSSL::SSL::SSLContext>に設定を保存する
     @ssl_context.set_params(ssl_parameters)
 
-    # WIP
+    # クライアント側からTLSセッション再開を有効にする。OpenSSLの内部セッションキャッシュは使わない。
+    # (JRubyでは何もしない)
     if !@ssl_context.session_cache_mode.nil? # a dummy method on JRuby
       @ssl_context.session_cache_mode =
+        # クライアント側セッションをキャッシュに追加する
         OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT |
+        # セッションキャッシュをOpenSSL::SSL::SSLContext内部のキャッシュ領域に保持しない
         OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
     end
 
+    # 新しく確立したTLSセッションを保存する (次回接続で再利用するため) コールバックを
+    # @ssl_context.session_new_cbに登録
     if @ssl_context.respond_to?(:session_new_cb) # not implemented under JRuby
       @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
     end
 
     # Still do the post_connection_check below even if connecting
-    # to IP address
+    # to IP address (接続先がIPアドレスの場合もTLS接続後のホスト名を検証する)
     verify_hostname = @ssl_context.verify_hostname
 
     # Server Name Indication (SNI) RFC 3546/6066
+    #   ClientHelloに接続先ホスト名を含める仕組み
+    #   同一のIPで複数のドメインをホストしているサーバが正しい証明書を選択できるようにする
     case @address
     when Resolv::IPv4::Regex, Resolv::IPv6::Regex
       # don't set SNI, as IP addresses in SNI is not valid
       # per RFC 6066, section 3.
 
       # Avoid openssl warning
-      @ssl_context.verify_hostname = false
+      @ssl_context.verify_hostname = false # 宛先がIPアドレス形式の場合はSNIを送らない
     else
       ssl_host_address = @address
     end
 
     debug "starting SSL for #{conn_addr}:#{conn_port}..."
-    s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
+
+    s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context) # TCP接続済みの#<TCPSocket>を渡す
+
+    # SSLSocketをcloseした場合、内部のTCPSocketも同時にcloseする => OpenSSL::SSL::SSLSocket#sync_close=
     s.sync_close = true
+    # SNIの設定 => OpenSSL::SSL::SSLSocket#hostname=
     s.hostname = ssl_host_address if s.respond_to?(:hostname=) && ssl_host_address
 
+    # セッションを再開する場合
     if @ssl_session and
        Process.clock_gettime(Process::CLOCK_REALTIME) < @ssl_session.time.to_f + @ssl_session.timeout
-      s.session = @ssl_session
+      s.session = @ssl_session # => OpenSSL::SSL::SSLSocket#session=
     end
-    ssl_socket_connect(s, @open_timeout)
+
+    ssl_socket_connect(s, @open_timeout) # => Net::Protocol#ssl_socket_connect (lib/net/protocol.rb)
+
+    # 証明書のホスト名を検証する
     if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
-      s.post_connection_check(@address)
+      s.post_connection_check(@address) # => OpenSSL::SSL::SSLSocket#post_connection_check
     end
+
     debug "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
   end
+
   @socket = BufferedIO.new(s, read_timeout: @read_timeout,
                            write_timeout: @write_timeout,
                            continue_timeout: @continue_timeout,
                            debug_output: @debug_output)
   @last_communicated = nil
+
   on_connect
 rescue => exception
   if s
