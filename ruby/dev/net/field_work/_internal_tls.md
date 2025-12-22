@@ -387,6 +387,7 @@ end
 # OpenSSLを利用して実際にTLSで接続するために利用している
 
 def connect
+  # #<OpenSSL::SSL::SSLContext>を作成
   if use_ssl? # => HTTP#use_ssl?
     # reference early to load OpenSSL before connecting,
     # as OpenSSL may take time to load.
@@ -412,14 +413,17 @@ def connect
   }
   s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
   debug "opened"
+
   if use_ssl? # => HTTP#use_ssl?
-    if proxy?
+    # --- プロキシの設定 ---
+    if proxy? # プロキシ先にTLSで接続
       if @proxy_use_ssl
         proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
         ssl_socket_connect(proxy_sock, @open_timeout)
       else
         proxy_sock = s
       end
+
       proxy_sock = BufferedIO.new(proxy_sock, read_timeout: @read_timeout,
                                   write_timeout: @write_timeout,
                                   continue_timeout: @continue_timeout,
@@ -436,22 +440,44 @@ def connect
       # assuming nothing left in buffers after successful CONNECT response
     end
 
+    # --- プロキシの設定ここまで ---
+
     ssl_parameters = Hash.new
     iv_list = instance_variables
+
+    # SSL_IVNAMES = SSL_ATTRIBUTES.map { |a| "@#{a}".to_sym } # :nodoc:
+    # SSL_ATTRIBUTES = [
+    #   # CA / 検証ストア
+    #   :ca_file, :ca_path, :cert_store,
+    #   # 証明書・鍵
+    #   :cert, :key, :extra_chain_cert,
+    #   # TLSバージョン
+    #   :ciphers, :ssl_version, :min_version, :max_version,
+    #   # タイムアウトの設定
+    #   :ssl_timeout,
+    #   # 検証
+    #   :verify_callback, :verify_depth, :verify_mode, :verify_hostname,
+    # ] # :nodoc:
     SSL_IVNAMES.each_with_index do |ivname, i|
       if iv_list.include?(ivname)
         value = instance_variable_get(ivname)
-        unless value.nil?
+
+        if !value.nil?
           ssl_parameters[SSL_ATTRIBUTES[i]] = value
         end
       end
     end
+
+    # #<OpenSSL::SSL::SSLContext>に設定を保存する
     @ssl_context.set_params(ssl_parameters)
-    unless @ssl_context.session_cache_mode.nil? # a dummy method on JRuby
+
+    # WIP
+    if !@ssl_context.session_cache_mode.nil? # a dummy method on JRuby
       @ssl_context.session_cache_mode =
-          OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT |
-              OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT |
+        OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
     end
+
     if @ssl_context.respond_to?(:session_new_cb) # not implemented under JRuby
       @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
     end
