@@ -12,18 +12,18 @@ puts res.body
 - 明示的に設定を制御する
 
 ```ruby
-conn = Faraday.new("https://example.com") { |f|
-  f.ssl.verify = true # OpenSSL::SSL:VERIFY_PEER
-  f.ssl.ca_file = "/etc/ssl/certs/ca-certificates.crt"
-  f.ssl.ca_path = "/etc/ssl/certs"
-  f.ssl.client_cert = OpenSSL::X509::Certificate.new(File.read("client.crt"))
-  f.ssl.client_key  = OpenSSL::PKey::RSA.new(File.read("client.key"))
-  f.ssl.min_version = :TLS1_2
-  f.ssl.max_version = :TLS1_3
-  f.ssl.ciphers = "TLS_AES_128_GCM_SHA256"
+connection = Faraday.new("https://example.com") { |conn|
+  conn.ssl.verify = true # OpenSSL::SSL:VERIFY_PEER
+  conn.ssl.ca_file = "/etc/ssl/certs/ca-certificates.crt"
+  conn.ssl.ca_path = "/etc/ssl/certs"
+  conn.ssl.client_cert = OpenSSL::X509::Certificate.new(File.read("client.crt"))
+  conn.ssl.client_key  = OpenSSL::PKey::RSA.new(File.read("client.key"))
+  conn.ssl.min_version = :TLS1_2
+  conn.ssl.max_version = :TLS1_3
+  conn.ssl.ciphers = "TLS_AES_128_GCM_SHA256"
 }
 
-res  = conn.get("/")
+res = connection.get("/")
 puts res.body
 ```
 
@@ -57,13 +57,61 @@ module Faraday
 
     options request: RequestOptions, ssl: SSLOptions
     memoized(:request) { self.class.options_for(:request).new }
-    # WIP
-    memoized(:ssl) { self.class.options_for(:ssl).new }
+    memoized(:ssl) { self.class.options_for(:ssl).new } # => SSLOptions
     memoized(:builder_class) { RackBuilder } # => RackBuilder
+
+    def self.memoized(key, &block)
+      unless block
+        raise ArgumentError, '#memoized must be called with a block'
+      end
+
+      memoized_attributes[key.to_sym] = block
+
+      class_eval <<-RUBY, __FILE__, __LINE__ + 1
+        remove_method(key) if method_defined?(key, false)
+        def #{key}() self[:#{key}]; end
+      RUBY
+    end
+
+    def self.memoized_attributes
+      @memoized_attributes ||= {}
+    end
+
+    def self.options_for(key)
+      attribute_options[key]
+    end
+  end
+
+  # SSLOptions (lib/faraday/options/ssl_options.rb)
+
+  # 外部から渡された設定を保存するためのOptions
+  SSLOptions = Options.new(
+    :verify, :verify_hostname,
+    :ca_file, :ca_path, :verify_mode,
+    :cert_store, :client_cert, :client_key,
+    :certificate, :private_key, :verify_depth,
+    :version, :min_version, :max_version, :ciphers
+  ) do
+    # @return [Boolean] true if should verify
+    def verify?
+      verify != false
+    end
+
+    # @return [Boolean] true if should not verify
+    def disable?
+      !verify?
+    end
+
+    # @return [Boolean] true if should verify_hostname
+    def verify_hostname?
+      verify_hostname != false
+    end
   end
 end
 
 # Connection#initialize (lib/faraday/connection.rb)
+
+attr_reader :ssl
 
 # url     = String
 # options = ConnectionOptions
@@ -79,7 +127,10 @@ def initialize(url = nil, options = nil)
   @headers = Utils::Headers.new
   @params  = Utils::ParamsHash.new
   @options = options.request
+
+  # @ssl = #<SSLOptions>
   @ssl = options.ssl
+
   @default_parallel_manager = options.parallel_manager
   @manual_proxy = nil
 
@@ -96,8 +147,9 @@ def initialize(url = nil, options = nil)
 
   initialize_proxy(url, options) # => Connection#initialize_proxy
 
-  # WIP
+  # ブロックの中でアクセスしているsslは#<Connection>自身の@ssl (#<SSLOptions>)
   yield(self) if block_given?
+  # #<Connection>のoptions経由で@ssl (#<SSLOptions>) に設定を保存できる
 
   @headers[:user_agent] ||= USER_AGENT
 end
