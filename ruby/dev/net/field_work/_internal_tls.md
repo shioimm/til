@@ -24,6 +24,25 @@ Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
 end
 ```
 
+- 明示的に設定を制御する
+
+```ruby
+uri = URI("https://example.com")
+
+http = Net::HTTP.new(uri.host, uri.port)
+http.use_ssl = true
+
+http.verify_hostname = true
+http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+http.ca_file = "/etc/ssl/certs/ca-certificates.crt"
+http.ca_path = "/etc/ssl/certs"
+http.cert = OpenSSL::X509::Certificate.new(File.read("client.crt"))
+http.key  = OpenSSL::PKey::RSA.new(File.read("client.key"))
+http.min_version = OpenSSL::SSL::TLS1_2_VERSION
+http.max_version = OpenSSL::SSL::TLS1_3_VERSION
+http.ciphers = "TLS_AES_128_GCM_SHA256"
+```
+
 ## HTTPSを使うための設定を保存する
 #### `HTTP#use_ssl=`を利用する場合
 
