@@ -7,6 +7,10 @@
 conn = Faraday.new("https://example.com")
 res  = conn.get("/")
 puts res.body
+
+conn = Faraday.new
+res  = conn.get("https://example.com/")
+puts res.body
 ```
 
 - 明示的に設定を制御する
@@ -152,5 +156,88 @@ def initialize(url = nil, options = nil)
   # #<Connection>のoptions経由で@ssl (#<SSLOptions>) に設定を保存できる
 
   @headers[:user_agent] ||= USER_AGENT
+end
+```
+
+## HTTPSで接続する
+
+```ruby
+# Connection#get (lib/faraday/connection.rb)
+
+class Connection
+  # ...
+  METHODS_WITH_QUERY = %w[get head delete trace].freeze
+  # Connection#get など (lib/faraday/connection.rb)
+  METHODS_WITH_QUERY.each do |method| # => Connection#run_request
+    class_eval <<-RUBY, __FILE__, __LINE__ + 1
+      def #{method}(url = nil, params = nil, headers = nil)
+        run_request(:#{method}, url, nil, headers) do |request|
+          request.params.update(params) if params
+          yield request if block_given?
+        end
+      end
+    RUBY
+  end
+
+  # ...
+end
+
+# Connection#run_request (lib/faraday/connection.rb)
+
+METHODS = Set.new %i[get post put delete head patch options trace]
+
+def run_request(method, url, body, headers)
+  unless METHODS.include?(method)
+    raise ArgumentError, "unknown http method: #{method}"
+  end
+
+  # 呼び出し側 (Connection)
+  #   run_request(:#{method}, url, nil, headers) do |request|
+  #     request.params.update(params) if params
+  #     yield request if block_given?
+  #   end
+
+  request = build_request(method) do |req| # => Connection#build_request #<Request>を返す
+    req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
+
+    # urlとしてURLもしくはパスが渡される
+    req.url(url) if url # => Request#url
+
+    req.headers.update(headers) if headers # => Utils::Headers#update
+    req.body = body if body # => Request#body=
+
+    yield(req) if block_given?
+  end
+
+  # attr_reader :builder (#<Faraday::RackBuilder>)
+  # self    = #<Connection>
+  # request = #<Request>
+  builder.build_response(self, request)
+  # => RackBuilder#build_response
+end
+
+
+# Connection#build_request (lib/faraday/connection.rb)
+
+def build_request(method)
+  Request.create(method) do |req| # => Request.create
+    req.params  = params.dup  # => Request#params=
+    req.headers = headers.dup # => Request#headers=
+    req.options = options.dup # => Request#options=
+
+    yield(req) if block_given?
+  end
+end
+
+# RackBuilder#build_response (lib/faraday/rack_builder.rb)
+
+# WIP
+def build_response(connection, request)
+  env = build_env(connection, request)
+  # => RackBuilder#build_env
+
+  app.call(env)
+  # => RackBuilder#app
+  # => {一番外側のハンドラ}#call (Request::UrlEncoded#call)
 end
 ```
