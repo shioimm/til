@@ -1,14 +1,14 @@
 require "faraday"
 
 # GEM_PATH = ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/gems/"
-# 
+#
 # TracePoint.trace(:call) do |tp|
 #   if tp.path.include? "faraday"
 #     p [tp.self.class, tp.defined_class, tp.method_id, "#{tp.path.gsub(GEM_PATH, "")}:#{tp.lineno}"]
 #   end
 # end
 
-Faraday.new(url: "http://example.com").get("/index.html")
+Faraday.new(url: "https://example.com").get("/index.html")
 
 __END__
 [Module, #<Class:Faraday>, :new, "3.4.0/gems/faraday-2.12.2/lib/faraday.rb:96"]

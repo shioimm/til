@@ -144,7 +144,7 @@ def initialize(url = nil, options = nil)
   end
 
   # url_prefixに指定のURLを保存する
-  self.url_prefix = url || 'http:/'
+  self.url_prefix = url || 'http:/' # => Connection#url_prefix=
 
   @params.update(options.params)   if options.params
   @headers.update(options.headers) if options.headers
@@ -156,6 +156,35 @@ def initialize(url = nil, options = nil)
   # #<Connection>のoptions経由で@ssl (#<SSLOptions>) に設定を保存できる
 
   @headers[:user_agent] ||= USER_AGENT
+end
+
+# Connection#url_prefix= (lib/faraday/connection.rb)
+
+# WIP
+def url_prefix=(url, encoder = nil)
+  uri = @url_prefix = Utils.URI(url)
+
+  self.path_prefix = uri.path # Connection#path_prefix=
+
+  params.merge_query(uri.query, encoder)
+  uri.query = nil
+
+  with_uri_credentials(uri) do |user, password|
+    set_basic_auth(user, password)
+    uri.user = uri.password = nil
+  end
+
+  @proxy = proxy_from_env(url) unless @manual_proxy
+end
+
+# Connection#path_prefix= (lib/faraday/connection.rb)
+
+def path_prefix=(value)
+  url_prefix.path =
+    if value
+      value = "/#{value}" unless value[0, 1] == '/'
+      value
+    end
 end
 ```
 
@@ -231,7 +260,6 @@ end
 
 # RackBuilder#build_response (lib/faraday/rack_builder.rb)
 
-# WIP
 def build_response(connection, request)
   env = build_env(connection, request)
   # => RackBuilder#build_env
@@ -239,5 +267,54 @@ def build_response(connection, request)
   app.call(env)
   # => RackBuilder#app
   # => {一番外側のハンドラ}#call (Request::UrlEncoded#call)
+end
+
+# RackBuilder#build_env (lib/faraday/rack_builder.rb)
+
+def build_env(connection, request)
+  # リクエストパスとConnectionの持つurl_prefixを組み合わせて単一のURI オブジェクトに正規化する
+  exclusive_url = connection.build_exclusive_url( # => Connection#build_exclusive_url
+    request.path,
+    request.params,
+    request.options.params_encoder
+  )
+
+  Env.new( # => Faraday::Env
+    request.http_method,
+    request.body,
+    exclusive_url,
+    request.options,
+    request.headers,
+    connection.ssl,
+    connection.parallel_manager
+  )
+end
+
+# Connection#build_exclusive_url (lib/faraday/connection.rb)
+
+# WIP
+def_delegators :url_prefix, :scheme, :scheme=, :host, :host=, :port, :port=
+def_delegator :url_prefix, :path, :path_prefix
+
+def build_exclusive_url(url = nil, params = nil, params_encoder = nil)
+  url  = nil if url.respond_to?(:empty?) && url.empty?
+
+  # url_prefix = initialize時にself.url_prefix = url || 'http:/'
+  base = url_prefix.dup
+
+  if url && !base.path.end_with?('/')
+    base.path = "#{base.path}/" # ensure trailing slash
+  end
+
+  # Ensure relative url will be parsed correctly (such as `service:search` )
+  url = "./#{url}" if url.respond_to?(:start_with?) && !url.start_with?('http://', 'https://', '/', './', '../')
+  uri = url ? base + url : base
+
+  if params
+    uri.query = params.to_query(params_encoder || options.params_encoder)
+  end
+
+  uri.query = nil if uri.query && uri.query.empty?
+  uri
 end
 ```
