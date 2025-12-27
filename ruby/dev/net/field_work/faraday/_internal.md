@@ -78,6 +78,18 @@ run_request- Rack風のインターフェースで任意のミドルウェアを
 | `Faraday::Response::Logger`     | リクエスト・レスポンスログ出力         |
 | `Faraday::Response::RaiseError` | statusに応じて例外発生                 |
 
+
+#### ユーザーの声
+- faradayの便利な点
+  - `Faraday::Connection.new`ブロックで設定を色々指定できるのが便利
+  - Authorizationヘッダを指定したら以降はそれを使ってくれる
+    - net-httpはnewと同時に指定できない、インスタンスを作った後に手続き的に記述する必要あり
+  - リトライが簡単
+    - net-httpは`start`の中でリクエストしないとリトライできない
+  - リクエストに対して期待するレスポンスのContent-Typeを指定でき、意図しないものが返ってきた時にエラーにできる
+- net-httpではWebアプリケーション用途の8割の通信で当たり前に必要なことを手続き的に書く必要がある
+- FaradayはWebアプリケーション用、Fluentdなど独自のプロトコルでHTTP通信したい時はもっと薄い方がいいのでは?
+
 ## `Faraday.new`
 
 ```ruby
