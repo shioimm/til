@@ -324,7 +324,7 @@ def build_env(connection, request)
     exclusive_url,              # :url
     request.options,            # :request
     request.headers,            # :request_headers
-    connection.ssl,             # :ssl なにこれ WIP
+    connection.ssl,             # :ssl 初期化時に#<Connection>に明示した設定 (#<SSLOptions)
     connection.parallel_manager # :parallel_manager
   )
 end
@@ -353,5 +353,87 @@ def build_exclusive_url(url = nil, params = nil, params_encoder = nil)
 
   uri.query = nil if uri.query && uri.query.empty?
   uri
+end
+
+# RackBuilder#app (lib/faraday/rack_builder.rb)
+
+def app
+  @app ||= begin
+    # ここまで追加したハンドラをfreeze
+    lock! # @handlers.freeze => RackBuilder#lock!
+    # アダプタがセットされていなければ例外発生
+    ensure_adapter! # raise MISSING_ADAPTER_ERROR unless @adapter => RackBuilder#ensure_adapter!
+
+    to_app # => RackBuilder#to_app
+  end
+end
+
+# Request::UrlEncoded#call (lib/faraday/request/url_encoded.rb)
+
+def call(env)
+  match_content_type(env) do |data| # => Request::UrlEncoded#match_content_type
+    # data = env.body
+    params = Faraday::Utils::ParamsHash[data]
+    # key=value&... 形式の文字列にする
+    env.body = params.to_query(env.params_encoder) # => Utils::ParamsHash.to_query
+  end
+
+  # @app = #<Faraday::Adapter::NetHttp>
+  # env  = #<Faraday::Env>
+  @app.call env # => Adapter::NetHttp#call
+end
+
+# Adapter::NetHttp#call (lib/faraday/adapter/net_http.rb)
+
+def call(env)
+  super
+
+  # Adapter#call (faraday: lib/faraday/adapter.rb)
+  #
+  #   def call(env)
+  #     env.clear_body if env.needs_body?
+  #     env.response = Response.new # => Response#initialize
+  #   end
+
+  connection(env) do |http| # => Adapter#connection
+    # http = #<Net::HTTP>
+    perform_request(http, env) # => Adapter::NetHttp#perform_request
+  rescue *NET_HTTP_EXCEPTIONS => e
+    raise Faraday::SSLError, e if defined?(OpenSSL) && e.is_a?(OpenSSL::SSL::SSLError)
+    raise Faraday::ConnectionFailed, e
+  end
+
+  # @app = #<Proc:(&:response) (lambda)> (Adapter#initialize)
+  # env  = #<Faraday::Env>
+  # ここまででレスポンスから得た値がenvにセットされている
+  @app.call env # => Envの@responseとして #<Faraday::Response> を返す
+rescue Timeout::Error, Errno::ETIMEDOUT => e
+  raise Faraday::TimeoutError, e
+end
+
+# Adapter#connection (faraday: lib/faraday/adapter.rb)
+
+def connection(env)
+  conn = build_connection(env) # => Adapter::NetHttp#build_connection
+  # conn = #<Net::HTTP>
+
+  return conn unless block_given?
+
+  yield conn
+
+  # 呼び出し側
+  #   connection(env) do |http|
+  #     perform_request(http, env)
+  #   end
+end
+
+# Adapter::NetHttp#build_connection (lib/faraday/adapter/net_http.rb)
+
+# WIP
+def build_connection(env)
+  net_http_connection(env).tap do |http| # => Adapter::NetHttp#net_http_connection
+    configure_ssl(http, env[:ssl]) if env[:url].scheme == 'https' && env[:ssl] # => Adapter::NetHttp#configure_ssl
+    configure_request(http, env[:request]) # => Adapter::NetHttp#configure_request
+  end
 end
 ```
