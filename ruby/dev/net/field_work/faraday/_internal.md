@@ -494,13 +494,13 @@ def build_env(connection, request)
   )
 
   Env.new( # => Faraday::Env
-    request.http_method,
-    request.body,
-    exclusive_url,
-    request.options,
-    request.headers,
-    connection.ssl,
-    connection.parallel_manager
+    request.http_method,        # :method
+    request.body,               # :request_body
+    exclusive_url,              # :url
+    request.options,            # :request
+    request.headers,            # :request_headers
+    connection.ssl,             # :ssl
+    connection.parallel_manager # :parallel_manager
   )
 end
 
