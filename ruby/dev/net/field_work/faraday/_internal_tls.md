@@ -160,15 +160,19 @@ end
 
 # Connection#url_prefix= (lib/faraday/connection.rb)
 
-# WIP
+def_delegators :url_prefix, :scheme, :scheme=, :host, :host=, :port, :port=
+def_delegator :url_prefix, :path, :path_prefix
+
 def url_prefix=(url, encoder = nil)
-  uri = @url_prefix = Utils.URI(url)
+  # 初期化時に渡された文字列urlをURIにする
+  uri = @url_prefix = Utils.URI(url) # => Utils.URI
 
   self.path_prefix = uri.path # Connection#path_prefix=
 
-  params.merge_query(uri.query, encoder)
+  params.merge_query(uri.query, encoder) # => ParamsHash#merge_query
   uri.query = nil
 
+  # WIP
   with_uri_credentials(uri) do |user, password|
     set_basic_auth(user, password)
     uri.user = uri.password = nil
@@ -176,6 +180,33 @@ def url_prefix=(url, encoder = nil)
 
   @proxy = proxy_from_env(url) unless @manual_proxy
 end
+
+# Utils.URI (lib/faraday/utils.rb)
+
+def URI(url) # rubocop:disable Naming/MethodName
+  if url.respond_to?(:host)
+    url
+  elsif url.respond_to?(:to_str)
+    default_uri_parser.call(url) # => Utils.default_uri_parser
+  else
+    raise ArgumentError, 'bad argument (expected URI object or URI string)'
+  end
+en
+
+# Utils.default_uri_parser (lib/faraday/utils.rb)d
+
+def default_uri_parser
+  @default_uri_parser ||= Kernel.method(:URI)
+end
+
+# ParamsHash#merge_query (lib/faraday/utils/params_hash.rb)
+
+def merge_query(query, encoder = nil)
+  return self unless query && !query.empty?
+
+  update((encoder || Utils.default_params_encoder).decode(query))
+end
+
 
 # Connection#path_prefix= (lib/faraday/connection.rb)
 
@@ -293,9 +324,6 @@ end
 # Connection#build_exclusive_url (lib/faraday/connection.rb)
 
 # WIP
-def_delegators :url_prefix, :scheme, :scheme=, :host, :host=, :port, :port=
-def_delegator :url_prefix, :path, :path_prefix
-
 def build_exclusive_url(url = nil, params = nil, params_encoder = nil)
   url  = nil if url.respond_to?(:empty?) && url.empty?
 
