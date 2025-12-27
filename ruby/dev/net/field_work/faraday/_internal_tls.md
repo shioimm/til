@@ -160,21 +160,44 @@ end
 
 # Connection#url_prefix= (lib/faraday/connection.rb)
 
-# WIP
+def_delegators :url_prefix, :scheme, :scheme=, :host, :host=, :port, :port=
+def_delegator :url_prefix, :path, :path_prefix
+
 def url_prefix=(url, encoder = nil)
-  uri = @url_prefix = Utils.URI(url)
+  # 初期化時に渡された文字列urlをURIにする
+  uri = @url_prefix = Utils.URI(url) # => Utils.URI
 
   self.path_prefix = uri.path # Connection#path_prefix=
 
-  params.merge_query(uri.query, encoder)
+  params.merge_query(uri.query, encoder) # => ParamsHash#merge_query
   uri.query = nil
 
+  # ユーザー／パスワードが指定されている場合はURIにセット
   with_uri_credentials(uri) do |user, password|
     set_basic_auth(user, password)
     uri.user = uri.password = nil
   end
 
+  # 環境変数からプロキシをセット
   @proxy = proxy_from_env(url) unless @manual_proxy
+end
+
+# Utils.URI (lib/faraday/utils.rb)
+
+def URI(url) # rubocop:disable Naming/MethodName
+  if url.respond_to?(:host)
+    url
+  elsif url.respond_to?(:to_str)
+    default_uri_parser.call(url) # => Utils.default_uri_parser
+  else
+    raise ArgumentError, 'bad argument (expected URI object or URI string)'
+  end
+en
+
+# Utils.default_uri_parser (lib/faraday/utils.rb)d
+
+def default_uri_parser
+  @default_uri_parser ||= Kernel.method(:URI)
 end
 
 # Connection#path_prefix= (lib/faraday/connection.rb)
@@ -185,6 +208,22 @@ def path_prefix=(value)
       value = "/#{value}" unless value[0, 1] == '/'
       value
     end
+end
+
+# ParamsHash#merge_query (lib/faraday/utils/params_hash.rb)
+
+def merge_query(query, encoder = nil)
+  return self unless query && !query.empty?
+
+  update((encoder || Utils.default_params_encoder).decode(query))
+end
+
+# Connection#with_uri_credentials (lib/faraday/connection.rb)
+
+def with_uri_credentials(uri)
+  return unless uri.user && uri.password
+
+  yield(Utils.unescape(uri.user), Utils.unescape(uri.password))
 end
 ```
 
@@ -280,32 +319,30 @@ def build_env(connection, request)
   )
 
   Env.new( # => Faraday::Env
-    request.http_method,
-    request.body,
-    exclusive_url,
-    request.options,
-    request.headers,
-    connection.ssl,
-    connection.parallel_manager
+    request.http_method,        # :method
+    request.body,               # :request_body
+    exclusive_url,              # :url
+    request.options,            # :request
+    request.headers,            # :request_headers
+    connection.ssl,             # :ssl なにこれ WIP
+    connection.parallel_manager # :parallel_manager
   )
 end
 
 # Connection#build_exclusive_url (lib/faraday/connection.rb)
 
-# WIP
-def_delegators :url_prefix, :scheme, :scheme=, :host, :host=, :port, :port=
-def_delegator :url_prefix, :path, :path_prefix
-
 def build_exclusive_url(url = nil, params = nil, params_encoder = nil)
   url  = nil if url.respond_to?(:empty?) && url.empty?
 
-  # url_prefix = initialize時にself.url_prefix = url || 'http:/'
+  # url_prefix = initialize時にself.url_prefix = url || 'http:/' した#<URI>
   base = url_prefix.dup
 
+  # trailing slashを追加
   if url && !base.path.end_with?('/')
     base.path = "#{base.path}/" # ensure trailing slash
   end
 
+  # 壊れた相対パスを正しい相対パスに修正
   # Ensure relative url will be parsed correctly (such as `service:search` )
   url = "./#{url}" if url.respond_to?(:start_with?) && !url.start_with?('http://', 'https://', '/', './', '../')
   uri = url ? base + url : base
