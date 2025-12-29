@@ -139,7 +139,6 @@ end
 
 #### `Net::HTTP.start`に`use_ssl`オプションを渡す
 
-WIP
 ```ruby
 # (lib/net/http.rb)
 

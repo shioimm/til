@@ -800,7 +800,7 @@ end
 def configure_ssl(http, ssl)
   http.use_ssl = true if http.respond_to?(:use_ssl=)
 
-  http.verify_mode = ssl_verify_mode(ssl)i # => Adapter::NetHttp#ssl_verify_mode
+  http.verify_mode = ssl_verify_mode(ssl) # => Adapter::NetHttp#ssl_verify_mode
   http.cert_store = ssl_cert_store(ssl) # => Adapter::NetHttp#ssl_cert_store
 
   cert, *extra_chain_cert = ssl[:client_cert]

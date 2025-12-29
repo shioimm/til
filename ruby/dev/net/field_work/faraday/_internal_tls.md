@@ -1,4 +1,7 @@
 # faraday 現地調査: TLS編 (202512時点)
+## 気づいたこと
+- `verify_mode`を明示的に指定するか、`verify`オプションを指定しない場合verify_modeが`OpenSSL::SSL::VERIFY_NONE`
+- クライアント証明書を明示していなくてもシステムに組み込まれた証明書を使う
 
 ## HTTPSを利用する
 - httpsスキームを指定する
@@ -90,11 +93,21 @@ module Faraday
 
   # 外部から渡された設定を保存するためのOptions
   SSLOptions = Options.new(
-    :verify, :verify_hostname,
-    :ca_file, :ca_path, :verify_mode,
-    :cert_store, :client_cert, :client_key,
-    :certificate, :private_key, :verify_depth,
-    :version, :min_version, :max_version, :ciphers
+    :verify,          # サーバ証明書を検証するかどうか (指定しないとVERIFY_NONE)
+    :verify_hostname, # 証明書のCN/SANと接続先ホスト名が一致するか (Ruby 2.4以上/OpenSSL 1.1以上で通常true)
+    :verify_mode,     # 検証モード
+    :verify_depth,    # 証明書チェーンの最大長
+    :ca_file,         # CA証明書ファイル
+    :ca_path,         # CA証明書ファイル (ディレクトリを指定)
+    :cert_store,      # 詳細なCA検証ロジック (OpenSSL::X509::Store)
+    :client_cert,     # クライアント証明書 (配列で中間証明書の指定も可能)
+    :certificate,     # client_cert
+    :client_key,      # クライアント証明書に対応する秘密鍵
+    :private_key,     # client_key
+    :version,         # TLSバージョン
+    :min_version,     # TLSバージョン (最低)
+    :max_version,     # TLSバージョン (最高)
+    :ciphers          # 暗号スイート
   ) do
     # @return [Boolean] true if should verify
     def verify?
@@ -422,7 +435,7 @@ def connection(env)
   yield conn
 
   # 呼び出し側
-  #   connection(env) do |http|
+c  #   connection(env) do |http|
   #     perform_request(http, env)
   #   end
 end
@@ -435,5 +448,94 @@ def build_connection(env)
     configure_ssl(http, env[:ssl]) if env[:url].scheme == 'https' && env[:ssl] # => Adapter::NetHttp#configure_ssl
     configure_request(http, env[:request]) # => Adapter::NetHttp#configure_request
   end
+end
+
+# Adapter::NetHttp#net_http_connection (lib/faraday/adapter/net_http.rb)
+
+def net_http_connection(env)
+  proxy = env[:request][:proxy]
+
+  # 接続先ポートを取得。env[:url]はURIオブジェクト
+  port = env[:url].port || (env[:url].scheme == 'https' ? 443 : 80)
+
+  if proxy
+    Net::HTTP.new(
+      env[:url].hostname,
+      port,
+      proxy[:uri].hostname,
+      proxy[:uri].port,
+      proxy[:user],
+      proxy[:password],
+      nil,
+      proxy[:uri].scheme == 'https'
+    )
+  else
+    Net::HTTP.new(
+      env[:url].hostname,
+      port,
+      nil
+    )
+  end
+end
+
+# Adapter::NetHttp#configure_ssl (lib/faraday/adapter/net_http.rb)
+
+# http = #<Net::HTTP>
+# ssl  = env[:ssl] 初期化時に#<Connection>に明示した設定 (#<SSLOptions)
+def configure_ssl(http, ssl)
+  http.use_ssl = true if http.respond_to?(:use_ssl=)
+
+  # http.verify_mode = 明示したモード or VERIFY_PEER or VERIFY_NONE
+  http.verify_mode = ssl_verify_mode(ssl) # => Adapter::NetHttp#ssl_verify_mode
+
+  # http.cert_store = 明示した証明書 or システムに組込まれている証明書
+  http.cert_store  = ssl_cert_store(ssl)  # => Adapter::NetHttp#ssl_cert_store
+
+  cert, *extra_chain_cert = ssl[:client_cert]
+  http.cert               = cert             if cert
+  http.extra_chain_cert   = extra_chain_cert if extra_chain_cert.any?
+
+  http.key             = ssl[:client_key]      if ssl[:client_key]
+  http.ca_file         = ssl[:ca_file]         if ssl[:ca_file]
+  http.ca_path         = ssl[:ca_path]         if ssl[:ca_path]
+  http.verify_depth    = ssl[:verify_depth]    if ssl[:verify_depth]
+
+  http.ssl_version     = ssl[:version]         if ssl[:version]
+  http.min_version     = ssl[:min_version]     if ssl[:min_version]
+  http.max_version     = ssl[:max_version]     if ssl[:max_version]
+
+  http.verify_hostname = ssl[:verify_hostname] if verify_hostname_enabled?(http, ssl)
+  # => Adapter::NetHttp#verify_hostname_enabled?
+
+  http.ciphers         = ssl[:ciphers]         if ssl[:ciphers]
+end
+
+# Adapter::NetHttp#ssl_verify_mode (lib/faraday/adapter/net_http.rb)
+
+def ssl_verify_mode(ssl)
+  # 明示したverify_mode、もしくはOpenSSL::SSL::VERIFY_PEER、そうでなければOpenSSL::SSL::VERIFY_NONE
+  ssl[:verify_mode] || begin
+    if ssl.fetch(:verify, true)
+      OpenSSL::SSL::VERIFY_PEER
+    else
+      OpenSSL::SSL::VERIFY_NONE
+    end
+  end
+end
+
+# Adapter::NetHttp#ssl_cert_store (lib/faraday/adapter/net_http.rb)
+
+def ssl_cert_store(ssl)
+  return ssl[:cert_store] if ssl[:cert_store]
+
+  # Use the default cert store by default, i.e. system ca certs
+  # システムに組込まれている証明書を読み込む
+  @ssl_cert_store ||= OpenSSL::X509::Store.new.tap(&:set_default_paths) # => OpenSSL::X509::Store#set_default_paths
+end
+
+# Adapter::NetHttp#verify_hostname_enabled? (lib/faraday/adapter/net_http.rb)
+
+def verify_hostname_enabled?(http, ssl)
+  http.respond_to?(:verify_hostname=) && ssl.key?(:verify_hostname)
 end
 ```
