@@ -8,7 +8,7 @@ require "faraday"
 #   end
 # end
 
-Faraday.new(url: "https://example.com").get("/index.html")
+Faraday.new(url: "http://example.com").get("/index.html")
 
 __END__
 [Module, #<Class:Faraday>, :new, "3.4.0/gems/faraday-2.12.2/lib/faraday.rb:96"]
