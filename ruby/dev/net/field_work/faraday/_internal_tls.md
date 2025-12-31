@@ -1,5 +1,9 @@
 # faraday 現地調査: TLS編 (202512時点)
 ## 気づいたこと
+- `env[:url].scheme == 'https' && env[:ssl]`の場合、自動的にHTTPSで接続する
+  - `env[:url].scheme`は接続先のURLから取得する
+  - `env[:ssl]`は`ConnectionOptions.from`が呼ばれる経路ではつねにtruthy
+- 初期化時にまとめて設定を明示することができる
 - `verify_mode`を明示的に指定するか、`verify`オプションを指定しない場合verify_modeが`OpenSSL::SSL::VERIFY_NONE`
 - クライアント証明書を明示していなくてもシステムに組み込まれた証明書を使う
 
@@ -57,8 +61,14 @@ end
 
 module Faraday
   ConnectionOptions = Options.new(
-    :request, :proxy, :ssl, :builder, :url,
-    :parallel_manager, :params, :headers,
+    :request,
+    :proxy,
+    :ssl,
+    :builder,
+    :url,
+    :parallel_manager,
+    :params,
+    :headers,
     :builder_class
   ) do
 
@@ -145,7 +155,8 @@ def initialize(url = nil, options = nil)
   @params  = Utils::ParamsHash.new
   @options = options.request
 
-  # @ssl = #<SSLOptions>
+  # 上段で options = ConnectionOptions.from(options) しているため、つねに@ssl = #<SSLOptions>
+  # 宛先のスキームに関わらず、指定されていない場合は #<Faraday::SSLOptions (empty)> になる
   @ssl = options.ssl
 
   @default_parallel_manager = options.parallel_manager
@@ -442,7 +453,6 @@ end
 
 # Adapter::NetHttp#build_connection (lib/faraday/adapter/net_http.rb)
 
-# WIP
 def build_connection(env)
   net_http_connection(env).tap do |http| # => Adapter::NetHttp#net_http_connection
     configure_ssl(http, env[:ssl]) if env[:url].scheme == 'https' && env[:ssl] # => Adapter::NetHttp#configure_ssl
