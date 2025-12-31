@@ -23,12 +23,17 @@ puts res.body
 - 明示的に設定を制御する
 
 ```ruby
+store = OpenSSL::X509::Store.new
+store.set_default_paths
+
 connection = Faraday.new("https://example.com") { |conn|
   conn.ssl.verify = true # OpenSSL::SSL:VERIFY_PEER
   conn.ssl.ca_file = "/etc/ssl/certs/ca-certificates.crt"
   conn.ssl.ca_path = "/etc/ssl/certs"
+  # 中間証明書は配列でclient_certに渡す
   conn.ssl.client_cert = OpenSSL::X509::Certificate.new(File.read("client.crt"))
   conn.ssl.client_key  = OpenSSL::PKey::RSA.new(File.read("client.key"))
+  conn.ssl.cert_store = store
   conn.ssl.min_version = :TLS1_2
   conn.ssl.max_version = :TLS1_3
   conn.ssl.ciphers = "TLS_AES_128_GCM_SHA256"
