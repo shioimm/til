@@ -40,7 +40,7 @@ http.cert = OpenSSL::X509::Certificate.new(File.read("client.crt"))
 http.key  = OpenSSL::PKey::RSA.new(File.read("client.key"))
 http.min_version = OpenSSL::SSL::TLS1_2_VERSION
 http.max_version = OpenSSL::SSL::TLS1_3_VERSION
-http.ciphers = "TLS_AES_128_GCM_SHA256"
+http.ciphers = "RC4-SHA"
 ```
 
 ## HTTPSを使うための設定を保存する
