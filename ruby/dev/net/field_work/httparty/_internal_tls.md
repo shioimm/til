@@ -15,17 +15,12 @@ store.set_default_paths
 
 HTTParty.get(
   "https://example.com",
-  verify: true,
   ssl_ca_file: "/etc/ssl/certs/ca-certificates.crt",
   ssl_ca_path: "/etc/ssl/certs",
-  # 中間証明書はクライアント証明書に結合した状態でssl_client_certに渡す
-  ssl_client_cert: OpenSSL::X509::Certificate.new(File.read("client.crt")),
-  ssl_client_key: OpenSSL::PKey::RSA.new(File.read("client.key")),
-  cert_store: store,
+  pem:         File.read("client.pem"),
+  pkcs12:      File.read("client.p12"),
   ssl_version: :TLSv1_2,
-  ssl_min_version: :TLSv1_2,
-  ssl_max_version: :TLSv1_3,
-  ssl_ciphers: "TLS_AES_128_GCM_SHA256",
+  ciphers:     "TLS_AES_128_GCM_SHA256",
 )
 
 p res.body
@@ -54,6 +49,16 @@ MyClient.get("/")
 
 ```ruby
 module HTTParty
+  def self.included(base)
+    base.extend ClassMethods
+    base.send :include, ModuleInheritableAttributes
+    base.send(:mattr_inheritable, :default_options)
+    base.send(:mattr_inheritable, :default_cookies)
+    base.instance_variable_set(:@default_options, {})
+    base.instance_variable_set(:@default_cookies, CookieHash.new)
+  end
+
+  # 初期設定値は自身の@default_optionsに保存される
   module ClassMethods
     # ...
     def base_uri(uri = nil)
@@ -87,6 +92,8 @@ module HTTParty
       default_options[:ciphers] = cipher_names
     end
     # ...
+
+    attr_reader :default_options
   end
 end
 ```
@@ -112,12 +119,10 @@ end
 # HTTParty.build_request  (lib/httparty.rb)
 
 # HTTParty.getに指定された設定はoptionsとして渡される
-def perform_request(http_method, path, options, &block) #:nodoc:
 def build_request(http_method, path, options = {})
   options = ModuleInheritableAttributes.hash_deep_dup(default_options).merge(options)
   # => ModuleInheritableAttributes.hash_deep_dup
-  # default_options (Hash) を複製 (値も)
-  # default_optionsはHTTPartyクラスのattribute
+  # 自身の@default_optionsを複製してHTTParty.getに指定されたoptionsをmerge
 
   # HTTParty.getに指定された設定はHeadersProcessorの@options属性として保存される
   HeadersProcessor.new(headers, options).call
