@@ -23,8 +23,8 @@ HTTParty.get(
   ssl_client_key: OpenSSL::PKey::RSA.new(File.read("client.key")),
   cert_store: store,
   ssl_version: :TLSv1_2,
-  ssl_min_version: :TLS1_2,
-  ssl_max_version: :TLS1_3,
+  ssl_min_version: :TLSv1_2,
+  ssl_max_version: :TLSv1_3,
   ssl_ciphers: "TLS_AES_128_GCM_SHA256",
 )
 
@@ -37,23 +37,102 @@ p res.body
 class MyClient
   include HTTParty
 
-  base_uri "https://example.com"
+  base_uri "https://example.com" # => HTTParty::ClassMethods#base_uri
 
-  verify true
-  ssl_ca_file "/etc/ssl/certs/ca-certificates.crt"
-  ssl_ca_path "/etc/ssl/certs"
-  ssl_client_cert OpenSSL::X509::Certificate.new(File.read("client.crt"))
-  ssl_client_key OpenSSL::PKey::RSA.new(File.read("client.key"))
-
-  store = OpenSSL::X509::Store.new
-  store.set_default_paths
-  cert_store store
-
-  ssl_version :TLSv1_2
-  ssl_min_version :TLS1_2
-  ssl_max_version :TLS1_3
-  ssl_ciphers "TLS_AES_128_GCM_SHA256"
+  ssl_ca_file "/etc/ssl/certs/ca-certificates.crt" # => HTTParty::ClassMethods#ssl_ca_file
+  ssl_ca_path "/etc/ssl/certs"                     # => HTTParty::ClassMethods#ssl_ca_path
+  pem         File.read("client.pem"), "password"  # => HTTParty::ClassMethods#pem
+  pkcs12      File.read("client.p12"), "password"  # => HTTParty::ClassMethods#pkcs12
+  ssl_version :TLSv1_2                             # => HTTParty::ClassMethods#ssl_version
+  ciphers     "TLS_AES_128_GCM_SHA256"             # => HTTParty::ClassMethods#ssl_ciphers
 end
 
 MyClient.get("/")
+```
+
+## HTTPSを使うための設定を保存する
+
+```ruby
+module HTTParty
+  module ClassMethods
+    # ...
+    def base_uri(uri = nil)
+      return default_options[:base_uri] unless uri
+      default_options[:base_uri] = HTTParty.normalize_base_uri(uri)
+    end
+
+    def ssl_ca_file(path)
+      default_options[:ssl_ca_file] = path
+    end
+
+    def ssl_ca_path(path)
+      default_options[:ssl_ca_path] = path
+    end
+
+    def pem(pem_contents, password = nil)
+      default_options[:pem] = pem_contents
+      default_options[:pem_password] = password
+    end
+
+    def pkcs12(p12_contents, password)
+      default_options[:p12] = p12_contents
+      default_options[:p12_password] = password
+    end
+
+    def ssl_version(version)
+      default_options[:ssl_version] = version
+    end
+
+    def ciphers(cipher_names)
+      default_options[:ciphers] = cipher_names
+    end
+    # ...
+  end
+end
+```
+
+```ruby
+# HTTParty.get (lib/httparty.rb)
+
+# HTTParty.getに指定された設定はoptionsとして渡される
+def get(path, options = {}, &block)
+  perform_request(Net::HTTP::Get, path, options, &block)
+  # => HTTParty.perform_request
+end
+
+# HTTParty.perform_request (lib/httparty.rb)
+
+# HTTParty.getに指定された設定はoptionsとして渡される
+def perform_request(http_method, path, options, &block) #:nodoc:
+  build_request(http_method, path, options).perform(&block)
+  # => HTTParty.build_request
+  # => Request#perform
+end
+
+# HTTParty.build_request  (lib/httparty.rb)
+
+# HTTParty.getに指定された設定はoptionsとして渡される
+def perform_request(http_method, path, options, &block) #:nodoc:
+def build_request(http_method, path, options = {})
+  options = ModuleInheritableAttributes.hash_deep_dup(default_options).merge(options)
+  # => ModuleInheritableAttributes.hash_deep_dup
+  # default_options (Hash) を複製 (値も)
+  # default_optionsはHTTPartyクラスのattribute
+
+  # HTTParty.getに指定された設定はHeadersProcessorの@options属性として保存される
+  HeadersProcessor.new(headers, options).call
+  # => HeadersProcessor#initialize
+  # => HeadersProcessor#call
+
+  # HeadersProcessor#initialize (lib/httparty/headers_processor.rb)
+  #
+  #   def initialize(headers, options)
+  #     @headers = headers
+  #     @options = options
+  #   end
+
+  process_cookies(options) # => HTTParty.process_cookies
+
+  Request.new(http_method, path, options) # => Request#initialize
+end
 ```
