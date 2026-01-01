@@ -332,6 +332,8 @@ end
 # Request#http (lib/httparty/request/body.rb)
 
 def http
+  # uri => Request#uri
+  # options = Requestの@options
   connection_adapter.call(uri, options)
   # => Request#connection_adapter デフォルトではConnectionAdapter
   # => ConnectionAdapter.call
@@ -340,6 +342,8 @@ end
 # ConnectionAdapter.call (lib/httparty/connection_adapter.rb)
 
 def self.call(uri, options)
+  # uri => Request#uri
+  # options = Requestの@options
   new(uri, options).connection
   # => ConnectionAdapter#initialize
   # => ConnectionAdapter#connection WIP
@@ -347,11 +351,21 @@ end
 
 # ConnectionAdapter#initialize (lib/httparty/connection_adapter.rb)
 
+# uri => Request#uri
+# options = Requestの@options
 def initialize(uri, options = {})
   uri_adapter = options[:uri_adapter] || URI
   raise ArgumentError, "uri must be a #{uri_adapter}, not a #{uri.class}" unless uri.is_a? uri_adapter
 
   @uri = uri
+
+  # ConnectionAdapter::OPTION_DEFAULTS (lib/httparty/connection_adapter.rb)
+  #
+  #   OPTION_DEFAULTS = {
+  #     verify: true,
+  #     verify_peer: true
+  #   }
+
   @options = OPTION_DEFAULTS.merge(options)
 end
 ```
