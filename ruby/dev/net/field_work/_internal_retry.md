@@ -80,7 +80,7 @@ def initialize(address, port = nil) # :nodoc:
 end
 ```
 
-## リトライを実行する
+## リトライの実行
 
 ```ruby
 # HTTP#transport_request (lib/net/http.rb)
