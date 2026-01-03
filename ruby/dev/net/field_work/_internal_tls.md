@@ -163,9 +163,11 @@ def HTTP.start(address, *arg, &block) # :yield: +http+
     http.methods.grep(/\A(\w+)=\z/) do |meth| # => ふつうにObject#methodsだった
       # http.methods.grep(/\A(\w+)=\z/) = [
       #   # TLS関連の設定
-      #     :ca_file=, :ca_path=, :cert_store=, # CA / 検証ストア
-      #     :cert=, :key=, :extra_chain_cert=, # 証明書・鍵
-      #     :ciphers=, :ssl_version=, :max_version=, :min_version=, # TLS バージョン
+      #     :ca_file=, :ca_path=,              # サーバー証明書
+      #     :cert_store=,                      # 証明書ストア
+      #     :cert=, :key=, :extra_chain_cert=, # クライアント証明書・鍵・中間証明書チェーン
+      #     :ciphers=,                         # 利用可能な共通鍵暗号
+      #     :ssl_version=, :max_version=, :min_version=, # TLS バージョン
       #     :verify_callback=, :verify_depth=, :verify_hostname=, :verify_mode=, # 検証
       #     :use_ssl=, # TLSを利用する・しない
       #   # タイムアウトの設定
