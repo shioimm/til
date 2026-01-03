@@ -3,9 +3,13 @@
 - `env[:url].scheme == 'https' && env[:ssl]`の場合、自動的にHTTPSで接続する
   - `env[:url].scheme`は接続先のURLから取得する
   - `env[:ssl]`は`ConnectionOptions.from`が呼ばれる経路ではつねにtruthy
-- 初期化時にまとめて設定を明示することができる
+- 初期設定をまとめて明示することができる、テンポラリに設定を変更することもできる
 - `verify_mode`を明示的に指定するか、`verify`オプションを指定しない場合verify_modeが`OpenSSL::SSL::VERIFY_NONE`
-- クライアント証明書を明示していなくてもシステムに組み込まれた証明書を使う
+- 証明書ストアを明示していなくてもシステムに組み込まれた証明書ストアを使う
+
+### 指定できない設定
+- `verify_callback=` (`OpenSSL::X509::Store#verify_callback=`)
+- `verify_hostname=` (?)
 
 ## HTTPSを利用する
 - httpsスキームを指定する
@@ -460,7 +464,10 @@ end
 
 def build_connection(env)
   net_http_connection(env).tap do |http| # => Adapter::NetHttp#net_http_connection
-    configure_ssl(http, env[:ssl]) if env[:url].scheme == 'https' && env[:ssl] # => Adapter::NetHttp#configure_ssl
+    if env[:url].scheme == 'https' && env[:ssl]
+      configure_ssl(http, env[:ssl]) # => Adapter::NetHttp#configure_ssl
+    end
+
     configure_request(http, env[:request]) # => Adapter::NetHttp#configure_request
   end
 end
@@ -498,31 +505,35 @@ end
 # http = #<Net::HTTP>
 # ssl  = env[:ssl] 初期化時に#<Connection>に明示した設定 (#<SSLOptions)
 def configure_ssl(http, ssl)
+  # アダプタが交換できるためrespond_to?している気がする
   http.use_ssl = true if http.respond_to?(:use_ssl=)
 
   # http.verify_mode = 明示したモード or VERIFY_PEER or VERIFY_NONE
   http.verify_mode = ssl_verify_mode(ssl) # => Adapter::NetHttp#ssl_verify_mode
 
-  # http.cert_store = 明示した証明書 or システムに組込まれている証明書
-  http.cert_store  = ssl_cert_store(ssl)  # => Adapter::NetHttp#ssl_cert_store
+  # サーバ証明書の検証
+  http.cert_store = ssl_cert_store(ssl) # => Adapter::NetHttp#ssl_cert_store # 最優先
+  http.ca_file    = ssl[:ca_file] if ssl[:ca_file]
+  http.ca_path    = ssl[:ca_path] if ssl[:ca_path]
 
+  # クライアント証明書の設定
   cert, *extra_chain_cert = ssl[:client_cert]
-  http.cert               = cert             if cert
-  http.extra_chain_cert   = extra_chain_cert if extra_chain_cert.any?
+  http.cert             = cert               if cert # 公開鍵証明書
+  http.key              = ssl[:client_key]   if ssl[:client_key] # 秘密鍵
+  http.extra_chain_cert = extra_chain_cert   if extra_chain_cert.any? # 中間証明書チェーン
+  http.verify_depth     = ssl[:verify_depth] if ssl[:verify_depth] # 証明書チェーン上の検証する最大の深さ
 
-  http.key             = ssl[:client_key]      if ssl[:client_key]
-  http.ca_file         = ssl[:ca_file]         if ssl[:ca_file]
-  http.ca_path         = ssl[:ca_path]         if ssl[:ca_path]
-  http.verify_depth    = ssl[:verify_depth]    if ssl[:verify_depth]
+  # バージョンの指定
+  http.ssl_version = ssl[:version]     if ssl[:version] # 非推奨
+  http.min_version = ssl[:min_version] if ssl[:min_version] # 最小バージョン
+  http.max_version = ssl[:max_version] if ssl[:max_version] # 最大バージョン
 
-  http.ssl_version     = ssl[:version]         if ssl[:version]
-  http.min_version     = ssl[:min_version]     if ssl[:min_version]
-  http.max_version     = ssl[:max_version]     if ssl[:max_version]
-
+  # OpenSSLには存在しない?
   http.verify_hostname = ssl[:verify_hostname] if verify_hostname_enabled?(http, ssl)
   # => Adapter::NetHttp#verify_hostname_enabled?
 
-  http.ciphers         = ssl[:ciphers]         if ssl[:ciphers]
+  # 利用可能な共通鍵暗号
+  http.ciphers = ssl[:ciphers] if ssl[:ciphers]
 end
 
 # Adapter::NetHttp#ssl_verify_mode (lib/faraday/adapter/net_http.rb)
@@ -541,10 +552,12 @@ end
 # Adapter::NetHttp#ssl_cert_store (lib/faraday/adapter/net_http.rb)
 
 def ssl_cert_store(ssl)
+  # 信頼しているCA証明書を含む証明書ストアが明示されている場合
   return ssl[:cert_store] if ssl[:cert_store]
 
+  # 証明書ストアが明示されていない場合
+  # httpartyのConnectionAdapter.default_cert_storeを同じくシステムに組込まれている証明書を読み込む
   # Use the default cert store by default, i.e. system ca certs
-  # システムに組込まれている証明書を読み込む
   @ssl_cert_store ||= OpenSSL::X509::Store.new.tap(&:set_default_paths) # => OpenSSL::X509::Store#set_default_paths
 end
 
