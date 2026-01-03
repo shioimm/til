@@ -8,8 +8,8 @@
 
 ### 指定できない設定
 - `extra_chain_cert` (`OpenSSL::SSL::SSLContext#extra_chain_cert=`)
-- `min_version` (?)
-- `max_version` (?)
+- `min_version` (`OpenSSL::SSL::SSLContext#min_version=`)
+- `max_version` (`OpenSSL::SSL::SSLContext#max_retries=`)
 - `verify_callback` (`OpenSSL::X509::Store#verify_callback=`)
 - `verify_hostname` (?)
 - `verify_depth` (`OpenSSL::SSL::SSLContext#verify_depth=`)
