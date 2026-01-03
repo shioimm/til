@@ -1,4 +1,8 @@
 # net-http 現地調査 (net-http-0.9.1時点)
+## 気づいたこと
+- デフォルトでは暗黙的に1回リトライする
+- 明示的にリトライしたい場合は`HTTP#max_retries=`を利用する
+
 ## リトライの設定
 ### 明示的なリトライ
 - `HTTP#max_retries=`を設定する
@@ -81,14 +85,16 @@ end
 ```ruby
 # HTTP#transport_request (lib/net/http.rb)
 
-# WIP
+attr_reader :max_retries
+
 def transport_request(req)
   count = 0
   begin
     begin_transport req
+
     res = catch(:response) {
       begin
-        req.exec @socket, @curr_http_version, edit_path(req.path)
+        req.exec(@socket, @curr_http_version, edit_path(req.path))
       rescue Errno::EPIPE
         # Failure when writing full request, but we can probably
         # still read the received response.
@@ -105,6 +111,7 @@ def transport_request(req)
 
       res
     }
+
     res.reading_body(@socket, req.response_body_permitted?) {
       if block_given?
         count = max_retries # Don't restart in the middle of a download
@@ -113,23 +120,30 @@ def transport_request(req)
     }
   rescue Net::OpenTimeout
     raise
-  rescue Net::ReadTimeout, IOError, EOFError,
-         Errno::ECONNRESET, Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT,
-         # avoid a dependency on OpenSSL
-         defined?(OpenSSL::SSL) ? OpenSSL::SSL::SSLError : IOError,
+  rescue Net::ReadTimeout,
+         IOError,
+         EOFError,
+         Errno::ECONNRESET,
+         Errno::ECONNABORTED,
+         Errno::EPIPE,
+         Errno::ETIMEDOUT,
+         defined?(OpenSSL::SSL) ? OpenSSL::SSL::SSLError : IOError, # avoid a dependency on OpenSSL
          Timeout::Error => exception
-    if count < max_retries && IDEMPOTENT_METHODS_.include?(req.method)
+
+    # IDEMPOTENT_METHODS_ = %w/GET HEAD PUT DELETE OPTIONS TRACE/.freeze
+    if count < max_retries && IDEMPOTENT_METHODS_.include?(req.method) # リトライする
       count += 1
       @socket.close if @socket
       debug "Conn close because of error #{exception}, and retry"
       retry
     end
+
     debug "Conn close because of error #{exception}"
     @socket.close if @socket
     raise
   end
 
-  end_transport req, res
+  end_transport(req, res)
   res
 rescue => exception
   debug "Conn close because of error #{exception}"
