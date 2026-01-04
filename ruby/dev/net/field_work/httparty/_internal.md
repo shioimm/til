@@ -156,9 +156,25 @@ def initialize(http_method, path, o = {})
     uri_adapter: URI,
     connection_adapter: ConnectionAdapter # HTTParty::ConnectionAdapter
   }.merge(o)
-  self.path = path
+  self.path = path # => Request#path=
 
   set_basic_auth_from_uri # => Request#set_basic_auth_from_uri
+end
+
+
+# Request#path= (lib/httparty/request.rb)
+
+def path=(uri)
+  uri_adapter = options[:uri_adapter] # デフォルトではURI
+
+  @path = if uri.is_a?(uri_adapter)
+    uri
+  elsif String.try_convert(uri)
+    uri_adapter.parse(uri).normalize
+  else
+    raise ArgumentError,
+      "bad argument (expected #{uri_adapter} object or URI string)"
+  end
 end
 
 # Request#set_basic_auth_from_uri (lib/httparty/request.rb)

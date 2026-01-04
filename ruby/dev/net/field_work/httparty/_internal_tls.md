@@ -1,4 +1,19 @@
 # httparty 現地調査: TLS編 (202512時点)
+## 気づいたこと
+- `uri.port == 443 || uri.scheme == 'https'`の場合、自動的にHTTPSで接続する
+- 初期設定をまとめて明示することができる、テンポラリに設定を変更することもできる
+- 証明書ストアを明示していなくてもシステムに組み込まれた証明書ストアを使う
+- 明示的に`verify`オプションを指定しない場合verify_modeが`OpenSSL::SSL::VERIFY_NONE`
+- クライアント証明書をPEMもしくはPKCS#12で指定できる
+
+### 指定できない設定
+- `extra_chain_cert` (`OpenSSL::SSL::SSLContext#extra_chain_cert=`)
+- `min_version` (`OpenSSL::SSL::SSLContext#min_version=`)
+- `max_version` (`OpenSSL::SSL::SSLContext#max_retries=`)
+- `verify_callback` (`OpenSSL::X509::Store#verify_callback=`)
+- `verify_hostname` (?)
+- `verify_depth` (`OpenSSL::SSL::SSLContext#verify_depth=`)
+
 ## HTTPSを利用する
 - httpsスキームを指定する
 
@@ -17,8 +32,8 @@ HTTParty.get(
   "https://example.com",
   ssl_ca_file: "/etc/ssl/certs/ca-certificates.crt",
   ssl_ca_path: "/etc/ssl/certs",
-  pem:         File.read("client.pem"),
-  pkcs12:      File.read("client.p12"),
+  pem:         File.read("client.pem"), # 証明書と秘密鍵を連結したPEM
+  pkcs12:      File.read("client.p12"), # PKCS#12
   ssl_version: :TLSv1_2,
   ciphers:     "TLS_AES_128_GCM_SHA256",
 )
@@ -36,8 +51,8 @@ class MyClient
 
   ssl_ca_file "/etc/ssl/certs/ca-certificates.crt" # => HTTParty::ClassMethods#ssl_ca_file
   ssl_ca_path "/etc/ssl/certs"                     # => HTTParty::ClassMethods#ssl_ca_path
-  pem         File.read("client.pem"), "password"  # => HTTParty::ClassMethods#pem
-  pkcs12      File.read("client.p12"), "password"  # => HTTParty::ClassMethods#pkcs12
+  pem         File.read("client.pem"), "password"  # => HTTParty::ClassMethods#pem # 証明書と秘密鍵を連結したPEM
+  pkcs12      File.read("client.p12"), "password"  # => HTTParty::ClassMethods#pkcs12 # PKCS#12
   ssl_version :TLSv1_2                             # => HTTParty::ClassMethods#ssl_version
   ciphers     "TLS_AES_128_GCM_SHA256"             # => HTTParty::ClassMethods#ssl_ciphers
 end
@@ -367,5 +382,185 @@ def initialize(uri, options = {})
   #   }
 
   @options = OPTION_DEFAULTS.merge(options)
+end
+
+# ConnectionAdapter#connection (lib/httparty/connection_adapter.rb)
+
+attr_reader :uri, :options
+
+def connection
+  host = clean_host(uri.host) # => ConnectionAdapter#strip_ipv6_brackets
+
+  # ConnectionAdapter#clean_host (lib/httparty/connection_adapter.rb)
+  #
+  #   def clean_host(host)
+  #     strip_ipv6_brackets(host)
+  #   end
+  #
+  #   def strip_ipv6_brackets(host)
+  #     StripIpv6BracketsRegex =~ host ? $1 : host
+  #   end
+  #
+  #   StripIpv6BracketsRegex = /\A\[(.*)\]\z/
+
+  port = uri.port || (uri.scheme == 'https' ? 443 : 80)
+
+  if options.key?(:http_proxyaddr)
+    http = Net::HTTP.new(
+      host,
+      port,
+      options[:http_proxyaddr],
+      options[:http_proxyport],
+      options[:http_proxyuser],
+      options[:http_proxypass]
+    )
+  else
+    http = Net::HTTP.new(host, port)
+  end
+
+  http.use_ssl = ssl_implied?(uri)
+  # => Net::HTTP#use_ssl=
+  # => ConnectionAdapter#ssl_implied?
+
+  # ConnectionAdapter#ssl_implied? (lib/httparty/connection_adapter.rb)
+  #
+  #   def ssl_implied?(uri)
+  #     uri.port == 443 || uri.scheme == 'https'
+  #   end
+
+  # Net::HTTP#use_ssl= (net-http: lib/net/http.rb)
+  #
+  #   def use_ssl=(flag)
+  #     flag = flag ? true : false
+  #     if started? and @use_ssl != flag
+  #       raise IOError, "use_ssl value changed, but session already started"
+  #     end
+  #     @use_ssl = flag
+  #   end
+
+  if http.use_ssl? # => Net::HTTP#use_ssl?
+    # Net::HTTP#use_ssl? (net-http: lib/net/http.rb)
+    #
+    #   def use_ssl?
+    #     @use_ssl
+    #   end
+
+    # httpに対してTLSの設定を行う
+    attach_ssl_certificates(http, options) # => ConnectionAdapter#attach_ssl_certificates
+  end
+
+  if add_timeout?(options[:timeout])
+    http.open_timeout = options[:timeout]
+    http.read_timeout = options[:timeout]
+    http.write_timeout = options[:timeout]
+  end
+
+  if add_timeout?(options[:read_timeout])
+    http.read_timeout = options[:read_timeout]
+  end
+
+  if add_timeout?(options[:open_timeout])
+    http.open_timeout = options[:open_timeout]
+  end
+
+  if add_timeout?(options[:write_timeout])
+    http.write_timeout = options[:write_timeout]
+  end
+
+  if add_max_retries?(options[:max_retries])
+    http.max_retries = options[:max_retries]
+  end
+
+  if options[:debug_output]
+    http.set_debug_output(options[:debug_output])
+  end
+
+  if options[:ciphers]
+    http.ciphers = options[:ciphers]
+  end
+
+  # Bind to a specific local address or port
+  #
+  # @see https://bugs.ruby-lang.org/issues/6617
+  if options[:local_host]
+    http.local_host = options[:local_host]
+  end
+
+  if options[:local_port]
+    http.local_port = options[:local_port]
+  end
+
+  http # => #<Net::HTTP>
+end
+
+# ConnectionAdapter#attach_ssl_certificates (lib/httparty/connection_adapter.rb)
+
+def attach_ssl_certificates(http, options)
+  # サーバ証明書の検証
+  if options.fetch(:verify, true) # 証明書の検証を行う場合
+    http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+
+    if options[:cert_store] # 信頼しているCA証明書を含む証明書ストアが明示されている場合
+      http.cert_store = options[:cert_store]
+    else # 証明書ストアが明示されていない場合
+      # faradayのAdapter::NetHttp#ssl_cert_storeと同じくシステムに組込まれている証明書を読み込む
+      # Use the default cert store by default, i.e. system ca certs
+      http.cert_store = self.class.default_cert_store # => ConnectionAdapter.default_cert_store
+
+      # ConnectionAdapter.default_cert_store (lib/httparty/connection_adapter.rb)
+      #
+      #   def self.default_cert_store
+      #     @default_cert_store ||= OpenSSL::X509::Store.new.tap do |cert_store|
+      #       cert_store.set_default_paths
+      #     end
+      #   end
+
+    end
+
+  else # 証明書の検証を行わない場合
+    http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+  end
+
+  # SSL certificate authority file and/or directory
+  if options[:ssl_ca_file]
+    http.ca_file = options[:ssl_ca_file]
+    http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+  end
+  if options[:ssl_ca_path]
+    http.ca_path = options[:ssl_ca_path]
+    http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+  end
+
+  # クライアント証明書の設定 (PEM形式)
+  # Client certificate authentication
+  # Note: options[:pem] must contain the content of a PEM file having the private key appended
+  if options[:pem]
+    http.cert = OpenSSL::X509::Certificate.new(options[:pem])
+    http.key = OpenSSL::PKey.read(options[:pem], options[:pem_password])
+    http.verify_mode = verify_ssl_certificate? ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE
+    # => ConnectionAdapter#verify_ssl_certificate?
+
+    # ConnectionAdapter#verify_ssl_certificate? (lib/httparty/connection_adapter.rb)
+    #
+    #   def verify_ssl_certificate?
+    #     !(options[:verify] == false || options[:verify_peer] == false)
+    #   end
+  end
+
+  # クライアント証明書の設定 (PKCS#12形式)
+  # PKCS12 client certificate authentication
+  if options[:p12] # 証明書、秘密鍵、中間証明書が格納されている
+    p12 = OpenSSL::PKCS12.new(options[:p12], options[:p12_password])
+    http.cert = p12.certificate
+    http.key = p12.key
+    http.verify_mode = verify_ssl_certificate? ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE
+    # => ConnectionAdapter#verify_ssl_certificate?
+  end
+
+  # 非推奨のバージョン指定
+  # This is only Ruby 1.9+
+  if options[:ssl_version] && http.respond_to?(:ssl_version=)
+    http.ssl_version = options[:ssl_version]
+  end
 end
 ```
