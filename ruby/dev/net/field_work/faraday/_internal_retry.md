@@ -410,9 +410,9 @@ def call(env)
 
     @app.call(env).tap do |resp| # {内側のアダプタ}#call
       raise Faraday::RetriableResponse.new(nil, resp) if @options.retry_statuses.include?(resp.status)
-      # => Options#retry_statuses
+      # => Retry::Middleware::Options#retry_statuses
 
-      # Options#retry_statuses (faraday-retry: lib/faraday/retry/middleware.rb))
+      # Retry::Middleware::Options#retry_statuses (faraday-retry: lib/faraday/retry/middleware.rb))
       #
       #   def retry_statuses
       #     Array(self[:retry_statuses] ||= [])
@@ -433,9 +433,10 @@ end
 def with_retries(env:, options:, retries:, body:, errmatch:)
   yield
 rescue errmatch => e # 指定の例外をrescue
-  # WIP
+  # (これ以上) リトライできないとき、外部から明示されたコールバックを呼ぶことができる
   exhausted_retries(options, env, e) if retries_zero?(retries, env, e)
 
+  # WIP
   if retries.positive? && retry_request?(env, e)
     retries -= 1
     rewind_files(body)
@@ -455,5 +456,48 @@ rescue errmatch => e # 指定の例外をrescue
   raise unless e.is_a?(Faraday::RetriableResponse)
 
   e.response
+end
+
+# Retryable#retries_zero? (faraday-retry: lib/faraday/retry/retryable.rb)
+
+def retries_zero?(retries, env, exception)
+  retries.zero? && retry_request?(env, exception) # => Retry::Middleware#retry_request?
+end
+
+# Retry::Middleware#retry_request? (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def retry_request?(env, exception)
+  @options.methods.include?(env[:method]) || # => Retry::Middleware::Options#methods
+    @options.retry_if.call(env, exception) # => Retry::Middleware::Options#retry_if
+end
+
+# Retry::Middleware::Options#methods (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def methods
+  Array(self[:methods] ||= IDEMPOTENT_METHODS)
+  # IDEMPOTENT_METHODS = %i[delete get head options put].freeze
+end
+
+# Retry::Middleware::Options#retry_if (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def retry_if
+  self[:retry_if] ||= DEFAULT_CHECK
+  # DEFAULT_CHECK = ->(_env, _exception) { false }
+end
+
+# Retryable#exhausted_retries (faraday-retry: lib/faraday/retry/retryable.rb)
+
+def exhausted_retries(options, env, exception)
+  options.exhausted_retries_block.call(
+    env: env,
+    exception: exception,
+    options: options
+  )
+end
+
+# Retry::Middleware::Options#exhausted_retries_block ((faraday-retry: lib/faraday/retry/middleware.rb))
+
+def exhausted_retries_block
+  self[:exhausted_retries_block] ||= proc {}
 end
 ```
