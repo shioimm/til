@@ -1,6 +1,9 @@
 # faraday 現地調査 (faraday-retry-2.4.0時点)
 ## 気づいたこと
 - ミドルウェアを利用する必要あり
+- 自動的にExponential Backoffを利用できる
+- リトライの仕様を細かく設定できる
+- リトライにフックして色んなタイミングでコールバックを呼べる
 
 ## リトライの設定
 
@@ -322,7 +325,7 @@ def initialize(app, options = nil)
   super(app)
   @options = Options.from(options) # Options#from
   @errmatch = build_exception_matcher(@options.exceptions)
-  # => Options#exceptions
+  # => Retry::Middleware::Options#exceptions
   # => Retry::Middleware#build_exception_matcher
 
   # Options#exceptions (faraday-retry: lib/faraday/retry/middleware.rb)
@@ -356,7 +359,7 @@ RetryOprions = Faraday::Options.new(
 
 class Options < RetryOprions
 
-  # Options#from (faraday-retry: lib/faraday/retry/middleware.rb)
+  # Retry::Middleware::Options#from (faraday-retry: lib/faraday/retry/middleware.rb)
 
   def self.from(value)
     if value.is_a?(Integer)
@@ -392,9 +395,9 @@ end
 # Retry::Middleware#call (faraday-retry: lib/faraday/retry/middleware.rb)
 
 def call(env)
-  retries = @options.max # 最大試行回数 => Options#max
+  retries = @options.max # 最大試行回数 => Retry::Middleware::Options#max
 
-  # Options#max (faraday-retry: lib/faraday/retry/middleware.rb)
+  # Retry::Middleware::Options#max (faraday-retry: lib/faraday/retry/middleware.rb)
   #
   #   def max
   #     (self[:max] ||= 2).to_i # デフォルトでは2回
@@ -403,7 +406,7 @@ def call(env)
   request_body = env[:body]
 
   with_retries(env: env, options: @options, retries: retries, body: request_body, errmatch: @errmatch) do
-    # => Retryable#with_retries
+    # => Retry::Retryable#with_retries
 
     # after failure env[:body] is set to the response body
     env[:body] = request_body
@@ -421,7 +424,7 @@ def call(env)
   end
 end
 
-# Retryable#with_retries (faraday-retry: lib/faraday/retry/retryable.rb)
+# Retry::Retryable#with_retries (faraday-retry: lib/faraday/retry/retryable.rb)
 
 # 呼び出し側
 #   with_retries(env: env, options: @options, retries: retries, body: request_body, errmatch: @errmatch) do
@@ -439,8 +442,10 @@ rescue errmatch => e # 指定の例外をrescue
   # WIP
   if retries.positive? && retry_request?(env, e)
     retries -= 1
-    rewind_files(body)
-    if (sleep_amount = calculate_sleep_amount(retries + 1, env))
+    rewind_files(body) # => Retry::Middleware#rewind_files ボディを巻き直す
+
+    if (sleep_amount = calculate_sleep_amount(retries + 1, env)) # => Retry::Middleware#calculate_sleep_amount
+      # リトライにフックして外部から明示されたコールバックを呼ぶことができる
       options.retry_block.call(
         env: env,
         options: options,
@@ -448,17 +453,18 @@ rescue errmatch => e # 指定の例外をrescue
         exception: e,
         will_retry_in: sleep_amount
       )
+
       sleep sleep_amount
-      retry
+      retry # リトライ
     end
   end
 
-  raise unless e.is_a?(Faraday::RetriableResponse)
+  raise unless e.is_a?(Faraday::RetriableResponse) # (これ以上) リトライできないとき、例外をraise
 
   e.response
 end
 
-# Retryable#retries_zero? (faraday-retry: lib/faraday/retry/retryable.rb)
+# Retry::Retryable#retries_zero? (faraday-retry: lib/faraday/retry/retryable.rb)
 
 def retries_zero?(retries, env, exception)
   retries.zero? && retry_request?(env, exception) # => Retry::Middleware#retry_request?
@@ -485,7 +491,7 @@ def retry_if
   # DEFAULT_CHECK = ->(_env, _exception) { false }
 end
 
-# Retryable#exhausted_retries (faraday-retry: lib/faraday/retry/retryable.rb)
+# Retry::Retryable#exhausted_retries (faraday-retry: lib/faraday/retry/retryable.rb)
 
 def exhausted_retries(options, env, exception)
   options.exhausted_retries_block.call(
@@ -495,9 +501,41 @@ def exhausted_retries(options, env, exception)
   )
 end
 
-# Retry::Middleware::Options#exhausted_retries_block ((faraday-retry: lib/faraday/retry/middleware.rb))
+# Retry::Middleware::Options#exhausted_retries_block (faraday-retry: lib/faraday/retry/middleware.rb)
 
 def exhausted_retries_block
   self[:exhausted_retries_block] ||= proc {}
+end
+
+# Retry::Middleware#rewind_files (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def rewind_files(body)
+  return unless defined?(Faraday::UploadIO)
+  return unless body.is_a?(Hash)
+
+  body.each do |_, value|
+    value.rewind if value.is_a?(Faraday::UploadIO)
+  end
+end
+
+# Retry::Middleware#calculate_sleep_amount (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def calculate_sleep_amount(retries, env)
+  retry_after = [calculate_retry_after(env), calculate_rate_limit_reset(env)].compact.max
+  retry_interval = calculate_retry_interval(retries)
+
+  return if retry_after && retry_after > @options.max_interval
+
+  if retry_after && retry_after >= retry_interval
+    retry_after
+  else
+    retry_interval
+  end
+end
+
+# Retry::Middleware::Options#retry_block (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def retry_block
+  self[:retry_block] ||= proc {}
 end
 ```
