@@ -1,4 +1,5 @@
 require "faraday"
+require "faraday/retry"
 
 # GEM_PATH = ENV["RBENV_ROOT"] + "/versions/" + ENV["RBENV_VERSION"] + "/lib/ruby/gems/"
 #
@@ -8,7 +9,20 @@ require "faraday"
 #   end
 # end
 
-Faraday.new(url: "http://example.com").get("/index.html")
+conn = Faraday.new("https://example.com") do |rack|
+  rack.request :retry, # => RackBuilder#request
+               max: 3,                   # 最大リトライ回数
+               interval: 0.5,            # 初期待機時間(s)
+               interval_randomness: 0.5, # ジッタ
+               backoff_factor: 2,        # 指数バックオフ
+               exceptions: [             # 対象エラー
+                 Faraday::ConnectionFailed
+               ]
+
+  rack.adapter Faraday.default_adapter
+end
+
+p conn.get
 
 __END__
 [Module, #<Class:Faraday>, :new, "3.4.0/gems/faraday-2.12.2/lib/faraday.rb:96"]
