@@ -1,6 +1,9 @@
 # faraday 現地調査 (faraday-retry-2.4.0時点)
 ## 気づいたこと
 - ミドルウェアを利用する必要あり
+- 自動的にExponential Backoffを利用できる
+- リトライの仕様を細かく設定できる
+- リトライにフックして色んなタイミングでコールバックを呼べる
 
 ## リトライの設定
 
@@ -219,4 +222,320 @@ end
 
 ### Connectionオブジェクトを使ったリクエスト
 
-WIP
+
+```ruby
+# Connection#get (lib/faraday/connection.rb)
+# e.g. Faraday.new(url: "http://example.com").get("/index.html")
+
+class Connection
+  # ...
+  METHODS_WITH_QUERY = %w[get head delete trace].freeze
+  # Connection#get など (lib/faraday/connection.rb)
+  METHODS_WITH_QUERY.each do |method| # => Connection#run_request
+    class_eval <<-RUBY, __FILE__, __LINE__ + 1
+      def #{method}(url = nil, params = nil, headers = nil)
+        run_request(:#{method}, url, nil, headers) do |request|
+          request.params.update(params) if params
+          yield request if block_given?
+        end
+      end
+    RUBY
+  end
+
+  # ...
+end
+
+# Connection#run_request (lib/faraday/connection.rb)
+
+METHODS = Set.new %i[get post put delete head patch options trace]
+
+def run_request(method, url, body, headers)
+  unless METHODS.include?(method)
+    raise ArgumentError, "unknown http method: #{method}"
+  end
+
+  request = build_request(method) do |req| # => Connection#build_request #<Request>を返す
+    req.options.proxy = proxy_for_request(url) # => Connection#proxy_for_request
+    req.url(url)                if url         # => Request#url
+    req.headers.update(headers) if headers     # => Utils::Headers#update
+    req.body = body             if body        # => Request#body=
+
+    yield(req) if block_given?
+  end
+
+  # attr_reader :builder (#<Faraday::RackBuilder>)
+  # self    = #<Connection>
+  # request = #<Request>
+  builder.build_response(self, request)
+  # => RackBuilder#build_response
+end
+
+# RackBuilder#build_response (lib/faraday/rack_builder.rb)
+
+def build_response(connection, request)
+  env = build_env(connection, request)
+  # => RackBuilder#build_env
+
+  app.call(env)
+  # => RackBuilder#app
+  # => Retry::Middleware#call
+end
+
+def app
+  @app ||= begin
+    lock! # @handlers.freeze => RackBuilder#lock!
+    ensure_adapter! # raise MISSING_ADAPTER_ERROR unless @adapter => RackBuilder#ensure_adapter!
+    to_app # => RackBuilder#to_app
+  end
+
+  # @app = ハンドラがアダプタをラップする構造
+  # #<Faraday::Request::UrlEncoded:0x000000011c438128
+  #   @app=#<Faraday::Adapter::NetHttp:0x0000000101423f40
+  #          @ssl_cert_store=nil,
+  #          @app=#<Proc:0x000000011c438240(&:response) (lambda)>,
+  #   @connection_options={},
+  #   @config_block=nil>,
+  #   @options={}>
+end
+
+# RackBuilder#to_app (lib/faraday/rack_builder.rb)
+
+def to_app
+  # @adapter  = Faraday::Adapter::NetHttp
+  builded_adapter = @adapter.build # => Adapter::NetHttp::Handler#build (RackBuilder::Handler#build)
+
+  # @handlers = [Faraday::Retry::Middleware]
+  @handlers.reverse.inject(builded_adapter) do |app, handler|
+    handler.build(app) # => Retry::Middlewar#build (RackBuilder::Handler#build)
+  end
+end
+
+# RackBuilder::Handler#build (lib/faraday/rack_builder.rb)
+
+def build(app = nil)
+  # ハンドラでラップしたクラスのオブジェクトを生成する
+  klass.new(app, *@args, &@block)
+  # => ({アダプタ}.buildの場合) Adapter::NetHttp#initialize (appはnil)
+  # => ({ハンドラ}.buildの場合) Retry::Middleware#initialize (appは#<Adapter::NetHttp>)
+end
+
+# Retry::Middleware#initialize (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def initialize(app, options = nil)
+  super(app)
+  @options = Options.from(options) # Options#from
+  @errmatch = build_exception_matcher(@options.exceptions)
+  # => Retry::Middleware::Options#exceptions
+  # => Retry::Middleware#build_exception_matcher
+
+  # Options#exceptions (faraday-retry: lib/faraday/retry/middleware.rb)
+  #
+  #   def exceptions
+  #     Array(self[:exceptions] ||= DEFAULT_EXCEPTIONS)
+  #   end
+  #
+  #   DEFAULT_EXCEPTIONS = [
+  #     Errno::ETIMEDOUT, 'Timeout::Error',
+  #     Faraday::TimeoutError, Faraday::RetriableResponse
+  #   ].freeze
+end
+
+RetryOprions = Faraday::Options.new(
+  :max,
+  :interval,
+  :max_interval,
+  :interval_randomness,
+  :backoff_factor,
+  :exceptions,
+  :methods,
+  :retry_if,
+  :retry_block,
+  :retry_statuses,
+  :rate_limit_retry_header,
+  :rate_limit_reset_header,
+  :header_parser_block,
+  :exhausted_retries_block
+)
+
+class Options < RetryOprions
+
+  # Retry::Middleware::Options#from (faraday-retry: lib/faraday/retry/middleware.rb)
+
+  def self.from(value)
+    if value.is_a?(Integer)
+      new(value)
+    else
+      super(value)
+    end
+  end
+end
+
+# Retry::Middleware#build_exception_matcher (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def build_exception_matcher(exceptions)
+  matcher = Module.new(
+    class << matcher
+      self
+    end
+  ).class_eval do
+    define_method(:===) do |error| # === 引数の例外がリトライ対象かどうかを確認するメソッド
+      exceptions.any? do |ex|
+        if ex.is_a? Module
+          error.is_a? ex
+        else
+          Object.const_defined?(ex.to_s) && error.is_a?(Object.const_get(ex.to_s))
+        end
+      end
+    end
+  end
+
+  matcher
+end
+
+# Retry::Middleware#call (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def call(env)
+  retries = @options.max # 最大試行回数 => Retry::Middleware::Options#max
+
+  # Retry::Middleware::Options#max (faraday-retry: lib/faraday/retry/middleware.rb)
+  #
+  #   def max
+  #     (self[:max] ||= 2).to_i # デフォルトでは2回
+  #   end
+
+  request_body = env[:body]
+
+  with_retries(env: env, options: @options, retries: retries, body: request_body, errmatch: @errmatch) do
+    # => Retry::Retryable#with_retries
+
+    # after failure env[:body] is set to the response body
+    env[:body] = request_body
+
+    @app.call(env).tap do |resp| # {内側のアダプタ}#call
+      raise Faraday::RetriableResponse.new(nil, resp) if @options.retry_statuses.include?(resp.status)
+      # => Retry::Middleware::Options#retry_statuses
+
+      # Retry::Middleware::Options#retry_statuses (faraday-retry: lib/faraday/retry/middleware.rb))
+      #
+      #   def retry_statuses
+      #     Array(self[:retry_statuses] ||= [])
+      #   end
+    end
+  end
+end
+
+# Retry::Retryable#with_retries (faraday-retry: lib/faraday/retry/retryable.rb)
+
+# 呼び出し側
+#   with_retries(env: env, options: @options, retries: retries, body: request_body, errmatch: @errmatch) do
+#     env[:body] = request_body
+#     @app.call(env).tap do |resp|
+#       raise Faraday::RetriableResponse.new(nil, resp) if @options.retry_statuses.include?(resp.status)
+#     end
+#   end
+def with_retries(env:, options:, retries:, body:, errmatch:)
+  yield
+rescue errmatch => e # 指定の例外をrescue
+  # (これ以上) リトライできないとき、外部から明示されたコールバックを呼ぶことができる
+  exhausted_retries(options, env, e) if retries_zero?(retries, env, e)
+
+  # WIP
+  if retries.positive? && retry_request?(env, e)
+    retries -= 1
+    rewind_files(body) # => Retry::Middleware#rewind_files ボディを巻き直す
+
+    if (sleep_amount = calculate_sleep_amount(retries + 1, env)) # => Retry::Middleware#calculate_sleep_amount
+      # リトライにフックして外部から明示されたコールバックを呼ぶことができる
+      options.retry_block.call(
+        env: env,
+        options: options,
+        retry_count: options.max - (retries + 1),
+        exception: e,
+        will_retry_in: sleep_amount
+      )
+
+      sleep sleep_amount
+      retry # リトライ
+    end
+  end
+
+  raise unless e.is_a?(Faraday::RetriableResponse) # (これ以上) リトライできないとき、例外をraise
+
+  e.response
+end
+
+# Retry::Retryable#retries_zero? (faraday-retry: lib/faraday/retry/retryable.rb)
+
+def retries_zero?(retries, env, exception)
+  retries.zero? && retry_request?(env, exception) # => Retry::Middleware#retry_request?
+end
+
+# Retry::Middleware#retry_request? (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def retry_request?(env, exception)
+  @options.methods.include?(env[:method]) || # => Retry::Middleware::Options#methods
+    @options.retry_if.call(env, exception) # => Retry::Middleware::Options#retry_if
+end
+
+# Retry::Middleware::Options#methods (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def methods
+  Array(self[:methods] ||= IDEMPOTENT_METHODS)
+  # IDEMPOTENT_METHODS = %i[delete get head options put].freeze
+end
+
+# Retry::Middleware::Options#retry_if (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def retry_if
+  self[:retry_if] ||= DEFAULT_CHECK
+  # DEFAULT_CHECK = ->(_env, _exception) { false }
+end
+
+# Retry::Retryable#exhausted_retries (faraday-retry: lib/faraday/retry/retryable.rb)
+
+def exhausted_retries(options, env, exception)
+  options.exhausted_retries_block.call(
+    env: env,
+    exception: exception,
+    options: options
+  )
+end
+
+# Retry::Middleware::Options#exhausted_retries_block (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def exhausted_retries_block
+  self[:exhausted_retries_block] ||= proc {}
+end
+
+# Retry::Middleware#rewind_files (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def rewind_files(body)
+  return unless defined?(Faraday::UploadIO)
+  return unless body.is_a?(Hash)
+
+  body.each do |_, value|
+    value.rewind if value.is_a?(Faraday::UploadIO)
+  end
+end
+
+# Retry::Middleware#calculate_sleep_amount (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def calculate_sleep_amount(retries, env)
+  retry_after = [calculate_retry_after(env), calculate_rate_limit_reset(env)].compact.max
+  retry_interval = calculate_retry_interval(retries)
+
+  return if retry_after && retry_after > @options.max_interval
+
+  if retry_after && retry_after >= retry_interval
+    retry_after
+  else
+    retry_interval
+  end
+end
+
+# Retry::Middleware::Options#retry_block (faraday-retry: lib/faraday/retry/middleware.rb)
+
+def retry_block
+  self[:retry_block] ||= proc {}
+end
+```
