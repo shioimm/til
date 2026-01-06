@@ -4,6 +4,7 @@
 - 自動的にExponential Backoffを利用できる
 - リトライの仕様を細かく設定できる
 - リトライにフックして色んなタイミングでコールバックを呼べる
+- net-httpのリトライ機構は使ってない
 
 ## リトライの設定
 
@@ -439,7 +440,6 @@ rescue errmatch => e # 指定の例外をrescue
   # (これ以上) リトライできないとき、外部から明示されたコールバックを呼ぶことができる
   exhausted_retries(options, env, e) if retries_zero?(retries, env, e)
 
-  # WIP
   if retries.positive? && retry_request?(env, e)
     retries -= 1
     rewind_files(body) # => Retry::Middleware#rewind_files ボディを巻き直す
