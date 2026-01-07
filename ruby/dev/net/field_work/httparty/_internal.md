@@ -1,4 +1,27 @@
 # httparty 現地調査 (202511時点)
+### 気づいたこと
+- net-httpに実装を移譲しているところが結構ある。使い勝手を良くしたラッパーという感じ
+- faradayやhttpxのようにアダプタを差し替えたりはできない
+- クラスレベルで初期設定を持つことができる
+- そのうえで、APIはシングルトンメソッドに統一しており、
+  今から実行するリクエストについての設定はメソッドの引数に指定することができる
+
+#### 追加機能
+- TLSの設定 (`ConnectionAdapter#attach_ssl_certificates`)
+- タイムアウトの設定 (`ConnectionAdapter#connection`)
+- ストリームレスポンス (`Request#perform`)
+- brotli / lzw / zstdなどnet-httpがサポートしていない圧縮形式でも自動解凍できる (`Decompressor`)
+- Content-TypeのcharsetをもとにRubyでのエンコーディングを実施する (`TextEncoder`)
+- 自動リダイレクトさせる (デフォルトでは5回が上限) (`Request#handle_redirection`)
+  - 303、301、302の場合はGETへ変換
+  - 307、308の場合はリクエストメソッドを維持
+- リダイレクト先のドメインが変わったかどうかを保持する (`Request#handle_host_redirection`)
+- Digest認証にて401 Unauthorizedを自動で再送する (`Request#handle_unauthorized`)
+- Cookieを管理する
+  - リクエストヘッダにCookieをセットする (`HTTParty.process_cookies`)
+  - レスポンスヘッダからSet-Cookieを取得し、次のリクエストに含める (`Request#capture_cookies`)
+- レスポンスボディをパースして扱いやすくする (`HTTParty::Parser` / `Response#parsed_response`)
+- レスポンスヘッダで複数値を扱いやすくする (`Response::Headers`)
 
 ## 全体の流れ
 - `HTTParty.get` public
@@ -47,27 +70,6 @@
                   - `Parser#{Content-Typeに応じてパース}`
           - `Response#initialize`
             - `Response::Headers#initialize`
-
-### 気づいたこと
-- net-httpに実装を移譲しているところが結構ある。使い勝手を良くしたラッパーという感じ
-- faradayやhttpxのようにアダプタを差し替えたりはできないっぽい
-
-#### 追加機能
-- TLSの設定 (`ConnectionAdapter#attach_ssl_certificates`)
-- タイムアウトの設定 (`ConnectionAdapter#connection`)
-- ストリームレスポンス (`Request#perform`)
-- brotli / lzw / zstdなどnet-httpがサポートしていない圧縮形式でも自動解凍できる (`Decompressor`)
-- Content-TypeのcharsetをもとにRubyでのエンコーディングを実施する (`TextEncoder`)
-- 自動リダイレクトさせる (デフォルトでは5回が上限) (`Request#handle_redirection`)
-  - 303、301、302の場合はGETへ変換
-  - 307、308の場合はリクエストメソッドを維持
-- リダイレクト先のドメインが変わったかどうかを保持する (`Request#handle_host_redirection`)
-- Digest認証にて401 Unauthorizedを自動で再送する (`Request#handle_unauthorized`)
-- Cookieを管理する
-  - リクエストヘッダにCookieをセットする (`HTTParty.process_cookies`)
-  - レスポンスヘッダからSet-Cookieを取得し、次のリクエストに含める (`Request#capture_cookies`)
-- レスポンスボディをパースして扱いやすくする (`HTTParty::Parser` / `Response#parsed_response`)
-- レスポンスヘッダで複数値を扱いやすくする (`Response::Headers`)
 
 ## `HTTParty.get`
 
