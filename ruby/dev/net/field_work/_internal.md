@@ -1,6 +1,19 @@
 # net-http 現地調査 (202509時点)
 https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
+## 気づいたこと
+- `HTTP#start` -> `HTTP#do_start` -> `HTTP#connect`で接続を行う
+- `HTTP#do_start`実行後に`HTTP#request`を呼び出す
+  - `HTTP#request`に`各HTTPメソッドを表すクラス`のオブジェクトを渡す
+  - `HTTP#request`
+    - -> `HTTP#transport_request`
+    - -> `HTTP#begin_transport`, `HTTP::{{各HTTPメソッドを表すクラス}}#exec` `HTTP#end_transport`
+- 返り値は各HTTPステータスを表すクラスのオブジェクトの場合が多い (`Net::HTTP.get`以外)
+- すでにresolvライブラリに依存している
+- べんりライブラリnet/protocolに依存している
+- クラスレベルで初期設定を持つことができない
+- インスタンスに対するアクセサを用いて設定を保存する
+
 ## 全体の流れ
 - `HTTP.get` public
   - `HTTP.get_response` public
@@ -56,18 +69,6 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
                 - `HTTPResponse#detect_encoding`
                 - `String#force_encoding`
           - `HTTP#end_transport` 後処理
-
-### 気づいたこと
-- `HTTP#start` -> `HTTP#do_start` -> `HTTP#connect`で接続を行う
-- `HTTP#do_start`実行後に`HTTP#request`を呼び出す
-  - `HTTP#request`に`各HTTPメソッドを表すクラス`のオブジェクトを渡す
-  - `HTTP#request`
-    - -> `HTTP#transport_request`
-    - -> `HTTP#begin_transport`, `HTTP::{{各HTTPメソッドを表すクラス}}#exec` `HTTP#end_transport`
-- 返り値は各HTTPステータスを表すクラスのオブジェクトの場合が多い (`Net::HTTP.get`以外)
-- すでにresolvライブラリに依存している
-- べんりライブラリnet/protocolに依存している
-- パブリックなメソッドが多い、外から制御できる設定値も多い
 
 ## `HTTP.get`
 

@@ -1,4 +1,40 @@
 # faraday 現地調査 (202511時点)
+## 気づいたこと
+- Rack風のインターフェースで任意のミドルウェアを追加できる
+- Envオブジェクトで状態を一元管理している
+- アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
+- `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
+- クラスレベルで初期設定を持つことができる
+- そのうえで、今から実行するリクエストについての設定はインスタンスに持たせることができる
+- 実際にリクエストを行うのは`Connection`オブジェクト経由。`Faraday.get`みたいなAPIはない
+
+#### 追加機能
+- TLSの設定 (`Adapter::NetHttp#configure_ssl`)
+- タイムアウトの設定 (`Adapter::NetHttp#configure_request`)
+- プロキシの設定 (`Connection#initialize_proxy`, `Connection#proxy_for_request`)
+- ストリームレスポンス (`RequestOptions#on_data`)
+
+| 代表的なミドルウェア            | 役割                                   |
+| - | - |
+| `Faraday::Request::UrlEncoded`  | bodyをx-www-form-urlencodedへ自動変換  |
+| `Faraday::Request::Json`        | bodyをJSONへ変換、ヘッダも追加         |
+| `Faraday::Multipart`関連        | multipart/form-dataを自動生成          |
+| `Faraday::Request::OAuth`       | OAuth1署名を自動生成                   |
+| `Faraday::Middleware::Retry`    | リトライ処理                           |
+| `Faraday::Response::Logger`     | リクエスト・レスポンスログ出力         |
+| `Faraday::Response::RaiseError` | statusに応じて例外発生                 |
+
+
+#### ユーザーの声
+- faradayの便利な点
+  - `Faraday::Connection.new`ブロックで設定を色々指定できるのが便利
+  - Authorizationヘッダを指定したら以降はそれを使ってくれる
+    - net-httpはnewと同時に指定できない、インスタンスを作った後に手続き的に記述する必要あり
+  - リトライが簡単
+    - net-httpは`start`の中でリクエストしないとリトライできない
+  - リクエストに対して期待するレスポンスのContent-Typeを指定でき、意図しないものが返ってきた時にエラーにできる
+- net-httpではWebアプリケーション用途の8割の通信で当たり前に必要なことを手続き的に書く必要がある
+- FaradayはWebアプリケーション用、Fluentdなど独自のプロトコルでHTTP通信したい時はもっと薄い方がいいのでは?
 
 ## 全体の流れ
 - `Faraday.default_adapter`のセット
@@ -55,40 +91,6 @@
                     - `Adapter::NetHttp#save_http_response`
                       - `Adapter#save_response`
             - `#<Env>@response`を返す
-
-## 気づいたこと
-run_request- Rack風のインターフェースで任意のミドルウェアを追加できる
-- Envオブジェクトで状態を一元管理している
-- アダプタの差し替えができる、各アダプタはそれぞれ別gemとして管理されている
-- `Faraday.new`でデフォルトヘッダとプロキシの設定、ハンドラとミドルウェアの設定までを行う
-
-#### 追加機能
-- TLSの設定 (`Adapter::NetHttp#configure_ssl`)
-- タイムアウトの設定 (`Adapter::NetHttp#configure_request`)
-- プロキシの設定 (`Connection#initialize_proxy`, `Connection#proxy_for_request`)
-- ストリームレスポンス (`RequestOptions#on_data`)
-
-| 代表的なミドルウェア            | 役割                                   |
-| - | - |
-| `Faraday::Request::UrlEncoded`  | bodyをx-www-form-urlencodedへ自動変換  |
-| `Faraday::Request::Json`        | bodyをJSONへ変換、ヘッダも追加         |
-| `Faraday::Multipart`関連        | multipart/form-dataを自動生成          |
-| `Faraday::Request::OAuth`       | OAuth1署名を自動生成                   |
-| `Faraday::Middleware::Retry`    | リトライ処理                           |
-| `Faraday::Response::Logger`     | リクエスト・レスポンスログ出力         |
-| `Faraday::Response::RaiseError` | statusに応じて例外発生                 |
-
-
-#### ユーザーの声
-- faradayの便利な点
-  - `Faraday::Connection.new`ブロックで設定を色々指定できるのが便利
-  - Authorizationヘッダを指定したら以降はそれを使ってくれる
-    - net-httpはnewと同時に指定できない、インスタンスを作った後に手続き的に記述する必要あり
-  - リトライが簡単
-    - net-httpは`start`の中でリクエストしないとリトライできない
-  - リクエストに対して期待するレスポンスのContent-Typeを指定でき、意図しないものが返ってきた時にエラーにできる
-- net-httpではWebアプリケーション用途の8割の通信で当たり前に必要なことを手続き的に書く必要がある
-- FaradayはWebアプリケーション用、Fluentdなど独自のプロトコルでHTTP通信したい時はもっと薄い方がいいのでは?
 
 ## `Faraday.new`
 
