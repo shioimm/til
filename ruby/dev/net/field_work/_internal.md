@@ -11,8 +11,8 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 - 返り値は各HTTPステータスを表すクラスのオブジェクトの場合が多い (`Net::HTTP.get`以外)
 - すでにresolvライブラリに依存している
 - べんりライブラリnet/protocolに依存している
-- クラスレベルで初期設定を持つことができない
-- インスタンスに対するアクセサを用いて設定を保存する
+- クラスレベルでは`Net::HTTP.default_configuration`に初期設定を持つことができる
+- インスタンスに対するアクセサを用いて個別の設定を保存する
 
 ## 全体の流れ
 - `HTTP.get` public
