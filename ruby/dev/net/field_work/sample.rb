@@ -1,16 +1,6 @@
 require "net/http"
 
-uri = URI.parse("http://google.com")
-
-http = Net::HTTP.new(uri.host, uri.port)
-req = Net::HTTP::Get.new(uri)
-
-http.request(req) do |response|
-  response.body_encoding = true
-  response.read_body {}
-end
-
-__END__
+uri = URI.parse("https://example.com/")
 
 Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
   res = http.get("/")
