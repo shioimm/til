@@ -2,17 +2,31 @@
 https://github.com/ruby/ruby/blob/master/lib/net/http.rb
 
 ## 気づいたこと
-- `HTTP#start` -> `HTTP#do_start` -> `HTTP#connect`で接続を行う
-- `HTTP#do_start`実行後に`HTTP#request`を呼び出す
-  - `HTTP#request`に`各HTTPメソッドを表すクラス`のオブジェクトを渡す
-  - `HTTP#request`
-    - -> `HTTP#transport_request`
-    - -> `HTTP#begin_transport`, `HTTP::{{各HTTPメソッドを表すクラス}}#exec` `HTTP#end_transport`
-- 返り値は各HTTPステータスを表すクラスのオブジェクトの場合が多い (`Net::HTTP.get`以外)
+- リクエストを実行するメソッドの返り値は各HTTPステータスを表すクラスのオブジェクト (`Net::HTTP.get`以外)
 - すでにresolvライブラリに依存している
 - べんりライブラリnet/protocolに依存している
 - クラスレベルでは`Net::HTTP.default_configuration`に初期設定を持つことができる
 - インスタンスに対するアクセサを用いて個別の設定を保存する
+
+
+### 実行フェーズ
+1. (`Net::HTTP.default_configuration`に初期設定を保存する)
+2. `Net::HTTP`オブジェクトを生成する
+3. 宛先との接続を確立する
+    - `HTTP#start`
+      - `HTTP#do_start`
+        - `HTTP#connect`
+4. リクエストを表すオブジェクトを生成する
+    - `{各HTTPメソッドを表すクラス}.new`
+5. リクエストを送信する〜レスポンスを受信する
+    - `HTTP#request`にリクエストを表すオブジェクトを渡す
+    - `HTTP#request`
+      - `HTTP#transport_request`
+        - (準備) `HTTP#begin_transport`
+        - (リクエストの処理) `HTTP::{リクエストを表すクラス}#exec` リクエストを送信する
+        - (レスポンスの処理) `HTTPResponse.read_new` ヘッダを読み込む
+        - (レスポンスの処理) `HTTPResponse#reading_body` ボディを読み込む
+        - (後処理) `HTTP#end_transport`
 
 ## 全体の流れ
 - `HTTP.get` public
@@ -33,7 +47,7 @@ https://github.com/ruby/ruby/blob/master/lib/net/http.rb
         - `HTTP#transport_request` リクエストの送信を行う
           - `HTTP#begin_transport`
             - `HTTPGenericRequest#update_uri` `@uri = URI::HTTPS or URI::HTTP.new`をセット
-          - `HTTP::{{各HTTPメソッドを表すクラス}}#exec` -> `HTTPGenericRequest#exec` リクエストを送信する
+          - `HTTP::{各HTTPメソッドを表すクラス}#exec` -> `HTTPGenericRequest#exec` リクエストを送信する
             - `HTTPGenericRequest#send_request_with_body`
               - `HTTPGenericRequest#supply_default_content_type`
               - `HTTPGenericRequest#write_header`
