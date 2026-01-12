@@ -4,6 +4,12 @@
 - 明示的にリトライしたい場合は`HTTP#max_retries=`を利用する
 - Exponential Backoffみたいな便利な仕組みはない
 
+### 経緯
+- Bug #5790 で冪等なメソッドの場合には確認なしにリトライされるようになった
+  - https://github.com/ruby/net-http/commit/061cd4347de5826d7b32805a5a555c888cdee23d
+- Feature #10674 で最大リトライ数が設定できるようになった
+  - https://github.com/ruby/net-http/commit/de282066d993e9356afd4e619a4561825badbfb1
+
 ## リトライの設定
 ### 明示的なリトライ
 - `HTTP#max_retries=`を設定する

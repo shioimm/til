@@ -197,7 +197,7 @@ end
 
 ```ruby
 # HTTP#connectにいたる経路
-#   - Net::HTTP::Proxy => HTTP.start -> HTTP#start -> HTTP#do_start -> HTTP#connect
+#   - Net::HTTP::Proxy -> HTTP.start -> HTTP#start -> HTTP#do_start -> HTTP#connect
 #   - HTTP.get -> HTTP.get_response` -> HTTP.start -> HTTP#start -> HTTP#do_start -> HTTP#connect
 #   など
 
