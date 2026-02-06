@@ -52,7 +52,7 @@ Host: example.com:443
 ### Transparent Proxy
 クライアントからインターネットへの通信経路上に設置されたプロキシサーバを介してオリジンとの通信を行う
 
-#### Interception Proxy (NAT方式)
+#### Interception Proxy (NAT方式) 透過プロキシ
 
 経路上のルータからプロキシサーバへ通信を転送する
 
