@@ -40,3 +40,16 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 - 本書では、ホスト宛先アドレスに対する優先ポリシーがIPv4よりもIPv6を優先することを前提とする
 - 本書では、優先ポリシーがTCPよりもQUIC を優先することも前提とする
 - ホストが異なる優先設定となっている場合でも、本書の推奨事項は容易に適応できる
+
+## 4. Hostname Resolution
+- クライアントが名前付きホストへの接続を確立しようとする際、
+  そのホストへ到達するために利用可能な宛先IPアドレスを判断する必要がある
+- クライアントはDNS問い合わせを送信し、その応答を収集することで、ホスト名をIPアドレスへ名前解決する
+- 本節ではクライアントがどのようにDNS問い合わせを開始し、その応答を非同期に処理するかについて論じる
+
+### 4.1. Sending DNS Queries
+### 4.2. Handling DNS Answers Asynchronously
+#### 4.2.1. Resolving SVCB/HTTPS Aliases and Targets
+#### 4.2.2. Examples
+### 4.3. Handling New Answers
+### 4.4. Handling Multiple DNS Server Addresses
