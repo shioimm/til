@@ -7,6 +7,7 @@
       - 2) 接続先とTLSハンドシェイク、ALPNに基づいてh2を選択
       - 3) HTTP/2セッション確立
 2. (以下DNSがHTTPS RRを返さなかった場合) 接続先とTCPで接続確立
+    - Happy Eyeballs Version 2
 3. 接続先へTLSハンドシェイク (ClientHello) 、ALPNで`h2, http/1.1`を通知する
     - HTTP/2以下にフォールバックする可能性があるため
 4. 接続先からServerHelloとALPNで選択されたプロトコルが返ってくる
