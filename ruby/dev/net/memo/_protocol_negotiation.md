@@ -15,3 +15,10 @@
 7. 接続先からレスポンス
     - レスポンスヘッダにAlt-Svcが含まれていた場合:
       - クライアント - 接続先間でQUICハンドシェイク、TLS暗号交渉のうえHTTP/3セッション確立
+
+## 検索用
+- HTTPSRR
+- HTTPSリソースレコード
+- SVCB RR / SVCBRR
+- HEv3
+- Happy Eyeballs Version 3
