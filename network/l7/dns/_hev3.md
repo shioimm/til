@@ -47,3 +47,6 @@
 - HTTP/3
   - HTTP/3
     - https://datatracker.ietf.org/doc/html/rfc9114
+- Alt-Svc (を活用することによるプロトコルネゴシエーションよりも早く接続を確立する)
+  - HTTP Alternative Services
+    - https://datatracker.ietf.org/doc/html/rfc7838
