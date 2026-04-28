@@ -28,6 +28,7 @@ puts "--- Addrinfo.unix ---"
 p Addrinfo.unix("ruby-lang.org", 80) # #<Addrinfo: UNIX ruby-lang.org SOCK_???(80)>
 puts "\n"
 
+
 puts "--- Addrinfo#afamily ---"
 p Addrinfo.tcp("ruby-lang.org", 80).afamily
 puts "\n"
@@ -36,11 +37,7 @@ puts "--- Addrinfo#bind ---"
 p Addrinfo.tcp("127.0.0.1", 12345).bind
 puts "\n"
 
-puts "--- Addrinfo#canonname ---"
-# Socket::AI_CANONNAMEの指定が必要
-pp Addrinfo.getaddrinfo("ruby-lang.org", 80, nil, nil, nil, Socket::AI_CANONNAME).map(&:canonname)
-puts "\n"
-
+# canonname
 # connect(timeout: nil, &block)
 # connect_from(*args, timeout: nil, &block)
 # connect_to(*args, timeout: nil, &block)
