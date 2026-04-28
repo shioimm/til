@@ -103,6 +103,28 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
   - Resolution Delay の推奨値は50ミリ秒
 
 #### 4.2.1. Resolving SVCB/HTTPS Aliases and Targets
+- SVCB / HTTPSレコードは、ネットワークサービスに関する情報を記述する
+  - 個々のレコードはAliasModeまたはServiceModeのいずれか
+    - AliasModeの場合、別名先の名前に対してさらにSVCB / HTTPS問い合わせを行う必要がある
+    - ServiceModeの場合、元の問い合わせ名に対応する場合があり、その場合のTargetNameは `"."`
+      - 別のサービス名に対応する場合もある ([SVCB / HTTPS Resource Records])
+  - HEv3では、ServiceModeレコードが利用可能になるまで、サービス情報を受信したとはみなさない
+  - ServiceModeレコードは`ipv6hint`および`ipv4hint`パラメータによってアドレスヒントを含むことがある
+    - [SHOULD] これらを受信した場合、対応するTargetNameのA / AAAAレコードがまだ利用可能でないときは、
+      アルゴリズム上、肯定的かつ空でない応答として扱うべき (shioimm: 利用可能でない = 応答を受信していない)
+      - クライアントはそれらのTargetNameに対するA / AAAA問い合わせの応答を受信していない限り、
+        引き続きA / AAAA問い合わせを送信する必要がある
+        - 実際のA / AAAA問い合わせの応答を受信した時点でヒントは実際のレコードに置き換えられ、
+          新たな応答として利用可能な応答集合が更新される
+
 #### 4.2.2. Examples
+TODO: 各種シナリオの例を示すこと
+
+- 単純なデュアルスタック環境
+- SVCB利用時
+- AAAA応答が遅延する場合
+- SVCB応答が遅延する場合
+- SVCBヒントによって早期に応答が得られる場合
+
 ### 4.3. Handling New Answers
 ### 4.4. Handling Multiple DNS Server Addresses
