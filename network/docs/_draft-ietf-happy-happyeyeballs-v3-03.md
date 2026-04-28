@@ -146,3 +146,67 @@ TODO: 各種シナリオの例を示すこと
   設定可能なDNSサーバ数に明示的な上限を設けるべきではない
   - [SHOULD] ハードウェア上の制約によりそのような上限が必要な場合でも、
     クライアントは利用可能な一覧の中から、各アドレスファミリごとに少なくとも1つのアドレスを使用するべき
+
+## 5. Grouping and Sorting Addresses
+### 5.1. Grouping By Application Protocols and Security Requirements
+#### 5.1.1. When to Apply Application Preferences
+### 5.2. Grouping By Service Priority
+### 5.3. Sorting Destination Addresses Within Groups
+## 6. Connection Attempts
+### 6.1. Determining successful connection establishment
+### 6.2. Handling Application Layer Protocol Negotiation (ALPN)
+### 6.3. Dropping or Pending Connection Attempts
+## 7. DNS Answer Changes During Happy Eyeballs Connection Setup
+## 8. Supporting IPv6-Mostly and IPv6-Only Networks
+### 8.1. IPv4 Address Literals
+### 8.2. Discovering and Utilizing PREF64
+### 8.3. Supporting DNS64
+### 8.4. Hostnames with Broken AAAA Records
+### 8.5. Virtual Private Networks
+## 9. Summary of Configurable Values
+## 10. Limitations
+### 10.1. Path Maximum Transmission Unit Discovery
+### 10.2. Application Layer
+### 10.3. Hiding Operational Issues
+## 11. Security Considerations
+## 12. IANA Considerations
+
+## 13. References
+### 13.1. Normative References
+- [ECH] "TLS Encrypted Client Hello"
+- [RFC2119] "Key words for use in RFCs to Indicate Requirement Levels"
+- [RFC4821] "Packetization Layer Path MTU Discovery"
+- [RFC6052] "IPv6 Addressing of IPv4/IPv6 Translators"
+- [RFC6146] "Stateful NAT64: Network Address and Protocol Translation from IPv6 Clients to IPv4 Servers"
+- [RFC6147] "DNS64: DNS Extensions for Network Address Translation from IPv6 Clients to IPv4 Servers"
+- [RFC6298] "Computing TCP's Retransmission Timer",
+- [RFC6535] "Dual-Stack Hosts Using "Bump-in-the-Host" (BIH)"
+- [RFC6724] "Default Address Selection for Internet Protocol Version 6 (IPv6)"
+- [RFC6724-UPDATE] "Prioritizing known-local IPv6 ULAs through address selection policy"
+- [RFC7050] "Discovery of the IPv6 Prefix Used for IPv6 Address Synthesis",
+- [RFC8174] "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"
+- [RFC8781] "Discovering PREF64 in Router Advertisements"
+- [RFC9000] "QUIC: A UDP-Based Multiplexed and Secure Transport"
+- [RFC9460] "Service Binding and Parameter Specification via the DNS (SVCB and HTTPS Resource Records)"
+- [SVCB] "Service Binding and Parameter Specification via the DNS (SVCB and HTTPS Resource Records)"
+- [SVCB-ECH] "Bootstrapping TLS Encrypted ClientHello with DNS Service Bindings"
+
+### 13.2. Informative References
+- [AltSvc] "HTTP Alternative Services"
+- [DNSSEC] "DNS Security Extensions (DNSSEC)", BCP 237,
+- [DOH] "DNS Queries over HTTPS (DoH)"
+- [DOQ] "DNS over Dedicated QUIC Connections"
+- [DOT] "Specification for DNS over Transport Layer Security (TLS)"
+- [HEV2] "Happy Eyeballs Version 2: Better Connectivity Using Concurrency"
+- [HTTP3] "HTTP/3"
+- [I-D.ietf-tls-key-share-prediction] "TLS Key Share Prediction"
+- [IPV6] "Internet Protocol, Version 6 (IPv6) Specification"
+- [QUIC] "QUIC: A UDP-Based Multiplexed and Secure Transport"
+- [RFC6555] "Happy Eyeballs: Success with Dual-Stack Hosts"
+- [RFC6877] "464XLAT: Combination of Stateful and Stateless Translation"
+- [RFC7413] "TCP Fast Open"
+- [RFC8446] "The Transport Layer Security (TLS) Protocol Version 1.3"
+- [RFC8765] "DNS Push Notifications",
+- [RFC9001] "Using TLS to Secure QUIC"
+- [RFC9002] "QUIC Loss Detection and Congestion Control"
+- [V6-MOSTLY] "IPv6-Mostly Networks: Deployment and Operations Considerations"
