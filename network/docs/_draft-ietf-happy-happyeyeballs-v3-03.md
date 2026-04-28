@@ -48,6 +48,24 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 - 本節ではクライアントがどのようにDNS問い合わせを開始し、その応答を非同期に処理するかについて論じる
 
 ### 4.1. Sending DNS Queries
+- クライアントはまず、名前付きホストに対する問い合わせに、どのDNSリソースレコードを含めるかを判断する必要がある
+  - この判断は、クライアントがIPv4およびIPv6の接続性を有しているかどうかに基づく
+    - 接続性を有しているかどうか: そのアドレスファミリに属するローカルアドレスを少なくとも1つ持ち、
+      かつ、そのアドレスファミリに対するリンクローカルではない経路を少なくとも1つ持つこと
+- クライアントがIPv4とIPv6の両方の接続性を持つ場合、AAAAレコード / Aレコード両方の問い合わせを送信する必要がある
+  - IPv4接続性のみを持つネットワークでは、Aレコードへの問い合わせを送信する
+  - IPv6接続性のみを持つネットワークでは、ネットワーク構成に応じてAAAAレコード / Aレコード両方を問い合わせるか、
+    AAAAレコードのみに問い合わせる
+  - IPv6-mostlyおよびIPv6-only ネットワークの扱いについてはSupporting IPv6-Mostly and IPv6-Only Networksを参照
+- AAAAレコード / Aレコードの要求に加え、どのアプリケーションが接続を確立しようとしているかに応じて、
+  クライアントはSVCBレコードまたはHTTPSレコード(SVCB / HTTPS Resource Records) を要求できる
+  - [SHOULD] HTTPまたはHTTPSを利用するアプリケーションの場合、クライアントはHTTPSレコードを問い合わせるべき
+- [SHOULD] すべてのDNS問い合わせは、可能な限り互いに近いタイミングで行うべき
+- [SHOULD] 問い合わせの送信順序は、上記の条件により不要なものを省いたうえで、以下の順序とするべき:
+  - 1. SVCBまたはHTTPSへの問い合わせ
+  - 2. AAAAへの問い合わせ
+  - 3. Aへの問い合わせ
+
 ### 4.2. Handling DNS Answers Asynchronously
 #### 4.2.1. Resolving SVCB/HTTPS Aliases and Targets
 #### 4.2.2. Examples
