@@ -161,9 +161,14 @@ TODO: 各種シナリオの例を示すこと
   - 後続の各段階では、それ以前の段階で定義されたグループ内部における順序や優先度のみを変更する
 
 ### (shioimm)
-- 5.1 アプリケーションプロトコル・セキュリティ要件でグループ化 (グループ自体のソートは実装依存)
-  - -> 5.2 サービス優先度でグループ化
-  - -> 5.3 グループ内の宛先アドレスをソート
+1. (5.1) アプリケーションプロトコル・セキュリティ要件でグループ化 (グループ自体のソートは実装依存)
+    - アプリケーションにとって本当に意味のある差異があるときだけグループを分ける必要がある
+2. (5.2) サービス優先度でグループ化
+    - SVCBがある場合: サービスごとにグループ化し、優先度の数値が小さい順に並べる
+    - 同優先度が複数ある場合: ランダムシャッフル
+    - SVCBがない / 全部同じ場合: 全部1グループ
+    - 紐付かないA / AAAAの場合: 末尾グループ
+3. (5.3) グループ内の宛先アドレスをソート
 
 ### 5.1. Grouping By Application Protocols and Security Requirements
 - クライアントは、宛先エンドポイントがどのアプリケーションプロトコルをサポートしているか、
@@ -195,7 +200,7 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (alpn="h2"    ipv6hint=2001:db8::4)
 - Connection racingは、各グループ内にある複数の宛先アドレス候補に対して適用される
 - 異なるセキュリティ特性やプロトコル特性を持つグループ間で、どのように優先順位付けやフォールバックを行うかは実装依存
 
-#### 5.1.1. When to Apply Application Preferences
+#### 5.1.1. When to Apply Application Preferences (グループ化を適用するべき条件)
 - 特定のアプリケーションプロトコルやセキュリティ機能を別グループとして扱うかどうかは、
   クライアントアプリケーション側の判断
   - [SHOULD] クライアントはそのアプリケーションプロトコルや機能の利用が重要でない場合、
@@ -219,8 +224,40 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (alpn="h2"    ipv6hint=2001:db8::4)
             クライアントはそれらを使用するかどうかを選択できる
 
 ### 5.2. Grouping By Service Priority
-### 5.3. Sorting Destination Addresses Within Groups
+- アプリケーションプロトコルやセキュリティ要件でアドレスをグループ化 (5.1) したあと、
+  SVCB/HTTPSレコードで定義された異なるサービス間でグループ化を行い、これらのグループを優先度で並び替える
+  - この段階により、サーバ側が公開した優先順位をクライアントの接続確立アルゴリズムへ反映できる
+  - SVCBレコードは、各ServiceMode応答に対して優先度が示される
+    - 優先度は、そのレコード自体に含まれるIPv4 / IPv6 address hintsに加え、
+      ServiceModeレコード内の名前に対するA / AAAA問い合わせで得られたアドレスにも適用される
+      - SVCB ServiceMode レコードにおける優先度は、常に0より大きい
+      - 数値として最も小さいSVCB応答 (1など) を先に並べ、より大きい数値の応答を後ろに並べる
+  - TargetNameが`"."`のSVCBレコードはそのレコードのowner nameに適用され、
+    そのSVCBレコードの優先度は、同じowner nameに対するA / AAAAレコードにも適用される
+    - これらの応答は、そのSVCBレコードの優先度に従って並べ替えられる
+  - [SHOULD] 特定のSVCBサービスから受信したすべてのアドレスは、
+    関連付けられたAAAAレコード、Aレコード、またはaddress hintsによって、グループに分割されるべき
+    - [SHOULD] そのうえで、これらのサービス単位のグループは、サービス優先度を用いて並べ替えられるべき
+- 応答にSVCB / HTTPS情報が含まれない場合、あるいはすべての応答が同一のSVCB / HTTPSレコードに対応している場合:
+  - すべての応答は同じ優先度を持つ1つのグループに属する
+- [SHOULD] 同じ優先度を持つサービス、つまり複数のグループが存在する場合、
+  クライアントはこれらのグループをランダムにシャッフルするべき
+- [SHOULD] 一部のSVCB / HTTPS サービス情報は受信しているものの、
+  対応するサービスに紐付かないAAAA / Aレコードが存在する場合
+  (e.g. 元の名前に対してTargetName `"."` のSVCB / HTTPSレコードが受信されなかった場合)
+  それらの未関連アドレスは、一覧の末尾に優先されるグループとして配置されるべき
 
+```text
+example.com. IN HTTPS 1 svc1.example.com. (alpn="h3,h2")
+example.com. IN HTTPS 2 svc2.example.com. (alpn="h2")
+
+svc1.example.com. IN AAAA 2001:db8::1   <- svc1に紐付いたAAAAレコード (SVCBの優先度でグループ化)
+svc2.example.com. IN AAAA 2001:db8::2   <- svc2に紐付いたAAAAレコード (SVCBの優先度でグループ化)
+example.com.      IN AAAA 2001:db8::99  <- どのSVCBにも紐付かないAAAAレコード (末尾に低優先度グループとして追加)
+example.com.      IN A    192.0.2.1     <- どのSVCBにも紐付かないAレコード (末尾に低優先度グループとして追加)
+```
+
+### 5.3. Sorting Destination Addresses Within Groups
 ## 6. Connection Attempts
 ### 6.1. Determining successful connection establishment
 ### 6.2. Handling Application Layer Protocol Negotiation (ALPN)
