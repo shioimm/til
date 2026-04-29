@@ -41,8 +41,20 @@ puts "--- Addrinfo#canonname ---"
 pp Addrinfo.getaddrinfo("ruby-lang.org", 80, nil, nil, nil, Socket::AI_CANONNAME).map(&:canonname)
 puts "\n"
 
-# connect(timeout: nil, &block)
-# connect_from(*args, timeout: nil, &block)
+puts "--- Addrinfo#connect ---"
+Addrinfo.tcp("www.ruby-lang.org", 80).connect {
+  it.print "GET / HTTP/1.0\r\nHost: www.ruby-lang.org\r\n\r\n"
+  puts it.readline
+}
+puts "\n"
+
+puts "--- Addrinfo#connect_from ---"
+Addrinfo.tcp("www.ruby-lang.org", 80).connect_from("::", 12345) {
+  it.print "GET / HTTP/1.0\r\nHost: www.ruby-lang.org\r\n\r\n"
+  puts it.readline
+}
+puts "\n"
+
 # connect_to(*args, timeout: nil, &block)
 # family_addrinfo(*args)
 # getnameinfo(*args)
