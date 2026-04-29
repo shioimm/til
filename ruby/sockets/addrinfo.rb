@@ -55,7 +55,13 @@ Addrinfo.tcp("www.ruby-lang.org", 80).connect_from("::", 12345) {
 }
 puts "\n"
 
-# connect_to(*args, timeout: nil, &block)
+puts "--- Addrinfo#connect_to ---"
+Addrinfo.tcp("::", 54321).connect_to("www.ruby-lang.org", 80) {
+  it.print "GET / HTTP/1.0\r\nHost: www.ruby-lang.org\r\n\r\n"
+  puts it.readline
+}
+puts "\n"
+
 # family_addrinfo(*args)
 # getnameinfo(*args)
 # initialize(*args)
