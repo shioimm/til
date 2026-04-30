@@ -123,6 +123,8 @@ puts "\n"
 
 puts "--- Addrinfo#ipv6_linklocal? ---"
 # リンクローカルアドレス fe80::/10ならtrue
+#   同一リンク = 同一LANセグメントやWi-Fiネットワーク内でのみ有効なアドレス。ルータを越えて転送されない。
+#   IPv6ではネットワークインターフェースに自動的に割り当てられるので、DHCPサーバがなくても同一リンク内で通信できる
 p Addrinfo.tcp("fe80::", 54321).ipv6_linklocal?
 puts "\n"
 
@@ -131,42 +133,56 @@ p Addrinfo.tcp("::1", 54321).ipv6_loopback?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_mc_global? ---"
-# マルチキャスト (グローバルスコープ) アドレスならtrue
+# マルチキャスト (グローバルスコープ: インターネット全体) アドレスならtrue
 p Addrinfo.tcp("::1", 54321).ipv6_mc_global?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_mc_linklocal? ---"
-# マルチキャスト (リンクローカルスコープ) アドレスならtrue
+# マルチキャスト (リンクローカルスコープ: 同一リンク内のみ) アドレスならtrue
 p Addrinfo.tcp("::1", 54321).ipv6_mc_linklocal?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_mc_nodelocal? ---"
-# マルチキャスト (ノードローカルスコープ) アドレスならtrue
+# マルチキャスト (ノードローカルスコープ: 自分自身のノード内のみ) アドレスならtrue
 p Addrinfo.tcp("::1", 54321).ipv6_mc_nodelocal?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_mc_orglocal? ---"
-# マルチキャスト (組織ローカルスコープ) アドレスならtrue
+# マルチキャスト (組織ローカルスコープ: 複数サイトにまたがる組織全体) アドレスならtrue
 p Addrinfo.tcp("::1", 54321).ipv6_mc_orglocal?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_mc_sitelocal? ---"
-# マルチキャスト (サイトローカルスコープ) アドレスならtrue
+# マルチキャスト (サイトローカルスコープ: 組織内ネットワーク全体) アドレスならtrue
 p Addrinfo.tcp("::1", 54321).ipv6_mc_sitelocal?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_multicast? ---"
 # マルチキャストアドレス ff00::/8ならtrue
+#   1対多の通信に使われるアドレス
+#   特定のグループ宛に同時送信でき、IPv4のマルチキャスト (224.0.0.0/4) に相当する
+#   ffで始まるアドレスがすべて該当する
 p Addrinfo.tcp("ff00::", 54321).ipv6_multicast?
 puts "\n"
 
 puts "--- Addrinfo#ipv6_sitelocal? ---"
-# サイトローカルアドレス fec0::/10ならtrue↲
+# サイトローカルアドレス fec0::/10ならtrue
+#   組織内ネットワーク (サイト) の範囲で有効なアドレス
+#   IPv4のプライベートアドレス (192.168.x.x など) に相当する
+#   RFC3879で非推奨となっており、現在はユニークローカルアドレス (fc00::/7) に置き換えられている
 p Addrinfo.tcp("fec0::", 54321).ipv6_sitelocal?
 puts "\n"
 
 # ipv6_to_ipv4
-# ipv6_unique_local?
+
+puts "--- Addrinfo#ipv6_unique_local? ---"
+# ユニークローカルアドレス fc00::/7ならtrue
+#   組織内のプライベートネットワーク向けアドレス
+#   サイトローカル = 組織内で一意 / ユニークローカルアドレス = グローバルに一意
+#   サイトローカルのように異なる組織が独立して生成したアドレスが偶然衝突する確率が低い
+p Addrinfo.tcp("fc00::", 54321).ipv6_unique_local?
+puts "\n"
+
 # ipv6_unspecified?
 # ipv6_v4compat?
 # ipv6_v4mapped?
