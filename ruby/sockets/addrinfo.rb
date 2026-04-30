@@ -99,31 +99,72 @@ p Addrinfo.tcp("localhost", 54321).ip_unpack
 puts "\n"
 
 puts "--- Addrinfo#ipv4? ---"
-p Addrinfo.tcp("localhost", 54321).ipv4?
+p Addrinfo.tcp("127.0.0.1", 54321).ipv4?
 puts "\n"
 
 puts "--- Addrinfo#ipv4_loopback? ---"
-p Addrinfo.tcp("localhost", 54321).ipv4_loopback?
+# 127.0.0.0/8ならtrue
+p Addrinfo.tcp("127.0.0.1", 54321).ipv4_loopback?
 puts "\n"
 
 puts "--- Addrinfo#ipv4_multicast? ---"
-p Addrinfo.tcp("localhost", 54321).ipv4_multicast?
+# マルチキャストアドレス 224.0.0.0/4ならtrue
+p Addrinfo.tcp("224.0.0.0", 54321).ipv4_multicast?
 puts "\n"
 
 puts "--- Addrinfo#ipv4_private? ---"
-p Addrinfo.tcp("localhost", 54321).ipv4_private?
+# プライベートアドレス 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16ならtrue
+p Addrinfo.tcp("10.0.0.0", 54321).ipv4_private?
 puts "\n"
 
-# ipv6?
-# ipv6_linklocal?
-# ipv6_loopback?
-# ipv6_mc_global?
-# ipv6_mc_linklocal?
-# ipv6_mc_nodelocal?
-# ipv6_mc_orglocal?
-# ipv6_mc_sitelocal?
-# ipv6_multicast?
-# ipv6_sitelocal?
+puts "--- Addrinfo#ipv6? ---"
+p Addrinfo.tcp("::1", 54321).ipv6?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_linklocal? ---"
+# リンクローカルアドレス fe80::/10ならtrue
+p Addrinfo.tcp("fe80::", 54321).ipv6_linklocal?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_loopback? ---"
+p Addrinfo.tcp("::1", 54321).ipv6_loopback?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_mc_global? ---"
+# マルチキャスト (グローバルスコープ) アドレスならtrue
+p Addrinfo.tcp("::1", 54321).ipv6_mc_global?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_mc_linklocal? ---"
+# マルチキャスト (リンクローカルスコープ) アドレスならtrue
+p Addrinfo.tcp("::1", 54321).ipv6_mc_linklocal?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_mc_nodelocal? ---"
+# マルチキャスト (ノードローカルスコープ) アドレスならtrue
+p Addrinfo.tcp("::1", 54321).ipv6_mc_nodelocal?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_mc_orglocal? ---"
+# マルチキャスト (組織ローカルスコープ) アドレスならtrue
+p Addrinfo.tcp("::1", 54321).ipv6_mc_orglocal?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_mc_sitelocal? ---"
+# マルチキャスト (サイトローカルスコープ) アドレスならtrue
+p Addrinfo.tcp("::1", 54321).ipv6_mc_sitelocal?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_multicast? ---"
+# マルチキャストアドレス ff00::/8ならtrue
+p Addrinfo.tcp("ff00::", 54321).ipv6_multicast?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_sitelocal? ---"
+# サイトローカルアドレス fec0::/10ならtrue↲
+p Addrinfo.tcp("fec0::", 54321).ipv6_sitelocal?
+puts "\n"
+
 # ipv6_to_ipv4
 # ipv6_unique_local?
 # ipv6_unspecified?
