@@ -62,15 +62,42 @@ Addrinfo.tcp("::", 54321).connect_to("www.ruby-lang.org", 80) {
 }
 puts "\n"
 
-# family_addrinfo(*args)
-# getnameinfo(*args)
-# initialize(*args)
-# inspect
-# inspect_sockaddr
-# ip?
-# ip_address
-# ip_port
-# ip_unpack
+puts "--- Addrinfo#family_addrinfo ---"
+p Addrinfo.tcp("localhost", 54321).family_addrinfo("www.ruby-lang.org", 80)
+puts "\n"
+
+puts "--- Addrinfo#getnameinfo ---"
+p Addrinfo.tcp("::1", 54321).getnameinfo()
+puts "\n"
+
+puts "--- Addrinfo#initialize ---"
+p Addrinfo.new(Socket.sockaddr_in(54321, "localhost"))
+puts "\n"
+
+puts "--- Addrinfo#inspect ---"
+p Addrinfo.tcp("localhost", 54321).inspect
+puts "\n"
+
+puts "--- Addrinfo#inspect_sockaddr ---"
+p Addrinfo.tcp("localhost", 54321).inspect_sockaddr
+puts "\n"
+
+puts "--- Addrinfo#ip? ---"
+p Addrinfo.tcp("localhost", 54321).ip?
+puts "\n"
+
+puts "--- Addrinfo#ip_address ---"
+p Addrinfo.tcp("localhost", 54321).ip_address
+puts "\n"
+
+puts "--- Addrinfo#ip_port ---"
+p Addrinfo.tcp("localhost", 54321).ip_port
+puts "\n"
+
+puts "--- Addrinfo#ip_unpack ---"
+p Addrinfo.tcp("localhost", 54321).ip_unpack
+puts "\n"
+
 # ipv4?
 # ipv4_loopback?
 # ipv4_multicast?
