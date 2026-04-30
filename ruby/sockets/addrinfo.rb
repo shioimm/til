@@ -98,10 +98,22 @@ puts "--- Addrinfo#ip_unpack ---"
 p Addrinfo.tcp("localhost", 54321).ip_unpack
 puts "\n"
 
-# ipv4?
-# ipv4_loopback?
-# ipv4_multicast?
-# ipv4_private?
+puts "--- Addrinfo#ipv4? ---"
+p Addrinfo.tcp("localhost", 54321).ipv4?
+puts "\n"
+
+puts "--- Addrinfo#ipv4_loopback? ---"
+p Addrinfo.tcp("localhost", 54321).ipv4_loopback?
+puts "\n"
+
+puts "--- Addrinfo#ipv4_multicast? ---"
+p Addrinfo.tcp("localhost", 54321).ipv4_multicast?
+puts "\n"
+
+puts "--- Addrinfo#ipv4_private? ---"
+p Addrinfo.tcp("localhost", 54321).ipv4_private?
+puts "\n"
+
 # ipv6?
 # ipv6_linklocal?
 # ipv6_loopback?
