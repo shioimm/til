@@ -500,6 +500,11 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 - 同様の変換は、Aレコードから取得したIPv4アドレスや、SVCBレコード内のIPv4 address hintsに対しても適用される
 
 ### 8.3. Supporting DNS64
+- [SHOULD] PREF64が利用できず、かつNAT64プレフィックスも検出できない場合、
+  クライアントはそのネットワークがIPv4からIPv6へのアドレス合成にDNS64を利用していると仮定するべき
+  - この場合、DNS64サーバがIPv4のみのドメインに対してAAAAレコードを合成するため、
+    クライアントは通常、DNS問い合わせの結果としてAAAAレコードのみを受信することになる
+
 ### 8.4. Hostnames with Broken AAAA Records
 ### 8.5. Virtual Private Networks
 
