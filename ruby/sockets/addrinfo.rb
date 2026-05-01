@@ -25,7 +25,7 @@ p Addrinfo.udp("ruby-lang.org", 80)
 puts "\n"
 
 puts "--- Addrinfo.unix ---"
-p Addrinfo.unix("ruby-lang.org", 80) # #<Addrinfo: UNIX ruby-lang.org SOCK_???(80)>
+p Addrinfo.unix("/tmp/my.sock") # #<Addrinfo: /tmp/my.sock SOCK_STREAM>
 puts "\n"
 
 puts "--- Addrinfo#afamily ---"
@@ -200,13 +200,49 @@ puts "--- Addrinfo#ipv6_v4mapped? ---"
 p Addrinfo.tcp("::ffff:0:0", 54321).ipv6_v4mapped?
 puts "\n"
 
-# listen(backlog = Socket::SOMAXCONN)
-# marshal_dump
-# marshal_load(ary)
-# pfamily
-# protocol
-# socktype
-# to_s
-# to_sockaddr
-# unix?
-# unix_path
+puts "--- Addrinfo#listen ---"
+addrinfo = Addrinfo.tcp("localhost", 54321).listen
+p addrinfo
+addrinfo.close
+puts "\n"
+
+puts "--- Addrinfo#marshal_dump ---"
+# Marshal.dumpの内部操作
+dumped = Addrinfo.tcp("localhost", 54321).marshal_dump
+p dumped
+puts "\n"
+
+puts "--- Addrinfo#marshal_load ---"
+# Marshal.loadの内部操作 / 空のインスタンスを利用してloadする
+loaded = Addrinfo.allocate.marshal_load(dumped)
+p loaded
+puts "\n"
+
+puts "--- Addrinfo#pfamily ---"
+p Addrinfo.tcp("localhost", 54321).pfamily
+puts "\n"
+
+puts "--- Addrinfo#protocol ---"
+p Addrinfo.tcp("localhost", 54321).protocol
+puts "\n"
+
+puts "--- Addrinfo#socktype ---"
+p Addrinfo.tcp("localhost", 54321).socktype
+puts "\n"
+
+puts "--- Addrinfo#to_s ---"
+# struct sockaddr をパックした形式
+p Addrinfo.tcp("localhost", 54321).to_s
+puts "\n"
+
+puts "--- Addrinfo#to_sockaddr ---"
+# #to_sのエイリアス
+p Addrinfo.tcp("localhost", 54321).to_sockaddr
+puts "\n"
+
+puts "--- Addrinfo#unix? ---"
+p Addrinfo.unix("/tmp/my.sock").unix?
+puts "\n"
+
+puts "--- Addrinfo#unix_path ---"
+p Addrinfo.unix("/tmp/my.sock").unix_path
