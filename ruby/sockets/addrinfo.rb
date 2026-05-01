@@ -185,9 +185,21 @@ puts "--- Addrinfo#ipv6_unique_local? ---"
 p Addrinfo.tcp("fc00::", 54321).ipv6_unique_local?
 puts "\n"
 
-# ipv6_unspecified?
-# ipv6_v4compat?
-# ipv6_v4mapped?
+puts "--- Addrinfo#ipv6_unspecified? ---"
+# ::ならtrue
+p Addrinfo.tcp("::", 54321).ipv6_unspecified?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_v4compat? ---"
+# 最初の80ビットがすべてゼロ ::/80ならtrue
+p Addrinfo.tcp("::", 54321).ipv6_v4compat?
+puts "\n"
+
+puts "--- Addrinfo#ipv6_v4mapped? ---"
+# IPv4-mapped IPv6アドレスのプレフィックス ::ffff:0:0 がついていればtrue
+p Addrinfo.tcp("::ffff:0:0", 54321).ipv6_v4mapped?
+puts "\n"
+
 # listen(backlog = Socket::SOMAXCONN)
 # marshal_dump
 # marshal_load(ary)
