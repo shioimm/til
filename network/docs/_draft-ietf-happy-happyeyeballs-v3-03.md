@@ -473,6 +473,16 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
             - DNSリゾルバのアドレスが提供されていること
 
 ### 8.1. IPv4 Address Literals
+- クライアントアプリケーションまたはユーザがIPv4アドレスリテラルへ接続しようとする場合、
+  Happy Eyeballsエンジンは、そのためにNAT64アドレス合成を行う必要がある
+  - この手法は、Bump-in-the-Hostと類似していますが、Happy Eyeballsクライアント内部で実装される
+  - いくつかのIPv4プレフィックスは特定のホストまたはネットワークにスコープされておりNAT64アドレス合成を必要としない:
+    - 0.0.0.0/8
+    - 127.0.0.0/8
+    - 169.254.0.0/16
+    - 255.255.255.255/32
+
+
 ### 8.2. Discovering and Utilizing PREF64
 ### 8.3. Supporting DNS64
 ### 8.4. Hostnames with Broken AAAA Records
