@@ -173,7 +173,9 @@ puts "--- Addrinfo#ipv6_sitelocal? ---"
 p Addrinfo.tcp("fec0::", 54321).ipv6_sitelocal?
 puts "\n"
 
-# ipv6_to_ipv4
+puts "--- Addrinfo#ipv6_to_ipv4 ---"
+p Addrinfo.tcp("::192.0.2.0", 54321).ipv6_to_ipv4
+puts "\n"
 
 puts "--- Addrinfo#ipv6_unique_local? ---"
 # ユニークローカルアドレス fc00::/7ならtrue
