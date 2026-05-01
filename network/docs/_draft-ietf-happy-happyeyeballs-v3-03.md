@@ -482,8 +482,23 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
     - 169.254.0.0/16
     - 255.255.255.255/32
 
-
 ### 8.2. Discovering and Utilizing PREF64
+- [SHOULD] ホスト名ではなくIPv4アドレスがHappy Eyeballs実装に渡された場合、
+  ルータ広告で通知されるPREF64 (PREF64 Prefix Discovery) を使用するべき
+  - PREF64が利用可能な場合、ネットワーク側はDNS64を展開しない選択をすることがある
+    - DNS64にはいくつかの欠点があるため ([IPv6-mostly networks])
+      - [SHOULD] このようなネットワークとの互換性を確保するため、PREF64が利用可能な場合、
+        クライアントは特定のホスト名に対してAAAA問い合わせに加えてA問い合わせも送信するべき
+        - これにより、既存のIPv4 Aレコードを取得し、クライアント側でNAT64アドレス合成を行うことができ、
+          ネットワーク側でDNS64を動作させる必要がなくなる
+  - [SHOULD] ネットワークがPREF64を提供していない場合、実装はNA64 Prefix Discovery
+    (IPv6アドレス合成に使用されるIPv6 プレフィックスの検出) に従ってNAT64 プレフィックスを問い合わせるべき
+    - そのうえでIPv6 Addressing of IPv4/IPv6 Translators (IPv4/IPv6トランスレータのためのIPv6アドレス方式) で
+      定義されたエンコーディングを用いて、適切なIPv6アドレスを合成する
+- これらの合成アドレスは、DNSのAレコード応答から得られたかのようにアドレス一覧へ挿入され、
+  その後の接続試行は本書で説明したアルゴリズムに従って行われる
+- 同様の変換は、Aレコードから取得したIPv4アドレスや、SVCBレコード内のIPv4 address hintsに対しても適用される
+
 ### 8.3. Supporting DNS64
 ### 8.4. Hostnames with Broken AAAA Records
 ### 8.5. Virtual Private Networks
