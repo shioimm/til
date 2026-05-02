@@ -5,7 +5,11 @@
 - 従来WebサーバをDNSに登録するためにIPアドレスをA / AAAAレコードとして登録していた運用を置き換える
 - WebブラウザがWebサイトにアクセスする際に問い合わせる際に利用される
 
+```text
+<owner name>  IN HTTPS  <priority>  <TargetName>  <params>
 ```
+
+```text
 ;; HTTPSリソースレコードを利用しない
     example.com.  IN  A         ***.***.***.***
                   IN  AAAA      ***:***:***:***
