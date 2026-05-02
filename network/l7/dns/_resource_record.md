@@ -109,27 +109,6 @@ jprs.jp  300  IN  A  117.***.***.***
   - サービスが稼働するポート番号
   - 正確に特定可能なホスト名
 
-### HTTPSリソースレコード
-- HTTPSサービスの提供に関する情報が記述されたレコード
-- 従来WebサーバをDNSに登録するためにIPアドレスをA / AAAAレコードとして登録していた運用を置き換える
-- WebブラウザがWebサイトにアクセスする際に問い合わせる際に利用される
-
-```
-;; HTTPSリソースレコードを利用しない
-    example.com.  IN  A         ***.***.***.***
-                  IN  AAAA      ***:***:***:***
-
-;; HTTPSリソースレコードを利用する
-    example.com.  IN  HTTPS  1  svr.example.com.
-svr.example.com.  IN  A         ***.***.***.***
-                  IN  AAAA      ***:***:***:***
-
-;; HTTPSリソースレコードとA / AAAAレコードを併用する
-    example.com.  IN  HTTPS  1  .
-    example.com.  IN  A         ***.***.***.***
-                  IN  AAAA      ***:***:***:***
-```
-
 ## 参照
 - Software Design 2022年8月号
 - [“HTTPSレコード”って知ってる？今知るべき4つの注意点](https://eng-blog.iij.ad.jp/archives/12882)
