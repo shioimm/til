@@ -33,7 +33,7 @@ p Addrinfo.tcp("ruby-lang.org", 80).afamily
 puts "\n"
 
 puts "--- Addrinfo#bind ---"
-p Addrinfo.tcp("127.0.0.1", 12345).bind
+p Addrinfo.tcp("127.0.0.1", 0).bind
 puts "\n"
 
 puts "--- Addrinfo#canonname ---"
@@ -49,14 +49,15 @@ Addrinfo.tcp("www.ruby-lang.org", 80).connect {
 puts "\n"
 
 puts "--- Addrinfo#connect_from ---"
-Addrinfo.tcp("www.ruby-lang.org", 80).connect_from("::", 12345) {
+addrinfo = Addrinfo.tcp("www.ruby-lang.org", 80)
+addrinfo.connect_from(addrinfo.ipv4? ? "0.0.0.0" : "::", 0) {
   it.print "GET / HTTP/1.0\r\nHost: www.ruby-lang.org\r\n\r\n"
   puts it.readline
 }
 puts "\n"
 
 puts "--- Addrinfo#connect_to ---"
-Addrinfo.tcp("::", 54321).connect_to("www.ruby-lang.org", 80) {
+Addrinfo.tcp("::", 0).connect_to("www.ruby-lang.org", 80) {
   it.print "GET / HTTP/1.0\r\nHost: www.ruby-lang.org\r\n\r\n"
   puts it.readline
 }
