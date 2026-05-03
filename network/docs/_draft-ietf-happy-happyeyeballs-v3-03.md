@@ -337,6 +337,62 @@ example.com. IN HTTPS 2 svc1.example.com. (alpn="h2")
   - 送信元アドレス選択 (Source Address Selection) は各宛先アドレスごとに実行されるものであり、
     本書の対象範囲外 ([RFC 6724 Update])
 
+---
+
+(shioimm)
+e.g. h3とh2を使い分けず、ALPNでグループ化せず、ECHも不要なアプリケーションの場合
+
+```text
+(取得したDNSレスポンス)
+
+example.com. IN HTTPS 1 svc1.example.com. (alpn="h3,h2")
+example.com. IN HTTPS 2 svc2.example.com. (alpn="h2")
+
+svc1.example.com. IN AAAA 2001:db8::1
+svc1.example.com. IN AAAA 2001:db8::2
+svc1.example.com. IN A    192.0.2.1
+
+svc2.example.com. IN AAAA 2001:db8::3
+svc2.example.com. IN A    192.0.2.2
+```
+
+1.プロトコル・セキュリティ要件によるグループ化
+
+```text
+[グループa (のみ)]
+- 2001:db8::1 (svc1: 優先度1)
+- 2001:db8::2 (svc1: 優先度1)
+- 192.0.2.1   (svc1: 優先度1)
+- 2001:db8::3 (svc2: 優先度2)
+- 192.0.2.2   (svc2: 優先度2)
+```
+
+2.サービス優先度によるグループ化
+
+```text
+[グループa-1] svc1: 優先度1
+- 2001:db8::1
+- 2001:db8::2
+- 192.0.2.1
+
+[グループa-2] svc2: 優先度2
+- 2001:db8::3
+- 192.0.2.2
+```
+
+3.グループ内でのアドレス並べ替え
+
+```text
+[グループA-1]
+1. 2001:db8::1 (IPv6)
+2. 192.0.2.1   (IPv4)
+3. 2001:db8::2 (IPv6)
+
+[グループA-2]
+4. 2001:db8::3 (IPv6)
+5. 192.0.2.2   (IPv4)
+```
+
 ## 6. Connection Attempts
 - グルーピング・並び替えされたアドレス一覧を構築したあと、クライアントは接続試行を開始する
   - [SHOULD NOT] 過度なネットワーク負荷を避けるため、接続試行は同時に開始するべきではない
