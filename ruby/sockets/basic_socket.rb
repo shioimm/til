@@ -80,10 +80,29 @@ r, _w = UNIXSocket.pair
 p r.getpeereid # [_wの実効UID, _wの実効GID]
 puts "\n"
 
+s = TCPSocket.new("www.ruby-lang.org", 80)
+
 puts "--- BasicSocket#getpeername ---"
+# 接続先のソケットの情報
+p s.getpeername
+p Socket.unpack_sockaddr_in(s.getpeername)
+puts "\n"
+
 puts "--- BasicSocket#getsockname ---"
+# 自身の情報
+p s.getsockname
+p Socket.unpack_sockaddr_in(s.getsockname)
+puts "\n"
+
 puts "--- BasicSocket#getsockopt(level, optname) ---"
+p s.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_KEEPCNT)
+puts "\n"
+
 puts "--- BasicSocket#local_address ---"
+# getsocknameで得られるのと同じ情報をAddrinfoオブジェクトとして表現する
+p s.local_address
+puts "\n"
+
 puts "--- BasicSocket#read_nonblock(len, str = nil, exception: true) ---"
 puts "--- BasicSocket#recv(maxlen[, flags[, outbuf]]) ---"
 puts "--- BasicSocket#recv_nonblock(len, flag = 0, str = nil, exception: true) ---"
