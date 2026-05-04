@@ -137,8 +137,29 @@ puts "--- BasicSocket#remote_address ---"
 p s.remote_address
 puts "\n"
 
-puts "--- BasicSocket#send(mesg, flags[, dest_sockaddr]) ---"
-puts "--- BasicSocket#sendmsg(mesg, flags = 0, dest_sockaddr = nil, *controls) ---"
-puts "--- BasicSocket#sendmsg_nonblock(mesg, flags = 0, dest_sockaddr = nil, *controls, exception: true) ---"
+UNIXSocket.pair { |s1, s2|
+  puts "--- BasicSocket#send(mesg, flags[, dest_sockaddr]) ---"
+  # send(2)
+  p s1.send("Hello", 0)
+  s2.recv(5)
+  puts "\n"
+
+  puts "--- BasicSocket#sendmsg(mesg, flags = 0, dest_sockaddr = nil, *controls) ---"
+  # sendmsg(2)
+  p s1.sendmsg("World")
+  s2.recv(5)
+  puts "\n"
+
+  puts "--- BasicSocket#sendmsg_nonblock(mesg, flags = 0, dest_sockaddr = nil, *controls, exception: true) ---"
+  # sendmsg(2) ノンブロッキング
+  p s1.sendmsg_nonblock("!")
+  s2.recv(1)
+  puts "\n"
+}
+
 puts "--- BasicSocket#setsockopt(*args) ---"
+p s.setsockopt(:SOCKET, :REUSEADDR, true)
+puts "\n"
+
 puts "--- BasicSocket#shutdown([how]) ---"
+p s.shutdown
