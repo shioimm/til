@@ -80,19 +80,65 @@ r, _w = UNIXSocket.pair
 p r.getpeereid # [_wの実効UID, _wの実効GID]
 puts "\n"
 
+s = TCPSocket.new("www.ruby-lang.org", 80)
+
 puts "--- BasicSocket#getpeername ---"
+# 接続先のソケットの情報
+p s.getpeername
+p Socket.unpack_sockaddr_in(s.getpeername)
+puts "\n"
+
 puts "--- BasicSocket#getsockname ---"
+# 自身の情報
+p s.getsockname
+p Socket.unpack_sockaddr_in(s.getsockname)
+puts "\n"
+
 puts "--- BasicSocket#getsockopt(level, optname) ---"
+p s.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_KEEPCNT)
+puts "\n"
+
 puts "--- BasicSocket#local_address ---"
+# getsocknameで得られるのと同じ情報をAddrinfoオブジェクトとして表現する
+p s.local_address
+puts "\n"
+
 puts "--- BasicSocket#read_nonblock(len, str = nil, exception: true) ---"
-puts "--- BasicSocket#recv(maxlen[, flags[, outbuf]]) ---"
-puts "--- BasicSocket#recv_nonblock(len, flag = 0, str = nil, exception: true) ---"
-puts "--- BasicSocket#recvmsg(dlen = nil, flags = 0, clen = nil, scm_rights: false) ---"
-puts "--- BasicSocket#recvmsg_nonblock(dlen = nil, flags = 0, clen = nil, scm_rights: false, exception: true) ---"
+puts "--- BasicSocket#write_nonblock(buf, exception: true) ---"
+puts "Linux-specific optimizations to avoid fcntl for IO#read_nonblock and IO#write_nonblock using MSG_DONTWAIT"
+puts "Do other platforms support MSG_DONTWAIT reliably?"
+puts "\n"
+
+UNIXSocket.pair { |s1, s2|
+  s1.puts "Hello World"
+  puts "--- BasicSocket#recv(maxlen[, flags[, outbuf]]) ---"
+  # recv(2)
+  p s2.recv(4)
+  puts "\n"
+
+  puts "--- BasicSocket#recv_nonblock(len, flag = 0, str = nil, exception: true) ---"
+  # recvfrom(2) ノンブロッキング
+  p s2.recv_nonblock(4, Socket::MSG_PEEK)
+  puts "\n"
+
+  puts "--- BasicSocket#recvmsg(dlen = nil, flags = 0, clen = nil, scm_rights: false) ---"
+  # recvmsg(2)
+  p s2.recvmsg(4)
+  puts "\n"
+
+  puts "--- BasicSocket#recvmsg_nonblock(dlen = nil, flags = 0, clen = nil, scm_rights: false, exception: true) ---"
+  # recvmsg(2) ノンブロッキング
+  p s2.recvmsg_nonblock(10)
+  puts "\n"
+}
+
 puts "--- BasicSocket#remote_address ---"
+# getpeernameで得られるのと同じ情報をAddrinfoオブジェクトとして表現する
+p s.remote_address
+puts "\n"
+
 puts "--- BasicSocket#send(mesg, flags[, dest_sockaddr]) ---"
 puts "--- BasicSocket#sendmsg(mesg, flags = 0, dest_sockaddr = nil, *controls) ---"
 puts "--- BasicSocket#sendmsg_nonblock(mesg, flags = 0, dest_sockaddr = nil, *controls, exception: true) ---"
 puts "--- BasicSocket#setsockopt(*args) ---"
 puts "--- BasicSocket#shutdown([how]) ---"
-puts "--- BasicSocket#write_nonblock(buf, exception: true) ---"
