@@ -133,6 +133,10 @@ UNIXSocket.pair { |s1, s2|
 }
 
 puts "--- BasicSocket#remote_address ---"
+# getpeernameで得られるのと同じ情報をAddrinfoオブジェクトとして表現する
+p s.remote_address
+puts "\n"
+
 puts "--- BasicSocket#send(mesg, flags[, dest_sockaddr]) ---"
 puts "--- BasicSocket#sendmsg(mesg, flags = 0, dest_sockaddr = nil, *controls) ---"
 puts "--- BasicSocket#sendmsg_nonblock(mesg, flags = 0, dest_sockaddr = nil, *controls, exception: true) ---"
