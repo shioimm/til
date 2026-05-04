@@ -480,13 +480,12 @@ svc2.example.com. IN A    192.0.2.2
 
 ### 6.2. Handling Application Layer Protocol Negotiation (ALPN)
 - SVCBレコードに含まれる`alpn`および`no-default-alpn`のSvcParamKeyはSVCB ALPNセットを示し、
-  対応するサービスエンドポイントがサポートする下位トランスポートプロトコルを指定する
+  これは関連するサービスエンドポイントがサポートする基盤となる下位トランスポートプロトコルを指定する
 - [SHOULD] クライアントがSVCBレコードを要求する場合、
-  クライアントとサービスエンドポイントの双方がサポートするトランスポートプロトコルを決定するため
-  SVCB / HTTPS Resource Recordsで規定された手順を実行するべき
-- [SHOULD NOT] サービスエンドポイントの持つSVCB ALPNセットに、
-  クライアント自身のサポートするプロトコルが1つも含まれていない場合、
-  クライアントはそのサービスエンドポイントに対して接続を試みるべきではない
+  SVCB / HTTPS Resource Records ([SVCB] 7.1.2) で規定された手順を実行し、
+  クライアントとサービスエンドポイントの双方がサポートする基盤となるトランスポートプロトコルを決定するべき
+- [SHOULD NOT] クライアントは、SVCB ALPNセットにクライアント自身がサポートするプロトコルが含まれていない
+  サービスエンドポイントに対して接続を試みるべきではない
 
 ```text
 e.g.
@@ -496,11 +495,14 @@ HTTP/1.1やHTTP/2のようなTCPベースのプロトコルのみをサポート
 example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint=2001:db8::2)
 
 このレコードは、ALPN 値"h3"により、svc1.example.comがHTTP/3のみをサポートしていることを示す
-そのため、このクライアントが2001:db8::2やsvc1.example.comに対応する他のアドレスへ接続を試みることは不適切
+そのため、このクライアントが2001:db8::2またはsvc1.example.comに対して解決されたアドレスへ接続を試みることは不適切
 ```
 
-- [SHOULD] HTTP クライアントがAlt-SvcとSVCB (HTTPS) レコードの両方をサポートしている場合、
-  接続試行はAlt-SvcパラメータとSVCB ALPNセットの両方と整合するように行うべき
+- [SHOULD] HTTP クライアントがAlt-Svc [AltSvc] とSVCB (HTTPS) レコード両方をサポートするHTTPクライアントである場合、
+  クライアントは接続試行がAlt-SvcパラメータとSVCB ALPNセットの両方と整合することを確認する ([SVCB] 9.3)
+  - (shioimm) e.g.
+    - Alt-Svcがh3を指定している & SVCBレコードのalpnにh3が含まれていない -> 接続すべきでない
+    - SVCBレコードがalpn=h2,h3を広告している & Alt-Svcがh3を宣言していない -> 接続すべきでない
 
 ### 6.3. Dropping or Pending Connection Attempts (接続試行の中止および保留)
 - SVCB応答の扱いに関連するいくつかの状況では接続試行を中止する、あるいはSVCB応答が返るまで保留する必要がある
