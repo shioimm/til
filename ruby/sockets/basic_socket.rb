@@ -104,14 +104,37 @@ p s.local_address
 puts "\n"
 
 puts "--- BasicSocket#read_nonblock(len, str = nil, exception: true) ---"
-puts "--- BasicSocket#recv(maxlen[, flags[, outbuf]]) ---"
-puts "--- BasicSocket#recv_nonblock(len, flag = 0, str = nil, exception: true) ---"
-puts "--- BasicSocket#recvmsg(dlen = nil, flags = 0, clen = nil, scm_rights: false) ---"
-puts "--- BasicSocket#recvmsg_nonblock(dlen = nil, flags = 0, clen = nil, scm_rights: false, exception: true) ---"
+puts "--- BasicSocket#write_nonblock(buf, exception: true) ---"
+puts "Linux-specific optimizations to avoid fcntl for IO#read_nonblock and IO#write_nonblock using MSG_DONTWAIT"
+puts "Do other platforms support MSG_DONTWAIT reliably?"
+puts "\n"
+
+UNIXSocket.pair { |s1, s2|
+  s1.puts "Hello World"
+  puts "--- BasicSocket#recv(maxlen[, flags[, outbuf]]) ---"
+  # recv(2)
+  p s2.recv(4)
+  puts "\n"
+
+  puts "--- BasicSocket#recv_nonblock(len, flag = 0, str = nil, exception: true) ---"
+  # recvfrom(2) ノンブロッキング
+  p s2.recv_nonblock(4, Socket::MSG_PEEK)
+  puts "\n"
+
+  puts "--- BasicSocket#recvmsg(dlen = nil, flags = 0, clen = nil, scm_rights: false) ---"
+  # recvmsg(2)
+  p s2.recvmsg(4)
+  puts "\n"
+
+  puts "--- BasicSocket#recvmsg_nonblock(dlen = nil, flags = 0, clen = nil, scm_rights: false, exception: true) ---"
+  # recvmsg(2) ノンブロッキング
+  p s2.recvmsg_nonblock(10)
+  puts "\n"
+}
+
 puts "--- BasicSocket#remote_address ---"
 puts "--- BasicSocket#send(mesg, flags[, dest_sockaddr]) ---"
 puts "--- BasicSocket#sendmsg(mesg, flags = 0, dest_sockaddr = nil, *controls) ---"
 puts "--- BasicSocket#sendmsg_nonblock(mesg, flags = 0, dest_sockaddr = nil, *controls, exception: true) ---"
 puts "--- BasicSocket#setsockopt(*args) ---"
 puts "--- BasicSocket#shutdown([how]) ---"
-puts "--- BasicSocket#write_nonblock(buf, exception: true) ---"
