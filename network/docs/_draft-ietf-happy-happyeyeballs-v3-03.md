@@ -617,10 +617,12 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 6. 全接続失敗時はLast Resort Local Synthesis Delay後にAレコードを問い合わせてクライアントが合成・再試行 (8.4)
 
 ### 8.1. IPv4 Address Literals
-- クライアントアプリケーションまたはユーザがIPv4アドレスリテラルへ接続しようとする場合、
-  Happy Eyeballsエンジンは、そのためにNAT64アドレス合成を行う必要がある
-  - この手法は、Bump-in-the-Hostと類似していますが、Happy Eyeballsクライアント内部で実装される
-  - いくつかのIPv4プレフィックスは特定のホストまたはネットワークにスコープされておりNAT64アドレス合成を必要としない:
+- クライアントアプリケーションまたはユーザがIPv6-only環境 (NAT64環境) においてIPv4アドレスリテラルへ接続する場合、
+  Happy Eyeballsエンジンは、そのためにNAT64アドレス合成 (IPv4 / IPv6アドレス変換) を行う必要がある
+  - (shioimm) 通常のHappy Eyeballsでは、DNSでホスト名を解決してIPv4 / IPv6のアドレス一覧を得る一方、
+    IPv4アドレスリテラルが直接渡された場合はDNS解決が発生しないため、IPv6-onlyネットワーク上では通信できない
+  - これはBump-in-the-Host ([RFC6535]) と類似しているが、OSレベルではなくHappy Eyeballsクライアント内部に実装される
+  - いくつかのIPv4プレフィックスは特定のホストまたはネットワークにスコープされておりNAT64アドレス合成は不要
     - 0.0.0.0/8
     - 127.0.0.0/8
     - 169.254.0.0/16
