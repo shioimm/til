@@ -650,8 +650,8 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 ### 8.3. Supporting DNS64
 - [SHOULD] PREF64が利用できず、かつNAT64プレフィックスも検出できない場合、
   クライアントはそのネットワークがIPv4からIPv6へのアドレス合成にDNS64を利用していると仮定するべき
-  - この場合、DNS64サーバがIPv4のみのドメインに対してAAAAレコードを合成するため、
-    クライアントは通常、DNS問い合わせの結果としてAAAAレコードのみを受信することになる
+  - この場合、DNS64サーバがIPv4専用ドメインに対してAAAAレコードを合成するため、
+    クライアントは通常、DNS問い合わせの結果としてAAAAレコードのみを受信する
 
 ### 8.4. Hostnames with Broken AAAA Records
 - 執筆時点において有効なAレコードと壊れたAAAAレコードを同時に持つホスト名が存在する
