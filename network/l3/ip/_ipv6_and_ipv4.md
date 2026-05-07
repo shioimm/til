@@ -1,7 +1,8 @@
-# NAT64/DNS64
+# IPv6 / IPv4 共存技術
+## NAT64/DNS64
 - IPv6-onlyのネットワークから、IPv4ネットワークのサービスに接続できるようにする仕組み
 
-## 動作フロー
+### 動作フロー
 1. ホストはDNS64を有効化しているDNSに対し、宛先ホストのIPアドレスを問い合わせる
 2. DNSクエリを受信したDNS64サーバは、取得したIPv4アドレスとIPv4-IPv6変換アドレス用のprefixを使用して
    IPv6アドレスを合成し、送信元ホストに返す
@@ -21,3 +22,8 @@
   - IPv4アプリケーション -> [CLAT: IPv4 -> IPv6] -> IPv6ネットワーク -> [PLAT: IPv6 -> IPv4] -> IPv4サーバ
   - CLAT (Customer-side Translator) : クライアント端末でIPv4 -> IPv6変換を行うステートレスNAT46
   - PLAT (Provider-side Translator) : ネットワーク側 (NAT64ゲートウェイ) でIPv6 -> IPv4変換を行うステートフルNAT64
+
+## 検索用
+- デュアルスタック
+- IPv6-only
+- IPv6-mostly
