@@ -81,39 +81,70 @@ p Socket.sockaddr_un("/tmp/sock")
 puts "\n"
 
 puts "--- Socket.socketpair(*args) ---"
+s1, s2 = Socket.socketpair(:UNIX, :STREAM, 0)
+p s1, s2
+s1.send("Hello", 0)
+s1.close
+p s2.recv(10)
+p s2.recv(10)
+s2.close
+puts "\n"
 puts "\n"
 
 puts "--- Socket.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil, fast_fallback: tcp_fast_fallback) ---"
+p Socket.tcp("www.ruby-lang.org", 80)
 puts "\n"
 
 puts "--- Socket.tcp_fast_fallback ---"
+p Socket.tcp_fast_fallback
 puts "\n"
 
 puts "--- Socket.tcp_fast_fallback= ---"
+p Socket.tcp_fast_fallback = !Socket.tcp_fast_fallback
 puts "\n"
 
 puts "--- Socket.tcp_server_loop(host = nil, port, &b) ---"
+# Socket.tcp_server_loop(16807) { |sock, client_addrinfo|
+#   begin
+#     IO.copy_stream(sock, sock)
+#   ensure
+#     sock.close
+#   end
+# }
 puts "\n"
 
 puts "--- Socket.tcp_server_sockets(host = nil, port) ---"
-puts "\n"
-
-puts "--- Socket.tcp_server_sockets_port0(host) ---"
-puts "\n"
-
-puts "--- Socket.tcp_with_fast_fallback(host, port, local_host = nil, local_port = nil, connect_timeout: nil, resolv_timeout: nil) ---"
+p Socket.tcp_server_sockets(1296)
 puts "\n"
 
 puts "--- Socket.udp_server_loop(host = nil, port, &b) ---"
-puts "\n"
-
-puts "--- Socket.udp_server_loop_on(sockets, &b) ---"
-puts "\n"
-
-puts "--- Socket.udp_server_recv(sockets) ---"
+# Socket.udp_server_loop(9261) { |msg, src|
+#   src.reply msg
+# }
 puts "\n"
 
 puts "--- Socket.udp_server_sockets(host = nil, port) ---"
+udp_server_sockets = Socket.udp_server_sockets(0)
+p udp_server_sockets
+puts "\n"
+
+puts "--- Socket.udp_server_loop_on(sockets, &b) ---"
+# Socket.udp_server_loop_on(udp_server_sockets) { |msg, src|
+#   p msg
+#   p src.remote_address
+#   src.reply msg
+# }
+puts "\n"
+
+puts "--- Socket.udp_server_recv(sockets) ---"
+# loop do
+#   readable, = IO.select(udp_server_sockets)
+#   Socket.udp_server_recv(readable) { |msg, src|
+#     p msg
+#     p src.remote_address
+#     msg_src.reply msg
+#   }
+# end
 puts "\n"
 
 puts "--- Socket.unix(path) ---"
