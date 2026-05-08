@@ -593,16 +593,23 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 
 ---
 
-(shioimm) 464XLATがプラットフォームで利用不可能な場合
-前提: 464XLAT (CLAT) がプラットフォームで利用可能な場合、CLATが透過的にアドレス変換を行うため、Section 8の処理は不要
+(shioimm)
+### デュアルスタック / IPv4-only環境
+- Session 8の処理は不要
+- デュアルスタックの場合、AAAA、A、SVCB/HTTPSをDNS問い合わせする
+- IPv4-onlyの場合、AをDNS問い合わせする
+
+### IPv6-only / IPv6-mostly環境
+- ホストが464XLAT (CLAT) に対応している場合、CLATが透過的にアドレス変換を行うため、Section 8の処理は不要
+- ホストが464XLAT非対応の場合:
 
 1. ネットワークを検出する (Section 8)
-    - ルーティング可能なIPv6アドレスあり、かつルーティング可能なIPv4アドレスなし
+    - ルーティング可能なIPv6アドレスあり、かつルーティング可能なIPv4アドレスなし、DNSリゾルバのアドレスが存在する
       - -> IPv6-only/mostly ネットワークと判断する
 2. NAT64プレフィックスを検出 (8.2)
-    - RAのPREF64オプションを確認 -> PREF64あり / なし
-    - PREF64なしの場合、NA64 Prefix Discoveryを試みる -> 成功 (NAT64プレフィックス検出) / 失敗
-    - NA64 Prefix Discovery失敗の場合、DNS64を仮定する
+    - RAのPREF64オプションを確認
+    - PREF64がなければRFC 7050に従いipv4only.arpaのAAAAを問い合わせてNAT64プレフィックスを検出
+    - NAT64プレフィックスの検出にも失敗した場合、DNS64を仮定する
 3. DNS問い合わせ内容を決定する (4.1)
     - PREF64あり / NAT64プレフィックス検出済みの場合: A / AAAA両方問い合わせ
     - DNS64のみの場合: AAAAのみ問い合わせ
@@ -614,7 +621,10 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
     - DNS64のみ、かつIPv4リテラルが渡されている場合:
       - DNSを経由しないためDNS64が介入できず、AAAAを得る手段がないため接続は失敗する
 5. HEアルゴリズムで接続試行
-6. 全接続失敗時はLast Resort Local Synthesis Delay後にAレコードを問い合わせてクライアントが合成・再試行 (8.4)
+6. 全接続失敗時のフォールバック
+    - 最後の接続試行開始からLast Resort Local Synthesis Delayを待機
+    - AレコードをDNSに問い合わせ
+    - 取得したIPv4アドレスをIPv4リテラルとして扱い、ローカルでIPv6アドレスを合成して再試行
 
 ### 8.1. IPv4 Address Literals
 - クライアントアプリケーションまたはユーザがIPv6-only環境 (NAT64環境) においてIPv4アドレスリテラルへ接続する場合、
