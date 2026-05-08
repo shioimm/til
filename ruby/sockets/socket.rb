@@ -16,24 +16,38 @@ pp Socket.getaddrinfo("www.ruby-lang.org", 80, nil, :STREAM)
 puts "\n"
 
 puts "--- Socket.gethostbyaddr(address_string[, address_family]) ---"
+# deprecated
+# gethostbyname(3)
+# [正式なホスト名, ホスト名のエイリアスの配列, アドレスファミリの定数値, アドレスのバイト列 (packed String), ...]
+p Socket.gethostbyaddr([127, 0, 0, 1].pack("CCCC"))
 puts "\n"
 
 puts "--- Socket.gethostbyname(hostname) ---"
+# deprecated
+# gethostbyname(3)
+# [正式なホスト名, ホスト名のエイリアスの配列, アドレスファミリの定数値, アドレスのバイト列 (packed String), ...]
+p Socket.gethostbyname("localhost")
 puts "\n"
 
 puts "--- Socket.gethostname ---"
+p Socket.gethostname
 puts "\n"
 
 puts "--- Socket.getifaddrs ---"
+# NICのアドレスリスト (#<Socket::Ifaddr>)
+pp Socket.getifaddrs
 puts "\n"
 
 puts "--- Socket.getnameinfo(sockaddr[, flags]) ---"
+p Socket.getnameinfo(Socket.sockaddr_in('80','127.0.0.1'))
 puts "\n"
 
 puts "--- Socket.getservbyname(*args) ---"
+p Socket.getservbyname("http", "tcp")
 puts "\n"
 
 puts "--- Socket.getservbyport(port[, protocol_name]) ---"
+p Socket.getservbyport(80)
 puts "\n"
 
 puts "--- Socket.ip_address_list ---"

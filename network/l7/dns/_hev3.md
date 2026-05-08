@@ -7,46 +7,37 @@
 
 ## Overviews
 1. 非同期DNSクエリの開始
-    - HTTPS / AAAA / AいずれかのDNSレスポンスを受け取った場合、
-      AAAAとHTTPSを両方受信する、あるいは`ipv6hint`をもつHTTPSを受信するまで
-      一定時間待機した後、次のステップに進む
+    - HTTPS / AAAA / A レコードのDNS問い合わせを非同期に開始
+    - いずれかの条件を満たした時点で次のステップへ進む:
+      - 何らかの肯定的アドレス応答を受信、
+        かつ肯定・否定問わず優先アドレスファミリ (通常IPv6) の応答を受信、
+        かつSVCB / HTTPSのサービス情報または否定応答を受信
+      - 何らかの肯定的アドレス応答を受信、
+        かつ他の応答が届かないままResolution Delayが経過
 2. 解決された宛先アドレスのソート
-    - HTTPSレコードから得られたECHやQUICサポート情報を優先的に並べる
-    - IPファミリ / プロトコルをインタリーブさせて、リストを作成する
-      - QUIC IPv6
-      - TCP IPv6
-      - QUIC IPv4
-      - TCP IPv4
+    - アプリケーションプロトコル・セキュリティ要件によるグループ化
+      - ALPNやECHの対応状況に基づき、クライアントにとって重要な差異がある場合のみグループを分ける
+    - -> サービス優先度によるグループ化
+      - SVCBレコードの優先度番号でグループ化 (同一優先度が複数ある場合はランダムにシャッフル)
+    - -> グループ内でのアドレス並び替え
+      - RFC 6724に基づく、IPv6とIPv4がインタリーブされるようにする
+        - QUIC IPv6 -> QUIC IPv4 -> TCP IPv6 -> TCP IPv4
 3. 非同期接続試行の開始
-    - リストに従って、順番に接続試行を開始
+    - ソート済みリストの先頭から順に、Connection Attempt Delay (推奨250ms) ごとに接続試行を開始する
 4. 1つの接続を確立し、他のすべての試行をキャンセルする
-    - TCPの場合: TCPハンドシェイクの完了
-    - QUICの場合; QUICハンドシェイク完了
 
 ## 構成要素
-- DNS / 拡張DNS
-  - SVCB and HTTPS Resource Records
-    - https://datatracker.ietf.org/doc/html/rfc9460
-  - DNS64: DNS Extensions for Network Address Translation from IPv6 Clients to IPv4 Servers
-     - https://datatracker.ietf.org/doc/html/rfc6147
-  - IPv6 Addressing of IPv4/IPv6 Translators
-    - https://datatracker.ietf.org/doc/html/rfc6052
-- アドレス選択
-  - Default Address Selection for Internet Protocol Version 6 (IPv6)
-    - https://datatracker.ietf.org/doc/html/rfc6724
-- TLS (ALPN, ECH)
-  - Transport Layer Security (TLS) Application-Layer Protocol Negotiation Extension
-    - https://datatracker.ietf.org/doc/html/rfc7301
-  - Encrypted Client Hello
-    - https://blog.cloudflare.com/ja-jp/announcing-encrypted-client-hello/
-  - Encrypted ClientHelloの仕組み
-    - https://eng-blog.iij.ad.jp/archives/32414
-- QUIC
-  - QUIC: A UDP-Based Multiplexed and Secure Transport
-    - https://datatracker.ietf.org/doc/html/rfc9000
+- NAT64: IPv6専用環境でのIPv4サービスへの接続
+- DNS64: IPv6専用環境でAAAAレコードを合成
+- 464XLAT: プラットフォームレベルの透過的アドレス変換
+- PREF64 Prefix Discovery: NAT64プレフィックスをRAで検出
+- Discovery of the IPv6 Prefix Used for IPv6 Address Synthesis: NAT64プレフィックスをDNSで検出
+- SVCB / HTTPS Resource Records: 代替エンドポイント・プロトコル対応状況・ECH鍵・アドレスヒントの提供
+- DNSSEC: DNS応答の暗号化保護
+- 暗号化DNS: DoT / DoH / DoQ
+- DNS Push Notifications: 接続確立中の動的なDNS応答変更
+- ECH: TLS ClientHelloの暗号化
+- ALPN: アプリケーション層プロトコルネゴシエーション
+- QUIC: UDP上の多重化・セキュアトランスポート
 - HTTP/3
-  - HTTP/3
-    - https://datatracker.ietf.org/doc/html/rfc9114
-- Alt-Svc (を活用することによるプロトコルネゴシエーションよりも早く接続を確立する)
-  - HTTP Alternative Services
-    - https://datatracker.ietf.org/doc/html/rfc7838
+- HTTP Alternative Services (Alt-Svc): SVCBと併用したプロトコルネゴシエーション
