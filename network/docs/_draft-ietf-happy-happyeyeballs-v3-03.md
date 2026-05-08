@@ -593,8 +593,15 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 
 ---
 
-(shioimm) 464XLATがプラットフォームで利用不可能な場合
-前提: 464XLAT (CLAT) がプラットフォームで利用可能な場合、CLATが透過的にアドレス変換を行うため、Section 8の処理は不要
+(shioimm)
+### デュアルスタック / IPv4-only環境
+- Session 8の処理は不要
+- デュアルスタックの場合、AAAA、A、SVCB/HTTPSをDNS問い合わせする
+- IPv4-onlyの場合、AをDNS問い合わせする
+
+### IPv6-only / IPv6-mostly環境
+- ホストが464XLAT (CLAT) に対応している場合、CLATが透過的にアドレス変換を行うため、Section 8の処理は不要
+- ホストが464XLAT非対応の場合:
 
 1. ネットワークを検出する (Section 8)
     - ルーティング可能なIPv6アドレスあり、かつルーティング可能なIPv4アドレスなし
