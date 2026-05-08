@@ -51,24 +51,33 @@ p Socket.getservbyport(80)
 puts "\n"
 
 puts "--- Socket.ip_address_list ---"
-puts "\n"
-
-puts "--- Socket.ip_sockets_port0(ai_list, reuseaddr) ---"
+pp Socket.ip_address_list
 puts "\n"
 
 puts "--- Socket.pack_sockaddr_in(port, host) ---"
+p Socket.sockaddr_in(80, "127.0.0.1")
 puts "\n"
 
 puts "--- Socket.pack_sockaddr_un(path) ---"
+p Socket.sockaddr_un("/tmp/sock")
 puts "\n"
 
 puts "--- Socket.pair(*args) ---"
+s1, s2 = Socket.pair(:UNIX, :STREAM, 0)
+p s1, s2
+s1.send("Hello", 0)
+s1.close
+p s2.recv(10)
+p s2.recv(10)
+s2.close
 puts "\n"
 
 puts "--- Socket.sockaddr_in(port, host) ---"
+p Socket.sockaddr_in(80, "127.0.0.1")
 puts "\n"
 
 puts "--- Socket.sockaddr_un(path) ---"
+p Socket.sockaddr_un("/tmp/sock")
 puts "\n"
 
 puts "--- Socket.socketpair(*args) ---"
