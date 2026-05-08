@@ -4,47 +4,52 @@
   - SVCBレコードは任意のプロトコルで利用できるもの
 
 ```text
-<owner name>  IN [SVCB | HTTPS]  <priority>  <TargetName>  <SvcParams>
+<owner name>  IN [SVCB | HTTPS]  <SvcPriority>  <TargetName>  <SvcParams>
 ```
+
+- SvcPriority: 優先度 (0 - 65535) (必須)
+  - 0: AliasMode
+  - 0以外: ServiceMode
+- TargetName: owner nameを解決し、実際にアクセスされるホスト名 (必須)
+- SvcParams: SvcParamKey=SvcParamValueのペア (オプション)
+  - AliasModeでは無視される
 
 ```text
 ;; 利用しない
-    example.com.  IN  A         ***.***.***.***
+    example.com.  IN  A         ***.***.***.*** ;; アクセスされるIPアドレスを登録する
                   IN  AAAA      ***:***:***:***
 
 ;; HTTPSリソースレコードを利用する
-    example.com.  IN  HTTPS  1  svr.example.com.
-svr.example.com.  IN  A         ***.***.***.***
-                  IN  AAAA      ***:***:***:***
-
-;; HTTPSリソースレコードとA / AAAAレコードを併用する
-    example.com.  IN  HTTPS  1  .
-    example.com.  IN  A         ***.***.***.***
-                  IN  AAAA      ***:***:***:***
+    example.com.  IN  HTTPS  1  svr.example.com. ;; アクセスされるホスト名を登録する
+svr.example.com.  IN  A         ***.***.***.***  ;; アクセスされるホストのIPv4アドレス
+                  IN  AAAA      ***:***:***:***  ;; アクセスされるホストのIPv6アドレス
 ```
 
-### SvcParamKey
-- SVCB / HTTPSレコードに記述されるサービスパラメータ群
-  - alpn: 対応するアプリケーション層プロトコル (e.g. `h2=HTTP/2`、`h3=HTTP/3`)
-  - no-default-alpn: デフォルトのプロトコルネゴシエーションを無効化する
-  - port: 接続先ポート番号
-  - ipv4hint: IPv4アドレスのヒント (DNS解決を省略するためのキャッシュ)
-  - ipv6hint: IPv6アドレスのヒント
-  - ech: ECH (Encrypted Client Hello) の公開鍵設定
+#### AliasMode
+- エイリアスを定義するためのモード
+  - SvcPriority: 0
+  - TargetName: HTTPSレコードの再問い合わせをさせるホスト名
+    - `.`の場合、owner nameがアクセス不可であることを示す
+- クライアントはAliasModeのHTTPSレコードを受信した場合、TargetNameに対して再帰的にHTTPSレコードを問い合わせる
+- CNAMEレコードとの違いはゾーン頂点に設定できる点
 
-### SVCB ServiceModeレコード
-- 対象になるドメインで利用する情報を事前に提供するもの。レコード内に必要な情報を記述する
-  - `ech`、`alpn`、`port`などのパラメータ (SvcParamKey) が含まれる
-  - `ech`はECH (Encrypted Client Hello) を利用するために必要なサーバの公開鍵を格納する
-- priorityは1以上 (priorityの小さい順に処理される)
+### ServiceMode
+- 対象ドメインのサービス提供ホストを提示するモード
+  - SvcPriority: 1以上 (小さい方を優先)
+  - TargetName: アクセスされるホスト名
+  - SvcParams: `ech`、`alpn`、`port`などのパラメータ
+    - `.`の場合、owner nameがTargetNameであることを示す
 - SVCB-reliant: ECHを利用するため、SVCBレコードの情報を必ず必要とするクライアント
 - SVCB-optional: SVCBレコードがなくても接続できるが、あれば活用するクライアント
 
-#### AliasMode
-- 別のDNS名への代替を行うもの。レコード内にリダイレクトさせたいドメイン名を記述する
-  - CNAMEレコードとの違いはZone Apex (DNSゾーンの最上位のドメイン名) の応答が可能になる点
-- priorityは0
+### SvcParams
+- SVCB / HTTPSレコードに記述されるサービスパラメータ群
+  - alpn: 対応するアプリケーション層プロトコル (e.g. `h2=HTTP/2`、`h3=HTTP/3`)
+  - no-default-alpn: デフォルトで有効なプロトコル(= http/1.1)に対応していないことを示す
+  - port: 接続先ポート番号
+  - ipv4hint / ipv6hint: サーバのIPアドレス (A / AAAAで得られた情報がある場合はそちらを優先)
+  - ech: ECH (Encrypted Client Hello) を利用するために必要なサーバの公開鍵
 
 ## 参照
-- [“HTTPSレコード”って知ってる？今知るべき4つの注意点](https://eng-blog.iij.ad.jp/archives/12882)
+- [HTTPSレコードがRFCになりました](https://eng-blog.iij.ad.jp/archives/23963)
 - [Amazon Route 53の新しいHTTPS/SVCB/SSHFP/TLSAリソースレコードタイプについての技術概説とユースケースの考察](https://business.ntt-east.co.jp/content/cloudsolution/ih_column-154.html#section-2)
