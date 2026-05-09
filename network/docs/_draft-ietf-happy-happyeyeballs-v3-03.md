@@ -508,7 +508,8 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 - SVCB応答の処理に関連する状況によっては接続試行を中止する、あるいはSVCB応答が返るまで保留する必要がある
 
 - 接続試行の中止:
-  - (shioimm) DNSSECや暗号化DNS (DoT / DoH / DoQ) を使用している環境で、SVCBレコードの名前解決が失敗した場合
+  - (shioimm) DNSSECや暗号化DNS (DoT / DoH / DoQ) を使用している環境で、SVCBレコードの名前解決が失敗した場合、
+    ダウングレード攻撃回避のため接続試行を完全に破棄するべき
   - [SVCB] 3.1は、DNSSEC [DNSSEC] または暗号化DNS (e.g. [DOT]、[DOH]、[DOQ]) を使用して
     応答が暗号化保護されている場合の、解決失敗時のクライアントの動作について説明する
   - [SHOULD] 暗号化保護を使用している状況で、SVCBレコードの名前解決に失敗した場合、
@@ -522,7 +523,8 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
         - (shioimm) DNSが保護されている場合、SVCBの情報をセキュリティ要件として強制できる
 
 - 接続試行の保留:
-  - (shioimm) SVCBレコードが未受信、かつTLSハンドシェイクを始めようとしている場合
+  - (shioimm) DNSSECや暗号化DNS (DoT / DoH / DoQ) を使用している環境では、
+    SVCBレコードを受信するまでTLSハンドシェイクを保留しなければならない
   - [SVCB] 5.1は、クライアントは「[MUST NOT] SVCB応答が到着するまで、その応答によって変更される可能性のある情報を
     送信してはならない」と説明されており、特にTLS ClientHelloに影響を与えるプロパティが言及されている
     - この制限はクライアントの動作がSVCB応答によって変更される場合、特に適用される
