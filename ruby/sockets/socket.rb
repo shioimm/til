@@ -147,19 +147,40 @@ puts "--- Socket.udp_server_recv(sockets) ---"
 # end
 puts "\n"
 
-puts "--- Socket.unix(path) ---"
-puts "\n"
+path = "/tmp/sock"
 
-puts "--- Socket.unix_server_loop(path, &b) ---"
+server = Thread.new {
+  Socket.unix_server_loop(path) do |conn, addr|
+    puts "--- Socket.unix_server_loop(path, &b) ---"
+    p conn
+    p addr
+    conn.close
+  end
+}
+sleep 0.05
+
+Socket.unix(path) do |sock|
+  puts "--- Socket.unix(path) ---"
+  p sock
+end
 puts "\n"
+server.kill
+File.delete(path)
 
 puts "--- Socket.unix_server_socket(path) ---"
+p Socket.unix_server_socket("/tmp/sock")
 puts "\n"
 
 puts "--- Socket.unpack_sockaddr_in(sockaddr) ---"
+sockaddr = Socket.sockaddr_in(80, "127.0.0.1")
+p sockaddr
+p Socket.unpack_sockaddr_in(sockaddr)
 puts "\n"
 
 puts "--- Socket.unpack_sockaddr_un(sockaddr) ---"
+p sockaddr
+sockaddr = Socket.sockaddr_un("/tmp/sock")
+p Socket.unpack_sockaddr_un(sockaddr)
 puts "\n"
 
 puts "--- Socket#accept ---"
