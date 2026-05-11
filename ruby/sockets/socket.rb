@@ -183,34 +183,56 @@ sockaddr = Socket.sockaddr_un("/tmp/sock")
 p Socket.unpack_sockaddr_un(sockaddr)
 puts "\n"
 
+puts "--- Socket#new(domain, socktype[, protocol]) ---"
+p serv = Socket.new(:INET, :STREAM, 0)
+serv.setsockopt(Socket::SOL_SOCKET,Socket::SO_REUSEADDR, true)
+
+p c = Socket.new(:INET, :STREAM, 0)
+puts "\n"
+
+puts "--- Socket#bind(local_sockaddr) ---"
+p serv.bind(Addrinfo.tcp("127.0.0.1", 2222))
+puts "\n"
+
+puts "--- Socket#listen(int) ---"
+p serv.listen(5)
+puts "\n"
+
+puts "--- Socket#connect(remote_sockaddr) ---"
+p c.connect(serv.connect_address)
+c.close
+puts "\n"
+
 puts "--- Socket#accept ---"
+p serv.accept
 puts "\n"
 
 puts "--- Socket#accept_nonblock(exception: true) ---"
 puts "\n"
 
-puts "--- Socket#bind(local_sockaddr) ---"
-puts "\n"
-
-puts "--- Socket#connect(remote_sockaddr) ---"
-puts "\n"
-
 puts "--- Socket#connect_nonblock(addr, exception: true) ---"
 puts "\n"
 
-puts "--- Socket#new(domain, socktype[, protocol]) ---"
-puts "\n"
-
 puts "--- Socket#ipv6only! ---"
-puts "\n"
-
-puts "--- Socket#listen(int) ---"
+s = Socket.new(Socket::AF_INET6, Socket::SOCK_DGRAM, 0)
+p s.ipv6only!
+p s.getsockopt(:IPV6, :V6ONLY)
 puts "\n"
 
 puts "--- Socket#recvfrom(*args) ---"
+s1 = Socket.new(Socket::AF_INET, Socket::SOCK_DGRAM, 0)
+s2 = Socket.new(Socket::AF_INET, Socket::SOCK_DGRAM, 0)
+s1.bind(Socket.sockaddr_in(0, "127.0.0.1"))
+s2.send("Hello", 0, s1.getsockname)
+p s1.recvfrom(10)
 puts "\n"
 
 puts "--- Socket#recvfrom_nonblock(len, flag = 0, str = nil, exception: true) ---"
 puts "\n"
 
 puts "--- Socket#sysaccept ---"
+c = Socket.new(:INET, :STREAM, 0)
+c.connect(serv.connect_address)
+p serv.sysaccept
+c.close
+serv.close
