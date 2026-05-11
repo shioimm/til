@@ -7,7 +7,6 @@ Resolv.getaddress("www.ruby-lang.org")
 
 ```ruby
 # Resolv.getaddresses
-
 def self.getaddresses(name)
   DefaultResolver.getaddresses(name) # DefaultResolver = self.new
   # => Resolv#initialize
@@ -70,7 +69,7 @@ end
 ```ruby
 def Config.default_config_hash(filename="/etc/resolv.conf")
   if File.exist? filename
-    Config.parse_resolv_conf(filename) # => DNS::Config.parse_resolv_conf
+    Config.parse_resolv_conf(filename) # => Config.parse_resolv_conf
   elsif defined?(Win32::Resolv)
     search, nameserver = Win32::Resolv.get_resolv_info
     config_hash = {}
@@ -82,6 +81,7 @@ def Config.default_config_hash(filename="/etc/resolv.conf")
   end
 end
 
+# Config.parse_resolv_conf
 def Config.parse_resolv_conf(filename)
   nameserver = [] #  DNSサーバのIPアドレス
   search = nil
@@ -135,7 +135,6 @@ def getaddresses(name)
 end
 
 # Resolv#each_address
-# WIP
 def each_address(name)
   # AddressRegex = /(?:#{IPv4::Regex})|(?:#{IPv6::Regex})/
   # IPv4::RegexとIPv6::RegexはそれぞれIPv4クラス / IPv6クラスに自前実装がある
@@ -160,8 +159,45 @@ end
 
 ```ruby
 def each_address(name, &proc)
-  lazy_initialize
-  @name2addr[name]&.each(&proc)
+  lazy_initialize # => Hosts#lazy_initialize 他のパブリックAPIも呼んでいる (なので@initializedで初期化を確認する)
+  @name2addr[name]&.each(&proc) # @name2addr に収集したホスト名からアドレスを引き、ブロックを実行
+end
+
+# Hosts#lazy_initialize
+def lazy_initialize # :nodoc:
+  @mutex.synchronize {
+    unless @initialized # Hosts#initializeの時点では @initialized = nil
+      @name2addr = {} # { ホスト名 => [アドレス] } 形式のハッシュ
+      @addr2name = {} # { アドレス => [ホスト名] } 形式のハッシュ
+
+      File.open(@filename, 'rb') {|f| # Hosts#initializeの時点では @filename = hosts || '/etc/hosts'
+        # /etc/hostsなどのローカルの設定ファイルを読み込んで@name2addrに書き込む
+        # e.g.
+        #   127.0.0.1   localhost localhost.local
+        #   ::1         localhost
+        #   ---
+        #   addr      = "127.0.0.1"
+        #   hostnames = ["localhost", "localhost.local"]
+        #   @addr2name["127.0.0.1"]       = ["localhost", "localhost.local"]
+        #   @name2addr["localhost"]       = ["127.0.0.1", "::1"]
+        #   @name2addr["localhost.local"] = ["127.0.0.1"]
+
+        f.each {|line|
+          line.sub!(/#.*/, '')
+          addr, *hostnames = line.split(/\s+/)
+
+          next unless addr
+
+          (@addr2name[addr] ||= []).concat(hostnames)
+          hostnames.each { |hostname| (@name2addr[hostname] ||= []) << addr }
+        }
+      }
+
+      @name2addr.each { |name, arr| arr.reverse! }
+      @initialized = true
+    end
+  }
+  self
 end
 ```
 
