@@ -225,8 +225,7 @@ end
 ```ruby
 def each_address(name)
   if use_ipv6? # => DNS#use_ipv6?
-    # --- WIP ---
-    each_resource(name, Resource::IN::AAAA) { |resource| # => DNS#each_resource
+    each_resource(name, Resource::IN::AAAA) { |resource| # => DNS#each_resource WIP
       yield resource.address
     }
   end
@@ -366,10 +365,157 @@ end
 ### `DNS#each_resource`
 
 ```ruby
+# name = ドメイン名
+# typeclass = レコードの種類 (e.g. Resource::IN::AAAA)
 def each_resource(name, typeclass, &proc)
-  fetch_resource(name, typeclass) {|reply, reply_name|
-    extract_resources(reply, reply_name, typeclass, &proc)
+  fetch_resource(name, typeclass) {|reply, reply_name| # => DNS#fetch_resource
+    extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources
   }
+end
+
+# DNS#fetch_resource WIP
+def fetch_resource(name, typeclass)
+  lazy_initialize # => DNS#lazy_initialize
+  truncated = {}
+  requesters = {}
+
+  udp_requester =
+    begin
+      make_udp_requester # => DNS#make_udp_requester
+      # Requester::ConnectedUDP もしくは Requester::UnconnectedUDPオブジェクトを作成してudp_requesterに格納
+    rescue Errno::EACCES
+      # fall back to TCP
+    end
+
+  senders = {}
+
+  # --- WIP ---
+  begin
+    @config.resolv(name) do |candidate, tout, nameserver, port|
+      msg = Message.new
+      msg.rd = 1
+      msg.add_question(candidate, typeclass)
+
+      requester = requesters.fetch([nameserver, port]) do
+        if !truncated[candidate] && udp_requester
+          udp_requester
+        else
+          requesters[[nameserver, port]] = make_tcp_requester(nameserver, port)
+        end
+      end
+
+      unless sender = senders[[candidate, requester, nameserver, port]]
+        sender = requester.sender(msg, candidate, nameserver, port)
+        next if !sender
+        senders[[candidate, requester, nameserver, port]] = sender
+      end
+      reply, reply_name = requester.request(sender, tout)
+      case reply.rcode
+      when RCode::NoError
+        if reply.tc == 1 and not Requester::TCP === requester
+          # Retry via TCP:
+          truncated[candidate] = true
+          redo
+        else
+          yield(reply, reply_name)
+        end
+        return
+      when RCode::NXDomain
+        raise Config::NXDomain.new(reply_name.to_s)
+      else
+        raise Config::OtherResolvError.new(reply_name.to_s)
+      end
+    end
+  ensure
+    udp_requester&.close
+    requesters.each_value { |requester| requester&.close }
+  end
+end
+
+# DNS#make_udp_requester
+
+def make_udp_requester # :nodoc:
+  nameserver_port = @config.nameserver_port # => DNS#nameserver_port
+
+  # DNS#nameserver_port
+  #   def nameserver_port
+  #     @nameserver_port
+  #   end
+
+  if nameserver_port.length == 1
+    Requester::ConnectedUDP.new(*nameserver_port[0]) # => Requester::ConnectedUDP#initialize
+  else
+    Requester::UnconnectedUDP.new(*nameserver_port) # => Requester::UnconnectedUDP#initialize
+  end
+end
+
+# DNS#extract_resources WIP
+
+def extract_resources(msg, name, typeclass) # :nodoc:
+  if typeclass < Resource::ANY
+    n0 = Name.create(name)
+    msg.each_resource {|n, ttl, data|
+      yield data if n0 == n
+    }
+  end
+  yielded = false
+  n0 = Name.create(name)
+  msg.each_resource {|n, ttl, data|
+    if n0 == n
+      case data
+      when typeclass
+        yield data
+        yielded = true
+      when Resource::CNAME
+        n0 = data.name
+      end
+    end
+  }
+  return if yielded
+  msg.each_resource {|n, ttl, data|
+    if n0 == n
+      case data
+      when typeclass
+        yield data
+      end
+    end
+  }
+end
+```
+
+### `Requester::ConnectedUDP#initialize`
+
+```ruby
+# class ConnectedUDP < Requester
+
+ def initialize(host, port=Port)
+   super() # => Requester#initialize
+   @host = host
+   @port = port
+   @mutex = Thread::Mutex.new
+   @initialized = false
+ end
+```
+
+### `Requester::UnconnectedUDP#initialize`
+
+```ruby
+# class UnconnectedUDP < Requester
+
+def initialize(*nameserver_port)
+  super() # => Requester#initialize
+  @nameserver_port = nameserver_port
+  @initialized = false
+  @mutex = Thread::Mutex.new
+end
+```
+
+### `Requester#initialize`
+
+```ruby
+def initialize
+  @senders = {}
+  @socks = nil
 end
 ```
 
