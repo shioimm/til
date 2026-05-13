@@ -374,6 +374,7 @@ def each_resource(name, typeclass, &proc)
 end
 
 # DNS#fetch_resource WIP
+
 def fetch_resource(name, typeclass)
   lazy_initialize # => DNS#lazy_initialize
   truncated = {}
@@ -389,9 +390,9 @@ def fetch_resource(name, typeclass)
 
   senders = {}
 
-  # --- WIP ---
   begin
-    @config.resolv(name) do |candidate, tout, nameserver, port|
+    @config.resolv(name) do |candidate, tout, nameserver, port| # => Config#resolv
+      # --- WIP ---
       msg = Message.new
       msg.rd = 1
       msg.add_question(candidate, typeclass)
@@ -516,6 +517,136 @@ end
 def initialize
   @senders = {}
   @socks = nil
+end
+```
+
+### `Config#resolv`
+
+```ruby
+def resolv(name)
+  candidates = generate_candidates(name) # => Config#generate_candidates
+  timeouts = @timeouts || generate_timeouts # => Config#generate_timeouts
+  timeout_error = false
+
+  begin
+    candidates.each {|candidate|
+      begin
+        timeouts.each { |tout|
+          @nameserver_port.each {|nameserver, port|
+            begin
+              # Config#resolvのブロックに
+              # - candidate  = 実際にDNSへ問い合わせるドメイン名を表すDNS::Nameオブジェクト
+              # - tout       = タイムアウト秒
+              # - nameserver = フルリゾルバのIPアドレス
+              # - port       = フルリゾルバのポート番号
+              # を渡す
+              yield candidate, tout, nameserver, port
+            rescue ResolvTimeout
+            end
+          }
+        }
+        timeout_error = true
+
+        raise ResolvError.new("DNS resolv timeout: #{name}")
+      rescue NXDomain
+      end
+    }
+  rescue ResolvError
+    raise if @raise_timeout_errors && timeout_error
+  end
+end
+
+# Config#generate_candidates
+
+def generate_candidates(name)
+  candidates = nil
+  name = Name.create(name) # => DNS::Name.create 解決したいドメイン名をDNS::Nameオブジェクトにする
+
+  if name.absolute? # => DNS::Name#absolute? デフォルトでtrue
+    # DNS::Name#absolute?
+    #
+    #   def absolute?
+    #     return @absolute
+    #   end
+    candidates = [name] # FQDNの場合はそのまま名前解決を行う候補として扱う
+  else
+    if @ndots <= name.length - 1
+      candidates = [Name.new(name.to_a)] # @ndot <= .の数 の場合はそのまま名前解決を行う候補として扱う
+    else
+      candidates = [] # @ndot > .の数 の場合は検索ドメインを試すため候補リストを空に初期化
+    end
+
+    # @searchの各ドメインを名前の末尾に連結した候補を追加
+    candidates.concat(@search.map { |domain| Name.new(name.to_a + domain) }) # => DNS::Name#initialize
+
+    # 名前に.を付けてFQDNにしたものを最後の候補として追加
+    fname = Name.create("#{name}.") # => DNS::Name.create
+
+    if !candidates.include?(fname)
+      candidates << fname
+    end
+  end
+  return candidates
+end
+
+# Config#generate_timeouts
+
+InitialTimeout = 5
+
+def generate_timeouts
+  ts = [InitialTimeout]
+  ts << ts[-1] * 2 / @nameserver_port.length
+  ts << ts[-1] * 2
+  ts << ts[-1] * 2
+  return ts
+end
+```
+
+### `DNS::Name.create`
+
+```ruby
+def self.create(arg)
+  case arg
+  when Name
+    return arg
+  when String
+    labels = Label.split(arg) # => DNS::Label.split
+
+    # Label.split ドメイン名を.で分割し、各部分をLabel::Strオブジェクトの配列にする
+    #
+    #   def self.split(arg)
+    #     labels = []
+    #     arg.scan(/[^\.]+/) { labels << Str.new($&) } # => DNS::Label::Str#initialize
+    #     return labels
+    #   end
+
+    # Label::Str#initialize
+    #
+    #   def initialize(string)
+    #     @string = string
+    #     @downcase = string.b.downcase
+    #   end
+
+    return Name.new(labels, /\.\z/ =~ arg ? true : false) # => DNS::Name#initialize
+  else
+    raise ArgumentError.new("cannot interpret as DNS name: #{arg.inspect}")
+  end
+end
+
+# DNS::Name#initialize
+
+def initialize(labels, absolute=true) # :nodoc:
+  labels = labels.map {|label|
+    case label
+    when String then Label::Str.new(label) # => DNS::Label::Str#initialize
+    when Label::Str then label
+    else
+      raise ArgumentError, "unexpected label: #{label.inspect}"
+    end
+  }
+
+  @labels = labels
+  @absolute = absolute
 end
 ```
 
