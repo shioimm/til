@@ -383,7 +383,7 @@ def fetch_resource(name, typeclass)
   udp_requester =
     begin
       make_udp_requester # => DNS#make_udp_requester
-      # Requester::ConnectedUDP もしくは Requester::UnconnectedUDPオブジェクトを作成してudp_requesterに格納
+      # DNS::Requester::ConnectedUDP もしくは DNS::Requester::UnconnectedUDPオブジェクトを作成してudp_requesterに格納
     rescue Errno::EACCES
       # fall back to TCP
     end
@@ -392,25 +392,40 @@ def fetch_resource(name, typeclass)
 
   begin
     @config.resolv(name) do |candidate, tout, nameserver, port| # => Config#resolv
-      # --- WIP ---
-      msg = Message.new
+      msg = Message.new # => Message#initialize
       msg.rd = 1
-      msg.add_question(candidate, typeclass)
+      msg.add_question(candidate, typeclass) # => Message#add_question
 
+      # Message#add_question
+      #
+      #   def add_question(name, typeclass)
+      #     @question << [Name.create(name), typeclass] # => DNS::Name.create
+      #   end
+
+      # 初回の呼び出しでは実行されない
+      # Config#resolv のcandidatesごと・timeoutsごとのeachが呼び出されるたびにtruncated / requestersに値が追加される
       requester = requesters.fetch([nameserver, port]) do
         if !truncated[candidate] && udp_requester
-          udp_requester
+          udp_requester # DNS::Requester::ConnectedUDP もしくは DNS::Requester::UnconnectedUDPオブジェクト
         else
-          requesters[[nameserver, port]] = make_tcp_requester(nameserver, port)
+          # make_tcp_requesterの返り値を requesters[[nameserver, port]] に保存
+          requesters[[nameserver, port]] = make_tcp_requester(nameserver, port) # => DNS#make_tcp_requester
+          # DNS::Requester::TCP オブジェクトを格納する
         end
       end
 
+      # --- WIP ---
       unless sender = senders[[candidate, requester, nameserver, port]]
-        sender = requester.sender(msg, candidate, nameserver, port)
+        sender = requester.sender(msg, candidate, nameserver, port) # 新しいsenderを生成
+        # => DNS::Requester::ConnectedUDP#sender
+        #    / DNS::Requester::UnconnectedUDP#sender
+        #    / DNS::Requester::TCP#sender WIP
         next if !sender
         senders[[candidate, requester, nameserver, port]] = sender
       end
+
       reply, reply_name = requester.request(sender, tout)
+
       case reply.rcode
       when RCode::NoError
         if reply.tc == 1 and not Requester::TCP === requester
@@ -444,10 +459,21 @@ def make_udp_requester # :nodoc:
   #   end
 
   if nameserver_port.length == 1
-    Requester::ConnectedUDP.new(*nameserver_port[0]) # => Requester::ConnectedUDP#initialize
+    Requester::ConnectedUDP.new(*nameserver_port[0]) # => DNS::Requester::ConnectedUDP#initialize
   else
-    Requester::UnconnectedUDP.new(*nameserver_port) # => Requester::UnconnectedUDP#initialize
+    Requester::UnconnectedUDP.new(*nameserver_port) # => DNS::Requester::UnconnectedUDP#initialize
   end
+end
+
+# DNS#make_tcp_requester
+
+def make_tcp_requester(host, port) # :nodoc:
+  return Requester::TCP.new(host, port) # => DNS::Requester::TCP#initialize
+rescue Errno::ECONNREFUSED
+  # Treat a refused TCP connection attempt to a nameserver like a timeout,
+  # as Resolv::DNS::Config#resolv considers ResolvTimeout exceptions as a
+  # hint to try the next nameserver:
+  raise ResolvTimeout
 end
 
 # DNS#extract_resources WIP
@@ -484,13 +510,13 @@ def extract_resources(msg, name, typeclass) # :nodoc:
 end
 ```
 
-### `Requester::ConnectedUDP#initialize`
+### `DNS::Requester::ConnectedUDP#initialize`
 
 ```ruby
 # class ConnectedUDP < Requester
 
  def initialize(host, port=Port)
-   super() # => Requester#initialize
+   super() # => DNS::Requester#initialize
    @host = host
    @port = port
    @mutex = Thread::Mutex.new
@@ -498,20 +524,79 @@ end
  end
 ```
 
-### `Requester::UnconnectedUDP#initialize`
+### `DNS::Requester::ConnectedUDP#sender` WIP
+
+```ruby
+def sender(msg, data, host=@host, port=@port)
+  lazy_initialize
+  unless host == @host && port == @port
+    raise RequestError.new("host/port don't match: #{host}:#{port}")
+  end
+  id = DNS.allocate_request_id(@host, @port)
+  request = msg.encode
+  request[0,2] = [id].pack('n')
+  return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
+end
+```
+
+### `DNS::Requester::UnconnectedUDP#initialize`
 
 ```ruby
 # class UnconnectedUDP < Requester
 
 def initialize(*nameserver_port)
-  super() # => Requester#initialize
+  super() # => DNS::Requester#initialize
   @nameserver_port = nameserver_port
   @initialized = false
   @mutex = Thread::Mutex.new
 end
 ```
 
-### `Requester#initialize`
+### `DNS::Requester::UnconnectedUDP#sender` WIP
+
+```ruby
+def sender(msg, data, host, port=Port)
+  host = Addrinfo.ip(host).ip_address
+  lazy_initialize
+  sock = @socks_hash[host.index(':') ? "::" : "0.0.0.0"]
+  return nil if !sock
+  service = [host, port]
+  id = DNS.allocate_request_id(host, port)
+  request = msg.encode
+  request[0,2] = [id].pack('n')
+  return @senders[[service, id]] =
+    Sender.new(request, data, sock, host, port)
+end
+```
+
+### `DNS::Requester::TCP#initialize`
+
+```ruby
+def initialize(host, port=Port)
+  super() # => DNS::Requester#initialize
+  @host = host
+  @port = port
+  sock = TCPSocket.new(@host, @port)
+  @socks = [sock]
+  @senders = {}
+end
+```
+
+### `DNS::Requester::TCP#sender` WIP
+
+```ruby
+def sender(msg, data, host=@host, port=@port)
+  unless host == @host && port == @port
+    raise RequestError.new("host/port don't match: #{host}:#{port}")
+  end
+  id = DNS.allocate_request_id(@host, @port)
+  request = msg.encode
+  request[0,2] = [request.length, id].pack('nn')
+  return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
+end
+```
+
+### `DNS::Requester#initialize`
 
 ```ruby
 def initialize
@@ -534,7 +619,7 @@ def resolv(name)
         timeouts.each { |tout|
           @nameserver_port.each {|nameserver, port|
             begin
-              # Config#resolvのブロックに
+              # Config#resolvのブロックにcandidatesごとにtimeouts回
               # - candidate  = 実際にDNSへ問い合わせるドメイン名を表すDNS::Nameオブジェクト
               # - tout       = タイムアウト秒
               # - nameserver = フルリゾルバのIPアドレス
@@ -648,6 +733,33 @@ def initialize(labels, absolute=true) # :nodoc:
   @labels = labels
   @absolute = absolute
 end
+```
+
+### `Message#initialize`
+
+```ruby
+@@identifier = -1
+
+# @id = どのレスポンスがどのリクエストに対応するかを識別するためのトランザクションID
+# @@identifier をインクリメントし、& 0xffff で16ビット (0〜65535) の範囲に収める
+
+def initialize(id = (@@identifier += 1) & 0xffff)
+  @id = id
+  @qr = 0
+  @opcode = 0
+  @aa = 0
+  @tc = 0
+  @rd = 0 # recursion desired
+  @ra = 0 # recursion available
+  @rcode = 0
+  @question = []
+  @answer = []
+  @authority = []
+  @additional = []
+end
+
+attr_accessor :id, :qr, :opcode, :aa, :tc, :rd, :ra, :rcode
+attr_reader :question, :answer, :authority, :additional
 ```
 
 ### `MDNS#each_address`
