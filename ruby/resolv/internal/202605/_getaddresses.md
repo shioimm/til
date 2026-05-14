@@ -392,7 +392,7 @@ def fetch_resource(name, typeclass)
 
   begin
     @config.resolv(name) do |candidate, tout, nameserver, port| # => Config#resolv
-      msg = Message.new # => Message#initialize
+      msg = Message.new # => DNS::Message#initialize
       msg.rd = 1
       msg.add_question(candidate, typeclass) # => Message#add_question
 
@@ -418,7 +418,7 @@ def fetch_resource(name, typeclass)
       unless sender = senders[[candidate, requester, nameserver, port]]
         sender = requester.sender(msg, candidate, nameserver, port) # 新しいsenderを生成
         # => DNS::Requester::ConnectedUDP#sender
-        #    / DNS::Requester::UnconnectedUDP#sender
+        #    / DNS::Requester::UnconnectedUDP#sender WIP
         #    / DNS::Requester::TCP#sender WIP
         next if !sender
         senders[[candidate, requester, nameserver, port]] = sender
@@ -524,18 +524,49 @@ end
  end
 ```
 
-### `DNS::Requester::ConnectedUDP#sender` WIP
+### `DNS::Requester::ConnectedUDP#sender`
 
 ```ruby
 def sender(msg, data, host=@host, port=@port)
-  lazy_initialize
+  # DNSサーバと接続確立
+  lazy_initialize # => DNS::Requester::ConnectedUDP#lazy_initialize
+
+  # 送信先の検証
   unless host == @host && port == @port
     raise RequestError.new("host/port don't match: #{host}:#{port}")
   end
-  id = DNS.allocate_request_id(@host, @port)
-  request = msg.encode
+
+  # 同じhost, portの組み合わせに対して、重複しない16ビットのトランザクションIDをランダムに払い出す
+  id = DNS.allocate_request_id(@host, @port) # => DNS.allocate_request_id
+
+  # MessageオブジェクトをDNSフォーマットのバイト列に変換する
+  request = msg.encode # => Message#encode
+
+  # バイト列の先頭2バイトを、allocate_request_idで払い出したトランザクションIDで上書き
   request[0,2] = [id].pack('n')
-  return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
+
+  return @senders[[nil,id]] = Sender.new(request, data, @socks[0]) # => DNS::Requester::Sender#initialize
+end
+
+# DNS::Requester::ConnectedUDP#lazy_initialize
+
+def lazy_initialize
+  @mutex.synchronize {
+    next if @initialized
+    @initialized = true
+
+    is_ipv6 = @host.index(':')
+    sock = UDPSocket.new(is_ipv6 ? Socket::AF_INET6 : Socket::AF_INET)
+    @socks = [sock]
+
+    sock.do_not_reverse_lookup = true # => BasicSocket#do_not_reverse_lookup アドレスからホスト名へ逆引きを行わない
+    DNS.bind_random_port(sock, is_ipv6 ? "::" : "0.0.0.0") # => DNS.bind_random_port
+    # UDPソケットにランダムなエフェメラルポートをバインドする
+    # プラットフォームによって具体的な実装が異なる
+
+    sock.connect(@host, @port) # => UDPSocket#connect
+  }
+  self
 end
 ```
 
@@ -602,6 +633,16 @@ end
 def initialize
   @senders = {}
   @socks = nil
+end
+```
+
+### `DNS::Requester::Sender#initialize`
+
+```ruby
+def initialize(msg, data, sock)
+  @msg = msg
+  @data = data
+  @sock = sock
 end
 ```
 
@@ -735,7 +776,7 @@ def initialize(labels, absolute=true) # :nodoc:
 end
 ```
 
-### `Message#initialize`
+### `DNS::Message#initialize`
 
 ```ruby
 @@identifier = -1
