@@ -76,19 +76,38 @@ p data.ipv6_pktinfo
 puts "\n"
 
 puts "--- Socket::AncillaryData#ipv6_pktinfo_addr ---"
+p data.ipv6_pktinfo_addr
 puts "\n"
 
 puts "--- Socket::AncillaryData#ipv6_pktinfo_ifindex ---"
+p data.ipv6_pktinfo_ifindex
 puts "\n"
 
 puts "--- Socket::AncillaryData#level ---"
+p data.level
 puts "\n"
 
 puts "--- Socket::AncillaryData#timestamp ---"
+Addrinfo.udp("127.0.0.1", 0).bind {|s1|
+  Addrinfo.udp("127.0.0.1", 0).bind {|s2|
+    s1.setsockopt(:SOCKET, :TIMESTAMP, true)
+    s2.send "Hello", 0, s1.local_address
+    ctl = s1.recvmsg.last
+    p ctl
+    p ctl.timestamp
+  }
+}
+
 puts "\n"
 
 puts "--- Socket::AncillaryData#type ---"
+p data.type
 puts "\n"
 
 puts "--- Socket::AncillaryData#unix_rights ---"
+s1, s2 = UNIXSocket.pair
+s1.sendmsg "Hello", 0, nil, Socket::AncillaryData.unix_rights(STDIN, s1)
+_, _, _, ctl = s2.recvmsg(:scm_rights=>true)
+p ctl
+p ctl.unix_rights
 puts "\n"
