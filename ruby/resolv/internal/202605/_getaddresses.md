@@ -417,8 +417,8 @@ def fetch_resource(name, typeclass)
       # --- WIP ---
       unless sender = senders[[candidate, requester, nameserver, port]]
         sender = requester.sender(msg, candidate, nameserver, port) # 新しいsenderを生成
-        # => DNS::Requester::ConnectedUDP#sender
-        #    / DNS::Requester::UnconnectedUDP#sender WIP
+        # => DNS::Requester::ConnectedUDP#sender フルリゾルバが一つしかない場合 (接続することで安全性を高める)
+        #    / DNS::Requester::UnconnectedUDP#sender フルリゾルバが複数ある場合
         #    / DNS::Requester::TCP#sender WIP
         next if !sender
         senders[[candidate, requester, nameserver, port]] = sender
@@ -559,7 +559,9 @@ def lazy_initialize
     sock = UDPSocket.new(is_ipv6 ? Socket::AF_INET6 : Socket::AF_INET)
     @socks = [sock]
 
-    sock.do_not_reverse_lookup = true # => BasicSocket#do_not_reverse_lookup アドレスからホスト名へ逆引きを行わない
+    sock.do_not_reverse_lookup = true # => BasicSocket#do_not_reverse_lookup
+    # アドレスからホスト名へ逆引きを行わない
+
     DNS.bind_random_port(sock, is_ipv6 ? "::" : "0.0.0.0") # => DNS.bind_random_port
     # UDPソケットにランダムなエフェメラルポートをバインドする
     # プラットフォームによって具体的な実装が異なる
@@ -583,20 +585,71 @@ def initialize(*nameserver_port)
 end
 ```
 
-### `DNS::Requester::UnconnectedUDP#sender` WIP
+### `DNS::Requester::UnconnectedUDP#sender`
 
 ```ruby
 def sender(msg, data, host, port=Port)
-  host = Addrinfo.ip(host).ip_address
-  lazy_initialize
+  host = Addrinfo.ip(host).ip_address # フルリゾルバを名前解決してアドレスを取得
+
+  lazy_initialize # => DNS::Requester::UnconnectedUDP#lazy_initialize
+
   sock = @socks_hash[host.index(':') ? "::" : "0.0.0.0"]
   return nil if !sock
+
   service = [host, port]
-  id = DNS.allocate_request_id(host, port)
-  request = msg.encode
+
+  # 同じhost, portの組み合わせに対して、重複しない16ビットのトランザクションIDをランダムに払い出す
+  id = DNS.allocate_request_id(host, port) # => DNS.allocate_request_id
+
+  # MessageオブジェクトをDNSフォーマットのバイト列に変換する
+  request = msg.encode # => Message#encode
+
+  # バイト列の先頭2バイトを、allocate_request_idで払い出したトランザクションIDで上書き
   request[0,2] = [id].pack('n')
-  return @senders[[service, id]] =
-    Sender.new(request, data, sock, host, port)
+
+  return @senders[[service, id]] =  Sender.new(request, data, sock, host, port)
+end
+
+# DNS::Requester::UnconnectedUDP#lazy_initialize
+
+def lazy_initialize
+  @mutex.synchronize {
+    next if @initialized
+
+    @initialized = true
+    @socks_hash = {}
+    @socks = []
+
+    @nameserver_port.each {|host, port|
+      if host.index(':') # IPv6 / IPv4の判別
+        bind_host = "::"
+        af = Socket::AF_INET6
+      else
+        bind_host = "0.0.0.0"
+        af = Socket::AF_INET
+      end
+
+      # アドレスファミリごと1ソケットだけ生成する
+      next if @socks_hash[bind_host]
+
+      begin
+        sock = UDPSocket.new(af)
+      rescue Errno::EAFNOSUPPORT, Errno::EPROTONOSUPPORT
+        next # The kernel doesn't support the address family.
+      end
+
+      @socks << sock
+      @socks_hash[bind_host] = sock
+
+      sock.do_not_reverse_lookup = true # => BasicSocket#do_not_reverse_lookup
+      # アドレスからホスト名へ逆引きを行わない
+
+      DNS.bind_random_port(sock, bind_host) # => DNS.bind_random_port
+      # UDPソケットにランダムなエフェメラルポートをバインドする
+      # プラットフォームによって具体的な実装が異なる
+    }
+  }
+  self
 end
 ```
 
