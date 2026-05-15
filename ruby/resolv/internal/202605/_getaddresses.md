@@ -427,6 +427,7 @@ def fetch_resource(name, typeclass)
 
       # --- WIP ---
       reply, reply_name = requester.request(sender, tout)
+      # => DNS::Requester#request WIP
 
       case reply.rcode
       when RCode::NoError
@@ -695,6 +696,58 @@ end
 def initialize
   @senders = {}
   @socks = nil
+end
+```
+
+### `DNS::Requester#request` WIP
+
+```ruby
+def request(sender, tout)
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  timelimit = start + tout
+  begin
+    sender.send
+  rescue Errno::EHOSTUNREACH, # multi-homed IPv6 may generate this
+         Errno::ENETUNREACH
+    raise ResolvTimeout
+  end
+  while true
+    before_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    timeout = timelimit - before_select
+    if timeout <= 0
+      raise ResolvTimeout
+    end
+    if @socks.size == 1
+      select_result = @socks[0].wait_readable(timeout) ? [ @socks ] : nil
+    else
+      select_result = IO.select(@socks, nil, nil, timeout)
+    end
+    if !select_result
+      after_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      next if after_select < timelimit
+      raise ResolvTimeout
+    end
+    begin
+      reply, from = recv_reply(select_result[0])
+    rescue Errno::ECONNREFUSED, # GNU/Linux, FreeBSD
+           Errno::ECONNRESET, # Windows
+           EOFError
+      # No name server running on the server?
+      # Don't wait anymore.
+      raise ResolvTimeout
+    end
+    begin
+      msg = Message.decode(reply)
+    rescue DecodeError
+      next # broken DNS message ignored
+    end
+    if sender == sender_for(from, msg)
+      break
+    else
+      # unexpected DNS message ignored
+    end
+  end
+  return msg, sender.data
 end
 ```
 
