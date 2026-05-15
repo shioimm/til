@@ -8,21 +8,27 @@ p sockopt
 puts "\n"
 
 puts "--- Socket::Option.bool(family, level, optname, bool) ---"
+p Socket::Option.bool(:INET, :SOCKET, :KEEPALIVE, true)
 puts "\n"
 
 puts "--- Socket::Option.byte(family, level, optname, integer) ---"
+p Socket::Option.byte(:INET, :SOCKET, :KEEPALIVE, 1)
 puts "\n"
 
 puts "--- Socket::Option.int(family, level, optname, integer) ---"
+p Socket::Option.int(:INET, :SOCKET, :KEEPALIVE, 1)
 puts "\n"
 
 puts "--- Socket::Option.ipv4_multicast_loop(integer) ---"
+p Socket::Option.int(:INET, :IPPROTO_IP, :IP_MULTICAST_LOOP, 1)
 puts "\n"
 
 puts "--- Socket::Option.ipv4_multicast_ttl(integer) ---"
+p Socket::Option.ipv4_multicast_ttl(10)
 puts "\n"
 
 puts "--- Socket::Option.linger(onoff, secs) ---"
+p Socket::Option.linger(true, 10)
 puts "\n"
 
 puts "--- Socket::Option#bool ---"
