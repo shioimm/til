@@ -408,23 +408,26 @@ def fetch_resource(name, typeclass)
         if !truncated[candidate] && udp_requester
           udp_requester # DNS::Requester::ConnectedUDP もしくは DNS::Requester::UnconnectedUDPオブジェクト
         else
+          # 権限エラーでUDPソケットの生成が失敗した場合もしくはUDPレスポンスにTCフラグが立っていた場合
           # make_tcp_requesterの返り値を requesters[[nameserver, port]] に保存
           requesters[[nameserver, port]] = make_tcp_requester(nameserver, port) # => DNS#make_tcp_requester
           # DNS::Requester::TCP オブジェクトを格納する
         end
       end
 
-      # --- WIP ---
+      # 呼び出し時にsendersに[candidate, requester, nameserver, port]のくみが存在しない場合のみ実行される
       unless sender = senders[[candidate, requester, nameserver, port]]
         sender = requester.sender(msg, candidate, nameserver, port) # 新しいsenderを生成
         # => DNS::Requester::ConnectedUDP#sender フルリゾルバが一つしかない場合 (接続することで安全性を高める)
         #    / DNS::Requester::UnconnectedUDP#sender フルリゾルバが複数ある場合
-        #    / DNS::Requester::TCP#sender WIP
+        #    / DNS::Requester::TCP#sender UDPのリクエスタが利用できない場合
         next if !sender
         senders[[candidate, requester, nameserver, port]] = sender
       end
 
+      # --- WIP ---
       reply, reply_name = requester.request(sender, tout)
+      # => DNS::Requester#request WIP
 
       case reply.rcode
       when RCode::NoError
@@ -666,16 +669,23 @@ def initialize(host, port=Port)
 end
 ```
 
-### `DNS::Requester::TCP#sender` WIP
+### `DNS::Requester::TCP#sender`
 
 ```ruby
 def sender(msg, data, host=@host, port=@port)
   unless host == @host && port == @port
     raise RequestError.new("host/port don't match: #{host}:#{port}")
   end
-  id = DNS.allocate_request_id(@host, @port)
-  request = msg.encode
+
+  # 同じhost, portの組み合わせに対して、重複しない16ビットのトランザクションIDをランダムに払い出す
+  id = DNS.allocate_request_id(@host, @port) # => DNS.allocate_request_id
+
+  # MessageオブジェクトをDNSフォーマットのバイト列に変換する
+  request = msg.encode # => Message#encode
+
+  # バイト列の先頭2バイトを、メッセージの長さとallocate_request_idで払い出したトランザクションIDで上書き
   request[0,2] = [request.length, id].pack('nn')
+
   return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
 end
 ```
@@ -686,6 +696,58 @@ end
 def initialize
   @senders = {}
   @socks = nil
+end
+```
+
+### `DNS::Requester#request` WIP
+
+```ruby
+def request(sender, tout)
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  timelimit = start + tout
+  begin
+    sender.send
+  rescue Errno::EHOSTUNREACH, # multi-homed IPv6 may generate this
+         Errno::ENETUNREACH
+    raise ResolvTimeout
+  end
+  while true
+    before_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    timeout = timelimit - before_select
+    if timeout <= 0
+      raise ResolvTimeout
+    end
+    if @socks.size == 1
+      select_result = @socks[0].wait_readable(timeout) ? [ @socks ] : nil
+    else
+      select_result = IO.select(@socks, nil, nil, timeout)
+    end
+    if !select_result
+      after_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      next if after_select < timelimit
+      raise ResolvTimeout
+    end
+    begin
+      reply, from = recv_reply(select_result[0])
+    rescue Errno::ECONNREFUSED, # GNU/Linux, FreeBSD
+           Errno::ECONNRESET, # Windows
+           EOFError
+      # No name server running on the server?
+      # Don't wait anymore.
+      raise ResolvTimeout
+    end
+    begin
+      msg = Message.decode(reply)
+    rescue DecodeError
+      next # broken DNS message ignored
+    end
+    if sender == sender_for(from, msg)
+      break
+    else
+      # unexpected DNS message ignored
+    end
+  end
+  return msg, sender.data
 end
 ```
 
