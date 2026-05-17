@@ -576,6 +576,17 @@ def lazy_initialize
 end
 ```
 
+### `DNS::Requester::ConnectedUDP#recv_reply`
+
+```ruby
+def recv_reply(readable_socks)
+  lazy_initialize # => DNS::Requester::ConnectedUDP#lazy_initialize
+
+  reply = readable_socks[0].recv(UDPSize)
+  return reply, nil
+end
+```
+
 ### `DNS::Requester::ConnectedUDP::Sender#send`
 
 ```ruby
@@ -670,6 +681,17 @@ def lazy_initialize
 end
 ```
 
+### `DNS::Requester::UnconnectedUDP#recv_reply`
+
+```ruby
+def recv_reply(readable_socks)
+  lazy_initialize # => DNS::Requester::UnconnectedUDP#recv_reply
+
+  reply, from = readable_socks[0].recvfrom(UDPSize)
+  return reply, [from[3],from[1]]
+end
+```
+
 ### `DNS::Requester::UnconnectedUDP::Sender#initialize`
 
 ```ruby
@@ -728,6 +750,21 @@ def sender(msg, data, host=@host, port=@port)
 end
 ```
 
+### `DNS::Requester::TCP#recv_reply`
+
+```ruby
+def recv_reply(readable_socks)
+  len_data = readable_socks[0].read(2)
+  raise EOFError if len_data.nil? || len_data.bytesize != 2
+
+  len = len_data.unpack('n')[0]
+  reply = @socks[0].read(len)
+  raise EOFError if reply.nil? || reply.bytesize != len
+
+  return reply, nil
+end
+```
+
 ### `DNS::Requester::TCP::Sender#send`
 
 ```ruby
@@ -761,9 +798,9 @@ def request(sender, tout)
 
   begin
     sender.send
-    # => DNS::Requester::ConnectedUDP::Sender#send
-    #    / DNS::Requester::UnconnectedUDP::Sender#send
-    #    / DNS::Requester::TCP::Sender#send
+    # => DNS::Requester::ConnectedUDP::Sender#send メッセージを送信
+    #    / DNS::Requester::UnconnectedUDP::Sender#send 宛先を指定してメッセージを送信
+    #    / DNS::Requester::TCP::Sender#send メッセージをストリームとして送信
   rescue Errno::EHOSTUNREACH, # multi-homed IPv6 may generate this
          Errno::ENETUNREACH
     raise ResolvTimeout
@@ -792,9 +829,9 @@ def request(sender, tout)
 
     begin
       reply, from = recv_reply(select_result[0])
-      # => DNS::Requester::ConnectedUDP#sender#recv_reply WIP
-      #    / DNS::Requester::UnconnectedUDP#recv_reply WIP
-      #    / DNS::Requester::TCP#recv_reply WIP
+      # => DNS::Requester::ConnectedUDP#recv_reply メッセージを受信
+      #    / DNS::Requester::UnconnectedUDP#recv_reply メッセージとリゾルバのアドレス情報を取得
+      #    / DNS::Requester::TCP#recv_reply メッセージをストリームとして受信
     rescue Errno::ECONNREFUSED, # GNU/Linux, FreeBSD
            Errno::ECONNRESET, # Windows
            EOFError
@@ -804,6 +841,7 @@ def request(sender, tout)
     end
 
     begin
+      # DNSフォーマットのバイト列をMessageオブジェクトに変換
       msg = Message.decode(reply) # => DNS::Message.decode
     rescue DecodeError
       next # broken DNS message ignored
