@@ -425,10 +425,10 @@ def fetch_resource(name, typeclass)
         senders[[candidate, requester, nameserver, port]] = sender
       end
 
-      # --- WIP ---
       reply, reply_name = requester.request(sender, tout)
-      # => DNS::Requester#request WIP
+      # => DNS::Requester#request
 
+      # --- WIP ---
       case reply.rcode
       when RCode::NoError
         if reply.tc == 1 and not Requester::TCP === requester
@@ -786,7 +786,7 @@ def initialize
 end
 ```
 
-### `DNS::Requester#request` WIP
+### `DNS::Requester#request`
 
 ```ruby
 # - メッセージを送信する
@@ -847,6 +847,7 @@ def request(sender, tout)
       next # broken DNS message ignored
     end
 
+    # 受信したレスポンスが自ら送信したリクエストに対する応答かどうかを確認、そうでなければ無視
     if sender == sender_for(from, msg) # => DNS::Requester#sender_for
       # DNS::Requester#sender_for
       #   def sender_for(addr, msg)
