@@ -548,7 +548,8 @@ def sender(msg, data, host=@host, port=@port)
   # バイト列の先頭2バイトを、allocate_request_idで払い出したトランザクションIDで上書き
   request[0,2] = [id].pack('n')
 
-  return @senders[[nil,id]] = Sender.new(request, data, @socks[0]) # => DNS::Requester::Sender#initialize
+  return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
+  # => DNS::Requester::Sender#initialize
 end
 
 # DNS::Requester::ConnectedUDP#lazy_initialize
@@ -572,6 +573,18 @@ def lazy_initialize
     sock.connect(@host, @port) # => UDPSocket#connect
   }
   self
+end
+```
+
+### `DNS::Requester::ConnectedUDP::Sender#send`
+
+```ruby
+# class Sender < Requester::Sender # :nodoc:
+# attr_reader :data
+
+def send
+  raise "@sock is nil." if @sock.nil?
+  @sock.send(@msg, 0)
 end
 ```
 
@@ -610,7 +623,8 @@ def sender(msg, data, host, port=Port)
   # バイト列の先頭2バイトを、allocate_request_idで払い出したトランザクションIDで上書き
   request[0,2] = [id].pack('n')
 
-  return @senders[[service, id]] =  Sender.new(request, data, sock, host, port)
+  return @senders[[service, id]] = Sender.new(request, data, sock, host, port)
+  # => DNS::Requester::UnconnectedUDP::Sender#initialize
 end
 
 # DNS::Requester::UnconnectedUDP#lazy_initialize
@@ -656,6 +670,29 @@ def lazy_initialize
 end
 ```
 
+### `DNS::Requester::UnconnectedUDP::Sender#initialize`
+
+```ruby
+# class Sender < Requester::Sender # :nodoc:
+
+def initialize(msg, data, sock, host, port)
+  super(msg, data, sock) # => DNS::Requester::Sender#initialize
+  @host = host
+  @port = port
+end
+
+attr_reader :data
+```
+
+### `DNS::Requester::UnconnectedUDP::Sender#send`
+
+```ruby
+def send
+  raise "@sock is nil." if @sock.nil?
+  @sock.send(@msg, 0, @host, @port)
+end
+```
+
 ### `DNS::Requester::TCP#initialize`
 
 ```ruby
@@ -687,6 +724,19 @@ def sender(msg, data, host=@host, port=@port)
   request[0,2] = [request.length, id].pack('nn')
 
   return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
+  # => DNS::Requester::Sender#initialize
+end
+```
+
+### `DNS::Requester::TCP::Sender#send`
+
+```ruby
+# class Sender < Requester::Sender # :nodoc:
+# attr_reader :data
+
+def send
+  @sock.print(@msg)
+  @sock.flush
 end
 ```
 
@@ -702,33 +752,49 @@ end
 ### `DNS::Requester#request` WIP
 
 ```ruby
+# - メッセージを送信する
+# - メッセージを受信する
+# - メッセージをデコードする
 def request(sender, tout)
   start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   timelimit = start + tout
+
   begin
     sender.send
+    # => DNS::Requester::ConnectedUDP::Sender#send
+    #    / DNS::Requester::UnconnectedUDP::Sender#send
+    #    / DNS::Requester::TCP::Sender#send
   rescue Errno::EHOSTUNREACH, # multi-homed IPv6 may generate this
          Errno::ENETUNREACH
     raise ResolvTimeout
   end
+
   while true
     before_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     timeout = timelimit - before_select
+
     if timeout <= 0
       raise ResolvTimeout
     end
+
     if @socks.size == 1
       select_result = @socks[0].wait_readable(timeout) ? [ @socks ] : nil
     else
       select_result = IO.select(@socks, nil, nil, timeout)
     end
+
     if !select_result
       after_select = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
       next if after_select < timelimit
       raise ResolvTimeout
     end
+
     begin
       reply, from = recv_reply(select_result[0])
+      # => DNS::Requester::ConnectedUDP#sender#recv_reply WIP
+      #    / DNS::Requester::UnconnectedUDP#recv_reply WIP
+      #    / DNS::Requester::TCP#recv_reply WIP
     rescue Errno::ECONNREFUSED, # GNU/Linux, FreeBSD
            Errno::ECONNRESET, # Windows
            EOFError
@@ -736,18 +802,25 @@ def request(sender, tout)
       # Don't wait anymore.
       raise ResolvTimeout
     end
+
     begin
-      msg = Message.decode(reply)
+      msg = Message.decode(reply) # => DNS::Message.decode
     rescue DecodeError
       next # broken DNS message ignored
     end
-    if sender == sender_for(from, msg)
+
+    if sender == sender_for(from, msg) # => DNS::Requester#sender_for
+      # DNS::Requester#sender_for
+      #   def sender_for(addr, msg)
+      #     @senders[[addr,msg.id]]
+      #   end
       break
     else
       # unexpected DNS message ignored
     end
   end
-  return msg, sender.data
+
+  return msg, sender.data # => attr_reader :data
 end
 ```
 
