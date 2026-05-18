@@ -369,11 +369,11 @@ end
 # typeclass = レコードの種類 (e.g. Resource::IN::AAAA)
 def each_resource(name, typeclass, &proc)
   fetch_resource(name, typeclass) {|reply, reply_name| # => DNS#fetch_resource
-    extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources
+    extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources WIP
   }
 end
 
-# DNS#fetch_resource WIP
+# DNS#fetch_resource
 
 def fetch_resource(name, typeclass)
   lazy_initialize # => DNS#lazy_initialize
@@ -427,16 +427,16 @@ def fetch_resource(name, typeclass)
 
       reply, reply_name = requester.request(sender, tout)
       # => DNS::Requester#request
+      # Messageオブジェクト、sender.data (Nameオブジェクト)
 
-      # --- WIP ---
-      case reply.rcode
+      case reply.rcode # => Message attr_accessor :rcode (flag & 15 の値)
       when RCode::NoError
         if reply.tc == 1 and not Requester::TCP === requester
           # Retry via TCP:
           truncated[candidate] = true
           redo
         else
-          yield(reply, reply_name)
+          yield(reply, reply_name) # => DNS#extract_resources WIP
         end
         return
       when RCode::NXDomain
