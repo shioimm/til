@@ -843,7 +843,7 @@ def request(sender, tout)
 
     begin
       # DNSフォーマットのバイト列をMessageオブジェクトに変換
-      msg = Message.decode(reply) # => DNS::Message.decode
+      msg = Message.decode(reply) # => DNS::Message.decode WIP
     rescue DecodeError
       next # broken DNS message ignored
     end
@@ -1029,6 +1029,46 @@ end
 
 attr_accessor :id, :qr, :opcode, :aa, :tc, :rd, :ra, :rcode
 attr_reader :question, :answer, :authority, :additional
+```
+
+### `DNS::Message.decode` WIP
+
+```ruby
+def Message.decode(m)
+  o = Message.new(0) # => Message#initialize
+
+  MessageDecoder.new(m) {|msg|
+    id, flag, qdcount, ancount, nscount, arcount =
+      msg.get_unpack('nnnnnn')
+    o.id = id
+    o.tc = (flag >> 9) & 1
+    o.rcode = flag & 15
+    return o unless o.tc.zero?
+
+    o.qr = (flag >> 15) & 1
+    o.opcode = (flag >> 11) & 15
+    o.aa = (flag >> 10) & 1
+    o.rd = (flag >> 8) & 1
+    o.ra = (flag >> 7) & 1
+    (1..qdcount).each {
+      name, typeclass = msg.get_question
+      o.add_question(name, typeclass)
+    }
+    (1..ancount).each {
+      name, ttl, data = msg.get_rr
+      o.add_answer(name, ttl, data)
+    }
+    (1..nscount).each {
+      name, ttl, data = msg.get_rr
+      o.add_authority(name, ttl, data)
+    }
+    (1..arcount).each {
+      name, ttl, data = msg.get_rr
+      o.add_additional(name, ttl, data)
+    }
+  }
+  return o
+end
 ```
 
 ### `DNS::Message#each_resource`
