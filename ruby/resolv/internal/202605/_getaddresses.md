@@ -368,7 +368,7 @@ end
 # name = ドメイン名
 # typeclass = レコードの種類 (e.g. Resource::IN::AAAA)
 def each_resource(name, typeclass, &proc)
-  fetch_resource(name, typeclass) {|reply, reply_name| # => DNS#fetch_resource
+  fetch_resource(name, typeclass) { |reply, reply_name| # => DNS#fetch_resource
     extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources WIP
   }
 end
@@ -483,11 +483,12 @@ end
 
 def extract_resources(msg, name, typeclass) # :nodoc:
   if typeclass < Resource::ANY
-    n0 = Name.create(name)
-    msg.each_resource {|n, ttl, data|
+    n0 = Name.create(name) # => DNS::Name.create 解決したいドメイン名をDNS::Nameオブジェクトにする
+    msg.each_resource {|n, ttl, data| # => DNS::Message#each_resource
       yield data if n0 == n
     }
   end
+
   yielded = false
   n0 = Name.create(name)
   msg.each_resource {|n, ttl, data|
@@ -1028,6 +1029,38 @@ end
 
 attr_accessor :id, :qr, :opcode, :aa, :tc, :rd, :ra, :rcode
 attr_reader :question, :answer, :authority, :additional
+```
+
+### `DNS::Message#each_resource`
+
+```ruby
+def each_resource
+  each_answer { |name, ttl, data| yield name, ttl, data} # => DNS::Message#each_answer
+  each_authority { |name, ttl, data| yield name, ttl, data} # => DNS::Message#each_authority
+  each_additional { |name, ttl, data| yield name, ttl, data} # => DNS::Message#each_additional
+end
+
+# DNS::Message#each_answer
+
+def each_answer
+  @answer.each { |name, ttl, data|
+    yield name, ttl, data
+  }
+end
+
+# DNS::Message#each_authority
+
+def add_authority(name, ttl, data)
+  @authority << [Name.create(name), ttl, data]
+end
+
+# DNS::Message#each_additional
+
+def each_additional
+  @additional.each { |name, ttl, data|
+    yield name, ttl, data
+  }
+end
 ```
 
 ### `MDNS#each_address`
