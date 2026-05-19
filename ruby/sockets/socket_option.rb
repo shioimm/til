@@ -1,4 +1,4 @@
-# https://www.rubydoc.info/stdlib/socket/4.0.0/Socket/AncillaryData
+# https://www.rubydoc.info/stdlib/socket/4.0.0/Socket/Option
 
 require "socket"
 
