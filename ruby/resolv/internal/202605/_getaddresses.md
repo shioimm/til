@@ -1061,25 +1061,25 @@ def Message.decode(m)
     # Questionセクションのエントリを取得
     (1..qdcount).each {
       name, typeclass = msg.get_question # => DNS::Message::MessageDecoder#get_question WIP
-      o.add_question(name, typeclass) # => DNS::Message::MessageDecoder#add_question WIP
+      o.add_question(name, typeclass) # => DNS::Message::MessageDecoder#add_question
     }
 
     # Answerセクションのリソースレコードを取得
     (1..ancount).each {
       name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr WIP
-      o.add_answer(name, ttl, data) # => DNS::Message::MessageDecoder#add_answer WIP
+      o.add_answer(name, ttl, data) # => DNS::Message::MessageDecoder#add_answer
     }
 
     # Authorityセクションのリソースレコード (NSレコード / SOAレコード) を取得
     (1..nscount).each {
       name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr
-      o.add_authority(name, ttl, data) # => DNS::Message::MessageDecoder#add_authority WIP
+      o.add_authority(name, ttl, data) # => DNS::Message::MessageDecoder#add_authority
     }
 
     #  Additionalセクションのリソースレコードを取得
     (1..arcount).each {
       name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr
-      o.add_additional(name, ttl, data) # => DNS::Message::MessageDecoder#add_additional WIP
+      o.add_additional(name, ttl, data) # => DNS::Message::MessageDecoder#add_additional
     }
   }
 
@@ -1122,6 +1122,68 @@ def get_unpack(template)
   return arr
 end
 ```
+
+### `DNS::Message::MessageDecoder#get_question` WIP
+
+```ruby
+def get_question
+  name = self.get_name
+  type, klass = self.get_unpack("nn")
+  return name, Resource.get_class(type, klass)
+end
+```
+
+### `DNS::Message::MessageDecoder#add_question`
+
+```ruby
+def add_question(name, typeclass)
+  @question << [Name.create(name), typeclass]
+end
+```
+
+### `DNS::Message::MessageDecoder#get_rr` WIP
+
+```ruby
+def get_rr
+  name = self.get_name
+  type, klass, ttl = self.get_unpack('nnN')
+  typeclass = Resource.get_class(type, klass)
+  res = self.get_length16 do
+    begin
+      typeclass.decode_rdata self
+    rescue => e
+      raise DecodeError, e.message, e.backtrace
+    end
+  end
+  res.instance_variable_set :@ttl, ttl
+  return name, ttl, res
+end
+```
+
+### `DNS::Message::MessageDecoder#add_answer`
+
+```ruby
+def add_answer(name, ttl, data)
+  @answer << [Name.create(name), ttl, data]
+end
+```
+
+### `DNS::Message::MessageDecoder#add_authority`
+
+```ruby
+def add_authority(name, ttl, data)
+  @authority << [Name.create(name), ttl, data]
+end
+```
+
+### `DNS::Message::MessageDecoder#add_additional`
+
+```ruby
+def add_additional(name, ttl, data)
+  @additional << [Name.create(name), ttl, data]
+end
+```
+
 
 ### `DNS::Message#each_resource`
 
