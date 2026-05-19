@@ -1035,11 +1035,11 @@ attr_reader :question, :answer, :authority, :additional
 
 ```ruby
 def Message.decode(m)
-  o = Message.new(0) # => Message#initialize
+  o = Message.new(0) # => DNS::Message#initialize
 
-  MessageDecoder.new(m) {|msg|
-    id, flag, qdcount, ancount, nscount, arcount =
-      msg.get_unpack('nnnnnn')
+  MessageDecoder.new(m) {|msg| # => DNS::MessageDecoder#initialize
+    id, flag, qdcount, ancount, nscount, arcount = msg.get_unpack('nnnnnn') # => DNS::MessageDecoder#get_unpack WIP
+
     o.id = id
     o.tc = (flag >> 9) & 1
     o.rcode = flag & 15
@@ -1068,6 +1068,39 @@ def Message.decode(m)
     }
   }
   return o
+end
+```
+
+### `DNS::MessageDecoder#initialize`
+
+```ruby
+def initialize(data)
+  @data = data
+  @index = 0
+  @limit = data.bytesize
+  yield self
+end
+```
+
+### `DNS::MessageDecoder#get_unpack` WIP
+
+```ruby
+def get_unpack(template)
+  len = 0
+  template.each_byte {|byte|
+    byte = "%c" % byte
+    case byte
+    when ?c, ?C then len += 1
+    when ?n     then len += 2
+    when ?N     then len += 4
+    else
+      raise StandardError.new("unsupported template: '#{byte.chr}' in '#{template}'")
+    end
+  }
+  raise DecodeError.new("limit exceeded") if @limit < @index + len
+  arr = @data.unpack("@#{@index}#{template}")
+  @index += len
+  return arr
 end
 ```
 
