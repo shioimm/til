@@ -1060,7 +1060,7 @@ def Message.decode(m)
 
     # Questionセクションのエントリを取得
     (1..qdcount).each {
-      name, typeclass = msg.get_question # => DNS::Message::MessageDecoder#get_question WIP
+      name, typeclass = msg.get_question # => DNS::Message::MessageDecoder#get_question
       o.add_question(name, typeclass) # => DNS::Message::MessageDecoder#add_question
     }
 
@@ -1123,13 +1123,88 @@ def get_unpack(template)
 end
 ```
 
-### `DNS::Message::MessageDecoder#get_question` WIP
+### `DNS::Message::MessageDecoder#get_question`
 
 ```ruby
+# DNS ワイヤーフォーマットのQuestion セクションから1エントリを読み取り、
+# [ドメイン名を表すNameオブジェクト, リソースレコードの種類を表すResourceのサブクラス] の形式で返す
 def get_question
-  name = self.get_name
+  name = self.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # Questionセクションのドメイン名の直後にある4バイトを取り出す
+  # type  = クエリタイプ
+  # klass = クエリクラス
   type, klass = self.get_unpack("nn")
+
   return name, Resource.get_class(type, klass)
+end
+
+# DNS::Message::MessageDecoder#get_name
+
+def get_name
+  return Name.new(self.get_labels) # => DNS::Message::MessageDecoder#get_labels
+end
+
+# DNS::Message::MessageDecoder#get_labels
+# ラベルの配列を返す
+
+def get_labels
+  prev_index = @index
+  save_index = nil
+  d = []
+  size = -1
+
+  while true
+    raise DecodeError.new("limit exceeded") if @limit <= @index
+
+    case @data.getbyte(@index) # @data = DNSレスポンスのバイト列
+    when 0 # ドメイン名の終わりを示す0x00
+      @index += 1
+      if save_index
+        @index = save_index
+      end
+      return d
+
+    when 192..255 # 同じメッセージ内に複数出現する同じドメイン名の最初の位置を示すポインタ
+      idx = self.get_unpack('n')[0] & 0x3fff
+
+      if prev_index <= idx
+        raise DecodeError.new("non-backward name pointer")
+      end
+
+      prev_index = idx
+      if !save_index
+        save_index = @index
+      end
+      @index = idx
+    else # 通常のラベル
+      l = self.get_label # => DNS::Message::MessageDecoder#get_label
+      d << l
+      size += 1 + l.string.bytesize
+      raise DecodeError.new("name label data exceed 255 octets") if size > 255
+    end
+  end
+end
+
+# DNS::Message::MessageDecoder#get_label
+# ラベルとして取得した文字列をLabel::Strオブジェクトとして返す
+
+def get_label
+  return Label::Str.new(self.get_string) # => DNS::Message::MessageDecoder#get_string
+end
+
+# DNS::Message::MessageDecoder#get_string
+# 現在位置のバイトを長さとして読み、その分の文字列を取り出して返す
+
+def get_string
+  raise DecodeError.new("limit exceeded") if @limit <= @index
+
+  len = @data.getbyte(@index)
+  raise DecodeError.new("limit exceeded") if @limit < @index + 1 + len
+
+  d = @data.byteslice(@index + 1, len)
+  @index += 1 + len
+  return d
 end
 ```
 
@@ -1214,6 +1289,47 @@ def each_additional
   @additional.each { |name, ttl, data|
     yield name, ttl, data
   }
+end
+```
+
+### `DNS::Resource.get_class`
+
+```ruby
+def self.get_class(type_value, class_value) # :nodoc:
+  cache = :"Type#{type_value}_Class#{class_value}"
+
+  # 既知のレコードの種類 (e.g. IN::A, IN:AAAA, IN::SVR, ...) は、各クラス定義時にClassHashに保存されている
+  # 未知のレコードの場合はGeneric.createする
+  return (const_defined?(cache) && const_get(cache)) ||
+         Generic.create(type_value, class_value) # => DNS::Resource::Generic.create
+end
+```
+
+### `DNS::Resource::Generic.create`
+
+```ruby
+def self.create(type_value, class_value) # :nodoc:
+  c = Class.new(Generic) # DNS::Resource::Genericのサブクラスを定義
+  c.const_set(:TypeValue, type_value) # DNS::Resource::Generic::TypeValue = タイプ値
+  c.const_set(:ClassValue, class_value) # DNS::Resource::Generic::ClassValue = クラス値
+
+  # DNS::Resource::Generic::Type#{type_value}_Class#{class_value} = c
+  Generic.const_set("Type#{type_value}_Class#{class_value}", c)
+
+  ClassHash[[type_value, class_value]] = c # => DNS::Resource::ClassHash
+
+  # DNS::Resource::ClassHash
+  #
+  #   ClassHash = Module.new do
+  #     module_function
+  #
+  #     def []=(type_class_value, klass)
+  #       type_value, class_value = type_class_value
+  #       Resource.const_set(:"Type#{type_value}_Class#{class_value}", klass)
+  #     end
+  #   end
+
+  return c
 end
 ```
 
