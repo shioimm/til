@@ -843,7 +843,7 @@ def request(sender, tout)
 
     begin
       # DNSフォーマットのバイト列をMessageオブジェクトに変換
-      msg = Message.decode(reply) # => DNS::Message.decode WIP
+      msg = Message.decode(reply) # => DNS::Message.decode
     rescue DecodeError
       next # broken DNS message ignored
     end
@@ -1031,42 +1031,58 @@ attr_accessor :id, :qr, :opcode, :aa, :tc, :rd, :ra, :rcode
 attr_reader :question, :answer, :authority, :additional
 ```
 
-### `DNS::Message.decode` WIP
+### `DNS::Message.decode`
 
 ```ruby
 def Message.decode(m)
+  # ID = 0で空のMessageオブジェクトを作成
   o = Message.new(0) # => DNS::Message#initialize
 
-  MessageDecoder.new(m) {|msg| # => DNS::MessageDecoder#initialize
-    id, flag, qdcount, ancount, nscount, arcount = msg.get_unpack('nnnnnn') # => DNS::MessageDecoder#get_unpack WIP
+  MessageDecoder.new(m) {|msg| # => DNS::Message::MessageDecoder#initialize
+    # ヘッダを取得
+    # ID, Flag, Question Count, Answer Count, Name Server Count, Additional Record Count
+    id, flag, qdcount, ancount, nscount, arcount = msg.get_unpack('nnnnnn')
+    # => DNS::Message::MessageDecoder#get_unpack
+    # nnnnnn: 2 bytes * 6 = 12 bytes
 
     o.id = id
-    o.tc = (flag >> 9) & 1
+    o.tc = (flag >> 9) & 1 # flagはビット演算で各フィールドを取り出す
     o.rcode = flag & 15
+
+    # TC = 1の場合はTCPによる再試行を行うためここでreturn
     return o unless o.tc.zero?
 
-    o.qr = (flag >> 15) & 1
-    o.opcode = (flag >> 11) & 15
-    o.aa = (flag >> 10) & 1
-    o.rd = (flag >> 8) & 1
-    o.ra = (flag >> 7) & 1
+    o.qr = (flag >> 15) & 1      # # 0 = クエリ / 1 = レスポンス
+    o.opcode = (flag >> 11) & 15 # OPcodes
+    o.aa = (flag >> 10) & 1      # Authoritative Answer 権威のある回答
+    o.rd = (flag >> 8) & 1       # Recursion Desired 再帰問い合わせ要求
+    o.ra = (flag >> 7) & 1       # Recursion Available 再帰問い合わせが可能
+
+    # Questionセクションのエントリを取得
     (1..qdcount).each {
-      name, typeclass = msg.get_question
-      o.add_question(name, typeclass)
+      name, typeclass = msg.get_question # => DNS::Message::MessageDecoder#get_question WIP
+      o.add_question(name, typeclass) # => DNS::Message::MessageDecoder#add_question WIP
     }
+
+    # Answerセクションのリソースレコードを取得
     (1..ancount).each {
-      name, ttl, data = msg.get_rr
-      o.add_answer(name, ttl, data)
+      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr WIP
+      o.add_answer(name, ttl, data) # => DNS::Message::MessageDecoder#add_answer WIP
     }
+
+    # Authorityセクションのリソースレコード (NSレコード / SOAレコード) を取得
     (1..nscount).each {
-      name, ttl, data = msg.get_rr
-      o.add_authority(name, ttl, data)
+      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr
+      o.add_authority(name, ttl, data) # => DNS::Message::MessageDecoder#add_authority WIP
     }
+
+    #  Additionalセクションのリソースレコードを取得
     (1..arcount).each {
-      name, ttl, data = msg.get_rr
-      o.add_additional(name, ttl, data)
+      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr
+      o.add_additional(name, ttl, data) # => DNS::Message::MessageDecoder#add_additional WIP
     }
   }
+
   return o
 end
 ```
@@ -1082,7 +1098,7 @@ def initialize(data)
 end
 ```
 
-### `DNS::MessageDecoder#get_unpack` WIP
+### `DNS::MessageDecoder#get_unpack`
 
 ```ruby
 def get_unpack(template)
@@ -1090,16 +1106,19 @@ def get_unpack(template)
   template.each_byte {|byte|
     byte = "%c" % byte
     case byte
-    when ?c, ?C then len += 1
-    when ?n     then len += 2
-    when ?N     then len += 4
+    when ?c, ?C then len += 1 # 符号あり/なし 1バイト整数
+    when ?n     then len += 2 # ビッグエンディアン 2バイト整数
+    when ?N     then len += 4 # ビッグエンディアン 4バイト整数
     else
       raise StandardError.new("unsupported template: '#{byte.chr}' in '#{template}'")
     end
   }
+
   raise DecodeError.new("limit exceeded") if @limit < @index + len
-  arr = @data.unpack("@#{@index}#{template}")
-  @index += len
+
+  # @index = バイト列内の現在位置
+  arr = @data.unpack("@#{@index}#{template}") # 現在位置からtemplateに従って値を取得
+  @index += len # 読み取った分オフセットを進める
   return arr
 end
 ```
