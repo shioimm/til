@@ -1408,6 +1408,12 @@ def self.decode_rdata(msg) # :nodoc:
   # => DNS::Message::MessageDecoder#get_bytes
   # => DNS::Resource::Generic#initialize
 end
+
+# DNS::Resource::Generic#initialize
+
+def initialize(value)
+  @value = value
+end
 ```
 
 ### `DNS::Resource::DomainName.decode_rdata`
@@ -1417,6 +1423,12 @@ def self.decode_rdata(msg) # :nodoc:
   return self.new(msg.get_name)
   # => DNS::Message::MessageDecoder#get_name
   # => DNS::Resource::DomainName#initialize
+end
+
+# DNS::Resource::DomainName#initialize
+
+def initialize(name)
+  @name = name
 end
 ```
 
@@ -1440,6 +1452,18 @@ def self.decode_rdata(msg) # :nodoc:
 
   return self.new(mname, rname, serial, refresh, retry_, expire, minimum)
   # => DNS::Resource::SOA#initialize
+end
+
+# DNS::Resource::SOA#initialize
+
+def initialize(mname, rname, serial, refresh, retry_, expire, minimum)
+  @mname = mname
+  @rname = rname
+  @serial = serial
+  @refresh = refresh
+  @retry = retry_
+  @expire = expire
+  @minimum = minimum
 end
 ```
 
