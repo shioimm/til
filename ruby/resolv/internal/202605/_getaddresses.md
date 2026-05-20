@@ -1087,7 +1087,7 @@ def Message.decode(m)
 end
 ```
 
-### `DNS::MessageDecoder#initialize`
+### `DNS::Message::MessageDecoder#initialize`
 
 ```ruby
 def initialize(data)
@@ -1098,11 +1098,13 @@ def initialize(data)
 end
 ```
 
-### `DNS::MessageDecoder#get_unpack`
+### `DNS::Message::MessageDecoder#get_unpack`
 
 ```ruby
 def get_unpack(template)
   len = 0
+
+  # 読み取りバイト数の計算
   template.each_byte {|byte|
     byte = "%c" % byte
     case byte
@@ -1242,7 +1244,7 @@ def get_rr
       #    / DNS::Resource::SOA.decode_rdata                SOA
       #    / DNS::Resource::HINFO.decode_rdata              HINFO ホストのハードウェアとOSの情報を表すRR
       #    / DNS::Resource::MINFO.decode_rdata              MINFO メーリングリストなどのメール情報を表すRR
-      #    / DNS::Resource::MX.decode_rdata WIP
+      #    / DNS::Resource::MX.decode_rdata                 MX
       #    / DNS::Resource::TXT.decode_rdata WIP
       #    / DNS::Resource::LOC.decode_rdata WIP
       #    / DNS::Resource::CAA.decode_rdata WIP
@@ -1266,7 +1268,7 @@ end
 
 def get_length16
   # 2バイト読んでRDLENGTH = リソースデータの長さを取得
-  len, = self.get_unpack('n')
+  len, = self.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
   save_limit = @limit
   @limit = @index + len
 
@@ -1448,7 +1450,7 @@ def self.decode_rdata(msg) # :nodoc:
   # retry_  = refreshに失敗した場合の再試行間隔
   # expire  = プライマリに接続できない状態が続いた場合、セカンダリサーバがゾーンデータを破棄するまでの時間
   # minimum = ネガティブキャッシュのTTL
-  serial, refresh, retry_, expire, minimum = msg.get_unpack('NNNNN')
+  serial, refresh, retry_, expire, minimum = msg.get_unpack('NNNNN') # => DNS::Message::MessageDecoder#get_unpack
 
   return self.new(mname, rname, serial, refresh, retry_, expire, minimum)
   # => DNS::Resource::SOA#initialize
@@ -1511,13 +1513,24 @@ def initialize(rmailbx, emailbx)
 end
 ```
 
-### `DNS::Resource::MX.decode_rdata` WIP
+### `DNS::Resource::MX.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  preference, = msg.get_unpack('n')
-  exchange = msg.get_name
+  # 優先度を取得
+  preference, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+  # メールを受け取るサーバーのドメイン名を取得
+  exchange = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
   return self.new(preference, exchange)
+  # => DNS::Resource::MX#initialize
+end
+
+# DNS::Resource::MX.decode_rdata
+
+def initialize(preference, exchange)
+  @preference = preference
+  @exchange = exchange
 end
 ```
 
@@ -1558,7 +1571,7 @@ end
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  flags, = msg.get_unpack('C')
+  flags, = msg.get_unpack('C') # => DNS::Message::MessageDecoder#get_unpack
   tag = msg.get_string
   value = msg.get_bytes
   self.new flags, tag, value
@@ -1586,7 +1599,7 @@ end
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
   address = IPv4.new(msg.get_bytes(4))
-  protocol, = msg.get_unpack("n")
+  protocol, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
   bitmap = msg.get_bytes
   return self.new(address, protocol, bitmap)
 end
@@ -1596,9 +1609,9 @@ end
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  priority, = msg.get_unpack("n")
-  weight,   = msg.get_unpack("n")
-  port,     = msg.get_unpack("n")
+  priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  weight,   = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  port,     = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
   target    = msg.get_name
   return self.new(priority, weight, port, target)
 end
@@ -1608,7 +1621,7 @@ end
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  priority, = msg.get_unpack("n")
+  priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
   target    = msg.get_name
   params    = SvcParams.decode(msg)
   return self.new(priority, target, params)
