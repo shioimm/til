@@ -1234,7 +1234,22 @@ def get_rr
   res = self.get_length16 do # => DNS::Message::MessageDecoderget_length16
     begin
       typeclass.decode_rdata self
-      # => #decode_rdata
+      # => DNS::Query.decode_rdata (DecodeError)
+      #    / DNS::Resource.decode_rdata (NotImplementedError)
+      #    / DNS::Resource::Generic.decode_rdata WIP
+      #    / DNS::Resource::DomainName.decode_rdata WIP
+      #    / DNS::Resource::SOA.decode_rdata WIP
+      #    / DNS::Resource::MINFO.decode_rdata WIP
+      #    / DNS::Resource::HINFO.decode_rdata WIP
+      #    / DNS::Resource::MX.decode_rdata WIP
+      #    / DNS::Resource::TXT.decode_rdata WIP
+      #    / DNS::Resource::LOC.decode_rdata WIP
+      #    / DNS::Resource::CAA.decode_rdata WIP
+      #    / DNS::Resource::IN::A.decode_rdata WIP
+      #    / DNS::Resource::IN::AAAA.decode_rdata WIP
+      #    / DNS::Resource::IN::WKS.decode_rdata WIP
+      #    / DNS::Resource::IN::SVR.decode_rdata WIP
+      #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
     rescue => e
       raise DecodeError, e.message, e.backtrace
     end
@@ -1369,6 +1384,157 @@ def self.create(type_value, class_value) # :nodoc:
   return c
 end
 ```
+
+### `DNS::Resource::Generic.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(msg.get_bytes)
+end
+```
+
+### `DNS::Resource::DomainName.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(msg.get_name)
+end
+```
+
+### `DNS::Resource::SOA.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  mname = msg.get_name
+  rname = msg.get_name
+  serial, refresh, retry_, expire, minimum = msg.get_unpack('NNNNN')
+  return self.new(
+    mname, rname, serial, refresh, retry_, expire, minimum)
+end
+```
+
+### `DNS::Resource::HINFO.decode_rdata` WIP
+
+```ruby
+cpu = msg.get_string
+os = msg.get_string
+return self.new(cpu, os)
+```
+
+### `DNS::Resource::MINFO.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  rmailbx = msg.get_string
+  emailbx = msg.get_string
+  return self.new(rmailbx, emailbx)
+end
+```
+
+### `DNS::Resource::MX.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  preference, = msg.get_unpack('n')
+  exchange = msg.get_name
+  return self.new(preference, exchange)
+end
+```
+
+### `DNS::Resource::TXT.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  strings = msg.get_string_list
+  return self.new(*strings)
+end
+```
+
+### `DNS::Resource::LOC.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  version    = msg.get_bytes(1)
+  ssize      = msg.get_bytes(1)
+  hprecision = msg.get_bytes(1)
+  vprecision = msg.get_bytes(1)
+  latitude   = msg.get_bytes(4)
+  longitude  = msg.get_bytes(4)
+  altitude   = msg.get_bytes(4)
+
+  return self.new(
+    version,
+    Resolv::LOC::Size.new(ssize),
+    Resolv::LOC::Size.new(hprecision),
+    Resolv::LOC::Size.new(vprecision),
+    Resolv::LOC::Coord.new(latitude,"lat"),
+    Resolv::LOC::Coord.new(longitude,"lon"),
+    Resolv::LOC::Alt.new(altitude)
+  )
+end
+```
+
+### `DNS::Resource::CAA.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  flags, = msg.get_unpack('C')
+  tag = msg.get_string
+  value = msg.get_bytes
+  self.new flags, tag, value
+end
+```
+
+### `DNS::Resource::IN::A.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(IPv4.new(msg.get_bytes(4)))
+end
+```
+
+### `DNS::Resource::IN::AAAA.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(IPv6.new(msg.get_bytes(16)))
+end
+```
+
+### `DNS::Resource::IN::WKS.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  address = IPv4.new(msg.get_bytes(4))
+  protocol, = msg.get_unpack("n")
+  bitmap = msg.get_bytes
+  return self.new(address, protocol, bitmap)
+end
+```
+
+### `DNS::Resource::IN::SVR.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  priority, = msg.get_unpack("n")
+  weight,   = msg.get_unpack("n")
+  port,     = msg.get_unpack("n")
+  target    = msg.get_name
+  return self.new(priority, weight, port, target)
+end
+```
+
+### `DNS::Resource::IN::ServiceBinding.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  priority, = msg.get_unpack("n")
+  target    = msg.get_name
+  params    = SvcParams.decode(msg)
+  return self.new(priority, target, params)
+end
+```
+
 
 ### `MDNS#each_address`
 
