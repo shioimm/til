@@ -1239,7 +1239,7 @@ def get_rr
       #    / DNS::Resource.decode_rdata (NotImplementedError)
       #    / DNS::Resource::Generic.decode_rdata            未知のリソースレコード
       #    / DNS::Resource::DomainName.decode_rdata         NS / CNAME / PTR (を表すクラスのスーパークラス)
-      #    / DNS::Resource::SOA.decode_rdata WIP
+      #    / DNS::Resource::SOA.decode_rdata                SOA
       #    / DNS::Resource::MINFO.decode_rdata WIP
       #    / DNS::Resource::HINFO.decode_rdata WIP
       #    / DNS::Resource::MX.decode_rdata WIP
@@ -1404,7 +1404,9 @@ end
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(msg.get_bytes) # => DNS::Message::MessageDecoder#get_bytes
+  return self.new(msg.get_bytes)
+  # => DNS::Message::MessageDecoder#get_bytes
+  # => DNS::Resource::Generic#initialize
 end
 ```
 
@@ -1412,19 +1414,32 @@ end
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(msg.get_name) # => DNS::Message::MessageDecoder#get_name
+  return self.new(msg.get_name)
+  # => DNS::Message::MessageDecoder#get_name
+  # => DNS::Resource::DomainName#initialize
 end
 ```
 
-### `DNS::Resource::SOA.decode_rdata` WIP
+### `DNS::Resource::SOA.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  mname = msg.get_name
-  rname = msg.get_name
+  # このゾーンのプライマリ権威サーバのドメイン名を取得
+  mname = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # このゾーンの管理者のメールアドレスを取得
+  rname = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # ビッグエンディアン4バイト整数 * 5
+  # serial  = ゾーンファイルのバージョン番号
+  # refresh = セカンダリサーバからプライマリへのゾーン更新を確認する間隔
+  # retry_  = refreshに失敗した場合の再試行間隔
+  # expire  = プライマリに接続できない状態が続いた場合、セカンダリサーバがゾーンデータを破棄するまでの時間
+  # minimum = ネガティブキャッシュのTTL
   serial, refresh, retry_, expire, minimum = msg.get_unpack('NNNNN')
-  return self.new(
-    mname, rname, serial, refresh, retry_, expire, minimum)
+
+  return self.new(mname, rname, serial, refresh, retry_, expire, minimum)
+  # => DNS::Resource::SOA#initialize
 end
 ```
 
