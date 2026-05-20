@@ -1236,7 +1236,7 @@ def get_rr
       typeclass.decode_rdata self
       # => DNS::Query.decode_rdata (DecodeError)
       #    / DNS::Resource.decode_rdata (NotImplementedError)
-      #    / DNS::Resource::Generic.decode_rdata WIP
+      #    / DNS::Resource::Generic.decode_rdata
       #    / DNS::Resource::DomainName.decode_rdata WIP
       #    / DNS::Resource::SOA.decode_rdata WIP
       #    / DNS::Resource::MINFO.decode_rdata WIP
@@ -1309,6 +1309,20 @@ def add_additional(name, ttl, data)
 end
 ```
 
+### `DNS::Message::MessageDecoder#get_bytes`
+
+```ruby
+# 指定バイト数を読み込んで返す
+
+def get_bytes(len = @limit - @index)
+  raise DecodeError.new("limit exceeded") if @limit < @index + len
+
+  d = @data.byteslice(@index, len)
+  @index += len
+
+  return d
+end
+```
 
 ### `DNS::Message#each_resource`
 
@@ -1385,11 +1399,11 @@ def self.create(type_value, class_value) # :nodoc:
 end
 ```
 
-### `DNS::Resource::Generic.decode_rdata` WIP
+### `DNS::Resource::Generic.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(msg.get_bytes)
+  return self.new(msg.get_bytes) # => DNS::Message::MessageDecoder#get_bytes
 end
 ```
 
