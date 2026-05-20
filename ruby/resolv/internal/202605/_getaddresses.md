@@ -1237,11 +1237,11 @@ def get_rr
       typeclass.decode_rdata self
       # => DNS::Query.decode_rdata (DecodeError)
       #    / DNS::Resource.decode_rdata (NotImplementedError)
-      #    / DNS::Resource::Generic.decode_rdata            未知のリソースレコード
+      #    / DNS::Resource::Generic.decode_rdata            未知のRR
       #    / DNS::Resource::DomainName.decode_rdata         NS / CNAME / PTR (を表すクラスのスーパークラス)
       #    / DNS::Resource::SOA.decode_rdata                SOA
-      #    / DNS::Resource::MINFO.decode_rdata WIP
-      #    / DNS::Resource::HINFO.decode_rdata WIP
+      #    / DNS::Resource::HINFO.decode_rdata              HINFO ホストのハードウェアとOSの情報を表すRR
+      #    / DNS::Resource::MINFO.decode_rdata              MINFO メーリングリストなどのメール情報を表すRR
       #    / DNS::Resource::MX.decode_rdata WIP
       #    / DNS::Resource::TXT.decode_rdata WIP
       #    / DNS::Resource::LOC.decode_rdata WIP
@@ -1467,21 +1467,47 @@ def initialize(mname, rname, serial, refresh, retry_, expire, minimum)
 end
 ```
 
-### `DNS::Resource::HINFO.decode_rdata` WIP
-
-```ruby
-cpu = msg.get_string
-os = msg.get_string
-return self.new(cpu, os)
-```
-
-### `DNS::Resource::MINFO.decode_rdata` WIP
+### `DNS::Resource::HINFO.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  rmailbx = msg.get_string
-  emailbx = msg.get_string
+  # ホストのCPU情報を取得
+  cpu = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  # ホストのOSを取得
+  os = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  return self.new(cpu, os)
+  # => DNS::Resource::HINFO#initialize
+end
+
+# DNS::Resource::HINFO#initialize
+
+def initialize(cpu, os)
+  @cpu = cpu
+  @os = os
+end
+```
+
+### `DNS::Resource::MINFO.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  # メーリングリストの管理者メールアドレスを取得
+  rmailbx = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  # エラーメッセージの送信先メールアドレスを取得
+  emailbx = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
   return self.new(rmailbx, emailbx)
+  # => DNS::Resource::MINFO#initialize
+end
+
+# DNS::Resource::MINFO#initialize
+
+def initialize(rmailbx, emailbx)
+  @rmailbx = rmailbx
+  @emailbx = emailbx
 end
 ```
 
