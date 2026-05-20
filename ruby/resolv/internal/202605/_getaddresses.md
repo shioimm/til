@@ -1140,6 +1140,7 @@ def get_question
 end
 
 # DNS::Message::MessageDecoder#get_name
+# DNSフォーマットのバイト列からドメイン名を読み取り、Nameオブジェクトとして返す
 
 def get_name
   return Name.new(self.get_labels) # => DNS::Message::MessageDecoder#get_labels
@@ -1236,8 +1237,8 @@ def get_rr
       typeclass.decode_rdata self
       # => DNS::Query.decode_rdata (DecodeError)
       #    / DNS::Resource.decode_rdata (NotImplementedError)
-      #    / DNS::Resource::Generic.decode_rdata
-      #    / DNS::Resource::DomainName.decode_rdata WIP
+      #    / DNS::Resource::Generic.decode_rdata            未知のリソースレコード
+      #    / DNS::Resource::DomainName.decode_rdata         NS / CNAME / PTR (を表すクラスのスーパークラス)
       #    / DNS::Resource::SOA.decode_rdata WIP
       #    / DNS::Resource::MINFO.decode_rdata WIP
       #    / DNS::Resource::HINFO.decode_rdata WIP
@@ -1407,11 +1408,11 @@ def self.decode_rdata(msg) # :nodoc:
 end
 ```
 
-### `DNS::Resource::DomainName.decode_rdata` WIP
+### `DNS::Resource::DomainName.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(msg.get_name)
+  return self.new(msg.get_name) # => DNS::Message::MessageDecoder#get_name
 end
 ```
 
