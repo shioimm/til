@@ -1066,7 +1066,7 @@ def Message.decode(m)
 
     # Answerセクションのリソースレコードを取得
     (1..ancount).each {
-      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr WIP
+      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr
       o.add_answer(name, ttl, data) # => DNS::Message::MessageDecoder#add_answer
     }
 
@@ -1136,7 +1136,7 @@ def get_question
   # klass = クエリクラス
   type, klass = self.get_unpack("nn")
 
-  return name, Resource.get_class(type, klass)
+  return name, Resource.get_class(type, klass) # => DNS::Resource.get_class
 end
 
 # DNS::Message::MessageDecoder#get_name
@@ -1216,22 +1216,57 @@ def add_question(name, typeclass)
 end
 ```
 
-### `DNS::Message::MessageDecoder#get_rr` WIP
+### `DNS::Message::MessageDecoder#get_rr`
 
 ```ruby
 def get_rr
-  name = self.get_name
+  name = self.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # Answer/Authority/Additionalセクションのドメイン名の直後にある8バイトを取り出す
+  # type  = クエリタイプ
+  # klass = クエリクラス
+  # ttl   = TTL
   type, klass, ttl = self.get_unpack('nnN')
-  typeclass = Resource.get_class(type, klass)
-  res = self.get_length16 do
+
+  # タイプ値とクラス値の数値に対応するリソースレコードの種類を取得する
+  typeclass = Resource.get_class(type, klass) # => DNS::Resource.get_class
+
+  res = self.get_length16 do # => DNS::Message::MessageDecoderget_length16
     begin
       typeclass.decode_rdata self
+      # => #decode_rdata
     rescue => e
       raise DecodeError, e.message, e.backtrace
     end
   end
+
+  # リソースレコードを表すオブジェクトにttlを設定
   res.instance_variable_set :@ttl, ttl
+
   return name, ttl, res
+end
+
+# DNS::Message::MessageDecoder#get_length16
+
+def get_length16
+  # 2バイト読んでRDLENGTH = リソースデータの長さを取得
+  len, = self.get_unpack('n')
+  save_limit = @limit
+  @limit = @index + len
+
+  # ブロックを実行してリソースデータをデコード
+  d = yield(len)
+
+  if @index < @limit
+    raise DecodeError.new("junk exists")
+  elsif @limit < @index
+    raise DecodeError.new("limit exceeded")
+  end
+
+  @limit = save_limit
+
+  # デコードしたデータを返す
+  return d
 end
 ```
 
@@ -1295,6 +1330,8 @@ end
 ### `DNS::Resource.get_class`
 
 ```ruby
+# タイプ値とクラス値の数値に対応するリソースレコードの種類を取得する
+
 def self.get_class(type_value, class_value) # :nodoc:
   cache = :"Type#{type_value}_Class#{class_value}"
 
