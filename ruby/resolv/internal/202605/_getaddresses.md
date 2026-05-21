@@ -1928,41 +1928,97 @@ end
 ### `DNS::SvcParam::Mandatory.decode` WIP
 
 ```ruby
+# class Mandatory < SvcParam
+
+def self.decode(msg) # :nodoc:
+  keys = msg.get_list { # => DNS::Message::MessageDecoder#get_list
+    msg.get_unpack('n')[0] # => DNS::Message::MessageDecoder#get_unpack
+  }
+
+  return self.new(keys)
+end
 ```
 
 ### `DNS::SvcParam::ALPN.decode` WIP
 
 ```ruby
+# class ALPN < SvcParam
+
+def self.decode(msg) # :nodoc:
+  list = msg.get_string_list # => DNS::Message::MessageDecoder#get_string_list
+  return self.new(list)
+end
 ```
 
 ### `DNS::SvcParam::NoDefaultALPN.decode` WIP
 
 ```ruby
+# class NoDefaultALPN < SvcParam
+
+def self.decode(msg) # :nodoc:
+  return self.new
+end
 ```
 
 ### `DNS::SvcParam::Port.decode` WIP
 
 ```ruby
+# class Port < SvcParam
+
+def self.decode(msg) # :nodoc:
+  port, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+  return self.new(port)
+end
 ```
 
 ### `DNS::SvcParam::IPv4Hint.decode` WIP
 
 ```ruby
+# class IPv4Hint < SvcParam
+
+def self.decode(msg) # :nodoc:
+  addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
+    bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+    IPv4.new(bytes) # IPv4#initialize
+  }
+  return self.new(addresses)
+end
 ```
 
 ### `DNS::SvcParam::IPv6Hint.decode` WIP
 
 ```ruby
+# class IPv6Hint < SvcParam
+
+def self.decode(msg) # :nodoc:
+  addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
+    bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
+    IPv6.new(bytes) # => IPv6#initialize
+  }
+  return self.new(addresses)
+end
 ```
 
 ### `DNS::SvcParam::DoHPath.decode` WIP
 
 ```ruby
+# class DoHPatht < SvcParam
+
+def self.decode(msg) # :nodoc:
+  template = msg.get_bytes.force_encoding('utf-8') # => DNS::Message::MessageDecoder#get_bytes
+  return self.new(template)
+end
 ```
 
 ### `DNS::SvcParam::Generic.decode` WIP
 
 ```ruby
+# class Generic < SvcParam
+
+def self.decode(msg) # :nodoc:
+  bytes = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+  return self.new(bytes)
+end
 ```
 
 ### `MDNS#each_address`
