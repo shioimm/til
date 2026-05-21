@@ -1265,7 +1265,7 @@ def get_rr
       #    / DNS::Resource::LOC.decode_rdata                LOC ホストの地理的位置情報を格納するRR
       #    / DNS::Resource::CAA.decode_rdata                CAA SSL/TLS証明書を発行できる認証局を指定するRR
       #    / DNS::Resource::IN::A.decode_rdata              A
-      #    / DNS::Resource::IN::AAAA.decode_rdata WIP
+      #    / DNS::Resource::IN::AAAA.decode_rdata           AAAA
       #    / DNS::Resource::IN::WKS.decode_rdata WIP
       #    / DNS::Resource::IN::SVR.decode_rdata WIP
       #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
@@ -1658,11 +1658,24 @@ def initialize(address)
 end
 ```
 
-### `DNS::Resource::IN::AAAA.decode_rdata` WIP
+### `DNS::Resource::IN::AAAA.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(IPv6.new(msg.get_bytes(16)))
+　# IPv4アドレスの4バイトを取得
+  bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
+
+  # IPv6アドレスを表すオブジェクトを作成
+  ipv6 = IPv6.new(bytes) # => IPv6#initialize
+
+  return self.new(ipv6)
+  # => DNS::Resource::IN::AAAA#initialize
+end
+
+# DNS::Resource::IN::AAAA#initialize
+
+def initialize(address)
+  @address = IPv6.create(address) # => IPv6.create
 end
 ```
 
@@ -1734,6 +1747,71 @@ def self.create(arg)
     end
   else
     raise ArgumentError.new("cannot interpret as IPv4 address: #{arg.inspect}")
+  end
+end
+```
+
+### `IPv6#initialize`
+
+```ruby
+def initialize(address) # :nodoc:
+  unless address.kind_of?(String) && address.length == 16
+    raise ArgumentError.new('IPv6 address must be 16 bytes')
+  end
+
+  @address = address
+end
+```
+
+### `IPv6.create`
+
+```ruby
+def self.create(arg)
+  case arg
+  when IPv6 then return arg
+  when String
+    address = ''.b
+
+    if Regex_8Hex =~ arg
+      arg.scan(/[0-9A-Fa-f]+/) {|hex| address << [hex.hex].pack('n')}
+    elsif Regex_CompressedHex =~ arg
+      prefix = $1
+      suffix = $2
+      a1 = ''.b
+      a2 = ''.b
+      prefix.scan(/[0-9A-Fa-f]+/) {|hex| a1 << [hex.hex].pack('n')}
+      suffix.scan(/[0-9A-Fa-f]+/) {|hex| a2 << [hex.hex].pack('n')}
+      omitlen = 16 - a1.length - a2.length
+      address << a1 << "\0" * omitlen << a2
+    elsif Regex_6Hex4Dec =~ arg
+      prefix, a, b, c, d = $1, $2.to_i, $3.to_i, $4.to_i, $5.to_i
+
+      if (0..255) === a && (0..255) === b && (0..255) === c && (0..255) === d
+        prefix.scan(/[0-9A-Fa-f]+/) {|hex| address << [hex.hex].pack('n')}
+        address << [a, b, c, d].pack('CCCC')
+      else
+        raise ArgumentError.new("not numeric IPv6 address: " + arg)
+      end
+    elsif Regex_CompressedHex4Dec =~ arg
+      prefix, suffix, a, b, c, d = $1, $2, $3.to_i, $4.to_i, $5.to_i, $6.to_i
+
+      if (0..255) === a && (0..255) === b && (0..255) === c && (0..255) === d
+        a1 = ''.b
+        a2 = ''.b
+        prefix.scan(/[0-9A-Fa-f]+/) {|hex| a1 << [hex.hex].pack('n')}
+        suffix.scan(/[0-9A-Fa-f]+/) {|hex| a2 << [hex.hex].pack('n')}
+        omitlen = 12 - a1.length - a2.length
+        address << a1 << "\0" * omitlen << a2 << [a, b, c, d].pack('CCCC')
+      else
+        raise ArgumentError.new("not numeric IPv6 address: " + arg)
+      end
+    else
+      raise ArgumentError.new("not numeric IPv6 address: " + arg)
+    end
+
+    return IPv6.new(address) # => IPv6#initialize
+  else
+    raise ArgumentError.new("cannot interpret as IPv6 address: #{arg.inspect}")
   end
 end
 ```
