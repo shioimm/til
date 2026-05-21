@@ -1891,7 +1891,7 @@ def self.decode(msg) # :nodoc:
 
       # そのクラスの.decodeでパラメータ値をデコード
       value.decode(msg)
-      # => DNS::SvcParam::Mandatory.decode WIP
+      # => DNS::SvcParam::Mandatory.decode クライアント側がサポートする必要があるパラメータキー
       #    / DNS::SvcParam::ALPN.decode WIP
       #    / DNS::SvcParam::NoDefaultALPN.decode WIP
       #    / DNS::SvcParam::Port.decode WIP
@@ -1925,17 +1925,25 @@ def add(param)
 end
 ```
 
-### `DNS::SvcParam::Mandatory.decode` WIP
+### `DNS::SvcParam::Mandatory.decode`
 
 ```ruby
 # class Mandatory < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limitに達するまで2バイトずつ読み取り、必須パラメータキーの番号の配列を取得
   keys = msg.get_list { # => DNS::Message::MessageDecoder#get_list
     msg.get_unpack('n')[0] # => DNS::Message::MessageDecoder#get_unpack
   }
 
   return self.new(keys)
+  # => DNS::SvcParam::Mandatory#initialize
+end
+
+# DNS::SvcParam::Mandatory#initialize
+
+def initialize(keys)
+  @keys = keys.map(&:to_int)
 end
 ```
 
