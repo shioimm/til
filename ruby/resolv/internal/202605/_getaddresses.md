@@ -1263,7 +1263,7 @@ def get_rr
       #    / DNS::Resource::MX.decode_rdata                 MX
       #    / DNS::Resource::TXT.decode_rdata                TXT
       #    / DNS::Resource::LOC.decode_rdata                LOC ホストの地理的位置情報を格納するRR
-      #    / DNS::Resource::CAA.decode_rdata WIP
+      #    / DNS::Resource::CAA.decode_rdata                CAA SSL/TLS証明書を発行できる認証局を指定するRR
       #    / DNS::Resource::IN::A.decode_rdata WIP
       #    / DNS::Resource::IN::AAAA.decode_rdata WIP
       #    / DNS::Resource::IN::WKS.decode_rdata WIP
@@ -1603,14 +1603,37 @@ def initialize(version, ssize, hprecision, vprecision, latitude, longitude, alti
 end
 ```
 
-### `DNS::Resource::CAA.decode_rdata` WIP
+### `DNS::Resource::CAA.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
+  # フラグを取得
   flags, = msg.get_unpack('C') # => DNS::Message::MessageDecoder#get_unpack
+
+  # プロパティの種別を表すタグを取得
   tag = msg.get_string # => DNS::Message::MessageDecoder#get_string
-  value = msg.get_bytes
-  self.new flags, tag, value
+
+  # タグに対応する値を取得
+  value = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+
+  self.new(flags, tag, value)
+  # => DNS::Resource::CAA#initialize
+end
+
+# DNS::Resource::CAA#initialize
+
+def initialize(flags, tag, value)
+  unless (0..255) === flags
+    raise ArgumentError.new('flags must be an Integer between 0 and 255')
+  end
+
+  unless (1..15) === tag.bytesize
+    raise ArgumentError.new('length of tag must be between 1 and 15')
+  end
+
+  @flags = flags
+  @tag = tag
+  @value = value
 end
 ```
 
