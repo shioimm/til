@@ -1262,7 +1262,7 @@ def get_rr
       #    / DNS::Resource::MINFO.decode_rdata              MINFO メーリングリストなどのメール情報を表すRR
       #    / DNS::Resource::MX.decode_rdata                 MX
       #    / DNS::Resource::TXT.decode_rdata                TXT
-      #    / DNS::Resource::LOC.decode_rdata WIP
+      #    / DNS::Resource::LOC.decode_rdata                LOC ホストの地理的位置情報を格納するRR
       #    / DNS::Resource::CAA.decode_rdata WIP
       #    / DNS::Resource::IN::A.decode_rdata WIP
       #    / DNS::Resource::IN::AAAA.decode_rdata WIP
@@ -1566,27 +1566,40 @@ def initialize(first_string, *rest_strings)
 end
 ```
 
-### `DNS::Resource::LOC.decode_rdata` WIP
+### `DNS::Resource::LOC.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  version    = msg.get_bytes(1)
-  ssize      = msg.get_bytes(1)
-  hprecision = msg.get_bytes(1)
-  vprecision = msg.get_bytes(1)
-  latitude   = msg.get_bytes(4)
-  longitude  = msg.get_bytes(4)
-  altitude   = msg.get_bytes(4)
+  version    = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  ssize      = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  hprecision = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  vprecision = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  latitude   = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+  longitude  = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+  altitude   = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
 
   return self.new(
-    version,
-    Resolv::LOC::Size.new(ssize),
-    Resolv::LOC::Size.new(hprecision),
-    Resolv::LOC::Size.new(vprecision),
-    Resolv::LOC::Coord.new(latitude,"lat"),
-    Resolv::LOC::Coord.new(longitude,"lon"),
-    Resolv::LOC::Alt.new(altitude)
+    version,                                 # バージョン
+    Resolv::LOC::Size.new(ssize),            # 対象物の球面サイズm
+    Resolv::LOC::Size.new(hprecision),       # 水平精度m
+    Resolv::LOC::Size.new(vprecision),       # 垂直精度m
+    Resolv::LOC::Coord.new(latitude,"lat"),  # 緯度
+    Resolv::LOC::Coord.new(longitude,"lon"), # 経度
+    Resolv::LOC::Alt.new(altitude)           # 高度
   )
+  # => DNS::Resource::LOC#initialize
+end
+
+# DNS::Resource::LOC#initialize
+
+def initialize(version, ssize, hprecision, vprecision, latitude, longitude, altitude)
+  @version    = version
+  @ssize      = Resolv::LOC::Size.create(ssize)      # => Resolv::LOC::Size.create
+  @hprecision = Resolv::LOC::Size.create(hprecision) # => Resolv::LOC::Size.create
+  @vprecision = Resolv::LOC::Size.create(vprecision) # => Resolv::LOC::Size.create
+  @latitude   = Resolv::LOC::Coord.create(latitude)  # => Resolv::LOC::Coord.create
+  @longitude  = Resolv::LOC::Coord.create(longitude) # => Resolv::LOC::Coord.create
+  @altitude   = Resolv::LOC::Alt.create(altitude)    # => Resolv::LOC::Alt.create
 end
 ```
 
