@@ -1266,7 +1266,7 @@ def get_rr
       #    / DNS::Resource::CAA.decode_rdata                CAA SSL/TLS証明書を発行できる認証局を指定するRR
       #    / DNS::Resource::IN::A.decode_rdata              A
       #    / DNS::Resource::IN::AAAA.decode_rdata           AAAA
-      #    / DNS::Resource::IN::WKS.decode_rdata WIP
+      #    / DNS::Resource::IN::WKS.decode_rdata            WKS どのプロトコル・ポートでサービスを提供しているか
       #    / DNS::Resource::IN::SVR.decode_rdata WIP
       #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
     rescue => e
@@ -1645,9 +1645,9 @@ def self.decode_rdata(msg) # :nodoc:
   bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
 
   # IPv4アドレスを表すオブジェクトを作成
-  ipv4 = IPv4.new(bytes) # => IPv4#initialize
+  address = IPv4.new(bytes) # => IPv4#initialize
 
-  return self.new(ipv4)
+  return self.new(address)
   # => DNS::Resource::IN::A#initialize
 end
 
@@ -1662,13 +1662,13 @@ end
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-　# IPv4アドレスの4バイトを取得
+　# IPv6アドレスの16バイトを取得
   bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
 
   # IPv6アドレスを表すオブジェクトを作成
-  ipv6 = IPv6.new(bytes) # => IPv6#initialize
+  address = IPv6.new(bytes) # => IPv6#initialize
 
-  return self.new(ipv6)
+  return self.new(address)
   # => DNS::Resource::IN::AAAA#initialize
 end
 
@@ -1679,14 +1679,32 @@ def initialize(address)
 end
 ```
 
-### `DNS::Resource::IN::WKS.decode_rdata` WIP
+### `DNS::Resource::IN::WKS.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  address = IPv4.new(msg.get_bytes(4))
+  # IPv4アドレスの4バイトを取得
+  bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+
+  # IPv4アドレスを表すオブジェクトを作成
+  address = IPv4.new(bytes) # => IPv4#initialize
+
+  # プロトコル番号を取得
   protocol, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  bitmap = msg.get_bytes
+
+  # ポート番号に対応するビットマップを取得
+  bitmap = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+
   return self.new(address, protocol, bitmap)
+  # => DNS::Resource::IN::WKS#initialize
+end
+
+# DNS::Resource::IN::WKS#initialize
+
+def initialize(address, protocol, bitmap)
+  @address = IPv4.create(address) # => IPv4.create
+  @protocol = protocol
+  @bitmap = bitmap
 end
 ```
 
