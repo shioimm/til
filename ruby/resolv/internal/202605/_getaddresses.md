@@ -1264,7 +1264,7 @@ def get_rr
       #    / DNS::Resource::TXT.decode_rdata                TXT
       #    / DNS::Resource::LOC.decode_rdata                LOC ホストの地理的位置情報を格納するRR
       #    / DNS::Resource::CAA.decode_rdata                CAA SSL/TLS証明書を発行できる認証局を指定するRR
-      #    / DNS::Resource::IN::A.decode_rdata WIP
+      #    / DNS::Resource::IN::A.decode_rdata              A
       #    / DNS::Resource::IN::AAAA.decode_rdata WIP
       #    / DNS::Resource::IN::WKS.decode_rdata WIP
       #    / DNS::Resource::IN::SVR.decode_rdata WIP
@@ -1637,11 +1637,24 @@ def initialize(flags, tag, value)
 end
 ```
 
-### `DNS::Resource::IN::A.decode_rdata` WIP
+### `DNS::Resource::IN::A.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(IPv4.new(msg.get_bytes(4)))
+  # IPv4アドレスの4バイトを取得
+  bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+
+  # IPv4アドレスを表すオブジェクトを作成
+  ipv4 = IPv4.new(bytes) # => IPv4#initialize
+
+  return self.new(ipv4)
+  # => DNS::Resource::IN::A#initialize
+end
+
+# DNS::Resource::IN::A#initialize
+
+def initialize(address)
+  @address = IPv4.create(address) # => IPv4.create
 end
 ```
 
@@ -1687,6 +1700,43 @@ def self.decode_rdata(msg) # :nodoc:
 end
 ```
 
+### `IPv4#initialize`
+
+```ruby
+def initialize(address) # :nodoc:
+  unless address.kind_of?(String)
+    raise ArgumentError, 'IPv4 address must be a string'
+  end
+
+  unless address.length == 4
+    raise ArgumentError, "IPv4 address expects 4 bytes but #{address.length} bytes"
+  end
+
+  @address = address
+end
+```
+
+### `IPv4.create`
+
+```ruby
+def self.create(arg)
+  case arg
+  when IPv4
+    return arg
+  when Regex
+    if (0..255) === (a = $1.to_i) &&
+       (0..255) === (b = $2.to_i) &&
+       (0..255) === (c = $3.to_i) &&
+       (0..255) === (d = $4.to_i)
+      return self.new([a, b, c, d].pack("CCCC")) # => IPv4#initialize
+    else
+      raise ArgumentError.new("IPv4 address with invalid value: " + arg)
+    end
+  else
+    raise ArgumentError.new("cannot interpret as IPv4 address: #{arg.inspect}")
+  end
+end
+```
 
 ### `MDNS#each_address`
 
