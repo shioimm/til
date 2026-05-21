@@ -1066,7 +1066,7 @@ def Message.decode(m)
 
     # Answerセクションのリソースレコードを取得
     (1..ancount).each {
-      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr WIP
+      name, ttl, data = msg.get_rr # => DNS::Message::MessageDecoder#get_rr
       o.add_answer(name, ttl, data) # => DNS::Message::MessageDecoder#add_answer
     }
 
@@ -1087,7 +1087,7 @@ def Message.decode(m)
 end
 ```
 
-### `DNS::MessageDecoder#initialize`
+### `DNS::Message::MessageDecoder#initialize`
 
 ```ruby
 def initialize(data)
@@ -1098,11 +1098,13 @@ def initialize(data)
 end
 ```
 
-### `DNS::MessageDecoder#get_unpack`
+### `DNS::Message::MessageDecoder#get_unpack`
 
 ```ruby
 def get_unpack(template)
   len = 0
+
+  # 読み取りバイト数の計算
   template.each_byte {|byte|
     byte = "%c" % byte
     case byte
@@ -1136,10 +1138,11 @@ def get_question
   # klass = クエリクラス
   type, klass = self.get_unpack("nn")
 
-  return name, Resource.get_class(type, klass)
+  return name, Resource.get_class(type, klass) # => DNS::Resource.get_class
 end
 
 # DNS::Message::MessageDecoder#get_name
+# DNSフォーマットのバイト列からドメイン名を読み取り、Nameオブジェクトとして返す
 
 def get_name
   return Name.new(self.get_labels) # => DNS::Message::MessageDecoder#get_labels
@@ -1216,22 +1219,72 @@ def add_question(name, typeclass)
 end
 ```
 
-### `DNS::Message::MessageDecoder#get_rr` WIP
+### `DNS::Message::MessageDecoder#get_rr`
 
 ```ruby
 def get_rr
-  name = self.get_name
+  name = self.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # Answer/Authority/Additionalセクションのドメイン名の直後にある8バイトを取り出す
+  # type  = クエリタイプ
+  # klass = クエリクラス
+  # ttl   = TTL
   type, klass, ttl = self.get_unpack('nnN')
-  typeclass = Resource.get_class(type, klass)
-  res = self.get_length16 do
+
+  # タイプ値とクラス値の数値に対応するリソースレコードの種類を取得する
+  typeclass = Resource.get_class(type, klass) # => DNS::Resource.get_class
+
+  res = self.get_length16 do # => DNS::Message::MessageDecoderget_length16
     begin
       typeclass.decode_rdata self
+      # => DNS::Query.decode_rdata (DecodeError)
+      #    / DNS::Resource.decode_rdata (NotImplementedError)
+      #    / DNS::Resource::Generic.decode_rdata            未知のRR
+      #    / DNS::Resource::DomainName.decode_rdata         NS / CNAME / PTR (を表すクラスのスーパークラス)
+      #    / DNS::Resource::SOA.decode_rdata                SOA
+      #    / DNS::Resource::HINFO.decode_rdata              HINFO ホストのハードウェアとOSの情報を表すRR
+      #    / DNS::Resource::MINFO.decode_rdata              MINFO メーリングリストなどのメール情報を表すRR
+      #    / DNS::Resource::MX.decode_rdata                 MX
+      #    / DNS::Resource::TXT.decode_rdata WIP
+      #    / DNS::Resource::LOC.decode_rdata WIP
+      #    / DNS::Resource::CAA.decode_rdata WIP
+      #    / DNS::Resource::IN::A.decode_rdata WIP
+      #    / DNS::Resource::IN::AAAA.decode_rdata WIP
+      #    / DNS::Resource::IN::WKS.decode_rdata WIP
+      #    / DNS::Resource::IN::SVR.decode_rdata WIP
+      #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
     rescue => e
       raise DecodeError, e.message, e.backtrace
     end
   end
+
+  # リソースレコードを表すオブジェクトにttlを設定
   res.instance_variable_set :@ttl, ttl
+
   return name, ttl, res
+end
+
+# DNS::Message::MessageDecoder#get_length16
+
+def get_length16
+  # 2バイト読んでRDLENGTH = リソースデータの長さを取得
+  len, = self.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+  save_limit = @limit
+  @limit = @index + len
+
+  # ブロックを実行してリソースデータをデコード
+  d = yield(len)
+
+  if @index < @limit
+    raise DecodeError.new("junk exists")
+  elsif @limit < @index
+    raise DecodeError.new("limit exceeded")
+  end
+
+  @limit = save_limit
+
+  # デコードしたデータを返す
+  return d
 end
 ```
 
@@ -1259,6 +1312,20 @@ def add_additional(name, ttl, data)
 end
 ```
 
+### `DNS::Message::MessageDecoder#get_bytes`
+
+```ruby
+# 指定バイト数を読み込んで返す
+
+def get_bytes(len = @limit - @index)
+  raise DecodeError.new("limit exceeded") if @limit < @index + len
+
+  d = @data.byteslice(@index, len)
+  @index += len
+
+  return d
+end
+```
 
 ### `DNS::Message#each_resource`
 
@@ -1295,6 +1362,8 @@ end
 ### `DNS::Resource.get_class`
 
 ```ruby
+# タイプ値とクラス値の数値に対応するリソースレコードの種類を取得する
+
 def self.get_class(type_value, class_value) # :nodoc:
   cache = :"Type#{type_value}_Class#{class_value}"
 
@@ -1332,6 +1401,233 @@ def self.create(type_value, class_value) # :nodoc:
   return c
 end
 ```
+
+### `DNS::Resource::Generic.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(msg.get_bytes)
+  # => DNS::Message::MessageDecoder#get_bytes
+  # => DNS::Resource::Generic#initialize
+end
+
+# DNS::Resource::Generic#initialize
+
+def initialize(value)
+  @value = value
+end
+```
+
+### `DNS::Resource::DomainName.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(msg.get_name)
+  # => DNS::Message::MessageDecoder#get_name
+  # => DNS::Resource::DomainName#initialize
+end
+
+# DNS::Resource::DomainName#initialize
+
+def initialize(name)
+  @name = name
+end
+```
+
+### `DNS::Resource::SOA.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  # このゾーンのプライマリ権威サーバのドメイン名を取得
+  mname = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # このゾーンの管理者のメールアドレスを取得
+  rname = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # ビッグエンディアン4バイト整数 * 5
+  # serial  = ゾーンファイルのバージョン番号
+  # refresh = セカンダリサーバからプライマリへのゾーン更新を確認する間隔
+  # retry_  = refreshに失敗した場合の再試行間隔
+  # expire  = プライマリに接続できない状態が続いた場合、セカンダリサーバがゾーンデータを破棄するまでの時間
+  # minimum = ネガティブキャッシュのTTL
+  serial, refresh, retry_, expire, minimum = msg.get_unpack('NNNNN') # => DNS::Message::MessageDecoder#get_unpack
+
+  return self.new(mname, rname, serial, refresh, retry_, expire, minimum)
+  # => DNS::Resource::SOA#initialize
+end
+
+# DNS::Resource::SOA#initialize
+
+def initialize(mname, rname, serial, refresh, retry_, expire, minimum)
+  @mname = mname
+  @rname = rname
+  @serial = serial
+  @refresh = refresh
+  @retry = retry_
+  @expire = expire
+  @minimum = minimum
+end
+```
+
+### `DNS::Resource::HINFO.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  # ホストのCPU情報を取得
+  cpu = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  # ホストのOSを取得
+  os = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  return self.new(cpu, os)
+  # => DNS::Resource::HINFO#initialize
+end
+
+# DNS::Resource::HINFO#initialize
+
+def initialize(cpu, os)
+  @cpu = cpu
+  @os = os
+end
+```
+
+### `DNS::Resource::MINFO.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  # メーリングリストの管理者メールアドレスを取得
+  rmailbx = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  # エラーメッセージの送信先メールアドレスを取得
+  emailbx = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  return self.new(rmailbx, emailbx)
+  # => DNS::Resource::MINFO#initialize
+end
+
+# DNS::Resource::MINFO#initialize
+
+def initialize(rmailbx, emailbx)
+  @rmailbx = rmailbx
+  @emailbx = emailbx
+end
+```
+
+### `DNS::Resource::MX.decode_rdata`
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  # 優先度を取得
+  preference, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+  # メールを受け取るサーバーのドメイン名を取得
+  exchange = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  return self.new(preference, exchange)
+  # => DNS::Resource::MX#initialize
+end
+
+# DNS::Resource::MX.decode_rdata
+
+def initialize(preference, exchange)
+  @preference = preference
+  @exchange = exchange
+end
+```
+
+### `DNS::Resource::TXT.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  strings = msg.get_string_list
+  return self.new(*strings)
+end
+```
+
+### `DNS::Resource::LOC.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  version    = msg.get_bytes(1)
+  ssize      = msg.get_bytes(1)
+  hprecision = msg.get_bytes(1)
+  vprecision = msg.get_bytes(1)
+  latitude   = msg.get_bytes(4)
+  longitude  = msg.get_bytes(4)
+  altitude   = msg.get_bytes(4)
+
+  return self.new(
+    version,
+    Resolv::LOC::Size.new(ssize),
+    Resolv::LOC::Size.new(hprecision),
+    Resolv::LOC::Size.new(vprecision),
+    Resolv::LOC::Coord.new(latitude,"lat"),
+    Resolv::LOC::Coord.new(longitude,"lon"),
+    Resolv::LOC::Alt.new(altitude)
+  )
+end
+```
+
+### `DNS::Resource::CAA.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  flags, = msg.get_unpack('C') # => DNS::Message::MessageDecoder#get_unpack
+  tag = msg.get_string
+  value = msg.get_bytes
+  self.new flags, tag, value
+end
+```
+
+### `DNS::Resource::IN::A.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(IPv4.new(msg.get_bytes(4)))
+end
+```
+
+### `DNS::Resource::IN::AAAA.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  return self.new(IPv6.new(msg.get_bytes(16)))
+end
+```
+
+### `DNS::Resource::IN::WKS.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  address = IPv4.new(msg.get_bytes(4))
+  protocol, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  bitmap = msg.get_bytes
+  return self.new(address, protocol, bitmap)
+end
+```
+
+### `DNS::Resource::IN::SVR.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  weight,   = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  port,     = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  target    = msg.get_name
+  return self.new(priority, weight, port, target)
+end
+```
+
+### `DNS::Resource::IN::ServiceBinding.decode_rdata` WIP
+
+```ruby
+def self.decode_rdata(msg) # :nodoc:
+  priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+  target    = msg.get_name
+  params    = SvcParams.decode(msg)
+  return self.new(priority, target, params)
+end
+```
+
 
 ### `MDNS#each_address`
 
