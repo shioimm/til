@@ -1268,7 +1268,7 @@ def get_rr
       #    / DNS::Resource::IN::AAAA.decode_rdata           AAAA
       #    / DNS::Resource::IN::WKS.decode_rdata            WKS どのプロトコル・ポートでサービスを提供しているか
       #    / DNS::Resource::IN::SRV.decode_rdata            SRV
-      #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
+      #    / DNS::Resource::IN::ServiceBinding.decode_rdata SVCB / HTTPS (の共通実装)
     rescue => e
       raise DecodeError, e.message, e.backtrace
     end
@@ -1738,14 +1738,27 @@ def initialize(priority, weight, port, target)
 end
 ```
 
-### `DNS::Resource::IN::ServiceBinding.decode_rdata` WIP
+### `DNS::Resource::IN::ServiceBinding.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
+  # 優先度を取得
   priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  target    = msg.get_name
-  params    = SvcParams.decode(msg)
+
+  # サービスが動作するホストのドメイン名を取得
+  target = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # HTTPS/SVCB 固有のサービスパラメータを読み取ってSvcParamsオブジェクトとして生成
+  params = SvcParams.decode(msg) # => DNS::SvcParams.decode
+
   return self.new(priority, target, params)
+  # => DNS::Resource::IN::ServiceBinding#initialize
+end
+
+def initialize(priority, target, params = [])
+  @priority = priority.to_int
+  @target = Name.create(target) # => DNS::Name.create
+  @params = SvcParams.new(params) # => DNS::SvcParams#initialize
 end
 ```
 
@@ -1850,6 +1863,106 @@ def self.create(arg)
     raise ArgumentError.new("cannot interpret as IPv6 address: #{arg.inspect}")
   end
 end
+```
+
+### `DNS::SvcParams.decode`
+
+```ruby
+ClassHash = Hash.new do |h, key| # :nodoc:
+  case key
+  when Integer              then Generic.create(key) # => DNS::Resource::Generic.create
+  when /\Akey(?<key>\d+)\z/ then Generic.create(key.to_int) # => DNS::Resource::Generic.create
+  when Symbol               then raise KeyError, "unknown key #{key}"
+  else
+    raise TypeError, 'key must be either String or Symbol'
+  end
+end
+
+def self.decode(msg) # :nodoc:
+  # @limit に達するまでブロックを繰り返し実行し、結果を配列として返す
+  params = msg.get_list do # => DNS::Message::MessageDecoder#get_list
+    # 2バイトを読んでパラメータキーの番号を取得
+    key, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+
+    # 2バイトの長さフィールドを読み、パラメータ値のデコードをその範囲内に制限
+    msg.get_length16 do # => # => DNS::Message::MessageDecoder#get_length16
+      # キー番号に対応するSvcParamサブクラスを取得
+      value = SvcParam::ClassHash[key] # => DNS::SvcParam::ClassHash#[]
+
+      # そのクラスの.decodeでパラメータ値をデコード
+      value.decode(msg)
+      # => DNS::SvcParam::Mandatory.decode WIP
+      #    / DNS::SvcParam::ALPN.decode WIP
+      #    / DNS::SvcParam::NoDefaultALPN.decode WIP
+      #    / DNS::SvcParam::Port.decode WIP
+      #    / DNS::SvcParam::IPv4Hint.decode WIP
+      #    / DNS::SvcParam::IPv6Hint.decode WIP
+      #    / DNS::SvcParam::DoHPath.decode WIP
+      #    / DNS::SvcParam::Generic.decode WIP
+    end
+  end
+
+  return self.new(params)
+  # => DNS::SvcParams#initialize
+end
+```
+
+### `DNS::SvcParams#initialize`
+
+```ruby
+def initialize(params = [])
+  @params = {}
+
+  params.each do |param|
+    add param # => DNS::SvcParams#add
+  end
+end
+
+# DNS::SvcParams#add
+
+def add(param)
+  @params[param.class.key_number] = param
+end
+```
+
+### `DNS::SvcParam::Mandatory.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::ALPN.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::NoDefaultALPN.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::Port.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::IPv4Hint.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::IPv6Hint.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::DoHPath.decode` WIP
+
+```ruby
+```
+
+### `DNS::SvcParam::Generic.decode` WIP
+
+```ruby
 ```
 
 ### `MDNS#each_address`
