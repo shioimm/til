@@ -1267,7 +1267,7 @@ def get_rr
       #    / DNS::Resource::IN::A.decode_rdata              A
       #    / DNS::Resource::IN::AAAA.decode_rdata           AAAA
       #    / DNS::Resource::IN::WKS.decode_rdata            WKS どのプロトコル・ポートでサービスを提供しているか
-      #    / DNS::Resource::IN::SVR.decode_rdata WIP
+      #    / DNS::Resource::IN::SRV.decode_rdata            SRV
       #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
     rescue => e
       raise DecodeError, e.message, e.backtrace
@@ -1383,7 +1383,7 @@ end
 def self.get_class(type_value, class_value) # :nodoc:
   cache = :"Type#{type_value}_Class#{class_value}"
 
-  # 既知のレコードの種類 (e.g. IN::A, IN:AAAA, IN::SVR, ...) は、各クラス定義時にClassHashに保存されている
+  # 既知のレコードの種類 (e.g. IN::A, IN:AAAA, IN::SRV, ...) は、各クラス定義時にClassHashに保存されている
   # 未知のレコードの場合はGeneric.createする
   return (const_defined?(cache) && const_get(cache)) ||
          Generic.create(type_value, class_value) # => DNS::Resource::Generic.create
@@ -1708,15 +1708,33 @@ def initialize(address, protocol, bitmap)
 end
 ```
 
-### `DNS::Resource::IN::SVR.decode_rdata` WIP
+### `DNS::Resource::IN::SRV.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
+  # 優先度を取得
   priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  weight,   = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  port,     = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  target    = msg.get_name
+
+  # 重みを取得
+  weight, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+
+  # ポート番号を取得
+  port, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+
+  # ターゲットのドメイン名を取得
+  target = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
   return self.new(priority, weight, port, target)
+  # => DNS::Resource::IN::SRV#initialize
+end
+
+# DNS::Resource::IN::SRV#initialize
+
+def initialize(priority, weight, port, target)
+  @priority = priority.to_int
+  @weight = weight.to_int
+  @port = port.to_int
+  @target = Name.create(target) # => DNS::Name.create
 end
 ```
 
