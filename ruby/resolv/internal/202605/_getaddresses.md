@@ -1211,6 +1211,22 @@ def get_string
 end
 ```
 
+### `DNS::Message::MessageDecoder#get_string_list`
+
+```ruby
+# @limitに達するまでDNS::Message::MessageDecoder#get_stringを繰り返し呼ぶ
+
+def get_string_list
+  strings = []
+
+  while @index < @limit
+    strings << self.get_string
+  end
+
+  strings
+end
+```
+
 ### `DNS::Message::MessageDecoder#add_question`
 
 ```ruby
@@ -1245,7 +1261,7 @@ def get_rr
       #    / DNS::Resource::HINFO.decode_rdata              HINFO ホストのハードウェアとOSの情報を表すRR
       #    / DNS::Resource::MINFO.decode_rdata              MINFO メーリングリストなどのメール情報を表すRR
       #    / DNS::Resource::MX.decode_rdata                 MX
-      #    / DNS::Resource::TXT.decode_rdata WIP
+      #    / DNS::Resource::TXT.decode_rdata                TXT
       #    / DNS::Resource::LOC.decode_rdata WIP
       #    / DNS::Resource::CAA.decode_rdata WIP
       #    / DNS::Resource::IN::A.decode_rdata WIP
@@ -1534,12 +1550,19 @@ def initialize(preference, exchange)
 end
 ```
 
-### `DNS::Resource::TXT.decode_rdata` WIP
+### `DNS::Resource::TXT.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  strings = msg.get_string_list
+  strings = msg.get_string_list # => DNS::Message::MessageDecoder#get_string_list
   return self.new(*strings)
+  # => DNS::Resource::TXT#initialize
+end
+
+# DNS::Resource::TXT#initialize
+
+def initialize(first_string, *rest_strings)
+  @strings = [first_string, *rest_strings]
 end
 ```
 
@@ -1572,7 +1595,7 @@ end
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
   flags, = msg.get_unpack('C') # => DNS::Message::MessageDecoder#get_unpack
-  tag = msg.get_string
+  tag = msg.get_string # => DNS::Message::MessageDecoder#get_string
   value = msg.get_bytes
   self.new flags, tag, value
 end
