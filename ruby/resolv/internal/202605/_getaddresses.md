@@ -1897,7 +1897,7 @@ def self.decode(msg) # :nodoc:
       #    / DNS::SvcParam::Port.decode          port クライアントが接続するべきポート番号
       #    / DNS::SvcParam::IPv4Hint.decode      ipv4hint
       #    / DNS::SvcParam::IPv6Hint.decode      ipv6hint
-      #    / DNS::SvcParam::DoHPath.decode WIP
+      #    / DNS::SvcParam::DoHPath.decode       dohpath DoHクエリを送るエンドポイントのURIテンプレート
       #    / DNS::SvcParam::Generic.decode WIP
     end
   end
@@ -2054,14 +2054,23 @@ def initialize(addresses)
 end
 ```
 
-### `DNS::SvcParam::DoHPath.decode` WIP
+### `DNS::SvcParam::DoHPath.decode`
 
 ```ruby
 # class DoHPatht < SvcParam
 
 def self.decode(msg) # :nodoc:
+  #  @limit 範囲内の残り全バイトを読み取り、UTF-8エンコードの文字列として取得
   template = msg.get_bytes.force_encoding('utf-8') # => DNS::Message::MessageDecoder#get_bytes
+
   return self.new(template)
+  # => DNS::SvcParam::DoHPath.decode
+end
+
+# DNS::SvcParam::DoHPath.decode
+
+def initialize(template)
+  @template = template.encode('utf-8')
 end
 ```
 
