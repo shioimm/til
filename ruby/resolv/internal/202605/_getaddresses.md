@@ -1891,11 +1891,11 @@ def self.decode(msg) # :nodoc:
 
       # そのクラスの.decodeでパラメータ値をデコード
       value.decode(msg)
-      # => DNS::SvcParam::Mandatory.decode       mandatoryパラメータ クライアントがサポートするべきパラメータ群
-      #    / DNS::SvcParam::ALPN.decode          alpnパラメータ サーバーが対応するプロトコル群
-      #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpnパラメータ デフォルトプロトコルへフォールバック禁止
-      #    / DNS::SvcParam::Port.decode          portパラメータ クライアントが接続するべきポート番号
-      #    / DNS::SvcParam::IPv4Hint.decode WIP
+      # => DNS::SvcParam::Mandatory.decode       mandatory クライアントがサポートするべきパラメータ群
+      #    / DNS::SvcParam::ALPN.decode          alpn サーバーが対応するプロトコル群
+      #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpn デフォルトプロトコルへのフォールバックを禁止
+      #    / DNS::SvcParam::Port.decode          port クライアントが接続するべきポート番号
+      #    / DNS::SvcParam::IPv4Hint.decode      ipv4hint
       #    / DNS::SvcParam::IPv6Hint.decode WIP
       #    / DNS::SvcParam::DoHPath.decode WIP
       #    / DNS::SvcParam::Generic.decode WIP
@@ -2004,17 +2004,28 @@ def initialize(port)
 end
 ```
 
-### `DNS::SvcParam::IPv4Hint.decode` WIP
+### `DNS::SvcParam::IPv4Hint.decode`
 
 ```ruby
 # class IPv4Hint < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limitに達するまで4バイトずつ読み取り、IPv4アドレスの配列を取得
   addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
     bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
     IPv4.new(bytes) # IPv4#initialize
   }
+
   return self.new(addresses)
+  # => DNS::SvcParam::IPv4Hint#initialize
+end
+
+# DNS::SvcParam::IPv4Hint#initialize
+
+def initialize(addresses)
+  @addresses = addresses.map { |address|
+    IPv4.create(address)
+  }
 end
 ```
 
