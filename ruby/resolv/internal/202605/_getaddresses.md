@@ -1898,7 +1898,7 @@ def self.decode(msg) # :nodoc:
       #    / DNS::SvcParam::IPv4Hint.decode      ipv4hint
       #    / DNS::SvcParam::IPv6Hint.decode      ipv6hint
       #    / DNS::SvcParam::DoHPath.decode       dohpath DoHクエリを送るエンドポイントのURIテンプレート
-      #    / DNS::SvcParam::Generic.decode WIP
+      #    / DNS::SvcParam::Generic.decode       その他のパラメータ
     end
   end
 
@@ -2074,14 +2074,23 @@ def initialize(template)
 end
 ```
 
-### `DNS::SvcParam::Generic.decode` WIP
+### `DNS::SvcParam::Generic.decode`
 
 ```ruby
 # class Generic < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limit範囲内の残り全バイトを生のバイト列として取得
   bytes = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+
   return self.new(bytes)
+  # => DNS::SvcParam::Generic#initialize
+end
+
+# DNS::SvcParam::Generic#initialize
+
+def initialize(value)
+  @value = value
 end
 ```
 
