@@ -1211,6 +1211,22 @@ def get_string
 end
 ```
 
+### `DNS::Message::MessageDecoder#get_string_list`
+
+```ruby
+# @limitに達するまでDNS::Message::MessageDecoder#get_stringを繰り返し呼ぶ
+
+def get_string_list
+  strings = []
+
+  while @index < @limit
+    strings << self.get_string
+  end
+
+  strings
+end
+```
+
 ### `DNS::Message::MessageDecoder#add_question`
 
 ```ruby
@@ -1245,14 +1261,14 @@ def get_rr
       #    / DNS::Resource::HINFO.decode_rdata              HINFO ホストのハードウェアとOSの情報を表すRR
       #    / DNS::Resource::MINFO.decode_rdata              MINFO メーリングリストなどのメール情報を表すRR
       #    / DNS::Resource::MX.decode_rdata                 MX
-      #    / DNS::Resource::TXT.decode_rdata WIP
-      #    / DNS::Resource::LOC.decode_rdata WIP
-      #    / DNS::Resource::CAA.decode_rdata WIP
-      #    / DNS::Resource::IN::A.decode_rdata WIP
-      #    / DNS::Resource::IN::AAAA.decode_rdata WIP
-      #    / DNS::Resource::IN::WKS.decode_rdata WIP
-      #    / DNS::Resource::IN::SVR.decode_rdata WIP
-      #    / DNS::Resource::IN::ServiceBinding.decode_rdata WIP
+      #    / DNS::Resource::TXT.decode_rdata                TXT
+      #    / DNS::Resource::LOC.decode_rdata                LOC ホストの地理的位置情報を格納するRR
+      #    / DNS::Resource::CAA.decode_rdata                CAA SSL/TLS証明書を発行できる認証局を指定するRR
+      #    / DNS::Resource::IN::A.decode_rdata              A
+      #    / DNS::Resource::IN::AAAA.decode_rdata           AAAA
+      #    / DNS::Resource::IN::WKS.decode_rdata            WKS どのプロトコル・ポートでサービスを提供しているか
+      #    / DNS::Resource::IN::SRV.decode_rdata            SRV
+      #    / DNS::Resource::IN::ServiceBinding.decode_rdata SVCB / HTTPS (の共通実装)
     rescue => e
       raise DecodeError, e.message, e.backtrace
     end
@@ -1367,7 +1383,7 @@ end
 def self.get_class(type_value, class_value) # :nodoc:
   cache = :"Type#{type_value}_Class#{class_value}"
 
-  # 既知のレコードの種類 (e.g. IN::A, IN:AAAA, IN::SVR, ...) は、各クラス定義時にClassHashに保存されている
+  # 既知のレコードの種類 (e.g. IN::A, IN:AAAA, IN::SRV, ...) は、各クラス定義時にClassHashに保存されている
   # 未知のレコードの場合はGeneric.createする
   return (const_defined?(cache) && const_get(cache)) ||
          Generic.create(type_value, class_value) # => DNS::Resource::Generic.create
@@ -1534,100 +1550,484 @@ def initialize(preference, exchange)
 end
 ```
 
-### `DNS::Resource::TXT.decode_rdata` WIP
+### `DNS::Resource::TXT.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  strings = msg.get_string_list
+  strings = msg.get_string_list # => DNS::Message::MessageDecoder#get_string_list
   return self.new(*strings)
+  # => DNS::Resource::TXT#initialize
+end
+
+# DNS::Resource::TXT#initialize
+
+def initialize(first_string, *rest_strings)
+  @strings = [first_string, *rest_strings]
 end
 ```
 
-### `DNS::Resource::LOC.decode_rdata` WIP
+### `DNS::Resource::LOC.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  version    = msg.get_bytes(1)
-  ssize      = msg.get_bytes(1)
-  hprecision = msg.get_bytes(1)
-  vprecision = msg.get_bytes(1)
-  latitude   = msg.get_bytes(4)
-  longitude  = msg.get_bytes(4)
-  altitude   = msg.get_bytes(4)
+  version    = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  ssize      = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  hprecision = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  vprecision = msg.get_bytes(1) # => DNS::Message::MessageDecoder#get_bytes
+  latitude   = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+  longitude  = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+  altitude   = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
 
   return self.new(
-    version,
-    Resolv::LOC::Size.new(ssize),
-    Resolv::LOC::Size.new(hprecision),
-    Resolv::LOC::Size.new(vprecision),
-    Resolv::LOC::Coord.new(latitude,"lat"),
-    Resolv::LOC::Coord.new(longitude,"lon"),
-    Resolv::LOC::Alt.new(altitude)
+    version,                                 # バージョン
+    Resolv::LOC::Size.new(ssize),            # 対象物の球面サイズm
+    Resolv::LOC::Size.new(hprecision),       # 水平精度m
+    Resolv::LOC::Size.new(vprecision),       # 垂直精度m
+    Resolv::LOC::Coord.new(latitude,"lat"),  # 緯度
+    Resolv::LOC::Coord.new(longitude,"lon"), # 経度
+    Resolv::LOC::Alt.new(altitude)           # 高度
   )
+  # => DNS::Resource::LOC#initialize
+end
+
+# DNS::Resource::LOC#initialize
+
+def initialize(version, ssize, hprecision, vprecision, latitude, longitude, altitude)
+  @version    = version
+  @ssize      = Resolv::LOC::Size.create(ssize)      # => Resolv::LOC::Size.create
+  @hprecision = Resolv::LOC::Size.create(hprecision) # => Resolv::LOC::Size.create
+  @vprecision = Resolv::LOC::Size.create(vprecision) # => Resolv::LOC::Size.create
+  @latitude   = Resolv::LOC::Coord.create(latitude)  # => Resolv::LOC::Coord.create
+  @longitude  = Resolv::LOC::Coord.create(longitude) # => Resolv::LOC::Coord.create
+  @altitude   = Resolv::LOC::Alt.create(altitude)    # => Resolv::LOC::Alt.create
 end
 ```
 
-### `DNS::Resource::CAA.decode_rdata` WIP
+### `DNS::Resource::CAA.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
+  # フラグを取得
   flags, = msg.get_unpack('C') # => DNS::Message::MessageDecoder#get_unpack
-  tag = msg.get_string
-  value = msg.get_bytes
-  self.new flags, tag, value
+
+  # プロパティの種別を表すタグを取得
+  tag = msg.get_string # => DNS::Message::MessageDecoder#get_string
+
+  # タグに対応する値を取得
+  value = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+
+  self.new(flags, tag, value)
+  # => DNS::Resource::CAA#initialize
+end
+
+# DNS::Resource::CAA#initialize
+
+def initialize(flags, tag, value)
+  unless (0..255) === flags
+    raise ArgumentError.new('flags must be an Integer between 0 and 255')
+  end
+
+  unless (1..15) === tag.bytesize
+    raise ArgumentError.new('length of tag must be between 1 and 15')
+  end
+
+  @flags = flags
+  @tag = tag
+  @value = value
 end
 ```
 
-### `DNS::Resource::IN::A.decode_rdata` WIP
+### `DNS::Resource::IN::A.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(IPv4.new(msg.get_bytes(4)))
+  # IPv4アドレスの4バイトを取得
+  bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+
+  # IPv4アドレスを表すオブジェクトを作成
+  address = IPv4.new(bytes) # => IPv4#initialize
+
+  return self.new(address)
+  # => DNS::Resource::IN::A#initialize
+end
+
+# DNS::Resource::IN::A#initialize
+
+def initialize(address)
+  @address = IPv4.create(address) # => IPv4.create
 end
 ```
 
-### `DNS::Resource::IN::AAAA.decode_rdata` WIP
+### `DNS::Resource::IN::AAAA.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  return self.new(IPv6.new(msg.get_bytes(16)))
+　# IPv6アドレスの16バイトを取得
+  bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
+
+  # IPv6アドレスを表すオブジェクトを作成
+  address = IPv6.new(bytes) # => IPv6#initialize
+
+  return self.new(address)
+  # => DNS::Resource::IN::AAAA#initialize
+end
+
+# DNS::Resource::IN::AAAA#initialize
+
+def initialize(address)
+  @address = IPv6.create(address) # => IPv6.create
 end
 ```
 
-### `DNS::Resource::IN::WKS.decode_rdata` WIP
+### `DNS::Resource::IN::WKS.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
-  address = IPv4.new(msg.get_bytes(4))
+  # IPv4アドレスの4バイトを取得
+  bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+
+  # IPv4アドレスを表すオブジェクトを作成
+  address = IPv4.new(bytes) # => IPv4#initialize
+
+  # プロトコル番号を取得
   protocol, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  bitmap = msg.get_bytes
+
+  # ポート番号に対応するビットマップを取得
+  bitmap = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+
   return self.new(address, protocol, bitmap)
+  # => DNS::Resource::IN::WKS#initialize
+end
+
+# DNS::Resource::IN::WKS#initialize
+
+def initialize(address, protocol, bitmap)
+  @address = IPv4.create(address) # => IPv4.create
+  @protocol = protocol
+  @bitmap = bitmap
 end
 ```
 
-### `DNS::Resource::IN::SVR.decode_rdata` WIP
+### `DNS::Resource::IN::SRV.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
+  # 優先度を取得
   priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  weight,   = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  port,     = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  target    = msg.get_name
+
+  # 重みを取得
+  weight, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+
+  # ポート番号を取得
+  port, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
+
+  # ターゲットのドメイン名を取得
+  target = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
   return self.new(priority, weight, port, target)
+  # => DNS::Resource::IN::SRV#initialize
+end
+
+# DNS::Resource::IN::SRV#initialize
+
+def initialize(priority, weight, port, target)
+  @priority = priority.to_int
+  @weight = weight.to_int
+  @port = port.to_int
+  @target = Name.create(target) # => DNS::Name.create
 end
 ```
 
-### `DNS::Resource::IN::ServiceBinding.decode_rdata` WIP
+### `DNS::Resource::IN::ServiceBinding.decode_rdata`
 
 ```ruby
 def self.decode_rdata(msg) # :nodoc:
+  # 優先度を取得
   priority, = msg.get_unpack("n") # => DNS::Message::MessageDecoder#get_unpack
-  target    = msg.get_name
-  params    = SvcParams.decode(msg)
+
+  # サービスが動作するホストのドメイン名を取得
+  target = msg.get_name # => DNS::Message::MessageDecoder#get_name
+
+  # HTTPS/SVCB 固有のサービスパラメータを読み取ってSvcParamsオブジェクトとして生成
+  params = SvcParams.decode(msg) # => DNS::SvcParams.decode
+
   return self.new(priority, target, params)
+  # => DNS::Resource::IN::ServiceBinding#initialize
+end
+
+def initialize(priority, target, params = [])
+  @priority = priority.to_int
+  @target = Name.create(target) # => DNS::Name.create
+  @params = SvcParams.new(params) # => DNS::SvcParams#initialize
 end
 ```
 
+### `IPv4#initialize`
+
+```ruby
+def initialize(address) # :nodoc:
+  unless address.kind_of?(String)
+    raise ArgumentError, 'IPv4 address must be a string'
+  end
+
+  unless address.length == 4
+    raise ArgumentError, "IPv4 address expects 4 bytes but #{address.length} bytes"
+  end
+
+  @address = address
+end
+```
+
+### `IPv4.create`
+
+```ruby
+def self.create(arg)
+  case arg
+  when IPv4
+    return arg
+  when Regex
+    if (0..255) === (a = $1.to_i) &&
+       (0..255) === (b = $2.to_i) &&
+       (0..255) === (c = $3.to_i) &&
+       (0..255) === (d = $4.to_i)
+      return self.new([a, b, c, d].pack("CCCC")) # => IPv4#initialize
+    else
+      raise ArgumentError.new("IPv4 address with invalid value: " + arg)
+    end
+  else
+    raise ArgumentError.new("cannot interpret as IPv4 address: #{arg.inspect}")
+  end
+end
+```
+
+### `IPv6#initialize`
+
+```ruby
+def initialize(address) # :nodoc:
+  unless address.kind_of?(String) && address.length == 16
+    raise ArgumentError.new('IPv6 address must be 16 bytes')
+  end
+
+  @address = address
+end
+```
+
+### `IPv6.create`
+
+```ruby
+def self.create(arg)
+  case arg
+  when IPv6 then return arg
+  when String
+    address = ''.b
+
+    if Regex_8Hex =~ arg
+      arg.scan(/[0-9A-Fa-f]+/) {|hex| address << [hex.hex].pack('n')}
+    elsif Regex_CompressedHex =~ arg
+      prefix = $1
+      suffix = $2
+      a1 = ''.b
+      a2 = ''.b
+      prefix.scan(/[0-9A-Fa-f]+/) {|hex| a1 << [hex.hex].pack('n')}
+      suffix.scan(/[0-9A-Fa-f]+/) {|hex| a2 << [hex.hex].pack('n')}
+      omitlen = 16 - a1.length - a2.length
+      address << a1 << "\0" * omitlen << a2
+    elsif Regex_6Hex4Dec =~ arg
+      prefix, a, b, c, d = $1, $2.to_i, $3.to_i, $4.to_i, $5.to_i
+
+      if (0..255) === a && (0..255) === b && (0..255) === c && (0..255) === d
+        prefix.scan(/[0-9A-Fa-f]+/) {|hex| address << [hex.hex].pack('n')}
+        address << [a, b, c, d].pack('CCCC')
+      else
+        raise ArgumentError.new("not numeric IPv6 address: " + arg)
+      end
+    elsif Regex_CompressedHex4Dec =~ arg
+      prefix, suffix, a, b, c, d = $1, $2, $3.to_i, $4.to_i, $5.to_i, $6.to_i
+
+      if (0..255) === a && (0..255) === b && (0..255) === c && (0..255) === d
+        a1 = ''.b
+        a2 = ''.b
+        prefix.scan(/[0-9A-Fa-f]+/) {|hex| a1 << [hex.hex].pack('n')}
+        suffix.scan(/[0-9A-Fa-f]+/) {|hex| a2 << [hex.hex].pack('n')}
+        omitlen = 12 - a1.length - a2.length
+        address << a1 << "\0" * omitlen << a2 << [a, b, c, d].pack('CCCC')
+      else
+        raise ArgumentError.new("not numeric IPv6 address: " + arg)
+      end
+    else
+      raise ArgumentError.new("not numeric IPv6 address: " + arg)
+    end
+
+    return IPv6.new(address) # => IPv6#initialize
+  else
+    raise ArgumentError.new("cannot interpret as IPv6 address: #{arg.inspect}")
+  end
+end
+```
+
+### `DNS::SvcParams.decode`
+
+```ruby
+ClassHash = Hash.new do |h, key| # :nodoc:
+  case key
+  when Integer              then Generic.create(key) # => DNS::Resource::Generic.create
+  when /\Akey(?<key>\d+)\z/ then Generic.create(key.to_int) # => DNS::Resource::Generic.create
+  when Symbol               then raise KeyError, "unknown key #{key}"
+  else
+    raise TypeError, 'key must be either String or Symbol'
+  end
+end
+
+def self.decode(msg) # :nodoc:
+  # @limit に達するまでブロックを繰り返し実行し、結果を配列として返す
+  params = msg.get_list do # => DNS::Message::MessageDecoder#get_list
+    # 2バイトを読んでパラメータキーの番号を取得
+    key, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+
+    # 2バイトの長さフィールドを読み、パラメータ値のデコードをその範囲内に制限
+    msg.get_length16 do # => # => DNS::Message::MessageDecoder#get_length16
+      # キー番号に対応するSvcParamサブクラスを取得
+      value = SvcParam::ClassHash[key] # => DNS::SvcParam::ClassHash#[]
+
+      # そのクラスの.decodeでパラメータ値をデコード
+      value.decode(msg)
+      # => DNS::SvcParam::Mandatory.decode クライアント側がサポートする必要があるパラメータキー
+      #    / DNS::SvcParam::ALPN.decode WIP
+      #    / DNS::SvcParam::NoDefaultALPN.decode WIP
+      #    / DNS::SvcParam::Port.decode WIP
+      #    / DNS::SvcParam::IPv4Hint.decode WIP
+      #    / DNS::SvcParam::IPv6Hint.decode WIP
+      #    / DNS::SvcParam::DoHPath.decode WIP
+      #    / DNS::SvcParam::Generic.decode WIP
+    end
+  end
+
+  return self.new(params)
+  # => DNS::SvcParams#initialize
+end
+```
+
+### `DNS::SvcParams#initialize`
+
+```ruby
+def initialize(params = [])
+  @params = {}
+
+  params.each do |param|
+    add param # => DNS::SvcParams#add
+  end
+end
+
+# DNS::SvcParams#add
+
+def add(param)
+  @params[param.class.key_number] = param
+end
+```
+
+### `DNS::SvcParam::Mandatory.decode`
+
+```ruby
+# class Mandatory < SvcParam
+
+def self.decode(msg) # :nodoc:
+  # @limitに達するまで2バイトずつ読み取り、必須パラメータキーの番号の配列を取得
+  keys = msg.get_list { # => DNS::Message::MessageDecoder#get_list
+    msg.get_unpack('n')[0] # => DNS::Message::MessageDecoder#get_unpack
+  }
+
+  return self.new(keys)
+  # => DNS::SvcParam::Mandatory#initialize
+end
+
+# DNS::SvcParam::Mandatory#initialize
+
+def initialize(keys)
+  @keys = keys.map(&:to_int)
+end
+```
+
+### `DNS::SvcParam::ALPN.decode` WIP
+
+```ruby
+# class ALPN < SvcParam
+
+def self.decode(msg) # :nodoc:
+  list = msg.get_string_list # => DNS::Message::MessageDecoder#get_string_list
+  return self.new(list)
+end
+```
+
+### `DNS::SvcParam::NoDefaultALPN.decode` WIP
+
+```ruby
+# class NoDefaultALPN < SvcParam
+
+def self.decode(msg) # :nodoc:
+  return self.new
+end
+```
+
+### `DNS::SvcParam::Port.decode` WIP
+
+```ruby
+# class Port < SvcParam
+
+def self.decode(msg) # :nodoc:
+  port, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+  return self.new(port)
+end
+```
+
+### `DNS::SvcParam::IPv4Hint.decode` WIP
+
+```ruby
+# class IPv4Hint < SvcParam
+
+def self.decode(msg) # :nodoc:
+  addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
+    bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
+    IPv4.new(bytes) # IPv4#initialize
+  }
+  return self.new(addresses)
+end
+```
+
+### `DNS::SvcParam::IPv6Hint.decode` WIP
+
+```ruby
+# class IPv6Hint < SvcParam
+
+def self.decode(msg) # :nodoc:
+  addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
+    bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
+    IPv6.new(bytes) # => IPv6#initialize
+  }
+  return self.new(addresses)
+end
+```
+
+### `DNS::SvcParam::DoHPath.decode` WIP
+
+```ruby
+# class DoHPatht < SvcParam
+
+def self.decode(msg) # :nodoc:
+  template = msg.get_bytes.force_encoding('utf-8') # => DNS::Message::MessageDecoder#get_bytes
+  return self.new(template)
+end
+```
+
+### `DNS::SvcParam::Generic.decode` WIP
+
+```ruby
+# class Generic < SvcParam
+
+def self.decode(msg) # :nodoc:
+  bytes = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+  return self.new(bytes)
+end
+```
 
 ### `MDNS#each_address`
 
