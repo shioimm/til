@@ -369,6 +369,10 @@ end
 # typeclass = レコードの種類 (e.g. Resource::IN::AAAA)
 def each_resource(name, typeclass, &proc)
   fetch_resource(name, typeclass) { |reply, reply_name| # => DNS#fetch_resource
+    # reply      = デコード済みのMessageオブジェクト
+    # reply_name = Config#generate_candidatesが返したNameオブジェクト (このレスポンスがどの問い合わせへの返答か)
+    # typeclass  = リソースレコードの種類
+    # proc = DNS#each_addressから渡されたブロック
     extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources WIP
   }
 end
