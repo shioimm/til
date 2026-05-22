@@ -1896,7 +1896,7 @@ def self.decode(msg) # :nodoc:
       #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpn デフォルトプロトコルへのフォールバックを禁止
       #    / DNS::SvcParam::Port.decode          port クライアントが接続するべきポート番号
       #    / DNS::SvcParam::IPv4Hint.decode      ipv4hint
-      #    / DNS::SvcParam::IPv6Hint.decode WIP
+      #    / DNS::SvcParam::IPv6Hint.decode      ipv6hint
       #    / DNS::SvcParam::DoHPath.decode WIP
       #    / DNS::SvcParam::Generic.decode WIP
     end
@@ -2029,17 +2029,28 @@ def initialize(addresses)
 end
 ```
 
-### `DNS::SvcParam::IPv6Hint.decode` WIP
+### `DNS::SvcParam::IPv6Hint.decode`
 
 ```ruby
 # class IPv6Hint < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limitに達するまで16バイトずつ読み取り、IPv6アドレスの配列を取得
   addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
     bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
     IPv6.new(bytes) # => IPv6#initialize
   }
+
   return self.new(addresses)
+  # => DNS::SvcParam::IPv6#initialize
+end
+
+# DNS::SvcParam::IPv6#initialize
+
+def initialize(addresses)
+  @addresses = addresses.map { |address|
+    IPv6.create(address)
+  }
 end
 ```
 
