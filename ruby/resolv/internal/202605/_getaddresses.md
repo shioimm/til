@@ -1891,9 +1891,9 @@ def self.decode(msg) # :nodoc:
 
       # そのクラスの.decodeでパラメータ値をデコード
       value.decode(msg)
-      # => DNS::SvcParam::Mandatory.decode       クライアント側がサポートする必要があるパラメータキー
-      #    / DNS::SvcParam::ALPN.decode          alpnキー
-      #    / DNS::SvcParam::NoDefaultALPN.decode WIP
+      # => DNS::SvcParam::Mandatory.decode       mandatoryパラメータ クライアント側がサポートするべきパラメータ群
+      #    / DNS::SvcParam::ALPN.decode          alpnパラメータ
+      #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpnパラメータ
       #    / DNS::SvcParam::Port.decode WIP
       #    / DNS::SvcParam::IPv4Hint.decode WIP
       #    / DNS::SvcParam::IPv6Hint.decode WIP
@@ -1967,13 +1967,20 @@ def initialize(protocol_ids)
 end
 ```
 
-### `DNS::SvcParam::NoDefaultALPN.decode` WIP
+### `DNS::SvcParam::NoDefaultALPN.decode`
 
 ```ruby
 # class NoDefaultALPN < SvcParam
 
 def self.decode(msg) # :nodoc:
   return self.new
+  # => DNS::SvcParam#initialize
+end
+
+# DNS::SvcParam#initialize
+
+def initialize(value)
+  @value = value
 end
 ```
 
