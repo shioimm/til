@@ -1891,10 +1891,10 @@ def self.decode(msg) # :nodoc:
 
       # そのクラスの.decodeでパラメータ値をデコード
       value.decode(msg)
-      # => DNS::SvcParam::Mandatory.decode       mandatoryパラメータ クライアント側がサポートするべきパラメータ群
-      #    / DNS::SvcParam::ALPN.decode          alpnパラメータ
-      #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpnパラメータ
-      #    / DNS::SvcParam::Port.decode WIP
+      # => DNS::SvcParam::Mandatory.decode       mandatoryパラメータ クライアントがサポートするべきパラメータ群
+      #    / DNS::SvcParam::ALPN.decode          alpnパラメータ サーバーが対応するプロトコル群
+      #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpnパラメータ デフォルトプロトコルへフォールバック禁止
+      #    / DNS::SvcParam::Port.decode          portパラメータ クライアントが接続するべきポート番号
       #    / DNS::SvcParam::IPv4Hint.decode WIP
       #    / DNS::SvcParam::IPv6Hint.decode WIP
       #    / DNS::SvcParam::DoHPath.decode WIP
@@ -1984,14 +1984,23 @@ def initialize(value)
 end
 ```
 
-### `DNS::SvcParam::Port.decode` WIP
+### `DNS::SvcParam::Port.decode`
 
 ```ruby
 # class Port < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # ポート番号を取得
   port, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+
   return self.new(port)
+  # => DNS::SvcParam::Port#initialize
+end
+
+# DNS::SvcParam::Port#initialize
+
+def initialize(port)
+  @port = port.to_int
 end
 ```
 
