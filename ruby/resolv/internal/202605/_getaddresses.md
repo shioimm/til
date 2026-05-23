@@ -369,6 +369,10 @@ end
 # typeclass = レコードの種類 (e.g. Resource::IN::AAAA)
 def each_resource(name, typeclass, &proc)
   fetch_resource(name, typeclass) { |reply, reply_name| # => DNS#fetch_resource
+    # reply      = デコード済みのMessageオブジェクト
+    # reply_name = Config#generate_candidatesが返したNameオブジェクト (このレスポンスがどの問い合わせへの返答か)
+    # typeclass  = リソースレコードの種類
+    # proc = DNS#each_addressから渡されたブロック
     extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources WIP
   }
 end
@@ -1891,14 +1895,14 @@ def self.decode(msg) # :nodoc:
 
       # そのクラスの.decodeでパラメータ値をデコード
       value.decode(msg)
-      # => DNS::SvcParam::Mandatory.decode クライアント側がサポートする必要があるパラメータキー
-      #    / DNS::SvcParam::ALPN.decode WIP
-      #    / DNS::SvcParam::NoDefaultALPN.decode WIP
-      #    / DNS::SvcParam::Port.decode WIP
-      #    / DNS::SvcParam::IPv4Hint.decode WIP
-      #    / DNS::SvcParam::IPv6Hint.decode WIP
-      #    / DNS::SvcParam::DoHPath.decode WIP
-      #    / DNS::SvcParam::Generic.decode WIP
+      # => DNS::SvcParam::Mandatory.decode       mandatory クライアントがサポートするべきパラメータ群
+      #    / DNS::SvcParam::ALPN.decode          alpn サーバーが対応するプロトコル群
+      #    / DNS::SvcParam::NoDefaultALPN.decode no-default-alpn デフォルトプロトコルへのフォールバックを禁止
+      #    / DNS::SvcParam::Port.decode          port クライアントが接続するべきポート番号
+      #    / DNS::SvcParam::IPv4Hint.decode      ipv4hint
+      #    / DNS::SvcParam::IPv6Hint.decode      ipv6hint
+      #    / DNS::SvcParam::DoHPath.decode       dohpath DoHクエリを送るエンドポイントのURIテンプレート
+      #    / DNS::SvcParam::Generic.decode       その他のパラメータ
     end
   end
 
@@ -1947,85 +1951,150 @@ def initialize(keys)
 end
 ```
 
-### `DNS::SvcParam::ALPN.decode` WIP
+### `DNS::SvcParam::ALPN.decode`
 
 ```ruby
 # class ALPN < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # プロトコルIDの文字列配列を取得
   list = msg.get_string_list # => DNS::Message::MessageDecoder#get_string_list
+
   return self.new(list)
+  # => DNS::SvcParam::ALPN#initialize
+end
+
+# DNS::SvcParam::ALPN#initialize
+
+def initialize(protocol_ids)
+  @protocol_ids = protocol_ids.map(&:to_str)
 end
 ```
 
-### `DNS::SvcParam::NoDefaultALPN.decode` WIP
+### `DNS::SvcParam::NoDefaultALPN.decode`
 
 ```ruby
 # class NoDefaultALPN < SvcParam
 
 def self.decode(msg) # :nodoc:
   return self.new
+  # => DNS::SvcParam#initialize
+end
+
+# DNS::SvcParam#initialize
+
+def initialize(value)
+  @value = value
 end
 ```
 
-### `DNS::SvcParam::Port.decode` WIP
+### `DNS::SvcParam::Port.decode`
 
 ```ruby
 # class Port < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # ポート番号を取得
   port, = msg.get_unpack('n') # => DNS::Message::MessageDecoder#get_unpack
+
   return self.new(port)
+  # => DNS::SvcParam::Port#initialize
+end
+
+# DNS::SvcParam::Port#initialize
+
+def initialize(port)
+  @port = port.to_int
 end
 ```
 
-### `DNS::SvcParam::IPv4Hint.decode` WIP
+### `DNS::SvcParam::IPv4Hint.decode`
 
 ```ruby
 # class IPv4Hint < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limitに達するまで4バイトずつ読み取り、IPv4アドレスの配列を取得
   addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
     bytes = msg.get_bytes(4) # => DNS::Message::MessageDecoder#get_bytes
     IPv4.new(bytes) # IPv4#initialize
   }
+
   return self.new(addresses)
+  # => DNS::SvcParam::IPv4Hint#initialize
+end
+
+# DNS::SvcParam::IPv4Hint#initialize
+
+def initialize(addresses)
+  @addresses = addresses.map { |address|
+    IPv4.create(address)
+  }
 end
 ```
 
-### `DNS::SvcParam::IPv6Hint.decode` WIP
+### `DNS::SvcParam::IPv6Hint.decode`
 
 ```ruby
 # class IPv6Hint < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limitに達するまで16バイトずつ読み取り、IPv6アドレスの配列を取得
   addresses = msg.get_list { # => DNS::Message::MessageDecoder#get_list
     bytes = msg.get_bytes(16) # => DNS::Message::MessageDecoder#get_bytes
     IPv6.new(bytes) # => IPv6#initialize
   }
+
   return self.new(addresses)
+  # => DNS::SvcParam::IPv6#initialize
+end
+
+# DNS::SvcParam::IPv6#initialize
+
+def initialize(addresses)
+  @addresses = addresses.map { |address|
+    IPv6.create(address)
+  }
 end
 ```
 
-### `DNS::SvcParam::DoHPath.decode` WIP
+### `DNS::SvcParam::DoHPath.decode`
 
 ```ruby
 # class DoHPatht < SvcParam
 
 def self.decode(msg) # :nodoc:
+  #  @limit 範囲内の残り全バイトを読み取り、UTF-8エンコードの文字列として取得
   template = msg.get_bytes.force_encoding('utf-8') # => DNS::Message::MessageDecoder#get_bytes
+
   return self.new(template)
+  # => DNS::SvcParam::DoHPath.decode
+end
+
+# DNS::SvcParam::DoHPath.decode
+
+def initialize(template)
+  @template = template.encode('utf-8')
 end
 ```
 
-### `DNS::SvcParam::Generic.decode` WIP
+### `DNS::SvcParam::Generic.decode`
 
 ```ruby
 # class Generic < SvcParam
 
 def self.decode(msg) # :nodoc:
+  # @limit範囲内の残り全バイトを生のバイト列として取得
   bytes = msg.get_bytes # => DNS::Message::MessageDecoder#get_bytes
+
   return self.new(bytes)
+  # => DNS::SvcParam::Generic#initialize
+end
+
+# DNS::SvcParam::Generic#initialize
+
+def initialize(value)
+  @value = value
 end
 ```
 
