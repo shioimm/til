@@ -144,6 +144,16 @@ end
 
 ### `Resolv#getaddresses`
 
+```text
+Resolv#getaddresses("www.example.com")
+  └ Resolv#each_address
+      └ DNS#each_address
+          └ each_resource(name, typeclass) { |resource| yield resource.address }
+              └ fetch_resource(name, typeclass) { |reply, reply_name|
+                  extract_resources(reply, reply_name, typeclass, &proc)
+                }
+```
+
 ```ruby
 def getaddresses(name)
   ret = []
@@ -225,7 +235,7 @@ end
 ```ruby
 def each_address(name)
   if use_ipv6? # => DNS#use_ipv6?
-    each_resource(name, Resource::IN::AAAA) { |resource| # => DNS#each_resource WIP
+    each_resource(name, Resource::IN::AAAA) { |resource| # => DNS#each_resource
       yield resource.address
     }
   end
@@ -365,6 +375,8 @@ end
 ### `DNS#each_resource`
 
 ```ruby
+# typeclassを指定してDNSに問い合わせ、レスポンスから目的のリソースレコードを取り出してブロックに渡す
+
 # name = ドメイン名
 # typeclass = レコードの種類 (e.g. Resource::IN::AAAA)
 def each_resource(name, typeclass, &proc)
@@ -373,7 +385,8 @@ def each_resource(name, typeclass, &proc)
     # reply_name = Config#generate_candidatesが返したNameオブジェクト (このレスポンスがどの問い合わせへの返答か)
     # typeclass  = リソースレコードの種類
     # proc = DNS#each_addressから渡されたブロック
-    extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources WIP
+    # reply, reply_name, typeclassを元に&procを実行する
+    extract_resources(reply, reply_name, typeclass, &proc) # => DNS#extract_resources
   }
 end
 
@@ -440,7 +453,7 @@ def fetch_resource(name, typeclass)
           truncated[candidate] = true
           redo
         else
-          yield(reply, reply_name) # => DNS#extract_resources WIP
+          yield(reply, reply_name) # => DNS#extract_resources
         end
         return
       when RCode::NXDomain
@@ -483,9 +496,12 @@ rescue Errno::ECONNREFUSED
   raise ResolvTimeout
 end
 
-# DNS#extract_resources WIP
+# DNS#extract_resources
+
+# デコード済みのMessageオブジェクトから、指定した名前・タイプに一致するリソースレコードのdataでブロックを実行する
 
 def extract_resources(msg, name, typeclass) # :nodoc:
+  # typeclassがResource::ANYのサブクラスの場合、名前が一致するレコードをタイプに関係なく全てyieldして終わり
   if typeclass < Resource::ANY
     n0 = Name.create(name) # => DNS::Name.create 解決したいドメイン名をDNS::Nameオブジェクトにする
     msg.each_resource {|n, ttl, data| # => DNS::Message#each_resource
@@ -495,23 +511,27 @@ def extract_resources(msg, name, typeclass) # :nodoc:
 
   yielded = false
   n0 = Name.create(name)
-  msg.each_resource {|n, ttl, data|
+
+  # Answer / Authority / Additionalセクションを順に走査
+  msg.each_resource {|n, ttl, data| # => DNS::Message#each_resource
     if n0 == n
       case data
       when typeclass
         yield data
         yielded = true
-      when Resource::CNAME
+      when Resource::CNAME # CNAMEを追跡したが目的のレコードが見つからなかった
         n0 = data.name
       end
     end
   }
+
   return if yielded
-  msg.each_resource {|n, ttl, data|
+
+  # CNAME を追跡したが目的のレコードが見つからなかった場合
+  msg.each_resource {|n, ttl, data| # => DNS::Message#each_resource
     if n0 == n
       case data
-      when typeclass
-        yield data
+      when typeclass then yield data
       end
     end
   }
@@ -1350,6 +1370,7 @@ end
 ### `DNS::Message#each_resource`
 
 ```ruby
+# Answer / Authority / Additionalセクションを順に走査
 def each_resource
   each_answer { |name, ttl, data| yield name, ttl, data} # => DNS::Message#each_answer
   each_authority { |name, ttl, data| yield name, ttl, data} # => DNS::Message#each_authority
