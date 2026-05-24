@@ -617,7 +617,8 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
     - DNS64のみの場合: AAAAのみ問い合わせ
 4. アドレス合成 (8.1 / 8.2)
     - PREF64あり / NAT64プレフィックス検出済みの場合:
-      - Aレコードの結果をPREF64::IPv4形式でIPv6アドレスを合成し、アドレスリストに挿入
+      - Aレコードの結果、およびSVCBレコード内のIPv4アドレスヒント (ipv4hint) を
+        PREF64::IPv4形式でIPv6アドレスを合成し、アドレスリストに挿入
     - DNS64のみ、かつHEエンジンにホスト名が渡されている場合:
       - ネットワーク側のDNS64がAAAAを合成済みのためクライアントは何もしない
     - DNS64のみ、かつIPv4リテラルが渡されている場合:
@@ -626,7 +627,10 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 6. 全接続失敗時のフォールバック
     - 最後の接続試行開始からLast Resort Local Synthesis Delayを待機
     - AレコードをDNSに問い合わせ
-    - 取得したIPv4アドレスをIPv4リテラルとして扱い、ローカルでIPv6アドレスを合成して再試行
+    - PREF64あり / NAT64プレフィックス検出済みの場合:
+      - 取得したIPv4アドレスをIPv4リテラルとして扱い、ローカルでIPv6アドレスを合成して再試行
+    - DNS64のみ (NAT64プレフィックス不明) の場合:
+      - ローカル合成不可のため接続失敗
 
 ### 8.1. IPv4 Address Literals
 - クライアントアプリケーションまたはユーザがIPv6-only環境 (NAT64環境) においてIPv4アドレスリテラルへ接続する場合、
