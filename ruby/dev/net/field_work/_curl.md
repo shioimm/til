@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
   memory_tracking_init(); // デバッグ用メモリトラッキングの初期化
 
   /* Initialize the curl library - do not call any libcurl functions before this point */
-  result = globalconf_init(); // => src/tool_cfgable.c libcurlの初期化
+  result = globalconf_init(); // => globalconf_init (src/tool_cfgable.c) libcurlの初期化
 
   if(!result) {
     /* Start our curl operation */
@@ -36,8 +36,9 @@ int main(int argc, char *argv[])
 }
 ```
 
+### libcurlの初期化
+
 ```c
-// libcurlの初期化
 // src/tool_cfgable.c
 
 CURLcode globalconf_init(void)
@@ -62,7 +63,7 @@ CURLcode globalconf_init(void)
     //    - SSLバックエンドの初期化
     //    - QUICバックエンドの初期化
     //    - Win32 / AmigaOS / macOS環境固有の初期化
-    //    - 非同期DNSリゾルバの初期化 (Curl_async_global_init() - lib/asyn-ares.c or lib/asyn-thrdd.c) WIP
+    //    - 非同期DNSリゾルバの初期化 (=> Curl_async_global_init - lib/asyn-ares.c or lib/asyn-thrdd.c)
     //    - SSHライブラリの初期化
     //    - フラグの保存
 
@@ -88,4 +89,49 @@ CURLcode globalconf_init(void)
 
   return result;
 }
+```
+
+### 非同期DNSリゾルバの初期化
+- デフォルトはブロッキングDNS、ビルドオプションを指定してコンパイルすることで非同期DNSを利用できる
+
+#### lib/asyn-ares.c
+
+```c
+// lib/asyn-ares.c
+// USE_RESOLV_ARES (c-aresを用いる方式) が有効な場合
+
+int Curl_async_global_init(void)
+{
+  #ifdef CARES_HAVE_ARES_LIBRARY_INIT
+  if(ares_library_init(ARES_LIB_INIT_ALL)) {
+    // => ares_library_init c-arsのAPI
+    // ARES_LIB_INIT_ALL ... すべての初期化を行う
+    return CURLE_FAILED_INIT;
+  }
+  #endif
+
+  ares_version(&ares_ver);
+  return CURLE_OK;
+}
+```
+
+#### lib/asyn-thrdd.c
+
+```c
+// lib/asyn-thrdd.c
+// USE_RESOLV_THREADED (OS標準のgetaddrinfo() を別スレッドで呼ぶ方式) が有効な場合
+
+int Curl_async_global_init(void)
+{
+  #if defined(USE_ARES) && defined(CARES_HAVE_ARES_LIBRARY_INIT)
+  if(ares_library_init(ARES_LIB_INIT_ALL)) {
+    // => ares_library_init c-arsのAPI
+    // ARES_LIB_INIT_ALL ... すべての初期化を行う
+    return CURLE_FAILED_INIT;
+  }
+  #endif
+
+  return CURLE_OK;
+}
+
 ```
