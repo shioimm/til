@@ -135,3 +135,148 @@ int Curl_async_global_init(void)
 }
 
 ```
+
+### 本処理
+
+```c
+// WIP
+CURLcode operate(int argc, argv_item_t argv[])
+{
+  CURLcode result = CURLE_OK;
+  const char *first_arg;
+  char *curlrc_path = NULL;
+  bool found_curlrc = FALSE;
+
+  first_arg = argc > 1 ? convert_tchar_to_UTF8(argv[1]) : NULL;
+
+#ifdef HAVE_SETLOCALE
+  /* Override locale for number parsing (only) */
+  setlocale(LC_ALL, "");
+  setlocale(LC_NUMERIC, "C");
+#endif
+
+  /* Parse .curlrc if necessary */
+  if((argc == 1) ||
+     (first_arg && strncmp(first_arg, "-q", 2) &&
+      strcmp(first_arg, "--disable"))) {
+    if(!parseconfig(NULL, CONFIG_MAX_LEVELS, &curlrc_path))
+      found_curlrc = TRUE;
+
+    /* If we had no arguments then make sure a URL was specified in .curlrc */
+    if((argc < 2) && (!global->first->url_list)) {
+      helpf(NULL);
+      result = CURLE_FAILED_INIT;
+    }
+  }
+
+  unicodefree(CURL_UNCONST(first_arg));
+
+  if(!result) {
+    /* Parse the command line arguments */
+    ParameterError err = parse_args(argc, argv);
+    if(found_curlrc) {
+      /* After parse_args so notef knows the verbosity */
+      notef("Read config file from '%s'", curlrc_path);
+    }
+    if(err) {
+      result = CURLE_OK;
+
+      /* Check if we were asked for the help */
+      if(err == PARAM_HELP_REQUESTED)
+        ; /* already done */
+      /* Check if we were asked for the manual */
+      else if(err == PARAM_MANUAL_REQUESTED) {
+#ifdef USE_MANUAL
+        hugehelp();
+#else
+        warnf("built-in manual was disabled at build-time");
+#endif
+      }
+      /* Check if we were asked for the version information */
+      else if(err == PARAM_VERSION_INFO_REQUESTED)
+        tool_version_info();
+      /* Check if we were asked to list the SSL engines */
+      else if(err == PARAM_ENGINES_REQUESTED)
+        tool_list_engines();
+      /* Check if we were asked to dump the embedded CA bundle */
+      else if(err == PARAM_CA_EMBED_REQUESTED) {
+#ifdef CURL_CA_EMBED
+        curl_mprintf("%s", curl_ca_embed);
+#endif
+      }
+      else if(err == PARAM_LIBCURL_UNSUPPORTED_PROTOCOL)
+        result = CURLE_UNSUPPORTED_PROTOCOL;
+      else if(err == PARAM_READ_ERROR)
+        result = CURLE_READ_ERROR;
+      else
+        result = CURLE_FAILED_INIT;
+    }
+    else {
+      if(global->libcurl) {
+        /* Initialize the libcurl source output */
+        result = easysrc_init();
+      }
+
+      /* Perform the main operations */
+      if(!result) {
+        size_t count = 0;
+        struct OperationConfig *operation = global->first;
+        CURLSH *share = curl_share_init();
+        if(!share) {
+          if(global->libcurl) {
+            /* Cleanup the libcurl source output */
+            easysrc_cleanup();
+          }
+          result = CURLE_OUT_OF_MEMORY;
+        }
+
+        if(!result)
+          result = share_setup(share);
+
+        if(!result && global->ssl_sessions && feature_ssls_export)
+          result = tool_ssls_load(global->first, share,
+                                  global->ssl_sessions);
+
+        if(!result) {
+          /* Get the required arguments for each operation */
+          do {
+            result = get_args(operation, count++);
+
+            operation = operation->next;
+          } while(!result && operation);
+
+          if(!result) {
+            /* Set the current operation pointer */
+            global->current = global->first;
+
+            /* now run! */
+            result = run_all_transfers(share, result);
+
+            if(global->ssl_sessions && feature_ssls_export) {
+              CURLcode r2 = tool_ssls_save(global->first, share,
+                                           global->ssl_sessions);
+              if(r2 && !result)
+                result = r2;
+            }
+          }
+        }
+
+        curl_share_cleanup(share);
+        if(global->libcurl) {
+          /* Cleanup the libcurl source output */
+          easysrc_cleanup();
+
+          /* Dump the libcurl code if previously enabled */
+          dumpeasysrc();
+        }
+      }
+      else
+        errorf("out of memory");
+    }
+  }
+  curlx_free(curlrc_path);
+  varcleanup();
+
+  return result;
+}
+```
