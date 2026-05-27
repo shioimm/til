@@ -226,33 +226,45 @@ CURLcode operate(int argc, argv_item_t argv[])
         // それ以外のエラーの場合
         result = CURLE_FAILED_INIT;
       }
+
     } else {
-      // WIP
-      if(global->libcurl) {
-        /* Initialize the libcurl source output */
-        result = easysrc_init();
-      }
+
+      /* Initialize the libcurl source output */
+      // --libcurl <ファイル名> オプションありの場合:
+      // curlが行う処理と同等の処理を記述したCソースコードを生成し、指定のファイルに書き出す
+      if (global->libcurl) result = easysrc_init();
 
       /* Perform the main operations */
-      if(!result) {
+      if (!result) {
+        // 実行したリクエスト数を数えるカウンタ
         size_t count = 0;
+
+        // .curlrcやコマンドライン引数から構築された操作設定のリンクリストの先頭要素
         struct OperationConfig *operation = global->first;
-        CURLSH *share = curl_share_init();
-        if(!share) {
-          if(global->libcurl) {
-            /* Cleanup the libcurl source output */
-            easysrc_cleanup();
-          }
+
+        // 複数のcurl_easyハンドル (1回のリクエストに必要な状態を持つオブジェクト) 間で共有するデータ
+        // = CURLSHハンドルの初期化
+        // e.g. Cookie、DNSキャッシュ、SSLセッション、Public Suffix List、HSTS ポリシー、接続キャッシュなど
+        CURLSH *share = curl_share_init(); // => curl_share_init (lib/curl_share.c)
+
+        if (!share) { // メモリ確保に失敗した場合
+          if (global->libcurl) easysrc_cleanup(); /* Cleanup the libcurl source output */
+
           result = CURLE_OUT_OF_MEMORY;
         }
 
-        if(!result)
-          result = share_setup(share);
+        // CURLSHハンドルで共有する対象をセットアップ
+        if (!result) result = share_setup(share); // => share_setup (src/tool_operate.c)
 
-        if(!result && global->ssl_sessions && feature_ssls_export)
-          result = tool_ssls_load(global->first, share,
-                                  global->ssl_sessions);
+        // --ssl-sessions <ファイル> オプションあり、
+        // かつlibcurlがSSLセッションエクスポート機能付きでビルドされている場合:
+        // 指定ファイルから前回保存したTLS セッションチケットを読み込み、CURLSHにセットする
+        // -> 次回の接続でTLSハンドシェイクを省略して高速化する
+        if (!result && global->ssl_sessions && feature_ssls_export) {
+          result = tool_ssls_load(global->first, share, global->ssl_sessions);
+        }
 
+        // WIP
         if(!result) {
           /* Get the required arguments for each operation */
           do {
@@ -285,9 +297,9 @@ CURLcode operate(int argc, argv_item_t argv[])
           /* Dump the libcurl code if previously enabled */
           dumpeasysrc();
         }
-      }
-      else
+      } else {
         errorf("out of memory");
+      }
     }
   }
   curlx_free(curlrc_path);
