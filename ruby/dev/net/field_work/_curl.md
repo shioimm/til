@@ -177,48 +177,57 @@ CURLcode operate(int argc, argv_item_t argv[])
   // first_argの解放
   unicodefree(CURL_UNCONST(first_arg));
 
-  // WIP
-  if(!result) {
+  if (!result) { // .curlrcの読み込みに成功
     /* Parse the command line arguments */
+    // コマンドライン引数のパース
     ParameterError err = parse_args(argc, argv);
-    if(found_curlrc) {
+
+    if (found_curlrc) {
       /* After parse_args so notef knows the verbosity */
       notef("Read config file from '%s'", curlrc_path);
     }
-    if(err) {
+
+    if (err) { // コマンドライン引数のパースに失敗
       result = CURLE_OK;
 
-      /* Check if we were asked for the help */
-      if(err == PARAM_HELP_REQUESTED)
+      if (err == PARAM_HELP_REQUESTED) {
+        /* Check if we were asked for the help */
+        // ヘルプを出力 (--help / -h)
         ; /* already done */
-      /* Check if we were asked for the manual */
-      else if(err == PARAM_MANUAL_REQUESTED) {
-#ifdef USE_MANUAL
+      } else if(err == PARAM_MANUAL_REQUESTED) {
+        /* Check if we were asked for the manual */
+        // マニュアルを出力 (--manual / -M)
+        #ifdef USE_MANUAL
         hugehelp();
-#else
+        #else
         warnf("built-in manual was disabled at build-time");
-#endif
-      }
-      /* Check if we were asked for the version information */
-      else if(err == PARAM_VERSION_INFO_REQUESTED)
+        #endif
+      } else if (err == PARAM_VERSION_INFO_REQUESTED) {
+        /* Check if we were asked for the version information */
+        // バージョン・機能一覧を出力 (--version / -V)
         tool_version_info();
-      /* Check if we were asked to list the SSL engines */
-      else if(err == PARAM_ENGINES_REQUESTED)
+      } else if (err == PARAM_ENGINES_REQUESTED) {
+        /* Check if we were asked to list the SSL engines */↲
+        // SSLエンジン一覧を出力 (--engine list)
         tool_list_engines();
-      /* Check if we were asked to dump the embedded CA bundle */
-      else if(err == PARAM_CA_EMBED_REQUESTED) {
-#ifdef CURL_CA_EMBED
+      } else if (err == PARAM_CA_EMBED_REQUESTED) {
+        /* Check if we were asked to dump the embedded CA bundle */
+        // ビルド時に埋め込んだCAバンドルを出力 (--ca-native)
+        #ifdef CURL_CA_EMBED
         curl_mprintf("%s", curl_ca_embed);
-#endif
-      }
-      else if(err == PARAM_LIBCURL_UNSUPPORTED_PROTOCOL)
+        #endif
+      } else if (err == PARAM_LIBCURL_UNSUPPORTED_PROTOCOL) {
+        // ビルドに含まれないプロトコル指定を指定した場合
         result = CURLE_UNSUPPORTED_PROTOCOL;
-      else if(err == PARAM_READ_ERROR)
+      } else if (err == PARAM_READ_ERROR) {
+        // 設定ファイルの読み込みに失敗した場合
         result = CURLE_READ_ERROR;
-      else
+      } else {
+        // それ以外のエラーの場合
         result = CURLE_FAILED_INIT;
-    }
-    else {
+      }
+    } else {
+      // WIP
       if(global->libcurl) {
         /* Initialize the libcurl source output */
         result = easysrc_init();
