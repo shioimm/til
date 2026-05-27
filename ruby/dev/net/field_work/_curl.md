@@ -139,7 +139,8 @@ int Curl_async_global_init(void)
 ### 本処理
 
 ```c
-// WIP
+// src/tool_operate.c
+
 CURLcode operate(int argc, argv_item_t argv[])
 {
   CURLcode result = CURLE_OK;
@@ -147,20 +148,24 @@ CURLcode operate(int argc, argv_item_t argv[])
   char *curlrc_path = NULL;
   bool found_curlrc = FALSE;
 
+  // 引数で渡された文字列をUTF-8文字列に変換
+  // argv_item_tはプラットフォームによって型が異なる
   first_arg = argc > 1 ? convert_tchar_to_UTF8(argv[1]) : NULL;
 
-#ifdef HAVE_SETLOCALE
+  #ifdef HAVE_SETLOCALE
+  // ロケールの設定
   /* Override locale for number parsing (only) */
   setlocale(LC_ALL, "");
   setlocale(LC_NUMERIC, "C");
-#endif
+  #endif
 
   /* Parse .curlrc if necessary */
-  if((argc == 1) ||
-     (first_arg && strncmp(first_arg, "-q", 2) &&
-      strcmp(first_arg, "--disable"))) {
-    if(!parseconfig(NULL, CONFIG_MAX_LEVELS, &curlrc_path))
-      found_curlrc = TRUE;
+  // .curlrcの読み込み
+  // .curlrcには接続、認証、TLS/SSL、HTTP、出力、転送、設定ファイルなどに関する設定を記述できる
+  if((argc == 1) || (first_arg && strncmp(first_arg, "-q", 2) && strcmp(first_arg, "--disable"))) {
+    if(!parseconfig(NULL, CONFIG_MAX_LEVELS, &curlrc_path)) {
+        found_curlrc = TRUE;
+    }
 
     /* If we had no arguments then make sure a URL was specified in .curlrc */
     if((argc < 2) && (!global->first->url_list)) {
@@ -169,8 +174,10 @@ CURLcode operate(int argc, argv_item_t argv[])
     }
   }
 
+  // first_argの解放
   unicodefree(CURL_UNCONST(first_arg));
 
+  // WIP
   if(!result) {
     /* Parse the command line arguments */
     ParameterError err = parse_args(argc, argv);
