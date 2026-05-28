@@ -264,46 +264,94 @@ CURLcode operate(int argc, argv_item_t argv[])
           result = tool_ssls_load(global->first, share, global->ssl_sessions);
         }
 
-        // WIP
-        if(!result) {
+        if (!result) {
           /* Get the required arguments for each operation */
           do {
-            result = get_args(operation, count++);
+            // OperationConfigのリンクリストを先頭から順に走査し、各操作に対してget_args()を呼ぶ
+            result = get_args(operation, count++); // => get_args (src/tool_paramhlp.c) 転送前の補完処理を行う
 
             operation = operation->next;
           } while(!result && operation);
 
-          if(!result) {
+          if (!result) {
             /* Set the current operation pointer */
+            // global->currentをリストの先頭に戻す
             global->current = global->first;
 
             /* now run! */
-            result = run_all_transfers(share, result);
+            // 全URLの転送を実行
+            result = run_all_transfers(share, result); // => run_all_transfers (src/tool_operate.c)
 
-            if(global->ssl_sessions && feature_ssls_export) {
-              CURLcode r2 = tool_ssls_save(global->first, share,
-                                           global->ssl_sessions);
-              if(r2 && !result)
-                result = r2;
-            }
+            // SSL セッションの保存
+            if (global->ssl_sessions && feature_ssls_export) {
+              CURLcode r2 = tool_ssls_save(global->first, share, global->ssl_sessions);
+
+              if(r2 && !result) result = r2;
           }
         }
 
-        curl_share_cleanup(share);
+        // CURLSHのクリーンアップ
+        curl_share_cleanup(share); // => curl_share_cleanup (lib/curl_share.c)
+
+        // --libcurl <ファイル> が指定されていた場合のコード出力
         if(global->libcurl) {
           /* Cleanup the libcurl source output */
-          easysrc_cleanup();
+          easysrc_cleanup(); // => easysrc_cleanup (src/tool_easysrc.c)
 
           /* Dump the libcurl code if previously enabled */
-          dumpeasysrc();
+          dumpeasysrc(); // => dumpeasysrc (src/tool_easysrc.c)
         }
       } else {
         errorf("out of memory");
       }
     }
   }
-  curlx_free(curlrc_path);
-  varcleanup();
+
+  curlx_free(curlrc_path); // (lib/curlx/fopen.c) 設定ファイルパスの解放
+  varcleanup(); // => varcleanup (src/var.c) --variable name=value で定義したユーザー変数のリンクリストを解放
+
+  return result;
+}
+```
+
+#### `run_all_transfers`
+
+```c
+// src/tool_operate.c
+
+static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
+{
+  /* Save the values of noprogress and isatty to restore them later on */
+  bool orig_noprogress = (bool)global->noprogress;
+  bool orig_isatty = (bool)global->isatty;
+  struct per_transfer *per;
+
+  /* Time to actually do the transfers */
+  if(!result) {
+    if(global->parallel)
+      result = parallel_transfers(share);
+    else
+      result = serial_transfers(share);
+  }
+
+  /* cleanup if there are any left */
+  for(per = transfers; per;) {
+    bool retry;
+    uint32_t delay;
+    CURLcode result2 = post_per_transfer(per, result, &retry, &delay);
+    if(!result)
+      /* do not overwrite the original error */
+      result = result2;
+
+    /* Free list of given URLs */
+    clean_getout(per->config);
+
+    per = del_per_transfer(per);
+  }
+
+  /* Reset the global config variables */
+  global->noprogress = orig_noprogress;
+  global->isatty = orig_isatty;
 
   return result;
 }
