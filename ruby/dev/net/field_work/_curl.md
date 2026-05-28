@@ -139,7 +139,8 @@ int Curl_async_global_init(void)
 ### 本処理
 
 ```c
-// WIP
+// src/tool_operate.c
+
 CURLcode operate(int argc, argv_item_t argv[])
 {
   CURLcode result = CURLE_OK;
@@ -147,20 +148,24 @@ CURLcode operate(int argc, argv_item_t argv[])
   char *curlrc_path = NULL;
   bool found_curlrc = FALSE;
 
+  // 引数で渡された文字列をUTF-8文字列に変換
+  // argv_item_tはプラットフォームによって型が異なる
   first_arg = argc > 1 ? convert_tchar_to_UTF8(argv[1]) : NULL;
 
-#ifdef HAVE_SETLOCALE
+  #ifdef HAVE_SETLOCALE
+  // ロケールの設定
   /* Override locale for number parsing (only) */
   setlocale(LC_ALL, "");
   setlocale(LC_NUMERIC, "C");
-#endif
+  #endif
 
   /* Parse .curlrc if necessary */
-  if((argc == 1) ||
-     (first_arg && strncmp(first_arg, "-q", 2) &&
-      strcmp(first_arg, "--disable"))) {
-    if(!parseconfig(NULL, CONFIG_MAX_LEVELS, &curlrc_path))
-      found_curlrc = TRUE;
+  // .curlrcの読み込み
+  // .curlrcには接続、認証、TLS/SSL、HTTP、出力、転送、設定ファイルなどに関する設定を記述できる
+  if((argc == 1) || (first_arg && strncmp(first_arg, "-q", 2) && strcmp(first_arg, "--disable"))) {
+    if(!parseconfig(NULL, CONFIG_MAX_LEVELS, &curlrc_path)) {
+        found_curlrc = TRUE;
+    }
 
     /* If we had no arguments then make sure a URL was specified in .curlrc */
     if((argc < 2) && (!global->first->url_list)) {
@@ -169,74 +174,97 @@ CURLcode operate(int argc, argv_item_t argv[])
     }
   }
 
+  // first_argの解放
   unicodefree(CURL_UNCONST(first_arg));
 
-  if(!result) {
+  if (!result) { // .curlrcの読み込みに成功
     /* Parse the command line arguments */
+    // コマンドライン引数のパース
     ParameterError err = parse_args(argc, argv);
-    if(found_curlrc) {
+
+    if (found_curlrc) {
       /* After parse_args so notef knows the verbosity */
       notef("Read config file from '%s'", curlrc_path);
     }
-    if(err) {
+
+    if (err) { // コマンドライン引数のパースに失敗
       result = CURLE_OK;
 
-      /* Check if we were asked for the help */
-      if(err == PARAM_HELP_REQUESTED)
+      if (err == PARAM_HELP_REQUESTED) {
+        /* Check if we were asked for the help */
+        // ヘルプを出力 (--help / -h)
         ; /* already done */
-      /* Check if we were asked for the manual */
-      else if(err == PARAM_MANUAL_REQUESTED) {
-#ifdef USE_MANUAL
+      } else if(err == PARAM_MANUAL_REQUESTED) {
+        /* Check if we were asked for the manual */
+        // マニュアルを出力 (--manual / -M)
+        #ifdef USE_MANUAL
         hugehelp();
-#else
+        #else
         warnf("built-in manual was disabled at build-time");
-#endif
-      }
-      /* Check if we were asked for the version information */
-      else if(err == PARAM_VERSION_INFO_REQUESTED)
+        #endif
+      } else if (err == PARAM_VERSION_INFO_REQUESTED) {
+        /* Check if we were asked for the version information */
+        // バージョン・機能一覧を出力 (--version / -V)
         tool_version_info();
-      /* Check if we were asked to list the SSL engines */
-      else if(err == PARAM_ENGINES_REQUESTED)
+      } else if (err == PARAM_ENGINES_REQUESTED) {
+        /* Check if we were asked to list the SSL engines */↲
+        // SSLエンジン一覧を出力 (--engine list)
         tool_list_engines();
-      /* Check if we were asked to dump the embedded CA bundle */
-      else if(err == PARAM_CA_EMBED_REQUESTED) {
-#ifdef CURL_CA_EMBED
+      } else if (err == PARAM_CA_EMBED_REQUESTED) {
+        /* Check if we were asked to dump the embedded CA bundle */
+        // ビルド時に埋め込んだCAバンドルを出力 (--ca-native)
+        #ifdef CURL_CA_EMBED
         curl_mprintf("%s", curl_ca_embed);
-#endif
-      }
-      else if(err == PARAM_LIBCURL_UNSUPPORTED_PROTOCOL)
+        #endif
+      } else if (err == PARAM_LIBCURL_UNSUPPORTED_PROTOCOL) {
+        // ビルドに含まれないプロトコル指定を指定した場合
         result = CURLE_UNSUPPORTED_PROTOCOL;
-      else if(err == PARAM_READ_ERROR)
+      } else if (err == PARAM_READ_ERROR) {
+        // 設定ファイルの読み込みに失敗した場合
         result = CURLE_READ_ERROR;
-      else
+      } else {
+        // それ以外のエラーの場合
         result = CURLE_FAILED_INIT;
-    }
-    else {
-      if(global->libcurl) {
-        /* Initialize the libcurl source output */
-        result = easysrc_init();
       }
 
+    } else {
+
+      /* Initialize the libcurl source output */
+      // --libcurl <ファイル名> オプションありの場合:
+      // curlが行う処理と同等の処理を記述したCソースコードを生成し、指定のファイルに書き出す
+      if (global->libcurl) result = easysrc_init();
+
       /* Perform the main operations */
-      if(!result) {
+      if (!result) {
+        // 実行したリクエスト数を数えるカウンタ
         size_t count = 0;
+
+        // .curlrcやコマンドライン引数から構築された操作設定のリンクリストの先頭要素
         struct OperationConfig *operation = global->first;
-        CURLSH *share = curl_share_init();
-        if(!share) {
-          if(global->libcurl) {
-            /* Cleanup the libcurl source output */
-            easysrc_cleanup();
-          }
+
+        // 複数のcurl_easyハンドル (1回のリクエストに必要な状態を持つオブジェクト) 間で共有するデータ
+        // = CURLSHハンドルの初期化
+        // e.g. Cookie、DNSキャッシュ、SSLセッション、Public Suffix List、HSTS ポリシー、接続キャッシュなど
+        CURLSH *share = curl_share_init(); // => curl_share_init (lib/curl_share.c)
+
+        if (!share) { // メモリ確保に失敗した場合
+          if (global->libcurl) easysrc_cleanup(); /* Cleanup the libcurl source output */
+
           result = CURLE_OUT_OF_MEMORY;
         }
 
-        if(!result)
-          result = share_setup(share);
+        // CURLSHハンドルで共有する対象をセットアップ
+        if (!result) result = share_setup(share); // => share_setup (src/tool_operate.c)
 
-        if(!result && global->ssl_sessions && feature_ssls_export)
-          result = tool_ssls_load(global->first, share,
-                                  global->ssl_sessions);
+        // --ssl-sessions <ファイル> オプションあり、
+        // かつlibcurlがSSLセッションエクスポート機能付きでビルドされている場合:
+        // 指定ファイルから前回保存したTLS セッションチケットを読み込み、CURLSHにセットする
+        // -> 次回の接続でTLSハンドシェイクを省略して高速化する
+        if (!result && global->ssl_sessions && feature_ssls_export) {
+          result = tool_ssls_load(global->first, share, global->ssl_sessions);
+        }
 
+        // WIP
         if(!result) {
           /* Get the required arguments for each operation */
           do {
@@ -269,9 +297,9 @@ CURLcode operate(int argc, argv_item_t argv[])
           /* Dump the libcurl code if previously enabled */
           dumpeasysrc();
         }
-      }
-      else
+      } else {
         errorf("out of memory");
+      }
     }
   }
   curlx_free(curlrc_path);
