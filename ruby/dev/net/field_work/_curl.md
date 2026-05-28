@@ -313,3 +313,46 @@ CURLcode operate(int argc, argv_item_t argv[])
   return result;
 }
 ```
+
+#### `run_all_transfers`
+
+```c
+// src/tool_operate.c
+
+static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
+{
+  /* Save the values of noprogress and isatty to restore them later on */
+  bool orig_noprogress = (bool)global->noprogress;
+  bool orig_isatty = (bool)global->isatty;
+  struct per_transfer *per;
+
+  /* Time to actually do the transfers */
+  if(!result) {
+    if(global->parallel)
+      result = parallel_transfers(share);
+    else
+      result = serial_transfers(share);
+  }
+
+  /* cleanup if there are any left */
+  for(per = transfers; per;) {
+    bool retry;
+    uint32_t delay;
+    CURLcode result2 = post_per_transfer(per, result, &retry, &delay);
+    if(!result)
+      /* do not overwrite the original error */
+      result = result2;
+
+    /* Free list of given URLs */
+    clean_getout(per->config);
+
+    per = del_per_transfer(per);
+  }
+
+  /* Reset the global config variables */
+  global->noprogress = orig_noprogress;
+  global->isatty = orig_isatty;
+
+  return result;
+}
+```
