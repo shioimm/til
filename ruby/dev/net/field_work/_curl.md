@@ -373,65 +373,95 @@ static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
 // struct per_transfer (src/tool_operate.h)
 
 struct per_transfer {
-  char errorbuffer[CURL_ERROR_SIZE]; // 転送失敗時の詳細メッセージを書き込むためのバッファ
+  // 転送失敗時の詳細メッセージを書き込むためのバッファ
+  char errorbuffer[CURL_ERROR_SIZE];
 
   /* double linked */
-  struct per_transfer *next; // 次の転送へのポインタ
-  struct per_transfer *prev; // 前の転送へのポインタ
-
-  struct OperationConfig *config; /* for this transfer */ // この転送に対応する設定
-  const struct curl_certinfo *certinfo; // 転送後に取得するサーバ証明書情報
-  CURL *curl; // この転送に利用するeasyハンドル
+  // 次の転送へのポインタ
+  struct per_transfer *next;
+  // 前の転送へのポインタ
+  struct per_transfer *prev;
+  // この転送に対応する設定
+  struct OperationConfig *config; /* for this transfer */
+  // 転送後に取得するサーバ証明書情報
+  const struct curl_certinfo *certinfo;
+  // この転送に利用するeasyハンドル
+  CURL *curl;
 
   /* NULL or malloced */
+  // 転送先URL
+  char *url;
+  // ワイルドカードを展開し複数URLが生成された場合のインデックス
+  curl_off_t urlnum; /* the index of the given URL */
+  // 出力ファイル名
+  char *outfile;
+  // プログレスバーの表示状態
+  struct ProgressData progressbar;
+  // (出力先ストリーム) レスポンスボディの出力先
+  struct OutStruct outs;
+  // (出力先ストリーム) レスポンスヘッダの出力先
+  struct OutStruct heads;
+  // (出力先ストリーム) ETagヘッダの保存先
+  struct OutStruct etag_save;
+  // CURLOPT_HEADERFUNCTIONコールバックに渡すコンテキスト
+  struct HdrCbData hdrcbdata;
+  // 受信したヘッダの行数
+  long num_headers;
+  // 直前のヘッダ行が空行 (ヘッダ終端) だったか
+  BIT(was_last_header_empty);
   // (ファイルアップロード) -T で指定するアップロードファイル名
   char *uploadfile;
   // (ファイルアップロード) アップロード元のファイルディスクリプタ
   int infd;
 
-  long retry_remaining;
-  long num_retries; /* counts the performed retries */
+  // この転送を開始した時刻
   struct curltime start; /* start of this transfer */
+  // (リトライ) 最後にリトライを開始した時刻
   struct curltime retrystart;
-  char *url;
-  curl_off_t urlnum; /* the index of the given URL */
-  char *outfile;
-  struct ProgressData progressbar;
-  struct OutStruct outs;
-  struct OutStruct heads;
-  struct OutStruct etag_save;
-  struct HdrCbData hdrcbdata;
-  long num_headers;
+  // (リトライ) 並列転送でのリトライ時に再送を開始する時刻
   time_t startat; /* when doing parallel transfers, this is a retry transfer
                      that has been set to sleep until this time before it
                      should get started (again) */
+  // (リトライ) 残りのリトライ可能回数
+  long retry_remaining;
+  // (リトライ) 実際にリトライした回数
+  long num_retries; /* counts the performed retries */
+  // (リトライ) リトライ待機時間のデフォルトms
+  uint32_t retry_sleep_default;
+  // (リトライ) 次のリトライまでの待機ms
+  uint32_t retry_sleep;
 
   /* for parallel progress bar */
+  // (並列転送用プログレスバー) ダウンロード総バイト数
   curl_off_t dltotal;
+  // (並列転送用プログレスバー) ダウンロード済みバイト数
   curl_off_t dlnow;
+  // (並列転送用プログレスバー) アップロード総バイト数
   curl_off_t ultotal;
+  // (並列転送用プログレスバー) アップロード済みバイト数
   curl_off_t ulnow;
+  // (並列転送用プログレスバー) dltotalを集計済みかどうか
+  BIT(dltotal_added); /* if the total has been added from this */
+  // (並列転送用プログレスバー) ultotalを集計済みかどうか
+  BIT(ultotal_added);
 
   // (ファイルアップロード) アップロードファイルの予想サイズ
   curl_off_t uploadfilesize; /* expected total amount */
   // (ファイルアップロード) コールバックから送出済みのバイト数
   curl_off_t uploadedsofar; /* amount delivered from the callback */
-
-  uint32_t retry_sleep_default;
-  uint32_t retry_sleep;
-  BIT(dltotal_added); /* if the total has been added from this */
-  BIT(ultotal_added);
-
   // (ファイルアップロード) infdをクローズする必要があるか
   BIT(infdopen); /* TRUE if infd needs closing */
 
+  // この転送でプログレスバーを非表示にするか
   BIT(noprogress);
-  BIT(was_last_header_empty);
 
+  // multiハンドルに追加済みか
   BIT(added); /* set TRUE when added to the multi handle */
+  // 他の転送で致命的エラーが発生したため中断すべきか
   BIT(abort); /* when doing parallel transfers and this is TRUE then a critical
                  error (eg --fail-early) has occurred in another transfer and
                  this transfer gets aborted in the progress callback */
+  // この転送をスキップ済みとみなすか
   BIT(skip);  /* considered already done */
 };
 ```
