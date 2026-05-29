@@ -324,34 +324,315 @@ static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
   /* Save the values of noprogress and isatty to restore them later on */
   bool orig_noprogress = (bool)global->noprogress;
   bool orig_isatty = (bool)global->isatty;
-  struct per_transfer *per;
+
+  struct per_transfer *per; // URL1件分の転送の実行時状態を保持する構造体
+  // => struct per_transfer (src/tool_operate.h))
 
   /* Time to actually do the transfers */
-  if(!result) {
-    if(global->parallel)
-      result = parallel_transfers(share);
-    else
-      result = serial_transfers(share);
+  // 転送の実行
+  if (!result) {
+    if (global->parallel) {
+      result = parallel_transfers(share); // => parallel_transfers (src/tool_operate.c)
+    } else {
+      result = serial_transfers(share); // => serial_transfers (src/tool_operate.c)
+    }
   }
 
   /* cleanup if there are any left */
-  for(per = transfers; per;) {
+  // クリーンアップ
+  for (per = transfers; per;) {
     bool retry;
     uint32_t delay;
-    CURLcode result2 = post_per_transfer(per, result, &retry, &delay);
-    if(!result)
+
+    // 各転送の後処理
+    CURLcode result2 = post_per_transfer(per, result, &retry, &delay); // => post_per_transfer (src/tool_operate.c)
+
+    if (!result) {
       /* do not overwrite the original error */
       result = result2;
+    }
 
     /* Free list of given URLs */
-    clean_getout(per->config);
+    // OperationConfigが持つURLリストを解放
+    clean_getout(per->config); // => clean_getout (src/tool_operhlp.c)
 
-    per = del_per_transfer(per);
+    // per_transfer 構造体をリストから外してメモリを解放して次の次のノードを返す
+    per = del_per_transfer(per); // => del_per_transfer (src/tool_operate.c)
   }
 
   /* Reset the global config variables */
+  // 転送中に書き換えられたグローバル変数を復元する
   global->noprogress = orig_noprogress;
   global->isatty = orig_isatty;
+
+  return result;
+}
+```
+
+```c
+// struct per_transfer (src/tool_operate.h)
+
+struct per_transfer {
+  char errorbuffer[CURL_ERROR_SIZE];
+  /* double linked */
+  struct per_transfer *next;
+  struct per_transfer *prev;
+  struct OperationConfig *config; /* for this transfer */
+  const struct curl_certinfo *certinfo;
+  CURL *curl;
+  /* NULL or malloced */
+  char *uploadfile;
+  long retry_remaining;
+  long num_retries; /* counts the performed retries */
+  struct curltime start; /* start of this transfer */
+  struct curltime retrystart;
+  char *url;
+  curl_off_t urlnum; /* the index of the given URL */
+  char *outfile;
+  int infd;
+  struct ProgressData progressbar;
+  struct OutStruct outs;
+  struct OutStruct heads;
+  struct OutStruct etag_save;
+  struct HdrCbData hdrcbdata;
+  long num_headers;
+  time_t startat; /* when doing parallel transfers, this is a retry transfer
+                     that has been set to sleep until this time before it
+                     should get started (again) */
+  /* for parallel progress bar */
+  curl_off_t dltotal;
+  curl_off_t dlnow;
+  curl_off_t ultotal;
+  curl_off_t ulnow;
+  curl_off_t uploadfilesize; /* expected total amount */
+  curl_off_t uploadedsofar; /* amount delivered from the callback */
+  uint32_t retry_sleep_default;
+  uint32_t retry_sleep;
+  BIT(dltotal_added); /* if the total has been added from this */
+  BIT(ultotal_added);
+  BIT(infdopen); /* TRUE if infd needs closing */
+  BIT(noprogress);
+  BIT(was_last_header_empty);
+
+  BIT(added); /* set TRUE when added to the multi handle */
+  BIT(abort); /* when doing parallel transfers and this is TRUE then a critical
+                 error (eg --fail-early) has occurred in another transfer and
+                 this transfer gets aborted in the progress callback */
+  BIT(skip);  /* considered already done */
+};
+```
+
+#### `serial_transfers`
+
+```c
+// src/tool_operate.c
+
+static CURLcode serial_transfers(CURLSH *share)
+{
+  CURLcode returncode = CURLE_OK;
+  CURLcode result = CURLE_OK;
+  struct per_transfer *per;
+  bool added = FALSE;
+  bool skipped = FALSE;
+
+  result = create_transfer(share, &added, &skipped);
+  if(result)
+    return result;
+  if(!added) {
+    errorf("no transfer performed");
+    return CURLE_READ_ERROR;
+  }
+  for(per = transfers; per;) {
+    bool retry;
+    uint32_t delay_ms;
+    bool bailout = FALSE;
+    struct curltime start;
+
+    start = curlx_now();
+    if(!per->skip) {
+      result = pre_transfer(per);
+      if(result)
+        break;
+
+      if(global->libcurl) {
+        result = easysrc_perform();
+        if(result)
+          break;
+      }
+
+#ifdef DEBUGBUILD
+      if(getenv("CURL_FORBID_REUSE"))
+        (void)curl_easy_setopt(per->curl, CURLOPT_FORBID_REUSE, 1L);
+
+      if(global->test_duphandle) {
+        CURL *dup = curl_easy_duphandle(per->curl);
+        curl_easy_cleanup(per->curl);
+        per->curl = dup;
+        if(!dup) {
+          result = CURLE_OUT_OF_MEMORY;
+          break;
+        }
+        /* a duplicate needs the share re-added */
+        (void)curl_easy_setopt(per->curl, CURLOPT_SHARE, share);
+      }
+      if(global->test_event_based)
+        result = curl_easy_perform_ev(per->curl);
+      else
+#endif
+        result = curl_easy_perform(per->curl);
+    }
+
+    returncode = post_per_transfer(per, result, &retry, &delay_ms);
+    if(retry) {
+      curlx_wait_ms(delay_ms);
+      continue;
+    }
+
+    /* Bail out upon critical errors or --fail-early */
+    if(is_fatal_error(returncode) || (returncode && global->fail_early))
+      bailout = TRUE;
+    else {
+      do {
+        /* setup the next one before we delete this */
+        result = create_transfer(share, &added, &skipped);
+        if(result) {
+          returncode = result;
+          bailout = TRUE;
+          break;
+        }
+      } while(skipped);
+    }
+
+    per = del_per_transfer(per);
+
+    if(bailout)
+      break;
+
+    if(per && global->ms_per_transfer) {
+      /* how long time did the most recent transfer take in number of
+         milliseconds */
+      timediff_t milli = curlx_timediff_ms(curlx_now(), start);
+      if(milli < global->ms_per_transfer) {
+        notef("Transfer took %" CURL_FORMAT_CURL_OFF_T " ms, "
+              "waits %ldms as set by --rate",
+              milli, (long)(global->ms_per_transfer - milli));
+        /* The transfer took less time than wanted. Wait a little. */
+        curlx_wait_ms((long)(global->ms_per_transfer - milli));
+      }
+    }
+  }
+  if(returncode)
+    /* returncode errors have priority */
+    result = returncode;
+
+  if(result)
+    single_transfer_cleanup();
+
+  return result;
+}
+```
+
+#### `parallel_transfers`
+
+```c
+// src/tool_operate.c
+
+static CURLcode parallel_transfers(CURLSH *share)
+{
+  CURLcode result;
+  struct parastate p;
+  struct parastate *s = &p;
+  s->share = share;
+  s->mcode = CURLM_OK;
+  s->result = CURLE_OK;
+  s->still_running = 1;
+  s->start = curlx_now();
+  s->wrapitup = FALSE;
+  s->wrapitup_processed = FALSE;
+  s->tick = time(NULL);
+  s->multi = curl_multi_init();
+  if(!s->multi)
+    return CURLE_OUT_OF_MEMORY;
+
+  if(TRUE
+#ifdef DEBUGBUILD
+    && getenv("CURL_QUICK_EXIT")
+#endif
+    ) {
+    /* QUICK_EXIT allows for running threads to be detached and not
+     * joined. Preferably in non-debug runs. */
+    (void)curl_multi_setopt(s->multi, CURLMOPT_QUICK_EXIT, 1L);
+  }
+  (void)curl_multi_setopt(s->multi, CURLMOPT_NOTIFYFUNCTION, mnotify);
+  (void)curl_multi_setopt(s->multi, CURLMOPT_NOTIFYDATA, s);
+  (void)curl_multi_setopt(s->multi, CURLMOPT_MAX_HOST_CONNECTIONS, (long)
+                          global->parallel_host);
+  (void)curl_multi_notify_enable(s->multi, CURLMNOTIFY_INFO_READ);
+
+  result = add_parallel_transfers(s->multi, s->share,
+                                  &s->more_transfers, &s->added_transfers);
+  if(result) {
+    curl_multi_cleanup(s->multi);
+    return result;
+  }
+
+#ifdef DEBUGBUILD
+  if(global->test_event_based)
+#ifdef USE_LIBUV
+    return parallel_event(s);
+#else
+    errorf("Testing --parallel event-based requires libuv");
+#endif
+  else
+#endif
+
+  if(all_added) {
+    while(!s->mcode && (s->still_running || s->more_transfers)) {
+      /* If stopping prematurely (eg due to a --fail-early condition) then
+         signal that any transfers in the multi should abort (via progress
+         callback). */
+      if(s->wrapitup) {
+        if(!s->still_running)
+          break;
+        if(!s->wrapitup_processed) {
+          struct per_transfer *per;
+          for(per = transfers; per; per = per->next) {
+            if(per->added)
+              per->abort = TRUE;
+          }
+          s->wrapitup_processed = TRUE;
+        }
+      }
+      else if(s->more_transfers) {
+        s->result = add_parallel_transfers(s->multi, s->share,
+                                           &s->more_transfers,
+                                           &s->added_transfers);
+        if(s->result)
+          break;
+      }
+
+      s->mcode = curl_multi_poll(s->multi, NULL, 0, 1000, NULL);
+      if(!s->mcode)
+        s->mcode = curl_multi_perform(s->multi, &s->still_running);
+
+      progress_meter(s->multi, &s->start, FALSE);
+    }
+
+    (void)progress_meter(s->multi, &s->start, TRUE);
+  }
+
+  /* Result is the first failed transfer - if there was one. */
+  result = s->result;
+
+  /* Make sure to return some kind of error if there was a multi problem */
+  if(s->mcode) {
+    result = (s->mcode == CURLM_OUT_OF_MEMORY) ? CURLE_OUT_OF_MEMORY :
+      /* The other multi errors should never happen, so return
+         something suitably generic */
+      CURLE_BAD_FUNCTION_ARGUMENT;
+  }
+
+  curl_multi_cleanup(s->multi);
 
   return result;
 }
