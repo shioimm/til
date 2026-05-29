@@ -373,15 +373,22 @@ static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
 // struct per_transfer (src/tool_operate.h)
 
 struct per_transfer {
-  char errorbuffer[CURL_ERROR_SIZE];
+  char errorbuffer[CURL_ERROR_SIZE]; // 転送失敗時の詳細メッセージを書き込むためのバッファ
+
   /* double linked */
-  struct per_transfer *next;
-  struct per_transfer *prev;
-  struct OperationConfig *config; /* for this transfer */
-  const struct curl_certinfo *certinfo;
-  CURL *curl;
+  struct per_transfer *next; // 次の転送へのポインタ
+  struct per_transfer *prev; // 前の転送へのポインタ
+
+  struct OperationConfig *config; /* for this transfer */ // この転送に対応する設定
+  const struct curl_certinfo *certinfo; // 転送後に取得するサーバ証明書情報
+  CURL *curl; // この転送に利用するeasyハンドル
+
   /* NULL or malloced */
+  // (ファイルアップロード) -T で指定するアップロードファイル名
   char *uploadfile;
+  // (ファイルアップロード) アップロード元のファイルディスクリプタ
+  int infd;
+
   long retry_remaining;
   long num_retries; /* counts the performed retries */
   struct curltime start; /* start of this transfer */
@@ -389,7 +396,6 @@ struct per_transfer {
   char *url;
   curl_off_t urlnum; /* the index of the given URL */
   char *outfile;
-  int infd;
   struct ProgressData progressbar;
   struct OutStruct outs;
   struct OutStruct heads;
@@ -399,18 +405,26 @@ struct per_transfer {
   time_t startat; /* when doing parallel transfers, this is a retry transfer
                      that has been set to sleep until this time before it
                      should get started (again) */
+
   /* for parallel progress bar */
   curl_off_t dltotal;
   curl_off_t dlnow;
   curl_off_t ultotal;
   curl_off_t ulnow;
+
+  // (ファイルアップロード) アップロードファイルの予想サイズ
   curl_off_t uploadfilesize; /* expected total amount */
+  // (ファイルアップロード) コールバックから送出済みのバイト数
   curl_off_t uploadedsofar; /* amount delivered from the callback */
+
   uint32_t retry_sleep_default;
   uint32_t retry_sleep;
   BIT(dltotal_added); /* if the total has been added from this */
   BIT(ultotal_added);
+
+  // (ファイルアップロード) infdをクローズする必要があるか
   BIT(infdopen); /* TRUE if infd needs closing */
+
   BIT(noprogress);
   BIT(was_last_header_empty);
 
