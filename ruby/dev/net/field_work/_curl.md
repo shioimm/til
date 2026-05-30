@@ -473,19 +473,23 @@ struct per_transfer {
 
 static CURLcode serial_transfers(CURLSH *share)
 {
-  CURLcode returncode = CURLE_OK;
-  CURLcode result = CURLE_OK;
-  struct per_transfer *per;
-  bool added = FALSE;
-  bool skipped = FALSE;
+  CURLcode returncode = CURLE_OK; // 最終的な返り値
+  CURLcode result     = CURLE_OK; // 各操作の一時的な結果
+  struct per_transfer *per; // // 転送リストのイテレータ
+  bool added   = FALSE; // 転送が実際に追加されたか
+  bool skipped = FALSE; // 転送がスキップされたか
 
-  result = create_transfer(share, &added, &skipped);
-  if(result)
-    return result;
-  if(!added) {
+  // 次に実行すべき転送を準備する
+  result = create_transfer(share, &added, &skipped); // => create_transfer (src/tool_operate.c)
+
+  if (result) return result;
+
+  if (!added) { // URLリストが空
     errorf("no transfer performed");
     return CURLE_READ_ERROR;
   }
+
+  // WIP
   for(per = transfers; per;) {
     bool retry;
     uint32_t delay_ms;
@@ -678,6 +682,297 @@ static CURLcode parallel_transfers(CURLSH *share)
 
   curl_multi_cleanup(s->multi);
 
+  return result;
+}
+```
+
+#### `create_transfer`
+
+```c
+// src/tool_operate.c
+
+static CURLcode create_transfer(CURLSH *share, bool *added, bool *skipped)
+{
+  CURLcode result = CURLE_OK;
+  *added = FALSE;
+
+  while (global->current) {
+    result = transfer_per_config(global->current, share, added, skipped);
+    // => transfer_per_config (src/tool_operate.c)
+    // OperationConfigから転送を準備
+
+    if(!result && !*added) {
+      /* when one set is drained, continue to next */
+      global->current = global->current->next;
+      continue;
+    }
+    break;
+  }
+  return result;
+}
+```
+
+#### `transfer_per_config`
+
+```c
+// src/tool_operate.c
+
+static CURLcode transfer_per_config(struct OperationConfig *config, CURLSH *share, bool *added, bool *skipped)
+{
+  CURLcode result;
+  *added = FALSE;
+
+  /* Check we have a URL */
+  //  URLの存在を確認
+  if (!config->url_list || !config->url_list->url) {
+    helpf("(%d) no URL specified", CURLE_FAILED_INIT);
+    result = CURLE_FAILED_INIT;
+  } else {
+    // CA証明書パスの解決
+    result = cacertpaths(config); // => cacertpaths (src/tool_operate.c)
+
+    if (!result) {
+      // 転送の準備
+      result = single_transfer(config, share, added, skipped); // => single_transfer ()
+
+      // 失敗時のクリーンアップ
+      if (!*added || result) single_transfer_cleanup();
+    }
+  }
+
+  return result;
+}
+```
+
+#### `single_transfer `
+
+```c
+// src/tool_operate.c
+// 1つのOperationConfigからHTTPメソッドを確定させ、転送の準備を整えてcreate_singleに渡す
+
+static CURLcode single_transfer(struct OperationConfig *config, CURLSH *share, bool *added, bool *skipped)
+{
+  CURLcode result = CURLE_OK;
+  struct State *state = &global->state;
+  char *httpgetfields = config->httpgetfields;
+
+  *skipped = *added = FALSE; /* not yet */
+
+  // HTTPメソッドを確定させる
+  if (config->postfields) {
+    if (config->use_httpget) {
+      if (!httpgetfields) {
+        /* Use the postfields data for an HTTP get */
+        httpgetfields = config->httpgetfields = config->postfields;
+        config->postfields = NULL;
+
+        if (SetHTTPrequest((config->no_body ? TOOL_HTTPREQ_HEAD : TOOL_HTTPREQ_GET), &config->httpreq)) {
+          return CURLE_FAILED_INIT;
+        }
+      }
+    } else if (SetHTTPrequest(TOOL_HTTPREQ_SIMPLEPOST, &config->httpreq))
+      return CURLE_FAILED_INIT;
+    }
+  }
+
+  if(!httpgetfields) config->httpgetfields = config->query;
+
+  // クライアント証明書タイプを確定させる
+  result = set_cert_types(config);
+
+  if(result) return result;
+
+  // URLノードの初期化
+  if (!state->urlnode) {
+    /* first time caller, setup things */
+    state->urlnode = config->url_list;
+    state->upnum = 1;
+  }
+
+  return create_single(config, share, state, added, skipped); // => create_single (src/tool_operate.c)
+}
+```
+
+#### `create_single`
+
+```c
+// src/tool_operate.c
+// URLノード (getout) ごとにeasyハンドルを生成し、per_transferを1件構築し
+// *added = TRUEをセットしてループを終了
+
+static CURLcode create_single(
+  struct OperationConfig *config,
+  CURLSH *share,
+  struct State *state,
+  bool *added,
+  bool *skipped
+) {
+  const bool orig_isatty     = (bool)global->isatty;
+  const bool orig_noprogress = (bool)global->noprogress;
+  CURLcode result = CURLE_OK;
+
+  while (state->urlnode) {
+    struct per_transfer *per = NULL;
+    struct OutStruct *outs;
+    struct OutStruct *heads;
+    struct OutStruct etag_first;
+    CURL *curl;
+    struct getout *u = state->urlnode;
+    FILE *err = (!global->silent || global->showerror) ? tool_stderr : NULL;
+    bool break_loop = FALSE;
+
+    // --- URLノードの確認 ---
+    if(!u->url) {
+      /* This node has no URL. End of the road. */
+      warnf("Got more output options than URLs");
+      break;
+    }
+    // ----------------------
+
+    // --- アップロードファイルをstate->uploadfileにセット ---
+    result = setup_input_file(config, state, u, err);
+
+    if(result) return result;
+
+    if(state->upidx >= state->upnum) {
+      state->urlnum = 0;
+      curlx_safefree(state->uploadfile);
+      glob_cleanup(&state->inglob);
+      state->upidx = 0;
+      state->urlnode = u->next; /* next node */
+      state->upnum = 1;
+      continue;
+    }
+    // -------------------------------------------------------
+
+    // --- URL globの展開 ---
+    result = setup_url_pattern(config, state, u, err);
+    if (result) return result;
+    // ----------------------
+
+    // --- ETagファイルの準備---
+    result = setup_etag_files(config, &etag_first, &break_loop);
+    if (result || break_loop) return result;
+    // -------------------------
+
+    // --- easyハンドルとper_transferの生成 ---
+    curl = curl_easy_init();
+    result = curl ? add_per_transfer(&per) : CURLE_OUT_OF_MEMORY;
+
+    if (result) {
+      curl_easy_cleanup(curl);
+
+      if (etag_first.fopened) curlx_fclose(etag_first.stream);
+      return result;
+    }
+    // ---------------------------------------
+
+    // --- per_transferへの値のセット ---
+    per->etag_save = etag_first; /* copy the whole struct */
+
+    if (state->uploadfile) {
+      per->uploadfile = curlx_strdup(state->uploadfile);
+
+      if(!per->uploadfile || SetHTTPrequest(TOOL_HTTPREQ_PUT, &config->httpreq)) {
+        curlx_safefree(per->uploadfile);
+        curl_easy_cleanup(curl);
+        return CURLE_FAILED_INIT;
+      }
+    }
+
+    per->config = config;
+    per->curl = curl;
+    per->urlnum = u->num;
+    // ---------------------------------
+
+    /* default headers output stream is stdout */
+    heads = &per->heads;
+    heads->stream = stdout;
+
+    /* Single header file for all URLs */
+    result = setup_headerfile(config, per, heads);
+    if(result) return result;
+
+    // --- 出力先の設定 ---
+    outs = &per->outs;
+
+    per->infdopen = FALSE;
+    per->infd = STDIN_FILENO;
+
+    /* default output stream is stdout */
+    outs->stream = stdout;
+
+    result = select_next_url(state, u, &per->url);
+    if (result) return result;
+    if (!per->url) break;
+
+    result = setup_outfile(config, per, u, outs, skipped);
+    if (result) return result;
+    // --------------------
+
+    // --- アップロード転送の設定 ---
+    result = setup_transfer_upload(config, per);
+    if (result) return result;
+    // ------------------------------
+
+    // --- プログレスバーの制御 ---
+    if (!outs->out_null && output_expected(per->url, per->uploadfile) &&
+       outs->stream && isatty(fileno(outs->stream)))
+      /* we send the output to a tty, therefore we switch off the progress
+         meter */
+      per->noprogress = global->noprogress = global->isatty = TRUE;
+    else {
+      /* progress meter is per download, so restore config values */
+      per->noprogress = global->noprogress = orig_noprogress;
+      global->isatty = orig_isatty;
+    }
+    // ----------------------------
+
+    // --- クエリ文字列の付加 ---
+    result = append2query(config, per, config->httpgetfields);
+    if (result) return result;
+    // --------------------------
+
+    if ((!per->outfile || !strcmp(per->outfile, "-")) &&
+       !config->use_ascii) {
+      /* We get the output to stdout and we have not got the ASCII/text flag,
+         then set stdout to be binary */
+      CURL_BINMODE(stdout);
+    }
+
+    /* explicitly passed to stdout means okaying binary gunk */
+    config->terminal_binary_ok = (per->outfile && !strcmp(per->outfile, "-"));
+
+    // --- ヘッダコールバックの設定 ---
+    setup_header_cb(config, &per->hdrcbdata, u, outs, heads, &etag_first);
+    // --------------------------------
+
+    // --- libcurlへのオプション設定 ---
+    result = config2setopts(config, per, curl, share);
+    if (result) return result;
+    // ---------------------------------
+
+    /* initialize retry vars for loop below */
+    // --- リトライ設定の初期化 ---
+    per->retry_sleep_default = config->retry_delay_ms;
+    per->retry_remaining = config->req_retry;
+    per->retry_sleep = per->retry_sleep_default; /* ms */
+    per->retrystart = curlx_now();
+    // ----------------------------
+
+    /* Here's looping around each globbed URL */
+    // --- globインデックスの更新と完了 ---
+    if(++state->urlidx >= state->urlnum) {
+      state->urlidx = state->urlnum = 0;
+      glob_cleanup(&state->urlglob);
+      state->upidx++;
+      curlx_safefree(state->uploadfile); /* clear it to get the next */
+    }
+    // ------------------------------------
+
+    *added = TRUE;
+    break;
+  }
   return result;
 }
 ```
