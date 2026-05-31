@@ -1068,17 +1068,20 @@ static CURLcode easy_transfer(struct Curl_multi *multi)
   CURLMcode mresult = CURLM_OK;
   CURLcode result = CURLE_OK;
 
+  // easyハンドル1件の転送が完了するまで poll -> perform -> 完了確認 のループを繰り返す
   while (!done && !mresult) {
     int still_running = 0;
 
-    mresult = curl_multi_poll(multi, NULL, 0, 1000, NULL);
+    // I/Oイベントをpoll
+    mresult = curl_multi_poll(multi, NULL, 0, 1000, NULL); // => curl_multi_poll (lib/multi.c)
 
-    if (!mresult)
-      mresult = curl_multi_perform(multi, &still_running);
+    // I/O可能になったソケットに実際の読み書きを行う
+    if (!mresult) mresult = curl_multi_perform(multi, &still_running); // => curl_multi_perform (lib/multi.c)
 
     /* only read 'still_running' if curl_multi_perform() return OK */
     if (!mresult && !still_running) {
       int rc;
+      // 完了メッセージの取得
       CURLMsg *msg = curl_multi_info_read(multi, &rc);
 
       if (msg) {
