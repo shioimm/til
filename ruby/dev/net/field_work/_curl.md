@@ -25,7 +25,6 @@ int main(int argc, char *argv[])
 
   if(!result) {
     /* Start our curl operation */
-    // WIP
     result = operate(argc, argv); // 実際の処理
 
     /* Perform the main cleanup */
@@ -319,6 +318,8 @@ CURLcode operate(int argc, argv_item_t argv[])
 ```c
 // src/tool_operate.c
 
+struct per_transfer *transfers; /* first node */
+
 static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
 {
   /* Save the values of noprogress and isatty to restore them later on */
@@ -489,45 +490,30 @@ static CURLcode serial_transfers(CURLSH *share)
     return CURLE_READ_ERROR;
   }
 
-  // WIP
-  for(per = transfers; per;) {
+  for (per = transfers; per;) {
     bool retry;
     uint32_t delay_ms;
     bool bailout = FALSE;
     struct curltime start;
 
+    // 転送開始時刻
     start = curlx_now();
-    if(!per->skip) {
-      result = pre_transfer(per);
-      if(result)
-        break;
 
-      if(global->libcurl) {
-        result = easysrc_perform();
-        if(result)
-          break;
+    if (!per->skip) {
+      // アップロードファイルがある場合の準備
+      result = pre_transfer(per); // => pre_transfer (src/tool_operate.c)
+
+      if (result) break;
+
+      if (global->libcurl) {
+        // --libcurl が指定されている場合、生成するCソースコードに
+        // この転送に対応するcurl_easy_perform等の行を追記する
+        result = easysrc_perform(); // => easysrc_perform (src/tool_easysrc.c)
+        if(result) break;
       }
 
-#ifdef DEBUGBUILD
-      if(getenv("CURL_FORBID_REUSE"))
-        (void)curl_easy_setopt(per->curl, CURLOPT_FORBID_REUSE, 1L);
-
-      if(global->test_duphandle) {
-        CURL *dup = curl_easy_duphandle(per->curl);
-        curl_easy_cleanup(per->curl);
-        per->curl = dup;
-        if(!dup) {
-          result = CURLE_OUT_OF_MEMORY;
-          break;
-        }
-        /* a duplicate needs the share re-added */
-        (void)curl_easy_setopt(per->curl, CURLOPT_SHARE, share);
-      }
-      if(global->test_event_based)
-        result = curl_easy_perform_ev(per->curl);
-      else
-#endif
-        result = curl_easy_perform(per->curl);
+      // 転送を実行
+      result = curl_easy_perform(per->curl); // => curl_easy_perform (lib/easy.c)
     }
 
     returncode = post_per_transfer(per, result, &retry, &delay_ms);
@@ -584,6 +570,7 @@ static CURLcode serial_transfers(CURLSH *share)
 
 ```c
 // src/tool_operate.c
+// WIP
 
 static CURLcode parallel_transfers(CURLSH *share)
 {
@@ -973,6 +960,105 @@ static CURLcode create_single(
     *added = TRUE;
     break;
   }
+  return result;
+}
+```
+
+#### `curl_easy_perform`
+
+```c
+// lib/easy.c
+
+CURLcode curl_easy_perform(CURL *curl)
+{
+  return easy_perform(curl, FALSE);
+}
+
+static CURLcode easy_perform(struct Curl_easy *data, bool events)
+{
+  struct Curl_multi *multi; // 複数のeasyハンドルをまとめて並行転送するためのハンドル
+  CURLMcode mresult;
+  CURLcode result = CURLE_OK;
+  struct Curl_sigpipe_ctx sigpipe_ctx;
+
+  if (!data) return CURLE_BAD_FUNCTION_ARGUMENT;
+
+  /* clear this as early as possible */
+  // エラーバッファをクリア
+  if (data->set.errorbuffer) data->set.errorbuffer[0] = 0;
+  // OSエラー番号をリセット
+  data->state.os_errno = 0;
+
+  // すでにdata->multiに追加済みのeasyハンドルがある場合はエラー
+  if (data->multi) {
+    failf(data, "easy handle already used in multi handle");
+    return CURLE_FAILED_INIT;
+  }
+
+  /* if the handle has a connection still attached (it is/was a connect-only
+     handle) then disconnect before performing */
+  // connect-onlyの接続を持つハンドルを再利用する際、残存している古い接続を切断
+  if (data->conn) {
+    struct connectdata *c;
+    curl_socket_t s;
+    Curl_detach_connection(data);
+
+    s = Curl_getconnectinfo(data, &c);
+
+    if ((s != CURL_SOCKET_BAD) && c) {
+      Curl_conn_terminate(data, c, TRUE);
+    }
+
+    DEBUGASSERT(!data->conn);
+  }
+
+  // multiハンドルの生成
+  if (data->multi_easy) {
+    multi = data->multi_easy;
+  } else {
+    /* this multi handle will only ever have a single easy handle attached to
+       it, so make it use minimal hash sizes */
+    multi = Curl_multi_handle(16, 1, 3, 7, 3);
+    if(!multi) return CURLE_OUT_OF_MEMORY;
+  }
+
+  // コールバック内からの再帰呼び出しをチェック
+  if (multi->in_callback) return CURLE_RECURSIVE_API_CALL;
+
+  /* Copy relevant easy options to the multi handle */
+  // multiオプションのセット
+  curl_multi_setopt(multi, CURLMOPT_MAXCONNECTS, (long)data->set.maxconnects);
+  curl_multi_setopt(multi, CURLMOPT_QUICK_EXIT, (long)data->set.quick_exit);
+
+  // multiハンドルにeasyハンドルを追加
+  data->multi_easy = NULL; /* pretend it does not exist */
+  mresult = curl_multi_add_handle(multi, data);
+
+  if (mresult) {
+    curl_multi_cleanup(multi);
+    if(mresult == CURLM_OUT_OF_MEMORY) return CURLE_OUT_OF_MEMORY;
+    return CURLE_FAILED_INIT;
+  }
+
+  /* assign this after curl_multi_add_handle() */
+  data->multi_easy = multi;
+
+  // 書き込み先のソケットが切断された際に発生するSIGPIPEシグナルを無視する
+  sigpipe_init(&sigpipe_ctx);
+  sigpipe_apply(data, &sigpipe_ctx);
+
+  /* run the transfer */
+  // 転送の実行
+  result = events ? easy_events(multi) : easy_transfer(multi); // => easy_events / easy_transfer (lib/easy.c)
+
+  // 後処理
+  /* ignoring the return code is not nice, but atm we cannot really handle
+     a failure here, room for future improvement! */
+  (void)curl_multi_remove_handle(multi, data);
+
+  sigpipe_restore(&sigpipe_ctx);
+
+  /* The multi handle is kept alive, owned by the easy handle */
   return result;
 }
 ```
