@@ -1049,7 +1049,7 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
 
   /* run the transfer */
   // 転送の実行
-  result = events ? easy_events(multi) : easy_transfer(multi); // => easy_events / easy_transfer (lib/easy.c)
+  result = events ? easy_events(multi) : easy_transfer(multi); // => easy_transfer (lib/easy.c)
 
   // 後処理
   /* ignoring the return code is not nice, but atm we cannot really handle
@@ -1059,6 +1059,43 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   sigpipe_restore(&sigpipe_ctx);
 
   /* The multi handle is kept alive, owned by the easy handle */
+  return result;
+}
+
+static CURLcode easy_transfer(struct Curl_multi *multi)
+{
+  bool done = FALSE;
+  CURLMcode mresult = CURLM_OK;
+  CURLcode result = CURLE_OK;
+
+  while (!done && !mresult) {
+    int still_running = 0;
+
+    mresult = curl_multi_poll(multi, NULL, 0, 1000, NULL);
+
+    if (!mresult)
+      mresult = curl_multi_perform(multi, &still_running);
+
+    /* only read 'still_running' if curl_multi_perform() return OK */
+    if (!mresult && !still_running) {
+      int rc;
+      CURLMsg *msg = curl_multi_info_read(multi, &rc);
+
+      if (msg) {
+        result = msg->data.result;
+        done = TRUE;
+      }
+    }
+  }
+
+  /* Make sure to return some kind of error if there was a multi problem */
+  if (mresult) {
+    result = (mresult == CURLM_OUT_OF_MEMORY) ? CURLE_OUT_OF_MEMORY :
+      /* The other multi errors should never happen, so return
+         something suitably generic */
+      CURLE_BAD_FUNCTION_ARGUMENT;
+  }
+
   return result;
 }
 ```
