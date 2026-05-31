@@ -1068,14 +1068,14 @@ static CURLcode easy_transfer(struct Curl_multi *multi)
   CURLMcode mresult = CURLM_OK;
   CURLcode result = CURLE_OK;
 
-  // easyハンドル1件の転送が完了するまで poll -> perform -> 完了確認 のループを繰り返す
+  // easyハンドル1件分のレスポンスを取得するまで poll -> perform -> 完了確認 のループを繰り返す
   while (!done && !mresult) {
     int still_running = 0;
 
     // I/Oイベントをpoll
     mresult = curl_multi_poll(multi, NULL, 0, 1000, NULL); // => curl_multi_poll (lib/multi.c)
 
-    // I/O可能になったソケットに実際の読み書きを行う
+    // I/O可能になったソケットに実際の読み書きを行い、data->mstate (CURLMstate) を更新する
     if (!mresult) mresult = curl_multi_perform(multi, &still_running); // => curl_multi_perform (lib/multi.c)
 
     /* only read 'still_running' if curl_multi_perform() return OK */
@@ -1100,5 +1100,268 @@ static CURLcode easy_transfer(struct Curl_multi *multi)
   }
 
   return result;
+}
+```
+
+#### `curl_multi_perform`
+
+```c
+// lib/multi.c
+CURLMcode curl_multi_perform(CURLM *m, int *running_handles)
+{
+  struct Curl_multi *multi = m;
+
+  if(!GOOD_MULTI_HANDLE(multi)) return CURLM_BAD_HANDLE;
+
+  return multi_perform(multi, running_handles);
+}
+
+static CURLMcode multi_perform(struct Curl_multi *multi, int *running_handles)
+{
+  CURLMcode returncode = CURLM_OK;
+  struct curltime start = *multi_now(multi);
+  uint32_t mid;
+  struct Curl_sigpipe_ctx sigpipe_ctx;
+
+  if (multi->in_callback) return CURLM_RECURSIVE_API_CALL;
+
+  if (multi->in_ntfy_callback) return CURLM_RECURSIVE_API_CALL;
+
+  sigpipe_init(&sigpipe_ctx);
+
+  if (Curl_uint32_bset_first(&multi->process, &mid)) {
+    CURL_TRC_M(multi->admin, "multi_perform(running=%u)",
+               Curl_multi_xfers_running(multi));
+    do {
+      struct Curl_easy *data = Curl_multi_get_easy(multi, mid);
+      CURLMcode mresult;
+      if(!data) {
+        DEBUGASSERT(0);
+        Curl_uint32_bset_remove(&multi->process, mid);
+        Curl_uint32_bset_remove(&multi->dirty, mid);
+        continue;
+      }
+      mresult = multi_runsingle(multi, data, &sigpipe_ctx);
+      if(mresult)
+        returncode = mresult;
+    } while(Curl_uint32_bset_next(&multi->process, mid, &mid));
+  }
+  sigpipe_restore(&sigpipe_ctx);
+
+  if(multi_ischanged(multi, TRUE))
+    process_pending_handles(multi);
+
+  if(!returncode && CURL_MNTFY_HAS_ENTRIES(multi))
+    returncode = Curl_mntfy_dispatch_all(multi);
+
+  /*
+   * Remove all expired timers from the splay since handles are dealt
+   * with unconditionally by this function and curl_multi_timeout() requires
+   * that already passed/handled expire times are removed from the splay.
+   *
+   * It is important that the 'now' value is set at the entry of this function
+   * and not for the current time as it may have ticked a little while since
+   * then and then we risk this loop to remove timers that actually have not
+   * been handled!
+   */
+  if(multi->timetree) {
+    struct Curl_tree *t = NULL;
+    do {
+      multi->timetree = Curl_splaygetbest(&start, multi->timetree, &t);
+      if(t) {
+        /* the removed may have another timeout in queue */
+        struct Curl_easy *data = Curl_splayget(t);
+        (void)add_next_timeout(&start, multi, data);
+        if(data->mstate == MSTATE_PENDING) {
+          bool stream_unused;
+          CURLcode result_unused;
+          if(multi_handle_timeout(data, &stream_unused, &result_unused)) {
+            infof(data, "PENDING handle timeout");
+            move_pending_to_connect(multi, data);
+          }
+        }
+      }
+    } while(t);
+  }
+
+  if(running_handles) {
+    unsigned int running = Curl_multi_xfers_running(multi);
+    *running_handles = (running < INT_MAX) ? (int)running : INT_MAX;
+  }
+
+  if(CURLM_OK >= returncode)
+    returncode = Curl_update_timer(multi);
+
+  return returncode;
+}
+
+static CURLMcode multi_runsingle(struct Curl_multi *multi,
+                                 struct Curl_easy *data,
+                                 struct Curl_sigpipe_ctx *sigpipe_ctx)
+{
+  CURLMcode mresult;
+  CURLcode result = CURLE_OK;
+
+  if(!GOOD_EASY_HANDLE(data))
+    return CURLM_BAD_EASY_HANDLE;
+
+  if(multi->dead) {
+    /* a multi-level callback returned error before, meaning every individual
+     transfer now has failed */
+    result = CURLE_ABORTED_BY_CALLBACK;
+    multi_posttransfer(data);
+    multi_done(data, result, FALSE);
+    multistate(data, MSTATE_COMPLETED);
+  }
+
+  multi_warn_debug(multi, data);
+
+  /* transfer runs now, clear the dirty bit. This may be set
+   * again during processing, triggering a re-run later. */
+  Curl_uint32_bset_remove(&multi->dirty, data->mid);
+
+  if(data == multi->admin) {
+#ifdef ENABLE_WAKEUP
+    /* Consume any pending wakeup signals before processing.
+     * This is necessary for event based processing. See #21547 */
+    (void)Curl_wakeup_consume(multi->wakeup_pair, TRUE);
+#endif
+#ifdef USE_RESOLV_THREADED
+    Curl_async_thrdd_multi_process(multi);
+#endif
+    Curl_cshutdn_perform(&multi->cshutdn, multi->admin, sigpipe_ctx);
+    return CURLM_OK;
+  }
+
+  sigpipe_apply(data, sigpipe_ctx);
+  do {
+    /* A "stream" here is a logical stream if the protocol can handle that
+       (HTTP/2), or the full connection for older protocols */
+    bool stream_error = FALSE;
+    mresult = CURLM_OK;
+
+    if(multi_ischanged(multi, TRUE)) {
+      CURL_TRC_M(data, "multi changed, check CONNECT_PEND queue");
+      process_pending_handles(multi); /* multiplexed */
+    }
+
+    if(data->mstate > MSTATE_CONNECT &&
+       data->mstate < MSTATE_COMPLETED) {
+      /* Make sure we set the connection's current owner */
+      DEBUGASSERT(data->conn);
+      if(!data->conn)
+        return CURLM_INTERNAL_ERROR;
+    }
+
+    /* Wait for the connect state as only then is the start time stored, but
+       we must not check already completed handles */
+    if((data->mstate >= MSTATE_CONNECT) && (data->mstate < MSTATE_COMPLETED) &&
+       multi_handle_timeout(data, &stream_error, &result))
+      /* Skip the statemachine and go directly to error handling section. */
+      goto statemachine_end;
+
+    switch(data->mstate) {
+    case MSTATE_INIT:
+      /* Transitional state. init this transfer. A handle never comes back to
+         this state. */
+      mresult = multistate_init(data, &result);
+      break;
+
+    case MSTATE_SETUP:
+      /* Transitional state. Setup things for a new transfer. The handle
+         can come back to this state on a redirect. */
+      mresult = multistate_setup(data);
+      break;
+
+    case MSTATE_CONNECT:
+      mresult = multistate_connect(multi, data, &result);
+      break;
+
+    case MSTATE_CONNECTING:
+      /* awaiting a completion of an asynch TCP connect */
+      mresult = multistate_connecting(data, &stream_error, &result);
+      break;
+
+    case MSTATE_PROTOCONNECT:
+      mresult = multistate_protoconnect(data, &stream_error, &result);
+      break;
+
+    case MSTATE_PROTOCONNECTING:
+      /* protocol-specific connect phase */
+      mresult = multistate_protoconnecting(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DO:
+      mresult = multistate_do(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DOING:
+      /* we continue DOING until the DO phase is complete */
+      mresult = multistate_doing(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DOING_MORE:
+      /*
+       * When we are connected, DOING MORE and then go DID
+       */
+      mresult = multistate_doing_more(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DID:
+      mresult = multistate_did(multi, data);
+      break;
+
+    case MSTATE_RATELIMITING: /* limit-rate exceeded in either direction */
+      mresult = multistate_ratelimiting(data, &result);
+      break;
+
+    case MSTATE_PERFORMING:
+      mresult = multistate_performing(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DONE:
+      mresult = multistate_done(data, &result);
+      break;
+
+    case MSTATE_COMPLETED:
+      break;
+
+    case MSTATE_PENDING:
+    case MSTATE_MSGSENT:
+      /* handles in these states should NOT be in this list */
+      break;
+
+    default:
+      return CURLM_INTERNAL_ERROR;
+    }
+
+    if(data->mstate >= MSTATE_CONNECT &&
+       data->mstate < MSTATE_DO &&
+       mresult != CURLM_CALL_MULTI_PERFORM &&
+       !multi_ischanged(multi, FALSE)) {
+      /* We now handle stream timeouts if and only if this will be the last
+       * loop iteration. We only check this on the last iteration to ensure
+       * that if we know we have additional work to do immediately
+       * (i.e. CURLM_CALL_MULTI_PERFORM == TRUE) then we should do that before
+       * declaring the connection timed out as we may almost have a completed
+       * connection. */
+      multi_handle_timeout(data, &stream_error, &result);
+    }
+
+statemachine_end:
+
+    result = is_finished(multi, data, stream_error, result);
+    if(result)
+      mresult = CURLM_CALL_MULTI_PERFORM;
+
+    if(MSTATE_COMPLETED == data->mstate) {
+      handle_completed(multi, data, result);
+      return CURLM_OK;
+    }
+  } while((mresult == CURLM_CALL_MULTI_PERFORM) ||
+          multi_ischanged(multi, FALSE));
+
+  data->result = result;
+  return mresult;
 }
 ```
