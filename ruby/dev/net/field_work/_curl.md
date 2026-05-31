@@ -25,7 +25,6 @@ int main(int argc, char *argv[])
 
   if(!result) {
     /* Start our curl operation */
-    // WIP
     result = operate(argc, argv); // 実際の処理
 
     /* Perform the main cleanup */
@@ -319,6 +318,8 @@ CURLcode operate(int argc, argv_item_t argv[])
 ```c
 // src/tool_operate.c
 
+struct per_transfer *transfers; /* first node */
+
 static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
 {
   /* Save the values of noprogress and isatty to restore them later on */
@@ -489,45 +490,30 @@ static CURLcode serial_transfers(CURLSH *share)
     return CURLE_READ_ERROR;
   }
 
-  // WIP
-  for(per = transfers; per;) {
+  for (per = transfers; per;) {
     bool retry;
     uint32_t delay_ms;
     bool bailout = FALSE;
     struct curltime start;
 
+    // 転送開始時刻
     start = curlx_now();
-    if(!per->skip) {
-      result = pre_transfer(per);
-      if(result)
-        break;
 
-      if(global->libcurl) {
-        result = easysrc_perform();
-        if(result)
-          break;
+    if (!per->skip) {
+      // アップロードファイルがある場合の準備
+      result = pre_transfer(per); // => pre_transfer (src/tool_operate.c)
+
+      if (result) break;
+
+      if (global->libcurl) {
+        // --libcurl が指定されている場合、生成するCソースコードに
+        // この転送に対応するcurl_easy_perform等の行を追記する
+        result = easysrc_perform(); // => easysrc_perform (src/tool_easysrc.c)
+        if(result) break;
       }
 
-#ifdef DEBUGBUILD
-      if(getenv("CURL_FORBID_REUSE"))
-        (void)curl_easy_setopt(per->curl, CURLOPT_FORBID_REUSE, 1L);
-
-      if(global->test_duphandle) {
-        CURL *dup = curl_easy_duphandle(per->curl);
-        curl_easy_cleanup(per->curl);
-        per->curl = dup;
-        if(!dup) {
-          result = CURLE_OUT_OF_MEMORY;
-          break;
-        }
-        /* a duplicate needs the share re-added */
-        (void)curl_easy_setopt(per->curl, CURLOPT_SHARE, share);
-      }
-      if(global->test_event_based)
-        result = curl_easy_perform_ev(per->curl);
-      else
-#endif
-        result = curl_easy_perform(per->curl);
+      // 転送を実行
+      result = curl_easy_perform(per->curl); // => curl_easy_perform (lib/easy.c)
     }
 
     returncode = post_per_transfer(per, result, &retry, &delay_ms);
@@ -584,6 +570,7 @@ static CURLcode serial_transfers(CURLSH *share)
 
 ```c
 // src/tool_operate.c
+// WIP
 
 static CURLcode parallel_transfers(CURLSH *share)
 {
@@ -974,5 +961,426 @@ static CURLcode create_single(
     break;
   }
   return result;
+}
+```
+
+#### `curl_easy_perform`
+
+```c
+// lib/easy.c
+
+CURLcode curl_easy_perform(CURL *curl)
+{
+  return easy_perform(curl, FALSE);
+}
+
+static CURLcode easy_perform(struct Curl_easy *data, bool events)
+{
+  struct Curl_multi *multi; // 複数のeasyハンドルをまとめて並行転送するためのハンドル
+  CURLMcode mresult;
+  CURLcode result = CURLE_OK;
+  struct Curl_sigpipe_ctx sigpipe_ctx;
+
+  if (!data) return CURLE_BAD_FUNCTION_ARGUMENT;
+
+  /* clear this as early as possible */
+  // エラーバッファをクリア
+  if (data->set.errorbuffer) data->set.errorbuffer[0] = 0;
+  // OSエラー番号をリセット
+  data->state.os_errno = 0;
+
+  // すでにdata->multiに追加済みのeasyハンドルがある場合はエラー
+  if (data->multi) {
+    failf(data, "easy handle already used in multi handle");
+    return CURLE_FAILED_INIT;
+  }
+
+  /* if the handle has a connection still attached (it is/was a connect-only
+     handle) then disconnect before performing */
+  // connect-onlyの接続を持つハンドルを再利用する際、残存している古い接続を切断
+  if (data->conn) {
+    struct connectdata *c;
+    curl_socket_t s;
+    Curl_detach_connection(data);
+
+    s = Curl_getconnectinfo(data, &c);
+
+    if ((s != CURL_SOCKET_BAD) && c) {
+      Curl_conn_terminate(data, c, TRUE);
+    }
+
+    DEBUGASSERT(!data->conn);
+  }
+
+  // multiハンドルの生成
+  if (data->multi_easy) {
+    multi = data->multi_easy;
+  } else {
+    /* this multi handle will only ever have a single easy handle attached to
+       it, so make it use minimal hash sizes */
+    multi = Curl_multi_handle(16, 1, 3, 7, 3);
+    if(!multi) return CURLE_OUT_OF_MEMORY;
+  }
+
+  // コールバック内からの再帰呼び出しをチェック
+  if (multi->in_callback) return CURLE_RECURSIVE_API_CALL;
+
+  /* Copy relevant easy options to the multi handle */
+  // multiオプションのセット
+  curl_multi_setopt(multi, CURLMOPT_MAXCONNECTS, (long)data->set.maxconnects);
+  curl_multi_setopt(multi, CURLMOPT_QUICK_EXIT, (long)data->set.quick_exit);
+
+  // multiハンドルにeasyハンドルを追加
+  data->multi_easy = NULL; /* pretend it does not exist */
+  mresult = curl_multi_add_handle(multi, data);
+
+  if (mresult) {
+    curl_multi_cleanup(multi);
+    if(mresult == CURLM_OUT_OF_MEMORY) return CURLE_OUT_OF_MEMORY;
+    return CURLE_FAILED_INIT;
+  }
+
+  /* assign this after curl_multi_add_handle() */
+  data->multi_easy = multi;
+
+  // 書き込み先のソケットが切断された際に発生するSIGPIPEシグナルを無視する
+  sigpipe_init(&sigpipe_ctx);
+  sigpipe_apply(data, &sigpipe_ctx);
+
+  /* run the transfer */
+  // 転送の実行
+  result = events ? easy_events(multi) : easy_transfer(multi); // => easy_transfer (lib/easy.c)
+
+  // 後処理
+  /* ignoring the return code is not nice, but atm we cannot really handle
+     a failure here, room for future improvement! */
+  (void)curl_multi_remove_handle(multi, data);
+
+  sigpipe_restore(&sigpipe_ctx);
+
+  /* The multi handle is kept alive, owned by the easy handle */
+  return result;
+}
+
+static CURLcode easy_transfer(struct Curl_multi *multi)
+{
+  bool done = FALSE;
+  CURLMcode mresult = CURLM_OK;
+  CURLcode result = CURLE_OK;
+
+  // easyハンドル1件分のレスポンスを取得するまで poll -> perform -> 完了確認 のループを繰り返す
+  while (!done && !mresult) {
+    int still_running = 0;
+
+    // I/Oイベントをpoll
+    mresult = curl_multi_poll(multi, NULL, 0, 1000, NULL); // => curl_multi_poll (lib/multi.c)
+
+    // I/O可能になったソケットに実際の読み書きを行い、data->mstate (CURLMstate) を更新する
+    if (!mresult) mresult = curl_multi_perform(multi, &still_running); // => curl_multi_perform (lib/multi.c) WIP
+
+    /* only read 'still_running' if curl_multi_perform() return OK */
+    if (!mresult && !still_running) {
+      int rc;
+      // 完了メッセージの取得
+      CURLMsg *msg = curl_multi_info_read(multi, &rc);
+
+      if (msg) {
+        result = msg->data.result;
+        done = TRUE;
+      }
+    }
+  }
+
+  /* Make sure to return some kind of error if there was a multi problem */
+  if (mresult) {
+    result = (mresult == CURLM_OUT_OF_MEMORY) ? CURLE_OUT_OF_MEMORY :
+      /* The other multi errors should never happen, so return something suitably generic */
+      CURLE_BAD_FUNCTION_ARGUMENT;
+  }
+
+  return result;
+}
+```
+
+#### `curl_multi_perform` WIP
+
+```c
+// lib/multi.c
+CURLMcode curl_multi_perform(CURLM *m, int *running_handles)
+{
+  struct Curl_multi *multi = m;
+
+  if (!GOOD_MULTI_HANDLE(multi)) return CURLM_BAD_HANDLE;
+
+  return multi_perform(multi, running_handles);
+}
+
+static CURLMcode multi_perform(struct Curl_multi *multi, int *running_handles) // WIP
+{
+  CURLMcode returncode = CURLM_OK;
+  struct curltime start = *multi_now(multi); // multi_performの開始時刻
+  uint32_t mid;
+  struct Curl_sigpipe_ctx sigpipe_ctx;
+
+  // 転送コールバック中、あるいは通知コールバック中の再入防止
+  if (multi->in_callback) return CURLM_RECURSIVE_API_CALL;
+  if (multi->in_ntfy_callback) return CURLM_RECURSIVE_API_CALL;
+
+  // ネットワーク書き込み中に相手が切断した場合でもSIGPIPEを無視する
+  sigpipe_init(&sigpipe_ctx);
+
+  // 処理すべきeasyハンドルのID セットが存在する場合
+  if (Curl_uint32_bset_first(&multi->process, &mid)) {
+    CURL_TRC_M(multi->admin, "multi_perform(running=%u)", Curl_multi_xfers_running(multi));
+
+    do {
+      // midから実際のCurl_easyポインタを取得
+      struct Curl_easy *data = Curl_multi_get_easy(multi, mid);
+      CURLMcode mresult;
+
+      if (!data) { // Curl_easyポインタが取得できない場合
+        DEBUGASSERT(0);
+        Curl_uint32_bset_remove(&multi->process, mid);
+        Curl_uint32_bset_remove(&multi->dirty, mid);
+        continue;
+      }
+
+      // 状態を1ステップ進める
+      mresult = multi_runsingle(multi, data, &sigpipe_ctx); // => multi_runsingle (lib/multi.c) WIP
+
+      if(mresult) returncode = mresult;
+    } while(Curl_uint32_bset_next(&multi->process, mid, &mid)); // セットを使い切るまでループを続ける
+  }
+
+  // SIGPIPEを無視する設定を元に戻す
+  sigpipe_restore(&sigpipe_ctx);
+
+  // ループ中にmultiの状態が変化した場合
+  if (multi_ischanged(multi, TRUE)) process_pending_handles(multi);
+
+  // libcurl 内部のイベント通知機構に通知が届いている場合
+  if (!returncode && CURL_MNTFY_HAS_ENTRIES(multi)) returncode = Curl_mntfy_dispatch_all(multi);
+
+  /*
+   * Remove all expired timers from the splay since handles are dealt
+   * with unconditionally by this function and curl_multi_timeout() requires
+   * that already passed/handled expire times are removed from the splay.
+   *
+   * It is important that the 'now' value is set at the entry of this function
+   * and not for the current time as it may have ticked a little while since
+   * then and then we risk this loop to remove timers that actually have not
+   * been handled!
+   */
+  // タイマーツリーが存在する場合
+  if (multi->timetree) {
+    struct Curl_tree *t = NULL;
+
+    do {
+      // start前に期限切れになったノードを取得
+      multi->timetree = Curl_splaygetbest(&start, multi->timetree, &t);
+
+      if (t) {
+        /* the removed may have another timeout in queue */
+        struct Curl_easy *data = Curl_splayget(t);
+        // ハンドルに次のタイムアウトがあればツリーに再登録
+        (void)add_next_timeout(&start, multi, data);
+
+        // ハンドルがMSTATE_PENDING状態の場合
+        if (data->mstate == MSTATE_PENDING) {
+          bool stream_unused;
+          CURLcode result_unused;
+
+          // タイムアウトさせてMSTATE_CONNECTへ進める
+          if (multi_handle_timeout(data, &stream_unused, &result_unused)) {
+            infof(data, "PENDING handle timeout");
+            move_pending_to_connect(multi, data);
+          }
+        }
+      }
+    } while(t);
+  }
+
+  // まだ実行中のハンドル数を返す
+  if (running_handles) {
+    unsigned int running = Curl_multi_xfers_running(multi);
+    *running_handles = (running < INT_MAX) ? (int)running : INT_MAX;
+  }
+
+  // タイマーを更新してcurl_multi_poll が待機するべき時間を取得
+  if (CURLM_OK >= returncode) returncode = Curl_update_timer(multi);
+
+  return returncode;
+}
+
+// WIP
+static CURLMcode multi_runsingle(
+  struct Curl_multi *multi,
+  struct Curl_easy *data,
+  struct Curl_sigpipe_ctx *sigpipe_ctx
+) {
+  CURLMcode mresult;
+  CURLcode result = CURLE_OK;
+
+  if (!GOOD_EASY_HANDLE(data)) return CURLM_BAD_EASY_HANDLE;
+
+  if (multi->dead) {
+    /* a multi-level callback returned error before, meaning every individual
+     transfer now has failed */
+    result = CURLE_ABORTED_BY_CALLBACK;
+    multi_posttransfer(data);
+    multi_done(data, result, FALSE);
+    multistate(data, MSTATE_COMPLETED);
+  }
+
+  multi_warn_debug(multi, data);
+
+  /* transfer runs now, clear the dirty bit. This may be set
+   * again during processing, triggering a re-run later. */
+  Curl_uint32_bset_remove(&multi->dirty, data->mid);
+
+  if (data == multi->admin) {
+    #ifdef ENABLE_WAKEUP
+    /* Consume any pending wakeup signals before processing.
+     * This is necessary for event based processing. See #21547 */
+    (void)Curl_wakeup_consume(multi->wakeup_pair, TRUE);
+    #endif
+
+    #ifdef USE_RESOLV_THREADED
+    Curl_async_thrdd_multi_process(multi);
+    #endif
+    Curl_cshutdn_perform(&multi->cshutdn, multi->admin, sigpipe_ctx);
+    return CURLM_OK;
+  }
+
+  sigpipe_apply(data, sigpipe_ctx);
+
+  do {
+    /* A "stream" here is a logical stream if the protocol can handle that
+       (HTTP/2), or the full connection for older protocols */
+    bool stream_error = FALSE;
+    mresult = CURLM_OK;
+
+    if (multi_ischanged(multi, TRUE)) {
+      CURL_TRC_M(data, "multi changed, check CONNECT_PEND queue");
+      process_pending_handles(multi); /* multiplexed */
+    }
+
+    if (data->mstate > MSTATE_CONNECT && data->mstate < MSTATE_COMPLETED) {
+      /* Make sure we set the connection's current owner */
+      DEBUGASSERT(data->conn);
+
+      if(!data->conn) return CURLM_INTERNAL_ERROR;
+    }
+
+    /* Wait for the connect state as only then is the start time stored, but
+       we must not check already completed handles */
+    if ((data->mstate >= MSTATE_CONNECT) && (data->mstate < MSTATE_COMPLETED) &&
+       multi_handle_timeout(data, &stream_error, &result))
+      /* Skip the statemachine and go directly to error handling section. */
+      goto statemachine_end;
+
+    switch (data->mstate) {
+    case MSTATE_INIT:
+      /* Transitional state. init this transfer. A handle never comes back to
+         this state. */
+      mresult = multistate_init(data, &result);
+      break;
+
+    case MSTATE_SETUP:
+      /* Transitional state. Setup things for a new transfer. The handle
+         can come back to this state on a redirect. */
+      mresult = multistate_setup(data);
+      break;
+
+    case MSTATE_CONNECT:
+      mresult = multistate_connect(multi, data, &result);
+      break;
+
+    case MSTATE_CONNECTING:
+      /* awaiting a completion of an asynch TCP connect */
+      mresult = multistate_connecting(data, &stream_error, &result);
+      break;
+
+    case MSTATE_PROTOCONNECT:
+      mresult = multistate_protoconnect(data, &stream_error, &result);
+      break;
+
+    case MSTATE_PROTOCONNECTING:
+      /* protocol-specific connect phase */
+      mresult = multistate_protoconnecting(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DO:
+      mresult = multistate_do(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DOING:
+      /* we continue DOING until the DO phase is complete */
+      mresult = multistate_doing(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DOING_MORE:
+      /*
+       * When we are connected, DOING MORE and then go DID
+       */
+      mresult = multistate_doing_more(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DID:
+      mresult = multistate_did(multi, data);
+      break;
+
+    case MSTATE_RATELIMITING: /* limit-rate exceeded in either direction */
+      mresult = multistate_ratelimiting(data, &result);
+      break;
+
+    case MSTATE_PERFORMING:
+      mresult = multistate_performing(data, &stream_error, &result);
+      break;
+
+    case MSTATE_DONE:
+      mresult = multistate_done(data, &result);
+      break;
+
+    case MSTATE_COMPLETED:
+      break;
+
+    case MSTATE_PENDING:
+    case MSTATE_MSGSENT:
+      /* handles in these states should NOT be in this list */
+      break;
+
+    default:
+      return CURLM_INTERNAL_ERROR;
+    }
+
+    if (data->mstate >= MSTATE_CONNECT &&
+       data->mstate < MSTATE_DO &&
+       mresult != CURLM_CALL_MULTI_PERFORM &&
+       !multi_ischanged(multi, FALSE)) {
+      /* We now handle stream timeouts if and only if this will be the last
+       * loop iteration. We only check this on the last iteration to ensure
+       * that if we know we have additional work to do immediately
+       * (i.e. CURLM_CALL_MULTI_PERFORM == TRUE) then we should do that before
+       * declaring the connection timed out as we may almost have a completed
+       * connection. */
+      multi_handle_timeout(data, &stream_error, &result);
+    }
+
+statemachine_end:
+
+    result = is_finished(multi, data, stream_error, result);
+
+    if (result) mresult = CURLM_CALL_MULTI_PERFORM;
+
+    if (MSTATE_COMPLETED == data->mstate) {
+      handle_completed(multi, data, result);
+      return CURLM_OK;
+    }
+
+  } while((mresult == CURLM_CALL_MULTI_PERFORM) || multi_ischanged(multi, FALSE));
+
+  data->result = result;
+  return mresult;
 }
 ```
