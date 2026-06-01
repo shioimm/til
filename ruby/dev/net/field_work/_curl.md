@@ -1033,9 +1033,21 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   curl_multi_setopt(multi, CURLMOPT_MAXCONNECTS, (long)data->set.maxconnects);
   curl_multi_setopt(multi, CURLMOPT_QUICK_EXIT, (long)data->set.quick_exit);
 
-  // multiハンドルにeasyハンドルを追加
   data->multi_easy = NULL; /* pretend it does not exist */
-  mresult = curl_multi_add_handle(multi, data);
+  mresult = curl_multi_add_handle(multi, data); // => curl_multi_add_handle (lib/multi.c)
+  // 1. multiハンドル / easyハンドルのバリデーションチェック
+  // 2. curl_multi_cleanup(data->multi_easy) 既存のmulti_easyの破棄
+  // 3. multi_xfers_add(multi, data) multiハンドルにeasyハンドルを追加
+  // 4. Curl_llist_init(&data->state.timeoutlist, NULL) このハンドル用のタイムアウトイベントリストを初期化
+  // 5. data->set.errorbuffer[0] = 0, data->state.os_errno = 0 前回転送時のエラーバッファをクリア
+  // 6. data->multi = multi easyにmultiへの逆参照をセット
+  // 7. multistate(data, MSTATE_INIT) で状態をMSTATE_INITにセット
+  // 9. Curl_uint32_bset_add(&multi->process, data->mid) multi->processにeasyハンドルに割り当てられたIDを追加
+  // 10. Curl_cpool_xfer_init(data) 接続プールにこのハンドルが転送を開始することを通知
+  // 11. Curl_multi_mark_dirty(data) (dirty フラグを立てる)
+  // 12. multi->admin->set.timeout = data->set.timeout adminハンドルへのタイムアウト設定コピー
+  // 13. multi_assess_wakeup(multi) wakeup監視の設定
+  // 14. Curl_update_timer(multi) タイマ更新
 
   if (mresult) {
     curl_multi_cleanup(multi);
@@ -1300,7 +1312,7 @@ static CURLMcode multi_runsingle(
 
     // WIP
     switch (data->mstate) {
-    case MSTATE_INIT:
+    case MSTATE_INIT: // 初期状態
       /* Transitional state. init this transfer. A handle never comes back to
          this state. */
       mresult = multistate_init(data, &result);
