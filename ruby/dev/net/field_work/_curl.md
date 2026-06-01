@@ -1148,7 +1148,7 @@ static CURLMcode multi_perform(struct Curl_multi *multi, int *running_handles) /
       // 状態を1ステップ進める
       mresult = multi_runsingle(multi, data, &sigpipe_ctx); // => multi_runsingle (lib/multi.c) WIP
 
-      if(mresult) returncode = mresult;
+      if (mresult) returncode = mresult;
     } while(Curl_uint32_bset_next(&multi->process, mid, &mid)); // セットを使い切るまでループを続ける
   }
 
@@ -1218,11 +1218,13 @@ static CURLMcode multi_runsingle(
   struct Curl_easy *data,
   struct Curl_sigpipe_ctx *sigpipe_ctx
 ) {
-  CURLMcode mresult;
-  CURLcode result = CURLE_OK;
+  CURLMcode mresult; // multiレベルの実行結果
+  CURLcode result = CURLE_OK; // easyハンドル単体の転送結果
 
+  // ポインタが無効なeasyハンドルの場合
   if (!GOOD_EASY_HANDLE(data)) return CURLM_BAD_EASY_HANDLE;
 
+  // multiレベルのコールバックが以前エラーを返している場合
   if (multi->dead) {
     /* a multi-level callback returned error before, meaning every individual
      transfer now has failed */
@@ -1232,29 +1234,38 @@ static CURLMcode multi_runsingle(
     multistate(data, MSTATE_COMPLETED);
   }
 
-  multi_warn_debug(multi, data);
-
   /* transfer runs now, clear the dirty bit. This may be set
    * again during processing, triggering a re-run later. */
+  // dirtyフラグ (再処理が必要なハンドル) をクリア。処理中に必要に応じて再セットされる
   Curl_uint32_bset_remove(&multi->dirty, data->mid);
 
+  // multi->admin = multiハンドル自身の内部管理用に確保された特殊なeasyハンドル
   if (data == multi->admin) {
     #ifdef ENABLE_WAKEUP
     /* Consume any pending wakeup signals before processing.
      * This is necessary for event based processing. See #21547 */
+    // curl_multi_wakeup() で創出されたシグナルをパイプから読み捨てる (#21547対応)
     (void)Curl_wakeup_consume(multi->wakeup_pair, TRUE);
     #endif
 
     #ifdef USE_RESOLV_THREADED
+    // 別スレッドで完了した名前解決の結果を回収
     Curl_async_thrdd_multi_process(multi);
     #endif
+
+    // cshutdn = connection shutdown 切断中の接続の後始末を進める
     Curl_cshutdn_perform(&multi->cshutdn, multi->admin, sigpipe_ctx);
     return CURLM_OK;
   }
 
+  // SIGPIPEの抑制設定を適用する
   sigpipe_apply(data, sigpipe_ctx);
 
+  // - mresult == CURLM_CALL_MULTI_PERFORM I/O待ちなしで次の状態にすぐ進める
+  // - multi_ischanged(multi, FALSE) ループ中に他のハンドルの処理によってmultiの状態が変化した
+  // いずれかの状態を満たすまでループ
   do {
+    // WIP
     /* A "stream" here is a logical stream if the protocol can handle that
        (HTTP/2), or the full connection for older protocols */
     bool stream_error = FALSE;
