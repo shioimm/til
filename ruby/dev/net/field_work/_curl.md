@@ -332,6 +332,7 @@ static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
   /* Time to actually do the transfers */
   // 転送の実行
   if (!result) {
+    // --parallel が指定されたとき...HTTP/2で必要
     if (global->parallel) {
       result = parallel_transfers(share); // => parallel_transfers (src/tool_operate.c)
     } else {
@@ -1013,6 +1014,8 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   }
 
   // multiハンドルの生成
+  // serial_transfers -> curl_easy_perform -> easy_performの場合は
+  // adminハンドル + easyハンドルの二つを含むmultiハンドルになる
   if (data->multi_easy) {
     multi = data->multi_easy;
   } else {
@@ -1030,9 +1033,21 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   curl_multi_setopt(multi, CURLMOPT_MAXCONNECTS, (long)data->set.maxconnects);
   curl_multi_setopt(multi, CURLMOPT_QUICK_EXIT, (long)data->set.quick_exit);
 
-  // multiハンドルにeasyハンドルを追加
   data->multi_easy = NULL; /* pretend it does not exist */
-  mresult = curl_multi_add_handle(multi, data);
+  mresult = curl_multi_add_handle(multi, data); // => curl_multi_add_handle (lib/multi.c)
+  // 1. multiハンドル / easyハンドルのバリデーションチェック
+  // 2. curl_multi_cleanup(data->multi_easy) 既存のmulti_easyの破棄
+  // 3. multi_xfers_add(multi, data) multiハンドルにeasyハンドルを追加
+  // 4. Curl_llist_init(&data->state.timeoutlist, NULL) このハンドル用のタイムアウトイベントリストを初期化
+  // 5. data->set.errorbuffer[0] = 0, data->state.os_errno = 0 前回転送時のエラーバッファをクリア
+  // 6. data->multi = multi easyにmultiへの逆参照をセット
+  // 7. multistate(data, MSTATE_INIT) で状態をMSTATE_INITにセット
+  // 9. Curl_uint32_bset_add(&multi->process, data->mid) multi->processにeasyハンドルに割り当てられたIDを追加
+  // 10. Curl_cpool_xfer_init(data) 接続プールにこのハンドルが転送を開始することを通知
+  // 11. Curl_multi_mark_dirty(data) (dirty フラグを立てる)
+  // 12. multi->admin->set.timeout = data->set.timeout adminハンドルへのタイムアウト設定コピー
+  // 13. multi_assess_wakeup(multi) wakeup監視の設定
+  // 14. Curl_update_timer(multi) タイマ更新
 
   if (mresult) {
     curl_multi_cleanup(multi);
@@ -1081,7 +1096,7 @@ static CURLcode easy_transfer(struct Curl_multi *multi)
     /* only read 'still_running' if curl_multi_perform() return OK */
     if (!mresult && !still_running) {
       int rc;
-      // 完了メッセージの取得
+      // CURLMSG_DONE (完了) メッセージの取得
       CURLMsg *msg = curl_multi_info_read(multi, &rc);
 
       if (msg) {
@@ -1148,7 +1163,7 @@ static CURLMcode multi_perform(struct Curl_multi *multi, int *running_handles) /
       // 状態を1ステップ進める
       mresult = multi_runsingle(multi, data, &sigpipe_ctx); // => multi_runsingle (lib/multi.c) WIP
 
-      if(mresult) returncode = mresult;
+      if (mresult) returncode = mresult;
     } while(Curl_uint32_bset_next(&multi->process, mid, &mid)); // セットを使い切るまでループを続ける
   }
 
@@ -1218,11 +1233,13 @@ static CURLMcode multi_runsingle(
   struct Curl_easy *data,
   struct Curl_sigpipe_ctx *sigpipe_ctx
 ) {
-  CURLMcode mresult;
-  CURLcode result = CURLE_OK;
+  CURLMcode mresult; // multiレベルの実行結果
+  CURLcode result = CURLE_OK; // easyハンドル単体の転送結果
 
+  // ポインタが無効なeasyハンドルの場合
   if (!GOOD_EASY_HANDLE(data)) return CURLM_BAD_EASY_HANDLE;
 
+  // multiレベルのコールバックが以前エラーを返している場合
   if (multi->dead) {
     /* a multi-level callback returned error before, meaning every individual
      transfer now has failed */
@@ -1232,75 +1249,106 @@ static CURLMcode multi_runsingle(
     multistate(data, MSTATE_COMPLETED);
   }
 
-  multi_warn_debug(multi, data);
-
   /* transfer runs now, clear the dirty bit. This may be set
    * again during processing, triggering a re-run later. */
+  // dirtyフラグ (再処理が必要なハンドル) をクリア。処理中に必要に応じて再セットされる
   Curl_uint32_bset_remove(&multi->dirty, data->mid);
 
+  // multi->admin = multiハンドル自身の内部管理用に確保された特殊なeasyハンドル
   if (data == multi->admin) {
     #ifdef ENABLE_WAKEUP
     /* Consume any pending wakeup signals before processing.
      * This is necessary for event based processing. See #21547 */
+    // curl_multi_wakeup() で創出されたシグナルをパイプから読み捨てる (#21547対応)
     (void)Curl_wakeup_consume(multi->wakeup_pair, TRUE);
     #endif
 
     #ifdef USE_RESOLV_THREADED
+    // 別スレッドで完了した名前解決の結果を回収
     Curl_async_thrdd_multi_process(multi);
     #endif
+
+    // cshutdn = connection shutdown 切断中の接続の後始末を進める
     Curl_cshutdn_perform(&multi->cshutdn, multi->admin, sigpipe_ctx);
     return CURLM_OK;
   }
 
+  // SIGPIPEの抑制設定を適用する
   sigpipe_apply(data, sigpipe_ctx);
 
+  // - mresult == CURLM_CALL_MULTI_PERFORM I/O待ちなしで次の状態にすぐ進める
+  // - multi_ischanged(multi, FALSE) ループ中に他のハンドルの処理によってmultiの状態が変化した
+  // いずれかの状態を満たすまでループ
   do {
     /* A "stream" here is a logical stream if the protocol can handle that
        (HTTP/2), or the full connection for older protocols */
-    bool stream_error = FALSE;
+    bool stream_error = FALSE; // 接続レベルのエラー (or ストリームレベルのエラーかどうか)
     mresult = CURLM_OK;
 
+    // 前回のループでmultiの状態が変化していた場合
     if (multi_ischanged(multi, TRUE)) {
       CURL_TRC_M(data, "multi changed, check CONNECT_PEND queue");
+      // PENDINGなハンドルをCONNECTへ遷移させる
       process_pending_handles(multi); /* multiplexed */
     }
 
     if (data->mstate > MSTATE_CONNECT && data->mstate < MSTATE_COMPLETED) {
       /* Make sure we set the connection's current owner */
+      // CONNECTより後の状態において、data->connが確立されていることをチェック
       DEBUGASSERT(data->conn);
 
-      if(!data->conn) return CURLM_INTERNAL_ERROR;
+      if (!data->conn) return CURLM_INTERNAL_ERROR;
     }
 
     /* Wait for the connect state as only then is the start time stored, but
        we must not check already completed handles */
-    if ((data->mstate >= MSTATE_CONNECT) && (data->mstate < MSTATE_COMPLETED) &&
-       multi_handle_timeout(data, &stream_error, &result))
+    // タイムアウトのチェック
+    if ((data->mstate >= MSTATE_CONNECT) &&
+        (data->mstate < MSTATE_COMPLETED) &&
+        multi_handle_timeout(data, &stream_error, &result)) { // resultにエラーコードをセット
       /* Skip the statemachine and go directly to error handling section. */
-      goto statemachine_end;
+      goto statemachine_end; // ステートマシンを終了させる
+    }
 
     switch (data->mstate) {
-    case MSTATE_INIT:
-      /* Transitional state. init this transfer. A handle never comes back to
-         this state. */
-      mresult = multistate_init(data, &result);
+    case MSTATE_INIT: // 初期状態
+      /* Transitional state. init this transfer. A handle never comes back to this state. */
+      mresult = multistate_init(data, &result); // => multistate_init (lib/multi.c)
+      // 転送前の準備を行う
+      // 結果: -> MSTATE_SETUP (CURLM_CALL_MULTI_PERFORM)
       break;
 
     case MSTATE_SETUP:
-      /* Transitional state. Setup things for a new transfer. The handle
-         can come back to this state on a redirect. */
-      mresult = multistate_setup(data);
+      /* Transitional state. Setup things for a new transfer.
+         The handlecan come back to this state on a redirect. */
+      mresult = multistate_setup(data); // => multistate_setup (lib/multi.c)
+      // --max-time と --connect-timeout をタイマーツリーに登録
+      // 結果: -> MSTATE_CONNECT (CURLM_CALL_MULTI_PERFORM)
       break;
 
     case MSTATE_CONNECT:
-      mresult = multistate_connect(multi, data, &result);
+      mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
+      // Curl_connectを呼び出す
+      //   - URLからホスト名・ポートを取得
+      //   - DNSキャッシュを確認、なければCurl_async_getaddrinfoでスレッドキューにDNS クエリを投入
+      //   - 既存の接続が再利用できればconnected = TRUE
+      // 結果:
+      //   - -> MSTATE_PENDING (CURLM_OK)
+      //   - -> MSTATE_PROTOCONNECT (CURLM_CALL_MULTI_PERFORM)
+      //   - -> MSTATE_CONNECTING (CURLM_CALL_MULTI_PERFORM)
       break;
 
-    case MSTATE_CONNECTING:
+    case MSTATE_CONNECTING: // TCP接続完了待ち
       /* awaiting a completion of an asynch TCP connect */
-      mresult = multistate_connecting(data, &stream_error, &result);
+      mresult = multistate_connecting(data, &stream_error, &result); // => multistate_connecting (lib/multi.c)
+      // Curl_conn_connectを呼んで接続の進捗を確認する
+      // 結果:
+      //   - -> MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
+      //   - -> MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
+      //   - -> stream_error = TRUE 接続失敗 (CURLM_OK)
       break;
 
+    // WIP
     case MSTATE_PROTOCONNECT:
       mresult = multistate_protoconnect(data, &stream_error, &result);
       break;
@@ -1369,11 +1417,13 @@ static CURLMcode multi_runsingle(
 
 statemachine_end:
 
+    // エラーがあれば接続を切り離してMSTATE_COMPLETEDに遷移させる
     result = is_finished(multi, data, stream_error, result);
 
     if (result) mresult = CURLM_CALL_MULTI_PERFORM;
 
     if (MSTATE_COMPLETED == data->mstate) {
+      // CURLMSG_DONEメッセージをmultiの内部キューに積む。ハンドルを処理対象から外す
       handle_completed(multi, data, result);
       return CURLM_OK;
     }
@@ -1382,5 +1432,110 @@ statemachine_end:
 
   data->result = result;
   return mresult;
+}
+```
+
+#### `Curl_connect`
+
+```c
+// lib/url.c
+
+CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
+{
+  CURLcode result;
+  struct connectdata *conn;
+
+  *pconnected = FALSE;
+
+  /* Set the request to virgin state based on transfer settings */
+  Curl_req_hard_reset(&data->req, data); // リクエスト状態をリセット
+
+  /* Get or create a connection for the transfer. */
+  result = url_find_or_create_conn(data);
+  // - URLを解析してホスト名・ポート・プロトコルなどをstruct connectdataにセット
+  // - file://の場合の処理
+  // - 既存の接続があればそれを取得
+  // - 接続上限のチェック
+  // - struct connectdataにSSL設定をセット・data->connにセット・接続プールに登録
+  conn = data->conn;
+
+  if (result) goto out;
+
+  DEBUGASSERT(conn);
+  Curl_pgrsTime(data, TIMER_POSTQUEUE);
+
+  if (conn->bits.reuse) { // 接続済み
+    if (conn->attached_xfers > 1) *pconnected = TRUE; /* multiplexed */
+  } else if (conn->scheme->flags & PROTOPT_NONETWORK) { // ネットワーク不要
+    Curl_pgrsTime(data, TIMER_NAMELOOKUP);
+    *pconnected = TRUE;
+  } else { // 新たにDNS解決 + TCP接続フィルタの初期化・開始が必要
+    result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
+
+    if (!result) result = Curl_headers_init(data);
+    CURL_TRC_M(data, "Curl_conn_setup() -> %d", result);
+  }
+
+out:
+  if (result == CURLE_NO_CONNECTION_AVAILABLE) DEBUGASSERT(!conn);
+
+  if (result && conn) {
+    /* We are not allowed to return failure with memory left allocated in the
+       connectdata struct, free those here */
+    Curl_detach_connection(data);
+    Curl_conn_terminate(data, conn, TRUE);
+  }
+
+  return result;
+}
+```
+
+#### `Curl_conn_setup`
+
+```c
+// lib/connect.c
+// WIP
+
+CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int sockindex, int ssl_mode)
+{
+  CURLcode result = CURLE_OK;
+  struct Curl_peer *peer = Curl_conn_get_first_peer(conn, sockindex);
+  uint8_t dns_queries;
+
+  DEBUGASSERT(data);
+  DEBUGASSERT(conn->scheme);
+  DEBUGASSERT(!conn->cfilter[sockindex]);
+
+  if(!peer)
+    return CURLE_FAILED_INIT;
+
+#ifndef CURL_DISABLE_HTTP
+  if(!conn->cfilter[sockindex] &&
+     conn->scheme->protocol == CURLPROTO_HTTPS) {
+    DEBUGASSERT(ssl_mode != CURL_CF_SSL_DISABLE);
+    result = Curl_cf_https_setup(data, conn, sockindex);
+    if(result)
+      goto out;
+  }
+#endif /* !CURL_DISABLE_HTTP */
+
+  /* Still no cfilter set, apply default. */
+  if(!conn->cfilter[sockindex]) {
+    result = cf_setup_add(data, conn, sockindex,
+                          conn->transport_wanted, ssl_mode);
+    if(result)
+      goto out;
+  }
+
+  dns_queries = Curl_resolv_dns_queries(data, conn->ip_version);
+#ifdef USE_HTTPSRR
+  if(sockindex == FIRSTSOCKET)
+    dns_queries |= CURL_DNSQ_HTTPS;
+#endif
+  result = Curl_cf_dns_add(data, conn, sockindex, peer, dns_queries,
+                           conn->transport_wanted);
+  DEBUGASSERT(conn->cfilter[sockindex]);
+out:
+  return result;
 }
 ```
