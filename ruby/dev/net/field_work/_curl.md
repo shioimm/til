@@ -332,6 +332,7 @@ static CURLcode run_all_transfers(CURLSH *share, CURLcode result)
   /* Time to actually do the transfers */
   // 転送の実行
   if (!result) {
+    // --parallel が指定されたとき...HTTP/2で必要
     if (global->parallel) {
       result = parallel_transfers(share); // => parallel_transfers (src/tool_operate.c)
     } else {
@@ -1013,6 +1014,8 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   }
 
   // multiハンドルの生成
+  // serial_transfers -> curl_easy_perform -> easy_performの場合は
+  // adminハンドル + easyハンドルの二つを含むmultiハンドルになる
   if (data->multi_easy) {
     multi = data->multi_easy;
   } else {
