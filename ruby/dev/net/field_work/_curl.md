@@ -1434,3 +1434,58 @@ statemachine_end:
   return mresult;
 }
 ```
+
+#### `Curl_connect`
+
+```c
+// lib/url.c
+
+CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
+{
+  CURLcode result;
+  struct connectdata *conn;
+
+  *pconnected = FALSE;
+
+  /* Set the request to virgin state based on transfer settings */
+  Curl_req_hard_reset(&data->req, data); // リクエスト状態をリセット
+
+  /* Get or create a connection for the transfer. */
+  result = url_find_or_create_conn(data);
+  // - URLを解析してホスト名・ポート・プロトコルなどをstruct connectdataにセット
+  // - file://の場合の処理
+  // - 既存の接続があればそれを取得
+  // - 接続上限のチェック
+  // - struct connectdataにSSL設定をセット・data->connにセット・接続プールに登録
+  conn = data->conn;
+
+  if (result) goto out;
+
+  DEBUGASSERT(conn);
+  Curl_pgrsTime(data, TIMER_POSTQUEUE);
+
+  if (conn->bits.reuse) { // 接続済み
+    if (conn->attached_xfers > 1) *pconnected = TRUE; /* multiplexed */
+  } else if (conn->scheme->flags & PROTOPT_NONETWORK) { // ネットワーク不要
+    Curl_pgrsTime(data, TIMER_NAMELOOKUP);
+    *pconnected = TRUE;
+  } else { // 新たにDNS解決 + TCP接続フィルタの初期化・開始が必要
+    result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
+
+    if (!result) result = Curl_headers_init(data);
+    CURL_TRC_M(data, "Curl_conn_setup() -> %d", result);
+  }
+
+out:
+  if (result == CURLE_NO_CONNECTION_AVAILABLE) DEBUGASSERT(!conn);
+
+  if (result && conn) {
+    /* We are not allowed to return failure with memory left allocated in the
+       connectdata struct, free those here */
+    Curl_detach_connection(data);
+    Curl_conn_terminate(data, conn, TRUE);
+  }
+
+  return result;
+}
+```
