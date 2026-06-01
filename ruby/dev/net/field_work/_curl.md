@@ -1315,8 +1315,7 @@ static CURLMcode multi_runsingle(
       /* Transitional state. init this transfer. A handle never comes back to this state. */
       mresult = multistate_init(data, &result); // => multistate_init (lib/multi.c)
       // 転送前の準備を行う
-      // data->mstate = MSTATE_INIT -> MSTATE_SETUP
-      // mresult = CURLM_CALL_MULTI_PERFORM
+      // 結果: -> MSTATE_SETUP (CURLM_CALL_MULTI_PERFORM)
       break;
 
     case MSTATE_SETUP:
@@ -1324,20 +1323,32 @@ static CURLMcode multi_runsingle(
          The handlecan come back to this state on a redirect. */
       mresult = multistate_setup(data); // => multistate_setup (lib/multi.c)
       // --max-time と --connect-timeout をタイマーツリーに登録
-      // data->mstate = MSTATE_SETUP -> MSTATE_CONNECT
-      // mresult = CURLM_CALL_MULTI_PERFORM
+      // 結果: -> MSTATE_CONNECT (CURLM_CALL_MULTI_PERFORM)
+      break;
+
+    case MSTATE_CONNECT:
+      mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
+      // Curl_connectを呼び出す
+      //   - URLからホスト名・ポートを取得
+      //   - DNSキャッシュを確認、なければCurl_async_getaddrinfoでスレッドキューにDNS クエリを投入
+      //   - 既存の接続が再利用できればconnected = TRUE
+      // 結果:
+      //   - -> MSTATE_PENDING (CURLM_OK)
+      //   - -> MSTATE_PROTOCONNECT (CURLM_CALL_MULTI_PERFORM)
+      //   - -> MSTATE_CONNECTING (CURLM_CALL_MULTI_PERFORM)
+      break;
+
+    case MSTATE_CONNECTING: // TCP接続完了待ち
+      /* awaiting a completion of an asynch TCP connect */
+      mresult = multistate_connecting(data, &stream_error, &result); // => multistate_connecting (lib/multi.c)
+      // Curl_conn_connectを呼んで接続の進捗を確認する
+      // 結果:
+      //   - -> MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
+      //   - -> MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
+      //   - -> stream_error = TRUE 接続失敗 (CURLM_OK)
       break;
 
     // WIP
-    case MSTATE_CONNECT:
-      mresult = multistate_connect(multi, data, &result);
-      break;
-
-    case MSTATE_CONNECTING:
-      /* awaiting a completion of an asynch TCP connect */
-      mresult = multistate_connecting(data, &stream_error, &result);
-      break;
-
     case MSTATE_PROTOCONNECT:
       mresult = multistate_protoconnect(data, &stream_error, &result);
       break;
