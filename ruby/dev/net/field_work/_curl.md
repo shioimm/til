@@ -1084,7 +1084,7 @@ static CURLcode easy_transfer(struct Curl_multi *multi)
     /* only read 'still_running' if curl_multi_perform() return OK */
     if (!mresult && !still_running) {
       int rc;
-      // 完了メッセージの取得
+      // CURLMSG_DONE (完了) メッセージの取得
       CURLMsg *msg = curl_multi_info_read(multi, &rc);
 
       if (msg) {
@@ -1268,31 +1268,37 @@ static CURLMcode multi_runsingle(
   // - multi_ischanged(multi, FALSE) ループ中に他のハンドルの処理によってmultiの状態が変化した
   // いずれかの状態を満たすまでループ
   do {
-    // WIP
     /* A "stream" here is a logical stream if the protocol can handle that
        (HTTP/2), or the full connection for older protocols */
-    bool stream_error = FALSE;
+    bool stream_error = FALSE; // 接続レベルのエラー (or ストリームレベルのエラーかどうか)
     mresult = CURLM_OK;
 
+    // 前回のループでmultiの状態が変化していた場合
     if (multi_ischanged(multi, TRUE)) {
       CURL_TRC_M(data, "multi changed, check CONNECT_PEND queue");
+      // PENDINGなハンドルをCONNECTへ遷移させる
       process_pending_handles(multi); /* multiplexed */
     }
 
     if (data->mstate > MSTATE_CONNECT && data->mstate < MSTATE_COMPLETED) {
       /* Make sure we set the connection's current owner */
+      // CONNECTより後の状態において、data->connが確立されていることをチェック
       DEBUGASSERT(data->conn);
 
-      if(!data->conn) return CURLM_INTERNAL_ERROR;
+      if (!data->conn) return CURLM_INTERNAL_ERROR;
     }
 
     /* Wait for the connect state as only then is the start time stored, but
        we must not check already completed handles */
-    if ((data->mstate >= MSTATE_CONNECT) && (data->mstate < MSTATE_COMPLETED) &&
-       multi_handle_timeout(data, &stream_error, &result))
+    // タイムアウトのチェック
+    if ((data->mstate >= MSTATE_CONNECT) &&
+        (data->mstate < MSTATE_COMPLETED) &&
+        multi_handle_timeout(data, &stream_error, &result)) { // resultにエラーコードをセット
       /* Skip the statemachine and go directly to error handling section. */
-      goto statemachine_end;
+      goto statemachine_end; // ステートマシンを終了させる
+    }
 
+    // WIP
     switch (data->mstate) {
     case MSTATE_INIT:
       /* Transitional state. init this transfer. A handle never comes back to
@@ -1383,11 +1389,13 @@ static CURLMcode multi_runsingle(
 
 statemachine_end:
 
+    // エラーがあれば接続を切り離してMSTATE_COMPLETEDに遷移させる
     result = is_finished(multi, data, stream_error, result);
 
     if (result) mresult = CURLM_CALL_MULTI_PERFORM;
 
     if (MSTATE_COMPLETED == data->mstate) {
+      // CURLMSG_DONEメッセージをmultiの内部キューに積む。ハンドルを処理対象から外す
       handle_completed(multi, data, result);
       return CURLM_OK;
     }
