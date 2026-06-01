@@ -1310,20 +1310,25 @@ static CURLMcode multi_runsingle(
       goto statemachine_end; // ステートマシンを終了させる
     }
 
-    // WIP
     switch (data->mstate) {
     case MSTATE_INIT: // 初期状態
-      /* Transitional state. init this transfer. A handle never comes back to
-         this state. */
-      mresult = multistate_init(data, &result);
+      /* Transitional state. init this transfer. A handle never comes back to this state. */
+      mresult = multistate_init(data, &result); // => multistate_init (lib/multi.c)
+      // 転送前の準備を行う
+      // data->mstate = MSTATE_INIT -> MSTATE_SETUP
+      // mresult = CURLM_CALL_MULTI_PERFORM
       break;
 
     case MSTATE_SETUP:
-      /* Transitional state. Setup things for a new transfer. The handle
-         can come back to this state on a redirect. */
-      mresult = multistate_setup(data);
+      /* Transitional state. Setup things for a new transfer.
+         The handlecan come back to this state on a redirect. */
+      mresult = multistate_setup(data); // => multistate_setup (lib/multi.c)
+      // --max-time と --connect-timeout をタイマーツリーに登録
+      // data->mstate = MSTATE_SETUP -> MSTATE_CONNECT
+      // mresult = CURLM_CALL_MULTI_PERFORM
       break;
 
+    // WIP
     case MSTATE_CONNECT:
       mresult = multistate_connect(multi, data, &result);
       break;
