@@ -1329,9 +1329,10 @@ static CURLMcode multi_runsingle(
     case MSTATE_CONNECT:
       mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
       // Curl_connectを呼び出す
-      //   - URLからホスト名・ポートを取得
-      //   - DNSキャッシュを確認、なければCurl_async_getaddrinfoでスレッドキューにDNS クエリを投入
-      //   - 既存の接続が再利用できればconnected = TRUE
+      //   - URLからホスト名・ポートを取得してstruct connectdataを作成
+      //   - 接続プールから既存の接続を取得
+      //     - あればconnected = TRUE
+      //     - なければ接続上限チェック、struct connectdataにデータをセット、使用するフィルタをconn->cfilterに登録
       // 結果:
       //   - -> MSTATE_PENDING (CURLM_OK)
       //   - -> MSTATE_PROTOCONNECT (CURLM_CALL_MULTI_PERFORM)
@@ -1341,7 +1342,7 @@ static CURLMcode multi_runsingle(
     case MSTATE_CONNECTING: // TCP接続完了待ち
       /* awaiting a completion of an asynch TCP connect */
       mresult = multistate_connecting(data, &stream_error, &result); // => multistate_connecting (lib/multi.c)
-      // Curl_conn_connectを呼んで接続の進捗を確認する
+      // Curl_conn_connectを介してconn->cfilter[0]から順にフィルタのdo_connectを呼び、接続の進捗を確認
       // 結果:
       //   - -> MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
       //   - -> MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
@@ -1469,7 +1470,9 @@ CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
   } else if (conn->scheme->flags & PROTOPT_NONETWORK) { // ネットワーク不要
     Curl_pgrsTime(data, TIMER_NAMELOOKUP);
     *pconnected = TRUE;
-  } else { // 新たにDNS解決 + TCP接続フィルタの初期化・開始が必要
+  } else { // 新たにDNS解決 + TCP接続の開始が必要
+    // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
+    // Curl_conn_setupの呼び出しによってプロトコル別にフィルタを追加する
     result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
 
     if (!result) result = Curl_headers_init(data);
@@ -1532,29 +1535,36 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
   if (!conn->cfilter[sockindex] && conn->scheme->protocol == CURLPROTO_HTTPS) {
     DEBUGASSERT(ssl_mode != CURL_CF_SSL_DISABLE);
 
-    // TLSを含む接続フィルタチェーンをセットアップ
+    // Curl_cft_http_connectを呼び出しHTTPS-CONNECT (接続時にプロトコルネゴシエーションを行う) フィルタを追加
     result = Curl_cf_https_setup(data, conn, sockindex); // => Curl_cf_https_setup (lib/cf-https-connect.c)
+    // HTTPS-CONNECTフィルタはHTTP/1.1 / HTTP/2 / HTTP/3のうちどれを利用するかを決定する
     if (result) goto out;
   }
   #endif /* !CURL_DISABLE_HTTP */
 
-  // WIP
+  // SETUPフィルタを作成しconn->cfilter[sockindex]の先頭に登録する
   /* Still no cfilter set, apply default. */
-  if(!conn->cfilter[sockindex]) {
-    result = cf_setup_add(data, conn, sockindex,
-                          conn->transport_wanted, ssl_mode);
-    if(result)
-      goto out;
+  if (!conn->cfilter[sockindex]) {
+    result = cf_setup_add(data, conn, sockindex, conn->transport_wanted, ssl_mode);
+    // => cf_setup_add (lib/connect.c)
+    if (result) goto out;
   }
 
+  // DNSフィルタを作成 (クエリの内容を決定)
   dns_queries = Curl_resolv_dns_queries(data, conn->ip_version);
-#ifdef USE_HTTPSRR
-  if(sockindex == FIRSTSOCKET)
-    dns_queries |= CURL_DNSQ_HTTPS;
-#endif
-  result = Curl_cf_dns_add(data, conn, sockindex, peer, dns_queries,
-                           conn->transport_wanted);
+  // => Curl_resolv_dns_queries (lib/hostip.c)
+
+  // HTTPS RRが有効な場合 (デフォルトON)
+  #ifdef USE_HTTPSRR
+  // DNSクエリにCURL_DNSQ_HTTPSフラグを追加
+  if (sockindex == FIRSTSOCKET) dns_queries |= CURL_DNSQ_HTTPS;
+  #endif
+
+  // 作成したDNSフィルタをconn->cfilter[sockindex]の先頭に追加
+  result = Curl_cf_dns_add(data, conn, sockindex, peer, dns_queries, conn->transport_wanted);
+  // => Curl_cf_dns_add (lib/cf-dns.c)
   DEBUGASSERT(conn->cfilter[sockindex]);
+
 out:
   return result;
 }
