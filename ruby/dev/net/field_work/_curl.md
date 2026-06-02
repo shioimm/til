@@ -1577,39 +1577,46 @@ out:
 
 ```c
 // lib/multi.c
-// WIP
 
-static CURLMcode multistate_connecting(struct Curl_easy *data,
-                                       bool *stream_error,
-                                       CURLcode *result)
+static CURLMcode multistate_connecting(struct Curl_easy *data, bool *stream_error, CURLcode *result)
 {
   bool connected;
 
-  if(!data->conn) {
+  // あるはずのdata->connがない場合
+  if (!data->conn) {
     DEBUGASSERT(0);
     *result = CURLE_FAILED_INIT;
     return CURLM_OK;
   }
-  if(!Curl_xfer_recv_is_paused(data)) {
-    *result = Curl_conn_connect(data, FIRSTSOCKET, FALSE, &connected);
-    if(connected && !(*result)) {
-      if(!data->conn->bits.reuse &&
-         Curl_conn_is_multiplex(data->conn, FIRSTSOCKET)) {
+
+  // 受信がpause中ではない場合
+  if (!Curl_xfer_recv_is_paused(data)) {
+    // Curl_conn_connectを経由してフィルタチェーンのdo_connectを呼び、フィルタが担う接続処理を1ステップ進める
+    *result = Curl_conn_connect(data, FIRSTSOCKET, FALSE, &connected); // => Curl_conn_connect (lib/cfilters.c)
+
+    // 接続完了かつエラーなしの場合
+    if (connected && !(*result)) {
+      if (!data->conn->bits.reuse && Curl_conn_is_multiplex(data->conn, FIRSTSOCKET)) {
         /* new connection, can multiplex, wake pending handles */
-        process_pending_handles(data->multi);
+        // 新規の多重化接続を確立
+        // MSTATE_PENDINGで待機していた他のハンドルをMSTATE_CONNECTに遷移させる
+        process_pending_handles(data->multi); // => process_pending_handles (lib/multi.c)
       }
+
+      // MSTATE_PROTOCONNECTへ遷移
       multistate(data, MSTATE_PROTOCONNECT);
       return CURLM_CALL_MULTI_PERFORM;
-    }
-    else if(*result) {
+    } else if (*result) {
       /* failure detected */
       CURL_TRC_M(data, "connect failed -> %d", *result);
-      multi_posttransfer(data);
-      multi_done(data, *result, TRUE);
+      multi_posttransfer(data); // 転送後処理
+      multi_done(data, *result, TRUE); // 接続の切り離し・リソースの解放
       *stream_error = TRUE;
+
       return CURLM_OK;
     }
   }
+
   return CURLM_OK;
 }
 ```
