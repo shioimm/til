@@ -1329,10 +1329,13 @@ static CURLMcode multi_runsingle(
     case MSTATE_CONNECT:
       mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
       // Curl_connectを呼び出す
-      //   - URLからホスト名・ポートを取得してstruct connectdataを作成
-      //   - 接続プールから既存の接続を取得
-      //     - あればconnected = TRUE
-      //     - なければ接続上限チェック、struct connectdataにデータをセット、使用するフィルタをconn->cfilterに登録
+      //   url_find_or_create_conn:
+      //     - URLからホスト名・ポートを取得してstruct connectdataを作成
+      //     - 接続プールから既存の接続を取得
+      //       - あればconnected = TRUE
+      //       - なければ接続上限チェック、struct connectdataにデータをセット
+      //   Curl_conn_setup:
+      //     - 使用するフィルタをconn->cfilterに登録
       // 結果:
       //   - -> MSTATE_PENDING (CURLM_OK)
       //   - -> MSTATE_PROTOCONNECT (CURLM_CALL_MULTI_PERFORM)
@@ -1567,5 +1570,46 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
 
 out:
   return result;
+}
+```
+
+### `multistate_connecting`
+
+```c
+// lib/multi.c
+// WIP
+
+static CURLMcode multistate_connecting(struct Curl_easy *data,
+                                       bool *stream_error,
+                                       CURLcode *result)
+{
+  bool connected;
+
+  if(!data->conn) {
+    DEBUGASSERT(0);
+    *result = CURLE_FAILED_INIT;
+    return CURLM_OK;
+  }
+  if(!Curl_xfer_recv_is_paused(data)) {
+    *result = Curl_conn_connect(data, FIRSTSOCKET, FALSE, &connected);
+    if(connected && !(*result)) {
+      if(!data->conn->bits.reuse &&
+         Curl_conn_is_multiplex(data->conn, FIRSTSOCKET)) {
+        /* new connection, can multiplex, wake pending handles */
+        process_pending_handles(data->multi);
+      }
+      multistate(data, MSTATE_PROTOCONNECT);
+      return CURLM_CALL_MULTI_PERFORM;
+    }
+    else if(*result) {
+      /* failure detected */
+      CURL_TRC_M(data, "connect failed -> %d", *result);
+      multi_posttransfer(data);
+      multi_done(data, *result, TRUE);
+      *stream_error = TRUE;
+      return CURLM_OK;
+    }
+  }
+  return CURLM_OK;
 }
 ```
