@@ -1494,31 +1494,51 @@ out:
 
 ```c
 // lib/connect.c
-// WIP
 
 CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int sockindex, int ssl_mode)
 {
   CURLcode result = CURLE_OK;
+
+  // 最初の接続先を取得する
+  // SOCKSプロキシ -> HTTPプロキシ -> Alt-Svcの誘導先ホスト/ポート -> オリジン の順で検索する
   struct Curl_peer *peer = Curl_conn_get_first_peer(conn, sockindex);
+  // => Curl_conn_get_first_peer (lib/connect.c)
+
+  // Curl_conn_get_first_peer (lib/connect.c)
+  //
+  //   struct Curl_peer *Curl_conn_get_first_peer(struct connectdata *conn, int sockindex)
+  //   {
+  //     #ifndef CURL_DISABLE_PROXY
+  //     if(conn->socks_proxy.peer) return conn->socks_proxy.peer;
+  //     if(conn->http_proxy.peer) return conn->http_proxy.peer;
+  //     #endif
+  //
+  //     return (sockindex == SECONDARYSOCKET) ?
+  //       (conn->via_peer2 ? conn->via_peer2 : conn->origin2) :
+  //       (conn->via_peer ? conn->via_peer : conn->origin);
+  //   }
+
   uint8_t dns_queries;
 
   DEBUGASSERT(data);
   DEBUGASSERT(conn->scheme);
   DEBUGASSERT(!conn->cfilter[sockindex]);
 
-  if(!peer)
-    return CURLE_FAILED_INIT;
+  // 接続先が特定できない場合
+  if (!peer) return CURLE_FAILED_INIT;
 
-#ifndef CURL_DISABLE_HTTP
-  if(!conn->cfilter[sockindex] &&
-     conn->scheme->protocol == CURLPROTO_HTTPS) {
+  // HTTPSの場合
+  #ifndef CURL_DISABLE_HTTP
+  if (!conn->cfilter[sockindex] && conn->scheme->protocol == CURLPROTO_HTTPS) {
     DEBUGASSERT(ssl_mode != CURL_CF_SSL_DISABLE);
-    result = Curl_cf_https_setup(data, conn, sockindex);
-    if(result)
-      goto out;
-  }
-#endif /* !CURL_DISABLE_HTTP */
 
+    // TLSを含む接続フィルタチェーンをセットアップ
+    result = Curl_cf_https_setup(data, conn, sockindex); // => Curl_cf_https_setup (lib/cf-https-connect.c)
+    if (result) goto out;
+  }
+  #endif /* !CURL_DISABLE_HTTP */
+
+  // WIP
   /* Still no cfilter set, apply default. */
   if(!conn->cfilter[sockindex]) {
     result = cf_setup_add(data, conn, sockindex,
