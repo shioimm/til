@@ -1798,64 +1798,131 @@ out:
 ```c
 // lib/cf-dns.c
 
-static CURLcode cf_dns_connect(struct Curl_cfilter *cf,
-                               struct Curl_easy *data,
-                               bool *done)
+static CURLcode cf_dns_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
 {
-  struct cf_dns_ctx *ctx = cf->ctx;
+  struct cf_dns_ctx *ctx = cf->ctx; // cf_dns_ctx = このフィルタインスタンス固有の状態
 
-  if(cf->connected) {
+  if (cf->connected) { // すでに接続済みの場合
     *done = TRUE;
     return CURLE_OK;
   }
 
   *done = FALSE;
-  if(!ctx->started) {
+
+  if (!ctx->started) { // 初回呼び出しの場合
     ctx->started = TRUE;
-    ctx->resolv_result = cf_dns_start(cf, data, &ctx->dns);
+    // DNS問い合わせを開始
+    ctx->resolv_result = cf_dns_start(cf, data, &ctx->dns); // => cf_dns_start (lib/cf-dns.c)
   }
 
-  if(!ctx->dns && !ctx->resolv_result) {
-    ctx->resolv_result =
-      Curl_resolv_take_result(data, ctx->resolv_id, &ctx->dns);
+  if (!ctx->dns && !ctx->resolv_result) { // DNS解決未完了の場合
+    // ワーカースレッドの結果を回収
+    ctx->resolv_result = Curl_resolv_take_result(data, ctx->resolv_id, &ctx->dns);
+    // => Curl_resolv_take_result (lib/hostip.c)
   }
 
-  if(ctx->resolv_result) {
+  if (ctx->resolv_result) { // DNS解決に失敗した場合
     CURL_TRC_CF(data, cf, "error resolving: %d", ctx->resolv_result);
     return ctx->resolv_result;
   }
 
-  if(ctx->dns && !ctx->announced) {
+  if (ctx->dns && !ctx->announced) { // DNS解決が完了し、結果を取得した場合
     ctx->announced = TRUE;
-    if(cf->sockindex == FIRSTSOCKET) {
+
+    if (cf->sockindex == FIRSTSOCKET) {
       cf->conn->bits.dns_resolved = TRUE;
       Curl_pgrsTime(data, TIMER_NAMELOOKUP);
     }
     cf_dns_report(cf, data, ctx->dns);
   }
 
-  if(!cf_dns_ready_to_connect(cf, data)) {
-    return CURLE_OK;
-  }
+  // 下位フィルタへのdo_connect呼び出しを行わない (他の回答を待機したい) 場合
+  if (!cf_dns_ready_to_connect(cf, data)) return CURLE_OK;
 
-  if(cf->next && !cf->next->connected) {
+  // 下位フィルタのdo_connect呼び出しを行う場合
+  if (cf->next && !cf->next->connected) {
     bool sub_done;
-    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done);
-    if(result || !sub_done)
-      return result;
+    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done); // => Curl_conn_cf_connect (lib/cf-dns.c)
+
+    // Curl_conn_cf_connect (lib/cf-dns.c)
+    //
+    // CURLcode Curl_conn_cf_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
+    // {
+    //   if (cf) return cf->cft->do_connect(cf, data, done);
+    //   return CURLE_FAILED_INIT;
+    // }
+
+    if (result || !sub_done) return result;
     DEBUGASSERT(sub_done);
   }
 
+  // --- 下位フィルタの接続完了後 ---
+
   /* sub filter chain is connected */
   CURL_TRC_CF(data, cf, "connected filter chain below");
-  if(ctx->complete_resolve && !ctx->dns && !ctx->resolv_result) {
+
+  if (ctx->complete_resolve && !ctx->dns && !ctx->resolv_result) {
     /* This filter only connects when it has resolved everything. */
     CURL_TRC_CF(data, cf, "delay connect until resolve complete");
     return CURLE_OK;
   }
+
   *done = TRUE;
   cf->connected = TRUE;
-  Curl_resolv_destroy(data, ctx->resolv_id);
+  Curl_resolv_destroy(data, ctx->resolv_id); // DNS解決用のリソースを解放
   return CURLE_OK;
+}
+```
+
+### `cf_dns_start`
+
+```c
+// lib/cf-dns.c
+
+static CURLcode cf_dns_start(struct Curl_cfilter *cf,
+                             struct Curl_easy *data,
+                             struct Curl_dns_entry **pdns)
+{
+  struct cf_dns_ctx *ctx = cf->ctx;
+  timediff_t timeout_ms = Curl_timeleft_ms(data);
+  CURLcode result;
+
+  *pdns = NULL;
+
+  CURL_TRC_CF(data, cf, "cf_dns_start %s %s:%u",
+              ctx->peer->unix_socket ? "unix-domain-socket" : "host",
+              ctx->peer->hostname, ctx->peer->port);
+  if(ctx->peer->unix_socket)
+    ctx->dns_queries = 0;
+  else if(Curl_is_ipv4addr(ctx->peer->hostname))
+    ctx->dns_queries |= CURL_DNSQ_A;
+#ifdef USE_IPV6
+  else if(ctx->peer->ipv6)
+    ctx->dns_queries |= CURL_DNSQ_AAAA;
+#endif
+
+  result = Curl_resolv(data, ctx->peer, ctx->dns_queries, ctx->transport,
+                       (bool)ctx->for_proxy, timeout_ms,
+                       &ctx->resolv_id, pdns);
+  DEBUGASSERT(!result || !*pdns);
+  if(!result) { /* resolved right away, either sync or from dnscache */
+    DEBUGASSERT(*pdns);
+    return CURLE_OK;
+  }
+  else if(result == CURLE_AGAIN) { /* async resolv in progress */
+    return CURLE_OK;
+  }
+  else if(result == CURLE_OPERATION_TIMEDOUT) { /* took too long */
+    failf(data, "Failed to resolve '%s' with timeout after %"
+          FMT_TIMEDIFF_T " ms", ctx->peer->hostname,
+          curlx_ptimediff_ms(Curl_pgrs_now(data),
+                             &data->progress.t_startsingle));
+    return CURLE_OPERATION_TIMEDOUT;
+  }
+  else {
+    DEBUGASSERT(result);
+    failf(data, "Could not resolve: %s", ctx->peer->hostname);
+    return result;
+  }
 }
 ```
