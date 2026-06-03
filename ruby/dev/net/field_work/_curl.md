@@ -1627,24 +1627,24 @@ static CURLMcode multistate_connecting(struct Curl_easy *data, bool *stream_erro
 // lib/cfilters.c
 // WIP
 
-CURLcode Curl_conn_connect(struct Curl_easy *data,
-                           int sockindex,
-                           bool blocking,
-                           bool *done)
+CURLcode Curl_conn_connect(struct Curl_easy *data, int sockindex, bool blocking, bool *done)
 {
-#define CF_CONN_NUM_POLLS_ON_STACK 5
+  // ブロッキングモードでソケットのI/O完了を待つpollのための構造体
+  #define CF_CONN_NUM_POLLS_ON_STACK 5
   struct pollfd a_few_on_stack[CF_CONN_NUM_POLLS_ON_STACK];
   struct easy_pollset ps;
   struct curl_pollfds cpfds;
+
+  // 処理対象のフィルタ
   struct Curl_cfilter *cf;
   CURLcode result = CURLE_OK;
 
   DEBUGASSERT(data);
   DEBUGASSERT(data->conn);
-  if(!CONN_SOCK_IDX_VALID(sockindex))
-    return CURLE_BAD_FUNCTION_ARGUMENT;
+  if (!CONN_SOCK_IDX_VALID(sockindex)) return CURLE_BAD_FUNCTION_ARGUMENT;
 
-  if(data->conn->scheme->flags & PROTOPT_NONETWORK) {
+  // ネットワーク接続が不要なプロトコルは即完了扱いとする
+  if (data->conn->scheme->flags & PROTOPT_NONETWORK) {
     *done = TRUE;
     return CURLE_OK;
   }
