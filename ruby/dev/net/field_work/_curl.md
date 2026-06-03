@@ -1475,7 +1475,27 @@ CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
     *pconnected = TRUE;
   } else { // 新たにDNS解決 + TCP接続の開始が必要
     // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
-    // Curl_conn_setupの呼び出しによってプロトコル別にフィルタを追加する
+    // Curl_conn_setupの呼び出しによってプロトコル別にフィルタ (Curl_cftype) を追加する
+    //
+    //   /* A connection filter type, e.g. specific implementation. */
+    //   struct Curl_cftype {
+    //     const char *name;                        // 名前
+    //     int flags;                               // フラグ
+    //     int log_level;                           // ログレベル
+    //     Curl_cft_destroy_this *destroy;          // フィルタのリソースを解放する関数
+    //     Curl_cft_connect *do_connect;            // 接続を確立する関数
+    //     Curl_cft_close *do_close;                // 接続をクローズする関数
+    //     Curl_cft_shutdown *do_shutdown;          // 接続をシャットダウンする関数
+    //     Curl_cft_adjust_pollset *adjust_pollset; // 転送のポーリングセットを調整する関数
+    //     Curl_cft_data_pending *has_data_pending; // 接続に未処理データがあるか
+    //     Curl_cft_send *do_send;                  // データを送信する関数
+    //     Curl_cft_recv *do_recv;                  // データを受信する関数
+    //     Curl_cft_cntrl *cntrl;                   // イベント/制御
+    //     Curl_cft_conn_is_alive *is_alive;        // 接続が有効か
+    //     Curl_cft_conn_keep_alive *keep_alive;    // 接続を維持するか
+    //     Curl_cft_query *query;                   // フィルタチェーンに問い合わせる関数
+    //   };
+
     result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
 
     if (!result) result = Curl_headers_init(data);
@@ -1553,7 +1573,7 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
     if (result) goto out;
   }
 
-  // DNSフィルタを作成 (クエリの内容を決定)
+  // DNSフィルタ (Curl_cft_dns) を作成 (クエリの内容を決定)
   dns_queries = Curl_resolv_dns_queries(data, conn->ip_version);
   // => Curl_resolv_dns_queries (lib/hostip.c)
 
@@ -1563,9 +1583,30 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
   if (sockindex == FIRSTSOCKET) dns_queries |= CURL_DNSQ_HTTPS;
   #endif
 
-  // 作成したDNSフィルタをconn->cfilter[sockindex]の先頭に追加
+  // 作成したDNSフィルタ (Curl_cft_dns) をconn->cfilter[sockindex]の先頭に追加
   result = Curl_cf_dns_add(data, conn, sockindex, peer, dns_queries, conn->transport_wanted);
   // => Curl_cf_dns_add (lib/cf-dns.c)
+  //    -> cf_dns_create(&cf, data, peer, dns_queries, transport, for_proxy, FALSE);
+  //    -> Curl_cf_create(&cf, &Curl_cft_dns, ctx)
+  //
+  //   struct Curl_cftype Curl_cft_dns = {
+  //     "DNS",
+  //     CF_TYPE_SETUP,
+  //     CURL_LOG_LVL_NONE,
+  //     cf_dns_destroy,
+  //     cf_dns_connect,
+  //     cf_dns_close,
+  //     Curl_cf_def_shutdown,
+  //     cf_dns_adjust_pollset,
+  //     Curl_cf_def_data_pending,
+  //     Curl_cf_def_send,
+  //     Curl_cf_def_recv,
+  //     cf_dns_cntrl,
+  //     Curl_cf_def_conn_is_alive,
+  //     Curl_cf_def_conn_keep_alive,
+  //     Curl_cf_def_query,
+  //   };
+
   DEBUGASSERT(conn->cfilter[sockindex]);
 
 out:
@@ -1625,7 +1666,6 @@ static CURLMcode multistate_connecting(struct Curl_easy *data, bool *stream_erro
 
 ```c
 // lib/cfilters.c
-// WIP
 
 CURLcode Curl_conn_connect(struct Curl_easy *data, int sockindex, bool blocking, bool *done)
 {
@@ -1649,83 +1689,96 @@ CURLcode Curl_conn_connect(struct Curl_easy *data, int sockindex, bool blocking,
     return CURLE_OK;
   }
 
+  // conn->cfilter[sockindex] の先頭フィルタを取得
   cf = data->conn->cfilter[sockindex];
-  if(!cf) {
+
+  if (!cf) { // フィルタが登録されていない場合
     *done = FALSE;
     return CURLE_FAILED_INIT;
   }
 
   *done = (bool)cf->connected;
-  if(*done)
-    return CURLE_OK;
 
+  if (*done) return CURLE_OK; // すでに接続済みであればreturn
+
+  // ブロッキングモード用のpoll構造体を初期化
   Curl_pollset_init(&ps);
   Curl_pollfds_init(&cpfds, a_few_on_stack, CF_CONN_NUM_POLLS_ON_STACK);
-  while(!*done) {
-    if(Curl_conn_needs_flush(data, sockindex)) {
+
+  while (!*done) {
+    if (Curl_conn_needs_flush(data, sockindex)) { // フィルタチェーンに送信待ちのバッファが残っている場合
       DEBUGF(infof(data, "Curl_conn_connect(index=%d), flush", sockindex));
       result = Curl_conn_flush(data, sockindex);
-      if(result && (result != CURLE_AGAIN))
-        return result;
+
+      if (result && (result != CURLE_AGAIN)) return result;
     }
 
+    // 取得したフィルタのdo_connectを呼ぶ
     result = cf->cft->do_connect(cf, data, done);
-    CURL_TRC_CF(data, cf, "Curl_conn_connect(block=%d) -> %d, done=%d",
-                blocking, result, *done);
-    if(!result && *done) {
+    // Curl_cft_dnsの場合 cf_dns_connect (lib/cf-dns.c)
+
+    CURL_TRC_CF(data, cf, "Curl_conn_connect(block=%d) -> %d, done=%d", blocking, result, *done);
+
+    if (!result && *done) { // エラーなくフィルタのdo_connectがdone = TRUEを返した場合
       /* Now that the complete filter chain is connected, let all filters
        * persist information at the connection. E.g. cf-socket sets the
        * socket and ip related information. */
+      // 接続情報を永続化させるための制御イベントをフィルタチェーン全体に送る
       cf_cntrl_update_info(data, data->conn);
+      // 接続にかかった時間などの統計情報を記録
       conn_report_connect_stats(cf, data);
+      // この接続が最後に使われた時刻を記録
       data->conn->keepalive = *Curl_pgrs_now(data);
+
       VERBOSE(result = cf_verboseconnect(data, cf));
       VERBOSE(Curl_conn_trc_filters(data, sockindex, "connected"));
+
+      // 完了したフィルタをフィルタチェーンから取り除く
       conn_remove_setup_filters(data, sockindex);
       VERBOSE(Curl_conn_trc_filters(data, sockindex, "reduced to"));
+
       goto out;
-    }
-    else if(result) {
+    } else if (result) {
       CURL_TRC_CF(data, cf, "Curl_conn_connect(), filter returned %d", result);
       VERBOSE(Curl_conn_trc_filters(data, sockindex, "failed to connect"));
       conn_report_connect_stats(cf, data);
       goto out;
     }
 
-    if(!blocking)
+    // 以降、フィルタのdo_connectがdone = FALSEを返した場合
+    if (!blocking) {
       goto out;
-    else {
+    } else { // ブロッキングモードの場合
       /* check allowed time left */
       const timediff_t timeout_ms = Curl_timeleft_ms(data);
       curl_socket_t sockfd = Curl_conn_cf_get_socket(cf, data);
       int rc;
 
-      if(timeout_ms < 0) {
+      if (timeout_ms < 0) { // タイムアウトの場合
         /* no need to continue if time already is up */
         failf(data, "connect timeout");
         result = CURLE_OPERATION_TIMEDOUT;
         goto out;
       }
 
+      // このループで監視するソケットセットを構築
       CURL_TRC_CF(data, cf, "Curl_conn_connect(block=1), do poll");
       Curl_pollset_reset(&ps);
       Curl_pollfds_reset(&cpfds);
-      /* In general, we want to send after connect, wait on that. */
-      if(sockfd != CURL_SOCKET_BAD)
-        result = Curl_pollset_set_out_only(data, &ps, sockfd);
-      if(!result)
-        result = Curl_conn_adjust_pollset(data, data->conn, &ps);
-      if(result)
-        goto out;
-      result = Curl_pollfds_add_ps(&cpfds, &ps);
-      if(result)
-        goto out;
 
-      rc = Curl_poll(cpfds.pfds, cpfds.n,
-                     CURLMIN(timeout_ms, (cpfds.n ? 1000 : 10)));
-      CURL_TRC_CF(data, cf, "Curl_conn_connect(block=1), Curl_poll() -> %d",
-                  rc);
-      if(rc < 0) {
+      /* In general, we want to send after connect, wait on that. */
+      if (sockfd != CURL_SOCKET_BAD) result = Curl_pollset_set_out_only(data, &ps, sockfd);
+      if (!result) result = Curl_conn_adjust_pollset(data, data->conn, &ps);
+      if (result) goto out;
+
+      result = Curl_pollfds_add_ps(&cpfds, &ps);
+      if (result) goto out;
+
+      // poll(2) を呼び、ソケットがI/O可能になるまで待機
+      rc = Curl_poll(cpfds.pfds, cpfds.n, CURLMIN(timeout_ms, (cpfds.n ? 1000 : 10)));
+      CURL_TRC_CF(data, cf, "Curl_conn_connect(block=1), Curl_poll() -> %d", rc);
+
+      if (rc < 0) {
         result = CURLE_COULDNT_CONNECT;
         goto out;
       }
@@ -1737,5 +1790,72 @@ out:
   Curl_pollset_cleanup(&ps);
   Curl_pollfds_cleanup(&cpfds);
   return result;
+}
+```
+
+#### `cf_dns_connect`
+
+```c
+// lib/cf-dns.c
+
+static CURLcode cf_dns_connect(struct Curl_cfilter *cf,
+                               struct Curl_easy *data,
+                               bool *done)
+{
+  struct cf_dns_ctx *ctx = cf->ctx;
+
+  if(cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  *done = FALSE;
+  if(!ctx->started) {
+    ctx->started = TRUE;
+    ctx->resolv_result = cf_dns_start(cf, data, &ctx->dns);
+  }
+
+  if(!ctx->dns && !ctx->resolv_result) {
+    ctx->resolv_result =
+      Curl_resolv_take_result(data, ctx->resolv_id, &ctx->dns);
+  }
+
+  if(ctx->resolv_result) {
+    CURL_TRC_CF(data, cf, "error resolving: %d", ctx->resolv_result);
+    return ctx->resolv_result;
+  }
+
+  if(ctx->dns && !ctx->announced) {
+    ctx->announced = TRUE;
+    if(cf->sockindex == FIRSTSOCKET) {
+      cf->conn->bits.dns_resolved = TRUE;
+      Curl_pgrsTime(data, TIMER_NAMELOOKUP);
+    }
+    cf_dns_report(cf, data, ctx->dns);
+  }
+
+  if(!cf_dns_ready_to_connect(cf, data)) {
+    return CURLE_OK;
+  }
+
+  if(cf->next && !cf->next->connected) {
+    bool sub_done;
+    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done);
+    if(result || !sub_done)
+      return result;
+    DEBUGASSERT(sub_done);
+  }
+
+  /* sub filter chain is connected */
+  CURL_TRC_CF(data, cf, "connected filter chain below");
+  if(ctx->complete_resolve && !ctx->dns && !ctx->resolv_result) {
+    /* This filter only connects when it has resolved everything. */
+    CURL_TRC_CF(data, cf, "delay connect until resolve complete");
+    return CURLE_OK;
+  }
+  *done = TRUE;
+  cf->connected = TRUE;
+  Curl_resolv_destroy(data, ctx->resolv_id);
+  return CURLE_OK;
 }
 ```
