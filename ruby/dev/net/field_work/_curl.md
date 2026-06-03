@@ -1329,9 +1329,13 @@ static CURLMcode multi_runsingle(
     case MSTATE_CONNECT:
       mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
       // Curl_connectを呼び出す
-      //   - URLからホスト名・ポートを取得
-      //   - DNSキャッシュを確認、なければCurl_async_getaddrinfoでスレッドキューにDNS クエリを投入
-      //   - 既存の接続が再利用できればconnected = TRUE
+      //   url_find_or_create_conn:
+      //     - URLからホスト名・ポートを取得してstruct connectdataを作成
+      //     - 接続プールから既存の接続を取得
+      //       - あればconnected = TRUE
+      //       - なければ接続上限チェック、struct connectdataにデータをセット
+      //   Curl_conn_setup:
+      //     - 使用するフィルタをconn->cfilterに登録
       // 結果:
       //   - -> MSTATE_PENDING (CURLM_OK)
       //   - -> MSTATE_PROTOCONNECT (CURLM_CALL_MULTI_PERFORM)
@@ -1341,7 +1345,7 @@ static CURLMcode multi_runsingle(
     case MSTATE_CONNECTING: // TCP接続完了待ち
       /* awaiting a completion of an asynch TCP connect */
       mresult = multistate_connecting(data, &stream_error, &result); // => multistate_connecting (lib/multi.c)
-      // Curl_conn_connectを呼んで接続の進捗を確認する
+      // Curl_conn_connectを介してconn->cfilter[0]から順にフィルタのdo_connectを呼び、接続の進捗を確認
       // 結果:
       //   - -> MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
       //   - -> MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
@@ -1469,7 +1473,9 @@ CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
   } else if (conn->scheme->flags & PROTOPT_NONETWORK) { // ネットワーク不要
     Curl_pgrsTime(data, TIMER_NAMELOOKUP);
     *pconnected = TRUE;
-  } else { // 新たにDNS解決 + TCP接続フィルタの初期化・開始が必要
+  } else { // 新たにDNS解決 + TCP接続の開始が必要
+    // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
+    // Curl_conn_setupの呼び出しによってプロトコル別にフィルタを追加する
     result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
 
     if (!result) result = Curl_headers_init(data);
@@ -1494,48 +1500,242 @@ out:
 
 ```c
 // lib/connect.c
-// WIP
 
 CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int sockindex, int ssl_mode)
 {
   CURLcode result = CURLE_OK;
+
+  // 最初の接続先を取得する
+  // SOCKSプロキシ -> HTTPプロキシ -> Alt-Svcの誘導先ホスト/ポート -> オリジン の順で検索する
   struct Curl_peer *peer = Curl_conn_get_first_peer(conn, sockindex);
+  // => Curl_conn_get_first_peer (lib/connect.c)
+
+  // Curl_conn_get_first_peer (lib/connect.c)
+  //
+  //   struct Curl_peer *Curl_conn_get_first_peer(struct connectdata *conn, int sockindex)
+  //   {
+  //     #ifndef CURL_DISABLE_PROXY
+  //     if(conn->socks_proxy.peer) return conn->socks_proxy.peer;
+  //     if(conn->http_proxy.peer) return conn->http_proxy.peer;
+  //     #endif
+  //
+  //     return (sockindex == SECONDARYSOCKET) ?
+  //       (conn->via_peer2 ? conn->via_peer2 : conn->origin2) :
+  //       (conn->via_peer ? conn->via_peer : conn->origin);
+  //   }
+
   uint8_t dns_queries;
 
   DEBUGASSERT(data);
   DEBUGASSERT(conn->scheme);
   DEBUGASSERT(!conn->cfilter[sockindex]);
 
-  if(!peer)
-    return CURLE_FAILED_INIT;
+  // 接続先が特定できない場合
+  if (!peer) return CURLE_FAILED_INIT;
 
-#ifndef CURL_DISABLE_HTTP
-  if(!conn->cfilter[sockindex] &&
-     conn->scheme->protocol == CURLPROTO_HTTPS) {
+  // HTTPSの場合
+  #ifndef CURL_DISABLE_HTTP
+  if (!conn->cfilter[sockindex] && conn->scheme->protocol == CURLPROTO_HTTPS) {
     DEBUGASSERT(ssl_mode != CURL_CF_SSL_DISABLE);
-    result = Curl_cf_https_setup(data, conn, sockindex);
-    if(result)
-      goto out;
-  }
-#endif /* !CURL_DISABLE_HTTP */
 
+    // Curl_cft_http_connectを呼び出しHTTPS-CONNECT (接続時にプロトコルネゴシエーションを行う) フィルタを追加
+    result = Curl_cf_https_setup(data, conn, sockindex); // => Curl_cf_https_setup (lib/cf-https-connect.c)
+    // HTTPS-CONNECTフィルタはHTTP/1.1 / HTTP/2 / HTTP/3のうちどれを利用するかを決定する
+    if (result) goto out;
+  }
+  #endif /* !CURL_DISABLE_HTTP */
+
+  // SETUPフィルタを作成しconn->cfilter[sockindex]の先頭に登録する
   /* Still no cfilter set, apply default. */
-  if(!conn->cfilter[sockindex]) {
-    result = cf_setup_add(data, conn, sockindex,
-                          conn->transport_wanted, ssl_mode);
-    if(result)
-      goto out;
+  if (!conn->cfilter[sockindex]) {
+    result = cf_setup_add(data, conn, sockindex, conn->transport_wanted, ssl_mode);
+    // => cf_setup_add (lib/connect.c)
+    if (result) goto out;
   }
 
+  // DNSフィルタを作成 (クエリの内容を決定)
   dns_queries = Curl_resolv_dns_queries(data, conn->ip_version);
-#ifdef USE_HTTPSRR
-  if(sockindex == FIRSTSOCKET)
-    dns_queries |= CURL_DNSQ_HTTPS;
-#endif
-  result = Curl_cf_dns_add(data, conn, sockindex, peer, dns_queries,
-                           conn->transport_wanted);
+  // => Curl_resolv_dns_queries (lib/hostip.c)
+
+  // HTTPS RRが有効な場合 (デフォルトON)
+  #ifdef USE_HTTPSRR
+  // DNSクエリにCURL_DNSQ_HTTPSフラグを追加
+  if (sockindex == FIRSTSOCKET) dns_queries |= CURL_DNSQ_HTTPS;
+  #endif
+
+  // 作成したDNSフィルタをconn->cfilter[sockindex]の先頭に追加
+  result = Curl_cf_dns_add(data, conn, sockindex, peer, dns_queries, conn->transport_wanted);
+  // => Curl_cf_dns_add (lib/cf-dns.c)
   DEBUGASSERT(conn->cfilter[sockindex]);
+
 out:
+  return result;
+}
+```
+
+### `multistate_connecting`
+
+```c
+// lib/multi.c
+
+static CURLMcode multistate_connecting(struct Curl_easy *data, bool *stream_error, CURLcode *result)
+{
+  bool connected;
+
+  // あるはずのdata->connがない場合
+  if (!data->conn) {
+    DEBUGASSERT(0);
+    *result = CURLE_FAILED_INIT;
+    return CURLM_OK;
+  }
+
+  // 受信がpause中ではない場合
+  if (!Curl_xfer_recv_is_paused(data)) {
+    // Curl_conn_connectを経由してフィルタチェーンのdo_connectを呼び、フィルタが担う接続処理を1ステップ進める
+    *result = Curl_conn_connect(data, FIRSTSOCKET, FALSE, &connected); // => Curl_conn_connect (lib/cfilters.c)
+
+    // 接続完了かつエラーなしの場合
+    if (connected && !(*result)) {
+      if (!data->conn->bits.reuse && Curl_conn_is_multiplex(data->conn, FIRSTSOCKET)) {
+        /* new connection, can multiplex, wake pending handles */
+        // 新規の多重化接続を確立
+        // MSTATE_PENDINGで待機していた他のハンドルをMSTATE_CONNECTに遷移させる
+        process_pending_handles(data->multi); // => process_pending_handles (lib/multi.c)
+      }
+
+      // MSTATE_PROTOCONNECTへ遷移
+      multistate(data, MSTATE_PROTOCONNECT);
+      return CURLM_CALL_MULTI_PERFORM;
+    } else if (*result) {
+      /* failure detected */
+      CURL_TRC_M(data, "connect failed -> %d", *result);
+      multi_posttransfer(data); // 転送後処理
+      multi_done(data, *result, TRUE); // 接続の切り離し・リソースの解放
+      *stream_error = TRUE;
+
+      return CURLM_OK;
+    }
+  }
+
+  return CURLM_OK;
+}
+```
+
+#### `Curl_conn_connect`
+
+```c
+// lib/cfilters.c
+// WIP
+
+CURLcode Curl_conn_connect(struct Curl_easy *data,
+                           int sockindex,
+                           bool blocking,
+                           bool *done)
+{
+#define CF_CONN_NUM_POLLS_ON_STACK 5
+  struct pollfd a_few_on_stack[CF_CONN_NUM_POLLS_ON_STACK];
+  struct easy_pollset ps;
+  struct curl_pollfds cpfds;
+  struct Curl_cfilter *cf;
+  CURLcode result = CURLE_OK;
+
+  DEBUGASSERT(data);
+  DEBUGASSERT(data->conn);
+  if(!CONN_SOCK_IDX_VALID(sockindex))
+    return CURLE_BAD_FUNCTION_ARGUMENT;
+
+  if(data->conn->scheme->flags & PROTOPT_NONETWORK) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  cf = data->conn->cfilter[sockindex];
+  if(!cf) {
+    *done = FALSE;
+    return CURLE_FAILED_INIT;
+  }
+
+  *done = (bool)cf->connected;
+  if(*done)
+    return CURLE_OK;
+
+  Curl_pollset_init(&ps);
+  Curl_pollfds_init(&cpfds, a_few_on_stack, CF_CONN_NUM_POLLS_ON_STACK);
+  while(!*done) {
+    if(Curl_conn_needs_flush(data, sockindex)) {
+      DEBUGF(infof(data, "Curl_conn_connect(index=%d), flush", sockindex));
+      result = Curl_conn_flush(data, sockindex);
+      if(result && (result != CURLE_AGAIN))
+        return result;
+    }
+
+    result = cf->cft->do_connect(cf, data, done);
+    CURL_TRC_CF(data, cf, "Curl_conn_connect(block=%d) -> %d, done=%d",
+                blocking, result, *done);
+    if(!result && *done) {
+      /* Now that the complete filter chain is connected, let all filters
+       * persist information at the connection. E.g. cf-socket sets the
+       * socket and ip related information. */
+      cf_cntrl_update_info(data, data->conn);
+      conn_report_connect_stats(cf, data);
+      data->conn->keepalive = *Curl_pgrs_now(data);
+      VERBOSE(result = cf_verboseconnect(data, cf));
+      VERBOSE(Curl_conn_trc_filters(data, sockindex, "connected"));
+      conn_remove_setup_filters(data, sockindex);
+      VERBOSE(Curl_conn_trc_filters(data, sockindex, "reduced to"));
+      goto out;
+    }
+    else if(result) {
+      CURL_TRC_CF(data, cf, "Curl_conn_connect(), filter returned %d", result);
+      VERBOSE(Curl_conn_trc_filters(data, sockindex, "failed to connect"));
+      conn_report_connect_stats(cf, data);
+      goto out;
+    }
+
+    if(!blocking)
+      goto out;
+    else {
+      /* check allowed time left */
+      const timediff_t timeout_ms = Curl_timeleft_ms(data);
+      curl_socket_t sockfd = Curl_conn_cf_get_socket(cf, data);
+      int rc;
+
+      if(timeout_ms < 0) {
+        /* no need to continue if time already is up */
+        failf(data, "connect timeout");
+        result = CURLE_OPERATION_TIMEDOUT;
+        goto out;
+      }
+
+      CURL_TRC_CF(data, cf, "Curl_conn_connect(block=1), do poll");
+      Curl_pollset_reset(&ps);
+      Curl_pollfds_reset(&cpfds);
+      /* In general, we want to send after connect, wait on that. */
+      if(sockfd != CURL_SOCKET_BAD)
+        result = Curl_pollset_set_out_only(data, &ps, sockfd);
+      if(!result)
+        result = Curl_conn_adjust_pollset(data, data->conn, &ps);
+      if(result)
+        goto out;
+      result = Curl_pollfds_add_ps(&cpfds, &ps);
+      if(result)
+        goto out;
+
+      rc = Curl_poll(cpfds.pfds, cpfds.n,
+                     CURLMIN(timeout_ms, (cpfds.n ? 1000 : 10)));
+      CURL_TRC_CF(data, cf, "Curl_conn_connect(block=1), Curl_poll() -> %d",
+                  rc);
+      if(rc < 0) {
+        result = CURLE_COULDNT_CONNECT;
+        goto out;
+      }
+      /* continue iterating */
+    }
+  }
+
+out:
+  Curl_pollset_cleanup(&ps);
+  Curl_pollfds_cleanup(&cpfds);
   return result;
 }
 ```
