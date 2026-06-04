@@ -1902,14 +1902,7 @@ static CURLcode cf_dns_start(struct Curl_cfilter *cf, struct Curl_easy *data, st
   }
 
   result = Curl_resolv( // => Curl_resolv (lib/hostip.c) 名前解決のエントリポイント
-    data,
-    ctx->peer,
-    ctx->dns_queries,
-    ctx->transport,
-    (bool)ctx->for_proxy,
-    timeout_ms,
-    &ctx->resolv_id,
-    pdns
+    data, ctx->peer, ctx->dns_queries, ctx->transport, (bool)ctx->for_proxy, timeout_ms, &ctx->resolv_id, pdns
   );
 
   DEBUGASSERT(!result || !*pdns);
@@ -1942,54 +1935,145 @@ static CURLcode cf_dns_start(struct Curl_cfilter *cf, struct Curl_easy *data, st
 
 ```c
 // lib/hostip.c
-// WIP
 
-CURLcode Curl_resolv(struct Curl_easy *data,
-                     struct Curl_peer *peer,
-                     uint8_t dns_queries,
-                     uint8_t transport,
-                     bool for_proxy,
-                     timediff_t timeout_ms,
-                     uint32_t *presolv_id,
-                     struct Curl_dns_entry **pdns)
+CURLcode Curl_resolv(
+  struct Curl_easy *data,
+  struct Curl_peer *peer,
+  uint8_t dns_queries,
+  uint8_t transport,
+  bool for_proxy,
+  timediff_t timeout_ms,
+  uint32_t *presolv_id,
+  struct Curl_dns_entry **pdns
+) {
+  *presolv_id = 0; // 非同期クエリの識別子
+  *pdns = NULL; // 解決結果の出力先
+
+  if (timeout_ms < 0) { // タイムアウト済みの場合
+    /* got an already expired timeout */
+    return CURLE_OPERATION_TIMEDOUT;
+  } else if (!timeout_ms) { // タイムアウト未設定の場合
+    timeout_ms = CURL_TIMEOUT_RESOLVE_MS; // (内部デフォルト値)
+  }
+
+  #ifdef USE_UNIX_SOCKETS
+  // --unix-socket オプションが指定されている場合、DNS解決は不要
+  if(peer->unix_socket) return resolv_unix(data, peer->hostname, (bool)peer->abstract_uds, pdns);
+  #else
+  // USE_UNIX_SOCKETSが無効なビルドでUnixドメインソケットを使おうとした場合はエラーを返す
+  if(peer->unix_socket) return hostip_resolv_failed(data, peer->hostname, for_proxy);
+  #endif
+
+  #ifdef USE_ALARM_TIMEOUT // SIGALRM を使ったタイムアウト機能が有効なビルド (主に古いPOSIX環境)
+  if (timeout_ms && data->set.no_signal) {
+    /* Cannot use ALARM when signals are disabled */
+    // --no-signalが設定されている場合、シグナルを使えないのでSIGALRMによるタイムアウトができない
+    timeout_ms = 0;
+  }
+
+  if (timeout_ms && !Curl_doh_wanted(data)) {
+    // タイムアウトが有効かつDoHを使わない場合、SIGALRMタイムアウト付きの同期DNS解決を行う
+    return resolv_alarm_timeout(
+      data, dns_queries, peer->hostname, peer->port, transport, for_proxy, timeout_ms, presolv_id, pdns
+    );
+  }
+  #endif /* !USE_ALARM_TIMEOUT */
+
+  #ifndef CURLRES_ASYNCH // ブロッキングgetaddrinfo()を使う場合
+  if (timeout_ms) infof(data, "timeout on name lookup is not supported");
+  #endif
+
+  return hostip_resolv( // => hostip_resolv (lib/hostip.c) 名前解決の実行
+    data, dns_queries, peer->hostname, peer->port, transport, for_proxy, timeout_ms, TRUE, presolv_id, pdns
+  );
+}
+```
+
+#### `hostip_resolv`
+
+```c
+// lib/hostip.c
+
+static CURLcode hostip_resolv(struct Curl_easy *data,
+                              uint8_t dns_queries,
+                              const char *hostname,
+                              uint16_t port,
+                              uint8_t transport,
+                              bool for_proxy,
+                              timediff_t timeout_ms,
+                              bool allowDOH,
+                              uint32_t *presolv_id,
+                              struct Curl_dns_entry **pdns)
 {
+  size_t hostname_len;
+  CURLcode result = RESOLV_FAIL(for_proxy);
+  bool cache_dns = FALSE;
+
+  (void)timeout_ms; /* not used in all ifdefs */
   *presolv_id = 0;
   *pdns = NULL;
 
-  if(timeout_ms < 0)
-    /* got an already expired timeout */
-    return CURLE_OPERATION_TIMEDOUT;
-  else if(!timeout_ms)
-    timeout_ms = CURL_TIMEOUT_RESOLVE_MS;
-
-#ifdef USE_UNIX_SOCKETS
-  if(peer->unix_socket)
-    return resolv_unix(data, peer->hostname, (bool)peer->abstract_uds, pdns);
-#else
-  if(peer->unix_socket)
-    return hostip_resolv_failed(data, peer->hostname, for_proxy);
+#ifdef CURL_DISABLE_DOH
+  (void)allowDOH;
 #endif
 
-#ifdef USE_ALARM_TIMEOUT
-  if(timeout_ms && data->set.no_signal) {
-    /* Cannot use ALARM when signals are disabled */
-    timeout_ms = 0;
+  /* We should intentionally error and not resolve .onion TLDs */
+  hostname_len = strlen(hostname);
+  DEBUGASSERT(hostname_len);
+  if(hostname_len >= 7 &&
+     (curl_strequal(&hostname[hostname_len - 6], ".onion") ||
+      curl_strequal(&hostname[hostname_len - 7], ".onion."))) {
+    failf(data, "Not resolving .onion address (RFC 7686)");
+    goto out;
   }
-  if(timeout_ms && !Curl_doh_wanted(data)) {
-    return resolv_alarm_timeout(data, dns_queries, peer->hostname, peer->port,
-                                transport, for_proxy, timeout_ms, presolv_id,
-                                pdns);
-  }
-#endif /* !USE_ALARM_TIMEOUT */
 
-#ifndef CURLRES_ASYNCH
-  if(timeout_ms)
-    infof(data, "timeout on name lookup is not supported");
+#ifdef DEBUGBUILD
+  CURL_TRC_DNS(data, "hostip_resolv(%s:%u, queries=%s)",
+               hostname, port, Curl_resolv_query_str(dns_queries));
+  if((CURL_DNSQ_IP(dns_queries) == CURL_DNSQ_AAAA) &&
+     getenv("CURL_DBG_RESOLV_FAIL_IPV6")) {
+    infof(data, "DEBUG fail ipv6 resolve");
+    result = hostip_resolv_failed(data, hostname, for_proxy);
+    goto out;
+  }
 #endif
+  /* Let's check our DNS cache first */
+  result = Curl_dnscache_get(data, dns_queries, hostname, port, pdns);
+  if(*pdns) {
+    infof(data, "Hostname %s was found in DNS cache", hostname);
+    result = CURLE_OK;
+  }
+  else if(result) {
+    infof(data, "Negative DNS entry");
+    result = hostip_resolv_failed(data, hostname, for_proxy);
+  }
+  else {
+    /* No luck, we need to start resolving. */
+    cache_dns = TRUE;
+    result = hostip_resolv_start(data, dns_queries, hostname, port,
+                                 transport, for_proxy, timeout_ms, allowDOH,
+                                 presolv_id, pdns);
+  }
 
-  return hostip_resolv(data, dns_queries, peer->hostname, peer->port,
-                       transport, for_proxy, timeout_ms, TRUE, presolv_id,
-                       pdns);
+out:
+  if(result && (result != CURLE_AGAIN)) {
+    Curl_dns_entry_unlink(data, pdns);
+    if(IS_RESOLV_FAIL(result)) {
+      if(cache_dns)
+        Curl_dnscache_add_negative(data, dns_queries, hostname, port);
+      failf(data, "Could not resolve: %s:%u", hostname, port);
+    }
+    else {
+      failf(data, "Error %d resolving %s:%u", result, hostname, port);
+    }
+  }
+  else if(cache_dns && *pdns) {
+    result = Curl_dnscache_add(data, *pdns);
+    if(result)
+      Curl_dns_entry_unlink(data, pdns);
+  }
+
+  return result;
 }
 ```
 
