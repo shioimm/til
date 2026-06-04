@@ -1879,12 +1879,10 @@ static CURLcode cf_dns_connect(struct Curl_cfilter *cf, struct Curl_easy *data, 
 ```c
 // lib/cf-dns.c
 
-static CURLcode cf_dns_start(struct Curl_cfilter *cf,
-                             struct Curl_easy *data,
-                             struct Curl_dns_entry **pdns)
+static CURLcode cf_dns_start(struct Curl_cfilter *cf, struct Curl_easy *data, struct Curl_dns_entry **pdns)
 {
   struct cf_dns_ctx *ctx = cf->ctx;
-  timediff_t timeout_ms = Curl_timeleft_ms(data);
+  timediff_t timeout_ms = Curl_timeleft_ms(data); // タイムアウトmsの取得
   CURLcode result;
 
   *pdns = NULL;
@@ -1892,34 +1890,47 @@ static CURLcode cf_dns_start(struct Curl_cfilter *cf,
   CURL_TRC_CF(data, cf, "cf_dns_start %s %s:%u",
               ctx->peer->unix_socket ? "unix-domain-socket" : "host",
               ctx->peer->hostname, ctx->peer->port);
-  if(ctx->peer->unix_socket)
-    ctx->dns_queries = 0;
-  else if(Curl_is_ipv4addr(ctx->peer->hostname))
-    ctx->dns_queries |= CURL_DNSQ_A;
-#ifdef USE_IPV6
-  else if(ctx->peer->ipv6)
-    ctx->dns_queries |= CURL_DNSQ_AAAA;
-#endif
 
-  result = Curl_resolv(data, ctx->peer, ctx->dns_queries, ctx->transport,
-                       (bool)ctx->for_proxy, timeout_ms,
-                       &ctx->resolv_id, pdns);
+  if (ctx->peer->unix_socket) { // Unixドメインソケット
+    ctx->dns_queries = 0;
+  } else if (Curl_is_ipv4addr(ctx->peer->hostname)) { // ホスト名がIPv4 アドレスリテラルの場合
+    // Aレコードのクエリフラグを立てる (実際にはDNS問い合わせしない)
+    ctx->dns_queries |= CURL_DNSQ_A;
+  } else if(ctx->peer->ipv6) { // #ifdef USE_IPV6 ホスト名がIPv6アドレスリテラルの場合
+    // AAAAレコードのクエリフラグを立てる (実際にはDNS問い合わせしない)
+    ctx->dns_queries |= CURL_DNSQ_AAAA;
+  }
+
+  result = Curl_resolv( // => Curl_resolv (lib/hostip.c) 名前解決のエントリポイント
+    data,
+    ctx->peer,
+    ctx->dns_queries,
+    ctx->transport,
+    (bool)ctx->for_proxy,
+    timeout_ms,
+    &ctx->resolv_id,
+    pdns
+  );
+
   DEBUGASSERT(!result || !*pdns);
-  if(!result) { /* resolved right away, either sync or from dnscache */
+
+  if (!result) { /* resolved right away, either sync or from dnscache */
+    // DNSキャッシュヒットまたはIPアドレスリテラルの場合は即座に返る
     DEBUGASSERT(*pdns);
     return CURLE_OK;
-  }
-  else if(result == CURLE_AGAIN) { /* async resolv in progress */
+  }  else if (result == CURLE_AGAIN) { /* async resolv in progress */
+    // 非同期クエリがスレッドキューに投入され、処理が継続中
+    // 次回のcf_dns_connectでCurl_resolv_take_resultを呼んで結果を回収する
     return CURLE_OK;
-  }
-  else if(result == CURLE_OPERATION_TIMEDOUT) { /* took too long */
+  } else if (result == CURLE_OPERATION_TIMEDOUT) { /* took too long */
+    // 解決開始前にすでにタイムアウトしていた
     failf(data, "Failed to resolve '%s' with timeout after %"
           FMT_TIMEDIFF_T " ms", ctx->peer->hostname,
           curlx_ptimediff_ms(Curl_pgrs_now(data),
                              &data->progress.t_startsingle));
     return CURLE_OPERATION_TIMEDOUT;
-  }
-  else {
+  } else {
+    // その他のエラー
     DEBUGASSERT(result);
     failf(data, "Could not resolve: %s", ctx->peer->hostname);
     return result;
