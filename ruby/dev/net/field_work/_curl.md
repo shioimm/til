@@ -1994,28 +1994,31 @@ CURLcode Curl_resolv(
 ```c
 // lib/hostip.c
 
-static CURLcode hostip_resolv(struct Curl_easy *data,
-                              uint8_t dns_queries,
-                              const char *hostname,
-                              uint16_t port,
-                              uint8_t transport,
-                              bool for_proxy,
-                              timediff_t timeout_ms,
-                              bool allowDOH,
-                              uint32_t *presolv_id,
-                              struct Curl_dns_entry **pdns)
-{
+static CURLcode hostip_resolv(
+  struct Curl_easy *data,
+  uint8_t dns_queries,
+  const char *hostname,
+  uint16_t port,
+  uint8_t transport,
+  bool for_proxy,
+  timediff_t timeout_ms,
+  bool allowDOH,
+  uint32_t *presolv_id,
+  struct Curl_dns_entry **pdns
+) {
   size_t hostname_len;
-  CURLcode result = RESOLV_FAIL(for_proxy);
-  bool cache_dns = FALSE;
+  CURLcode result = RESOLV_FAIL(for_proxy); // プロキシかどうかによって返すエラーコードを切り替える
+  bool cache_dns = FALSE; // 解決結果をDNSキャッシュに追加するかどうか
 
   (void)timeout_ms; /* not used in all ifdefs */
   *presolv_id = 0;
   *pdns = NULL;
 
-#ifdef CURL_DISABLE_DOH
+  #ifdef CURL_DISABLE_DOH // DoHが無効なビルド
   (void)allowDOH;
-#endif
+  #endif
+
+  // WIP
 
   /* We should intentionally error and not resolve .onion TLDs */
   hostname_len = strlen(hostname);
