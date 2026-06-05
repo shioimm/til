@@ -2080,23 +2080,24 @@ out:
 
 ```c
 // lib/hostip.c
-// WIP
 
-static CURLcode hostip_resolv_start(struct Curl_easy *data,
-                                    uint8_t dns_queries,
-                                    const char *hostname,
-                                    uint16_t port,
-                                    uint8_t transport,
-                                    bool for_proxy,
-                                    timediff_t timeout_ms,
-                                    bool allowDOH,
-                                    uint32_t *presolv_id,
-                                    struct Curl_dns_entry **pdns)
-{
-#ifdef USE_CURL_ASYNC
+static CURLcode hostip_resolv_start(
+  struct Curl_easy *data,
+  uint8_t dns_queries,
+  const char *hostname,
+  uint16_t port,
+  uint8_t transport,
+  bool for_proxy,
+  timediff_t timeout_ms,
+  bool allowDOH,
+  uint32_t *presolv_id,
+  struct Curl_dns_entry **pdns
+) {
+  #ifdef USE_CURL_ASYNC // 非同期DNSが有効な場合
   struct Curl_resolv_async *async = NULL;
-#endif
-  struct Curl_addrinfo *addr = NULL;
+  #endif
+
+  struct Curl_addrinfo *addr = NULL; // 同期解決の場合にgetaddrinfoの結果を受け取るポインタ
   size_t hostname_len;
   CURLcode result = CURLE_OK;
 
@@ -2104,19 +2105,7 @@ static CURLcode hostip_resolv_start(struct Curl_easy *data,
   *presolv_id = 0;
   *pdns = NULL;
 
-  /* Check for "known" things to resolve ourselves. */
-#ifndef USE_RESOLVE_ON_IPS
-  if(Curl_is_ipaddr(hostname)) {
-    /* test655 verifies that the announce is done, even though there
-     * is no real resolving. So, keep doing this. */
-    result = Curl_resolv_announce_start(data, NULL);
-    if(result)
-      goto out;
-    /* shortcut literal IP addresses, if we are not told to resolve them. */
-    result = Curl_str2addr(hostname, port, &addr);
-    goto out;
-  }
-#endif
+  // WIP
 
   hostname_len = strlen(hostname);
   if(curl_strequal(hostname, "localhost") ||
