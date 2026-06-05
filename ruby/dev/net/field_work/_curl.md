@@ -2105,31 +2105,35 @@ static CURLcode hostip_resolv_start(
   *presolv_id = 0;
   *pdns = NULL;
 
-  // WIP
-
   hostname_len = strlen(hostname);
+
+  // hostnameを"localhost"として判定した場合
   if(curl_strequal(hostname, "localhost") ||
      curl_strequal(hostname, "localhost.") ||
      tailmatch(hostname, hostname_len, STRCONST(".localhost")) ||
      tailmatch(hostname, hostname_len, STRCONST(".localhost."))) {
+    // DNS問い合わせは開始せず、解決開始のタイムスタンプ記録などの通知処理だけ行う
     result = Curl_resolv_announce_start(data, NULL);
-    if(result)
-      goto out;
+    if (result) goto out;
+    // "localhost"からIPアドレスを示すstruct Curl_addrinfoを取得する
     addr = get_localhost(port, hostname);
-    if(!addr)
-      result = CURLE_OUT_OF_MEMORY;
+    if (!addr) result = CURLE_OUT_OF_MEMORY;
     goto out;
   }
 
-#ifndef CURL_DISABLE_DOH
-  if(!Curl_is_ipaddr(hostname) && allowDOH && data->set.doh) {
+  #ifndef CURL_DISABLE_DOH // DOHが有効なビルド
+  if (!Curl_is_ipaddr(hostname) && // IPアドレスリテラルでない
+     allowDOH && // かつ、DoHが許可されている
+     data->set.doh) { // かつ、--doh-urlでDoHサーバを指定されている
+    // 解決開始のタイムスタンプ記録などの通知処理
     result = Curl_resolv_announce_start(data, NULL);
-    if(result)
-      goto out;
-    if(!async) {
-      async = hostip_async_new(data, dns_queries, hostname, port,
-                               transport, for_proxy, timeout_ms);
-      if(!async) {
+    if (result) goto out;
+
+    if (!async) {
+      // ホスト名・ポート・クエリ種別、結果などの情報などを保持するstruct Curl_resolv_asyncを生成する
+      async = hostip_async_new(data, dns_queries, hostname, port, transport, for_proxy, timeout_ms);
+
+      if (!async) {
         result = CURLE_OUT_OF_MEMORY;
         goto out;
       }
@@ -2137,73 +2141,93 @@ static CURLcode hostip_resolv_start(
     result = Curl_doh(data, async);
     goto out;
   }
-#else
+  #else
   (void)allowDOH;
-#endif
+  #endif
 
   /* Can we provide the requested IP specifics in resolving? */
-  if(!can_resolve_dns_queries(data, dns_queries)) {
+  // クエリとシステム要件が一致しているかどうか
+  if (!can_resolve_dns_queries(data, dns_queries)) { // => can_resolve_dns_queries (lib/hostip.c )
+
+    // can_resolve_dns_queries (lib/hostip.c )
+    //
+    //   static bool can_resolve_dns_queries(struct Curl_easy *data, uint8_t dns_queries)
+    //   {
+    //     (void)data;
+    //     // AAAAクエリを要求しているのにシステムがIPv6に対応していない
+    //     if ((CURL_DNSQ_IP(dns_queries) == CURL_DNSQ_AAAA) && !ipv6works(data)) return FALSE;
+    //     return TRUE;
+    //   }
+
     result = RESOLV_FAIL(for_proxy);
     goto out;
   }
 
-#ifdef CURLRES_ASYNCH
+  #ifdef CURLRES_ASYNCH
   (void)addr;
-  if(!async) {
-    async = hostip_async_new(data, dns_queries, hostname, port,
-                             transport, for_proxy, timeout_ms);
-    if(!async) {
+
+  if (!async) {
+    async = hostip_async_new(data, dns_queries, hostname, port, transport, for_proxy, timeout_ms);
+
+    if (!async) {
       result = CURLE_OUT_OF_MEMORY;
       goto out;
     }
   }
-  result = Curl_async_getaddrinfo(data, async);
-  if(result == CURLE_AGAIN) {
+
+  // スレッドキュー (USE_RESOLV_THREADED) またはc-ares (USE_RESOLV_ARES) にDNSクエリを投入
+  result = Curl_async_getaddrinfo(data, async); // => Curl_async_getaddrinfo (lib/hostip.c)
+
+  // 直後に結果が返ってきていないかを確認
+  if (result == CURLE_AGAIN) {
     /* the answer might be there already. Check. */
     CURLcode r2 = hostip_resolv_take_result(data, async, pdns);
-    if(r2)
+    // => hostip_resolv_take_result (lib/asyn-ares.c もしくは lib/asyn-thrdd.c)
+
+    if (r2) {
       result = r2;
-    else if(*pdns)
-      result = CURLE_OK;
+    } else if(*pdns) {
+      result = CURLE_OK; // 結果を取得
+    }
   }
-#else
+  #else
+  // 同期DNSの場合
   result = Curl_resolv_announce_start(data, NULL);
-  if(result)
-    goto out;
+  if (result) goto out;
+  // getaddrinfoの呼び出し (完了するまでブロック)
   addr = Curl_sync_getaddrinfo(data, dns_queries, hostname, port, transport);
-  if(!addr)
-    result = RESOLV_FAIL(for_proxy);
-#endif
+  if (!addr) result = RESOLV_FAIL(for_proxy);
+  #endif
 
 out:
-  if(!result) {
-    if(addr) {
+  if (!result) {
+    if (addr) { // 同期解決が完了
       /* we got a response, create a dns entry, add to cache, return */
       DEBUGASSERT(!*pdns);
+      // DNSエントリを作成し*pdnsにセット
       *pdns = Curl_dnscache_mk_entry(data, dns_queries, &addr, hostname, port);
-      if(!*pdns)
-        result = CURLE_OUT_OF_MEMORY;
-    }
-    else if(!*pdns)
+      if (!*pdns) result = CURLE_OUT_OF_MEMORY;
+    } else if (!*pdns) { // 非同期クエリが継続中
       result = CURLE_AGAIN;
-  }
-  else if(*pdns)
+    }
+  } else if (*pdns) { // 非同期クエリが即完了 / DoH完了
     Curl_dns_entry_unlink(data, pdns);
-  else if(addr)
+  } else if (addr) { // エラー
     Curl_freeaddrinfo(addr);
+  }
 
-#ifdef USE_CURL_ASYNC
-  if(async) {
-    if(result == CURLE_AGAIN) { /* still need it, link, return id. */
+  #ifdef USE_CURL_ASYNC
+  //  非同期クエリが継続中の場合
+  if (async) {
+    if (result == CURLE_AGAIN) { /* still need it, link, return id. */
       *presolv_id = async->id;
       async->next = data->state.async;
       data->state.async = async;
-    }
-    else {
+    } else {
       Curl_async_destroy(data, async);
     }
   }
-#endif
+  #endif
   return result;
 }
 ```
@@ -2238,7 +2262,7 @@ CURLcode Curl_resolv_take_result(struct Curl_easy *data, uint32_t resolv_id,
     return Curl_async_failed(data, async, NULL);
   }
 
-  result = hostip_resolv_take_result(data, async, pdns);
+  result = hostip_resolv_take_result(data, async, pdns); // => hostip_resolv_take_result (lib/hostip.c)
 
   if(*pdns) {
     /* Add to cache */
