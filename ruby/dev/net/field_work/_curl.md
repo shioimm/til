@@ -2346,81 +2346,106 @@ out:
 
 ```c
 // lib/doh.c
-// WIP
 
-CURLcode Curl_doh(struct Curl_easy *data,
-                  struct Curl_resolv_async *async)
+CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
 {
   CURLcode result = CURLE_OK;
+
+  // 1つのホスト名に対する全DoHクエリ (A / AAAA / HTTPS RR) を管理する構造体
   struct doh_probes *dohp = NULL;
+
   size_t i;
 
   DEBUGASSERT(!async->doh);
   DEBUGASSERT(async->hostname[0]);
-  if(async->doh) {
+
+  if (async->doh) { // async->dohがなぜかすでに初期化されている場合
     DEBUGASSERT(0); /* should not happen */
     Curl_doh_cleanup(data, async);
   }
 
   /* start clean, consider allocating this struct on demand */
   async->doh = dohp = curlx_calloc(1, sizeof(struct doh_probes));
-  if(!dohp)
-    return CURLE_OUT_OF_MEMORY;
+  if (!dohp) return CURLE_OUT_OF_MEMORY;
 
+  // DOH_SLOT_COUNT = ビルドの設定によって異なる。最大3 (A + AAAA + HTTPS RR)
   for(i = 0; i < DOH_SLOT_COUNT; ++i) {
+    // 各スロットのprobe_mid = easyハンドルのIDとレスポンスボディを受け取るdynbufを初期化
     dohp->probe_resp[i].probe_mid = UINT32_MAX;
     curlx_dyn_init(&dohp->probe_resp[i].body, DYN_DOH_RESPONSE);
   }
 
+  // 解決対象のホスト名とポート番号をdoh_probesにセット
   dohp->host = async->hostname;
   dohp->port = async->port;
-  /* We are making sub easy handles and want to be called back when
-   * one is done. */
+
+  /* We are making sub easy handles and want to be called back when one is done. */
+  // DoHリクエスト用のeasyハンドルが完了したときに呼ばれるコールバックを設定
   data->sub_xfer_done = doh_probe_done;
 
   /* create IPv4 DoH request */
-  if(async->dns_queries & CURL_DNSQ_A) {
-    result = doh_probe_run(data, CURL_DNS_TYPE_A,
-                           async->hostname, data->set.str[STRING_DOH],
-                           data->multi, async->id,
-                           &dohp->probe_resp[DOH_SLOT_IPV4].probe_mid);
-    if(result)
-      goto error;
+  // AレコードのDoHクエリを発行
+  if (async->dns_queries & CURL_DNSQ_A) {
+    result = doh_probe_run( // => doh_probe_run (lib/doh.c)
+      data,
+      CURL_DNS_TYPE_A,
+      async->hostname,
+      data->set.str[STRING_DOH],
+      data->multi,
+      async->id,
+      &dohp->probe_resp[DOH_SLOT_IPV4].probe_mid
+    );
+
+    if (result) goto error;
     dohp->pending++;
   }
 
-#ifdef USE_IPV6
-  if(async->dns_queries & CURL_DNSQ_AAAA) {
+  #ifdef USE_IPV6 // IPv6サポートが有効なビルドの場合
+  if (async->dns_queries & CURL_DNSQ_AAAA) {
     /* create IPv6 DoH request */
-    result = doh_probe_run(data, CURL_DNS_TYPE_AAAA,
-                           async->hostname, data->set.str[STRING_DOH],
-                           data->multi, async->id,
-                           &dohp->probe_resp[DOH_SLOT_IPV6].probe_mid);
-    if(result)
-      goto error;
-    dohp->pending++;
-  }
-#endif
+    // AAAAレコードのDoHクエリを発行
+    result = doh_probe_run( // => doh_probe_run (lib/doh.c)
+      data,
+      CURL_DNS_TYPE_AAAA,
+      async->hostname,
+      data->set.str[STRING_DOH],
+      data->multi,
+      async->id,
+      &dohp->probe_resp[DOH_SLOT_IPV6].probe_mid
+    );
 
-#ifdef USE_HTTPSRR
-  if(async->dns_queries & CURL_DNSQ_HTTPS) {
-    char *qname = NULL;
-    if(async->port != PORT_HTTPS) {
-      qname = curl_maprintf("_%d._https.%s", async->port, async->hostname);
-      if(!qname)
-        goto error;
-    }
-    result = doh_probe_run(data, CURL_DNS_TYPE_HTTPS,
-                           qname ? qname : async->hostname,
-                           data->set.str[STRING_DOH], data->multi,
-                           async->id,
-                           &dohp->probe_resp[DOH_SLOT_HTTPS_RR].probe_mid);
-    curlx_free(qname);
-    if(result)
-      goto error;
+    if (result) goto error;
     dohp->pending++;
   }
-#endif
+  #endif
+
+  #ifdef USE_HTTPSRR // HTTPS RRサポートが有効なビルドの場合
+  if (async->dns_queries & CURL_DNSQ_HTTPS) {
+    char *qname = NULL;
+
+    if (async->port != PORT_HTTPS) { // ポートが443以外の場合
+      // HTTPS RRのクエリ名を _#{port}._https.#{hostname} の形式で生成 (RFC 9460)
+      qname = curl_maprintf("_%d._https.%s", async->port, async->hostname);
+      if (!qname) goto error;
+    }
+
+    // HTTPS RRのDoHクエリを発行
+    result = doh_probe_run(
+      data,
+      CURL_DNS_TYPE_HTTPS,
+      qname ? qname : async->hostname,
+      data->set.str[STRING_DOH],
+      data->multi,
+      async->id,
+      &dohp->probe_resp[DOH_SLOT_HTTPS_RR].probe_mid
+    );
+
+    curlx_free(qname);
+    if (result) goto error;
+    dohp->pending++;
+  }
+  #endif
+
   return CURLE_OK;
 
 error:
