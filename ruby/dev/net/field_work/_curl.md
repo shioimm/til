@@ -2138,7 +2138,7 @@ static CURLcode hostip_resolv_start(
         goto out;
       }
     }
-    result = Curl_doh(data, async);
+    result = Curl_doh(data, async); // => Curl_doh (lib/doh.c)
     goto out;
   }
   #else
@@ -2228,6 +2228,203 @@ out:
     }
   }
   #endif
+  return result;
+}
+```
+
+### `Curl_async_getaddrinfo`
+
+```c
+// lib/asyn-ares.c
+// (lib/asyn-thrdd.cにも定義されている)
+
+CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async *async)
+{
+  struct async_ares_ctx *ares = &async->ares; // c-aresのチャンネル (ares->channel) などを保持するコンテキスト
+  char service[12];
+  int socktype;
+  CURLcode result = CURLE_OK;
+
+  if (ares->channel) { // ares->channelがなぜかすでに初期化されている場合
+    DEBUGASSERT(0);
+    result = CURLE_FAILED_INIT;
+    goto out;
+  }
+
+  // c-ares チャンネルを初期化
+  // -> ares_init_options (DNSスタブクライアント・タイムアウト・リトライ回数などを設定し、ares->channelに格納)
+  result = async_ares_init(data, async); // => async_ares_init (lib/asyn-ares.c)
+
+  if (result) goto out;
+
+  // CURLOPT_RESOLVER_START_FUNCTIONコールバックが設定されている場合、呼び出す
+  result = Curl_resolv_announce_start(data, ares->channel);
+  // => Curl_resolv_announce_start (lib/hostip.c)
+  if (result) goto out;
+
+  // ポート番号を文字列化
+  curl_msnprintf(service, sizeof(service), "%d", async->port);
+  // 使用するトランスポートに応じてソケット種別を決定
+  socktype = (Curl_conn_get_transport(data, data->conn) == TRNSPRT_TCP) ?
+  SOCK_STREAM : // TCP (HTTP/1.1, HTTP/2)
+  SOCK_DGRAM;   // UDP (HTTP/3)
+
+  #ifdef CURLRES_IPV6 // IPv6サポートが有効なビルドの場合
+  if(async->dns_queries & CURL_DNSQ_AAAA) { // AAAAクエリフラグが立っている場合
+    struct ares_addrinfo_hints hints;
+
+    memset(&hints, 0, sizeof(hints));
+    CURL_TRC_DNS(data, "ares: query AAAA records for %s", async->hostname);
+    hints.ai_family = PF_INET6;
+    hints.ai_socktype = socktype;
+    hints.ai_flags = ARES_AI_NUMERICSERV; // ポート番号を文字列として解釈する
+    async->queries_ongoing++; // "進行中のクエリのカウントに1件追加"
+
+    // c-aresにAAAAクエリを投入 (ノンブロッキング)
+    ares_getaddrinfo(ares->channel, async->hostname, service, &hints, async_ares_AAAA_cb, async);
+    // async_ares_AAAA_cb = 結果を取得した際に実行するコールバック
+    // 結果をasyncに格納し、Curl_multi_mark_dirtyで該当ハンドルをdirtyセットに追加して
+    // 次のmulti_performで処理が進むようにする
+  }
+  #endif /* CURLRES_IPV6 */
+
+  if (async->dns_queries & CURL_DNSQ_A) { // Aクエリフラグが立っている場合
+    struct ares_addrinfo_hints hints;
+
+    memset(&hints, 0, sizeof(hints));
+    CURL_TRC_DNS(data, "ares: query A records for %s", async->hostname);
+    hints.ai_family = PF_INET;
+    hints.ai_socktype = socktype;
+    hints.ai_flags = ARES_AI_NUMERICSERV; // ポート番号を文字列として解釈する
+    async->queries_ongoing++; // "進行中のクエリのカウントに1件追加"
+
+    // c-aresにAクエリを投入 (ノンブロッキング)
+    ares_getaddrinfo(ares->channel, async->hostname,  service, &hints, async_ares_A_cb, async);
+    // async_ares_A_cb = 結果を取得した際に実行するコールバック
+    // 結果をasyncに格納し、Curl_multi_mark_dirtyで該当ハンドルをdirtyセットに追加して
+    // 次のmulti_performで処理が進むようにする
+  }
+
+  #ifdef USE_HTTPSRR // HTTPS RRが有効なビルドの場合
+  // HTTPS RRの結果を格納するhinfoを初期化
+  memset(&ares->hinfo, 0, sizeof(ares->hinfo));
+
+  if (async->dns_queries & CURL_DNSQ_HTTPS) { // HTTPS RRクエリフラグが立っている場合
+    char *rrname = NULL;
+
+    if (async->port != 443) { // ポートが443以外の場合
+      // HTTPS RRのクエリ名を _#{port}._https.#{hostname} の形式で生成 (RFC 9460)
+      rrname = curl_maprintf("_%d._https.%s", async->port, async->hostname);
+      if (!rrname) return CURLE_OUT_OF_MEMORY;
+    }
+
+    CURL_TRC_DNS(data, "ares: query HTTPS records for %s", rrname ? rrname : async->hostname);
+
+    ares->hinfo.rrname = rrname;
+    async->queries_ongoing++; // "進行中のクエリのカウントに1件追加"
+
+    // c-aresにHTTPS RRクエリを投入 (ノンブロッキング)
+    ares_query_dnsrec(
+      ares->channel,
+      rrname ? rrname : async->hostname,
+      ARES_CLASS_IN,
+      ARES_REC_TYPE_HTTPS,
+      async_ares_rr_done,
+      async,
+      NULL
+    );
+  }
+  #endif /* USE_HTTPSRR */
+
+out:
+  ares->result = result;
+  return result ? result : (async->queries_ongoing ? CURLE_AGAIN : CURLE_OK);
+}
+```
+
+### `Curl_doh`
+
+```c
+// lib/doh.c
+// WIP
+
+CURLcode Curl_doh(struct Curl_easy *data,
+                  struct Curl_resolv_async *async)
+{
+  CURLcode result = CURLE_OK;
+  struct doh_probes *dohp = NULL;
+  size_t i;
+
+  DEBUGASSERT(!async->doh);
+  DEBUGASSERT(async->hostname[0]);
+  if(async->doh) {
+    DEBUGASSERT(0); /* should not happen */
+    Curl_doh_cleanup(data, async);
+  }
+
+  /* start clean, consider allocating this struct on demand */
+  async->doh = dohp = curlx_calloc(1, sizeof(struct doh_probes));
+  if(!dohp)
+    return CURLE_OUT_OF_MEMORY;
+
+  for(i = 0; i < DOH_SLOT_COUNT; ++i) {
+    dohp->probe_resp[i].probe_mid = UINT32_MAX;
+    curlx_dyn_init(&dohp->probe_resp[i].body, DYN_DOH_RESPONSE);
+  }
+
+  dohp->host = async->hostname;
+  dohp->port = async->port;
+  /* We are making sub easy handles and want to be called back when
+   * one is done. */
+  data->sub_xfer_done = doh_probe_done;
+
+  /* create IPv4 DoH request */
+  if(async->dns_queries & CURL_DNSQ_A) {
+    result = doh_probe_run(data, CURL_DNS_TYPE_A,
+                           async->hostname, data->set.str[STRING_DOH],
+                           data->multi, async->id,
+                           &dohp->probe_resp[DOH_SLOT_IPV4].probe_mid);
+    if(result)
+      goto error;
+    dohp->pending++;
+  }
+
+#ifdef USE_IPV6
+  if(async->dns_queries & CURL_DNSQ_AAAA) {
+    /* create IPv6 DoH request */
+    result = doh_probe_run(data, CURL_DNS_TYPE_AAAA,
+                           async->hostname, data->set.str[STRING_DOH],
+                           data->multi, async->id,
+                           &dohp->probe_resp[DOH_SLOT_IPV6].probe_mid);
+    if(result)
+      goto error;
+    dohp->pending++;
+  }
+#endif
+
+#ifdef USE_HTTPSRR
+  if(async->dns_queries & CURL_DNSQ_HTTPS) {
+    char *qname = NULL;
+    if(async->port != PORT_HTTPS) {
+      qname = curl_maprintf("_%d._https.%s", async->port, async->hostname);
+      if(!qname)
+        goto error;
+    }
+    result = doh_probe_run(data, CURL_DNS_TYPE_HTTPS,
+                           qname ? qname : async->hostname,
+                           data->set.str[STRING_DOH], data->multi,
+                           async->id,
+                           &dohp->probe_resp[DOH_SLOT_HTTPS_RR].probe_mid);
+    curlx_free(qname);
+    if(result)
+      goto error;
+    dohp->pending++;
+  }
+#endif
+  return CURLE_OK;
+
+error:
+  Curl_doh_cleanup(data, async);
   return result;
 }
 ```
