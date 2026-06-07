@@ -2653,40 +2653,229 @@ CURLcode Curl_resolv_take_result(struct Curl_easy *data, uint32_t resolv_id, str
 ```c
 // lib/hostip.c
 
-static CURLcode hostip_resolv_take_result(struct Curl_easy *data,
-                                          struct Curl_resolv_async *async,
-                                          struct Curl_dns_entry **pdns)
-{
+static CURLcode hostip_resolv_take_result(
+ struct Curl_easy *data,
+ struct Curl_resolv_async *async,
+ struct Curl_dns_entry **pdns
+) {
   CURLcode result;
 
   /* If async resolving is ongoing, this must be set */
-  if(!async)
-    return CURLE_FAILED_INIT;
+  if (!async) return CURLE_FAILED_INIT;
 
-#ifndef CURL_DISABLE_DOH
-  if(async->doh)
+  #ifndef CURL_DISABLE_DOH
+  if (async->doh) {
+    // DoHのeasyハンドルの完了結果を回収
     result = Curl_doh_take_result(data, async, pdns);
-  else
-#endif
-  result = Curl_async_take_result(data, async, pdns);
+    // => Curl_doh_take_result (lib/doh.c)
+  } else {
+  #endif
+    // c-aresまたはスレッドの結果を回収
+    result = Curl_async_take_result(data, async, pdns);
+    // => Curl_async_take_result (lib/asyn-ares.c / lib/asyn-thrdd.c)
+  }
 
-  if(result == CURLE_AGAIN) {
-    CURL_TRC_DNS(data, "resolve incomplete, queries=%s, responses=%s, "
-                 "ongoing=%d for %s:%d",
-                 Curl_resolv_query_str(async->dns_queries),
-                 Curl_resolv_query_str(async->dns_responses),
-                 async->queries_ongoing, async->hostname, async->port);
+  if (result == CURLE_AGAIN) { // まだ完了していない場合
+    CURL_TRC_DNS(
+      data,
+      "resolve incomplete, queries=%s, responses=%s, "
+      "ongoing=%d for %s:%d",
+      Curl_resolv_query_str(async->dns_queries),
+      Curl_resolv_query_str(async->dns_responses),
+      async->queries_ongoing, async->hostname, async->port
+    );
+
     result = CURLE_OK;
-  }
-  else if(result) {
+  } else if (result) { // 名前解決に失敗した場合
     result = Curl_async_failed(data, async, NULL);
-  }
-  else {
-    CURL_TRC_DNS(data, "resolve complete for %s:%u",
-                 async->hostname, async->port);
+  } else { // 名前解決が完了した場合
+    CURL_TRC_DNS(data, "resolve complete for %s:%u", async->hostname, async->port);
     DEBUGASSERT(*pdns);
   }
 
+  return result;
+}
+```
+
+#### `Curl_doh_take_result`
+
+```c
+// lib/doh.c
+// WIP
+
+CURLcode Curl_doh_take_result(struct Curl_easy *data,
+                              struct Curl_resolv_async *async,
+                              struct Curl_dns_entry **pdns)
+{
+  struct doh_probes *dohp = async->doh;
+  CURLcode result = CURLE_OK;
+  struct dohentry de;
+
+  *pdns = NULL; /* defaults to no response */
+  if(!dohp)
+    return CURLE_OUT_OF_MEMORY;
+
+  if(dohp->probe_resp[DOH_SLOT_IPV4].probe_mid == UINT32_MAX &&
+     dohp->probe_resp[DOH_SLOT_IPV6].probe_mid == UINT32_MAX) {
+    failf(data, "Could not DoH-resolve: %s", dohp->host);
+    return async->for_proxy ?
+      CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
+  }
+  else if(!dohp->pending) {
+    DOHcode rc[DOH_SLOT_COUNT];
+    int slot;
+
+    memset(rc, 0, sizeof(rc));
+    /* remove DoH handles from multi handle and close them */
+    doh_close(data, async);
+    /* parse the responses, create the struct and return it! */
+    de_init(&de);
+    for(slot = 0; slot < DOH_SLOT_COUNT; slot++) {
+      struct doh_response *p = &dohp->probe_resp[slot];
+      if(!p->dnstype)
+        continue;
+      rc[slot] = doh_resp_decode(curlx_dyn_uptr(&p->body),
+                                 curlx_dyn_len(&p->body),
+                                 p->dnstype, &de);
+      if(rc[slot]) {
+        CURL_TRC_DNS(data, "DoH: %s type %s for %s", doh_strerror(rc[slot]),
+                     doh_type2name(p->dnstype), dohp->host);
+      }
+    } /* next slot */
+
+    if(!rc[DOH_SLOT_IPV4] || !rc[DOH_SLOT_IPV6]) {
+      /* we have an address, of one kind or other */
+      struct Curl_dns_entry *dns;
+      struct Curl_addrinfo *ai;
+
+      if(Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns)) {
+        CURL_TRC_DNS(data, "hostname: %s", dohp->host);
+        doh_show(data, &de);
+      }
+
+      result = doh2ai(&de, dohp->host, dohp->port, &ai);
+      if(result)
+        goto error;
+
+      /* we got a response, create a dns entry. */
+      dns = Curl_dnscache_mk_entry(data, async->dns_queries,
+                                   &ai, dohp->host, dohp->port);
+      if(!dns) {
+        result = CURLE_OUT_OF_MEMORY;
+        goto error;
+      }
+
+      /* Now add and HTTPSRR information if we have */
+#ifdef USE_HTTPSRR
+      if(de.numhttps_rrs > 0 && result == CURLE_OK) {
+        struct Curl_https_rrinfo *hrr = NULL;
+        result = doh_resp_decode_httpsrr(data, de.https_rrs->val,
+                                         de.https_rrs->len, &hrr);
+        if(result) {
+          infof(data, "Failed to decode HTTPS RR");
+          Curl_dns_entry_unlink(data, &dns);
+          goto error;
+        }
+        infof(data, "Some HTTPS RR to process");
+#if defined(DEBUGBUILD) && defined(CURLVERBOSE)
+        doh_print_httpsrr(data, hrr);
+#endif
+        Curl_dns_entry_set_https_rr(dns, hrr);
+      }
+#endif /* USE_HTTPSRR */
+
+      /* and add the entry to the cache */
+      result = Curl_dnscache_add(data, dns);
+      *pdns = dns;
+    } /* address processing done */
+    else {
+      result = async->for_proxy ?
+        CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
+    }
+
+  } /* !dohp->pending */
+  else
+    /* wait for pending DoH transactions to complete */
+    return CURLE_AGAIN;
+
+error:
+  de_cleanup(&de);
+  Curl_doh_cleanup(data, async);
+  return result;
+}
+```
+
+#### `Curl_async_take_result`
+
+```c
+// lib/asyn-ares.c
+// WIP
+CURLcode Curl_async_take_result(struct Curl_easy *data,
+                                struct Curl_resolv_async *async,
+                                struct Curl_dns_entry **pdns)
+{
+  struct async_ares_ctx *ares = &async->ares;
+  CURLcode result = CURLE_OK;
+
+  DEBUGASSERT(pdns);
+  *pdns = NULL;
+  if(!ares)
+    return CURLE_FAILED_INIT;
+
+  if(Curl_ares_perform(ares->channel, 0) < 0) {
+    result = CURLE_UNRECOVERABLE_POLL;
+    goto out;
+  }
+
+  if(async->queries_ongoing) {
+    result = CURLE_AGAIN;
+    goto out;
+  }
+
+  /* all c-ares operations done, what is the result to report? */
+  result = ares->result;
+  if(ares->ares_status == ARES_SUCCESS && !result) {
+    struct Curl_dns_entry *dns =
+      Curl_dnscache_mk_entry2(data, async->dns_queries,
+                             &ares->res_AAAA, &ares->res_A,
+                             async->hostname, async->port);
+    if(!dns) {
+      result = CURLE_OUT_OF_MEMORY;
+      goto out;
+    }
+#ifdef HTTPSRR_WORKS
+    if(async->dns_queries & CURL_DNSQ_HTTPS) {
+      if(ares->hinfo.complete) {
+        struct Curl_https_rrinfo *lhrr = Curl_httpsrr_dup_move(&ares->hinfo);
+        if(!lhrr)
+          result = CURLE_OUT_OF_MEMORY;
+        else
+          Curl_dns_entry_set_https_rr(dns, lhrr);
+      }
+      else
+        Curl_dns_entry_set_https_rr(dns, NULL);
+    }
+#endif
+    if(!result) {
+      *pdns = dns;
+    }
+  }
+  /* if we have not found anything, report the proper
+   * CURLE_COULDNT_RESOLVE_* code */
+  if(!result && !*pdns) {
+    const char *msg = NULL;
+    if(ares->ares_status != ARES_SUCCESS)
+      msg = ares_strerror(ares->ares_status);
+    result = Curl_async_failed(data, async, msg);
+  }
+
+  CURL_TRC_DNS(data, "ares: is_resolved() result=%d, dns=%sfound",
+               result, *pdns ? "" : "not ");
+  async_ares_cleanup(async);
+
+out:
+  if(result != CURLE_AGAIN)
+    ares->result = result;
   return result;
 }
 ```
