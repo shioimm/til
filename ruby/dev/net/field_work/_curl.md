@@ -2583,7 +2583,9 @@ static CURLcode doh_probe_run(
      private_data via CURLOPT_PRIVATE if they so choose. */
   DEBUGASSERT(!doh->set.private_data);
 
-  // dohをmultiに追加する (multi_performを介して非同期HTTPリクエストを開始)
+  // dohをmultiに追加する
+  // -> multi_performを介してDoHサーバ自身の名前解決を行う (同期 or 非同期)
+  // -> オリジンへの非同期HTTPリクエストを開始
   if (curl_multi_add_handle(multi, doh)) goto error;
 
   *pmid = doh->mid;
