@@ -1355,11 +1355,13 @@ static CURLMcode multi_runsingle(
     // WIP
     case MSTATE_PROTOCONNECT:
       mresult = multistate_protoconnect(data, &stream_error, &result);
+      // => multistate_protoconnect (lib/multi.c)
       break;
 
     case MSTATE_PROTOCONNECTING:
       /* protocol-specific connect phase */
       mresult = multistate_protoconnecting(data, &stream_error, &result);
+      // => multistate_protoconnect (lib/multi.c)
       break;
 
     case MSTATE_DO:
@@ -2602,49 +2604,89 @@ error:
 
 ```c
 // lib/hostip.c
-// WIP
 
-CURLcode Curl_resolv_take_result(struct Curl_easy *data, uint32_t resolv_id,
-                                 struct Curl_dns_entry **pdns)
+CURLcode Curl_resolv_take_result(struct Curl_easy *data, uint32_t resolv_id, struct Curl_dns_entry **pdns)
 {
+  // resolv_idで識別される非同期クエリの管理オブジェクトを取得
   struct Curl_resolv_async *async = Curl_async_get(data, resolv_id);
+  CURLcode result;
+
+  /* If async resolving is ongoing, this must be set */
+  if (!async) return CURLE_FAILED_INIT;
+
+  /* check if we have the name resolved by now (from someone else) */
+  // DNSキャッシュを確認
+  result = Curl_dnscache_get(data, async->dns_queries, async->hostname, async->port, pdns);
+
+  // 別のハンドルが同じホスト名を先に解決してキャッシュに追加していた場合
+  // 進行中のクエリを中止してキャッシュの結果を返す
+  if (*pdns) {
+    /* Tell a possibly async resolver we no longer need the results. */
+    infof(data, "Hostname '%s' was found in DNS cache", async->hostname);
+    Curl_async_shutdown(data, async);
+    return CURLE_OK;
+  } else if(result) {
+    Curl_async_shutdown(data, async);
+    return Curl_async_failed(data, async, NULL);
+  }
+
+  // 名前解決結果を回収
+  result = hostip_resolv_take_result(data, async, pdns); // => hostip_resolv_take_result (lib/hostip.c)
+
+  if (*pdns) { // 結果の取得に成功した場合
+    /* Add to cache */
+    result = Curl_dnscache_add(data, *pdns);
+    if (result) Curl_dns_entry_unlink(data, pdns);
+  } else if(IS_RESOLV_FAIL(result)) { // 解決に失敗した場合
+    // ネガティブキャッシュに登録
+    Curl_dnscache_add_negative(data, async->dns_queries, async->hostname, async->port);
+    failf(data, "Could not resolve: %s:%u", async->hostname, async->port);
+  } else if(result) { // IS_RESOLV_FAIL以外のエラー
+    failf(data, "Error %d resolving %s:%u", result, async->hostname, async->port);
+  }
+  return result;
+}
+```
+
+#### `hostip_resolv_take_result`
+
+```c
+// lib/hostip.c
+
+static CURLcode hostip_resolv_take_result(struct Curl_easy *data,
+                                          struct Curl_resolv_async *async,
+                                          struct Curl_dns_entry **pdns)
+{
   CURLcode result;
 
   /* If async resolving is ongoing, this must be set */
   if(!async)
     return CURLE_FAILED_INIT;
 
-  /* check if we have the name resolved by now (from someone else) */
-  result = Curl_dnscache_get(data, async->dns_queries,
-                             async->hostname, async->port, pdns);
-  if(*pdns) {
-    /* Tell a possibly async resolver we no longer need the results. */
-    infof(data, "Hostname '%s' was found in DNS cache", async->hostname);
-    Curl_async_shutdown(data, async);
-    return CURLE_OK;
+#ifndef CURL_DISABLE_DOH
+  if(async->doh)
+    result = Curl_doh_take_result(data, async, pdns);
+  else
+#endif
+  result = Curl_async_take_result(data, async, pdns);
+
+  if(result == CURLE_AGAIN) {
+    CURL_TRC_DNS(data, "resolve incomplete, queries=%s, responses=%s, "
+                 "ongoing=%d for %s:%d",
+                 Curl_resolv_query_str(async->dns_queries),
+                 Curl_resolv_query_str(async->dns_responses),
+                 async->queries_ongoing, async->hostname, async->port);
+    result = CURLE_OK;
   }
   else if(result) {
-    Curl_async_shutdown(data, async);
-    return Curl_async_failed(data, async, NULL);
+    result = Curl_async_failed(data, async, NULL);
+  }
+  else {
+    CURL_TRC_DNS(data, "resolve complete for %s:%u",
+                 async->hostname, async->port);
+    DEBUGASSERT(*pdns);
   }
 
-  result = hostip_resolv_take_result(data, async, pdns); // => hostip_resolv_take_result (lib/hostip.c)
-
-  if(*pdns) {
-    /* Add to cache */
-    result = Curl_dnscache_add(data, *pdns);
-    if(result)
-      Curl_dns_entry_unlink(data, pdns);
-  }
-  else if(IS_RESOLV_FAIL(result)) {
-    Curl_dnscache_add_negative(data, async->dns_queries,
-                               async->hostname, async->port);
-    failf(data, "Could not resolve: %s:%u", async->hostname, async->port);
-  }
-  else if(result) {
-    failf(data, "Error %d resolving %s:%u",
-          result, async->hostname, async->port);
-  }
   return result;
 }
 ```
