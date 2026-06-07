@@ -2788,7 +2788,6 @@ static CURLcode hostip_resolv_take_result(
 
 ```c
 // lib/doh.c
-// WIP
 
 CURLcode Curl_doh_take_result(
   struct Curl_easy *data,
@@ -2807,24 +2806,27 @@ CURLcode Curl_doh_take_result(
     failf(data, "Could not DoH-resolve: %s", dohp->host);
 
     return async->for_proxy ? CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
-  } else if(!dohp->pending) {
-    DOHcode rc[DOH_SLOT_COUNT];
+  } else if (!dohp->pending) { // 全DoH応答が揃った場合
+    DOHcode rc[DOH_SLOT_COUNT]; // 結果の配列
     int slot;
 
     memset(rc, 0, sizeof(rc));
     /* remove DoH handles from multi handle and close them */
+    // DoH用のeasyハンドルをmultiから取り外してクローズ
     doh_close(data, async);
     /* parse the responses, create the struct and return it! */
+    // struct dohentryを初期化
     de_init(&de);
 
     for (slot = 0; slot < DOH_SLOT_COUNT; slot++) {
       struct doh_response *p = &dohp->probe_resp[slot];
-      if (!p->dnstype) continue;
+      if (!p->dnstype) continue; // dnstype == 0 のスロットはクエリを送っていないので読み飛ばす
 
+      // DoHサーバから届いたバイト列をパースしてstruct dohentryにセットし、rcに追加
       rc[slot] = doh_resp_decode(curlx_dyn_uptr(&p->body), curlx_dyn_len(&p->body), p->dnstype, &de);
     } /* next slot */
 
-    if(!rc[DOH_SLOT_IPV4] || !rc[DOH_SLOT_IPV6]) {
+    if (!rc[DOH_SLOT_IPV4] || !rc[DOH_SLOT_IPV6]) { // A / AAAAいずれかがDOH_OK
       /* we have an address, of one kind or other */
       struct Curl_dns_entry *dns;
       struct Curl_addrinfo *ai;
@@ -2834,10 +2836,13 @@ CURLcode Curl_doh_take_result(
         doh_show(data, &de);
       }
 
+      // dohentryのアドレス配列(de.addr[])からCurl_addrinfo のリンクリストを新規作成して返す
+      // アドレスごとにCurl_addrinfo + sockaddr_in(6) + ホスト名を連結する
       result = doh2ai(&de, dohp->host, dohp->port, &ai);
       if (result) goto error;
 
       /* we got a response, create a dns entry. */
+      // Curl_dns_entryを生成
       dns = Curl_dnscache_mk_entry(data, async->dns_queries, &ai, dohp->host, dohp->port);
 
       if (!dns) {
@@ -2849,6 +2854,7 @@ CURLcode Curl_doh_take_result(
       #ifdef USE_HTTPSRR
       if (de.numhttps_rrs > 0 && result == CURLE_OK) {
         struct Curl_https_rrinfo *hrr = NULL;
+        // HTTPS RRのバイト列をパースしてCurl_https_rrinfoに変換
         result = doh_resp_decode_httpsrr(data, de.https_rrs->val, de.https_rrs->len, &hrr);
 
         if (result) {
@@ -2861,12 +2867,15 @@ CURLcode Curl_doh_take_result(
         #if defined(DEBUGBUILD) && defined(CURLVERBOSE)
         doh_print_httpsrr(data, hrr);
         #endif
+        // struct Curl_https_rrinfoをCurl_dns_entryに追加
         Curl_dns_entry_set_https_rr(dns, hrr);
       }
       #endif /* USE_HTTPSRR */
 
       /* and add the entry to the cache */
+      // 結果をキャッシュに保存
       result = Curl_dnscache_add(data, dns);
+      // 呼び出し元が参照する出力ポインタに完成したエントリをセット = DoHによる名前解決が完了
       *pdns = dns;
     } else {/* address processing done */
       result = async->for_proxy ? CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
