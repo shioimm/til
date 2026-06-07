@@ -2285,8 +2285,9 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
     // c-aresにAAAAクエリを投入 (ノンブロッキング)
     ares_getaddrinfo(ares->channel, async->hostname, service, &hints, async_ares_AAAA_cb, async);
     // async_ares_AAAA_cb = 結果を取得した際に実行するコールバック
-    // 結果をasyncに格納し、Curl_multi_mark_dirtyで該当ハンドルをdirtyセットに追加して
-    // 次のmulti_performで処理が進むようにする
+    //   - async->queries_ongoing-- で進行中クエリ数を減らし、0になればasync->done=TRUE
+    //   - 成功時: ares_ai->nodesをCurl_addrinfo形式に変換してares->res_AAAAに格納
+    //   - 失敗時: ares->ares_statusにエラーコードをセット
   }
   #endif /* CURLRES_IPV6 */
 
@@ -2303,8 +2304,9 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
     // c-aresにAクエリを投入 (ノンブロッキング)
     ares_getaddrinfo(ares->channel, async->hostname,  service, &hints, async_ares_A_cb, async);
     // async_ares_A_cb = 結果を取得した際に実行するコールバック
-    // 結果をasyncに格納し、Curl_multi_mark_dirtyで該当ハンドルをdirtyセットに追加して
-    // 次のmulti_performで処理が進むようにする
+    //   - async->queries_ongoing-- で進行中クエリ数を減らし、0になればasync->done=TRUE
+    //   - 成功時: ares_ai->nodesをCurl_addrinfo形式に変換してares->res_Aに格納
+    //   - 失敗時: ares->ares_statusにエラーコードをセット
   }
 
   #ifdef USE_HTTPSRR // HTTPS RRが有効なビルドの場合
@@ -2331,7 +2333,7 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
       rrname ? rrname : async->hostname,
       ARES_CLASS_IN,
       ARES_REC_TYPE_HTTPS,
-      async_ares_rr_done,
+      async_ares_rr_done, // => HTTPS RRクエリ完了時に実行されるコールバック async_ares_rr_done (lib/asyn-ares.c)
       async,
       NULL
     );
@@ -2339,12 +2341,97 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
   #endif /* USE_HTTPSRR */
 
 out:
-  ares->result = result;
+  ares->result = result; // クエリ開始時点での状態をares->resultにセット
   return result ? result : (async->queries_ongoing ? CURLE_AGAIN : CURLE_OK);
 }
 ```
 
-### `Curl_doh`
+#### `async_ares_rr_done`
+
+```c
+// lib/asyn-ares.c
+
+static void async_ares_rr_done(
+  void *user_data,
+  ares_status_t status,
+  size_t timeouts,
+  const ares_dns_record_t *dnsrec
+) {
+  struct Curl_resolv_async *async = user_data;
+  struct async_ares_ctx *ares = async ? &async->ares : NULL;
+
+  if (!async) return;
+
+  (void)timeouts;
+  async->dns_responses |= CURL_DNSQ_HTTPS; // HTTPS RRの応答が届いたことをビットフラグで記録する
+  async->queries_ongoing--; // 進行中クエリのカウントを1つ減らす
+  async->done = !async->queries_ongoing;
+
+  // c-aresがエラーを返した、あるいは応答レコードがなかった場合
+  if ((ARES_SUCCESS != status) || !dnsrec) return;
+
+  // HTTP RRのパース結果をares->resultにセット
+  ares->result = Curl_httpsrr_from_ares(dnsrec, &ares->hinfo);
+}
+```
+
+#### `async_ares_A_cb`
+
+```c
+// lib/asyn-ares.c
+
+static void async_ares_A_cb(void *user_data, int status, int timeouts, struct ares_addrinfo *ares_ai)
+{
+  struct Curl_resolv_async *async = user_data;
+  struct async_ares_ctx *ares = async ? &async->ares : NULL;
+
+  (void)timeouts;
+  if (!async) return;
+
+  async->dns_responses |= CURL_DNSQ_A; // Aレコードの応答が届いたことをビットフラグで記録
+  async->queries_ongoing--; // 進行中クエリのカウントを1つ減らす
+  async->done = !async->queries_ongoing;
+
+  if (status == ARES_SUCCESS) { // 成功時
+    ares->ares_status = ARES_SUCCESS;
+    // c-ares独自のares_addrinfo_nodeリストをlibcurlのCurl_addrinfoに変換してares->res_Aにセット
+    ares->res_A = async_ares_node2addr(ares_ai->nodes);
+    ares_freeaddrinfo(ares_ai);
+  } else if (ares->ares_status != ARES_SUCCESS) { /* do not overwrite success */ // 失敗時
+    ares->ares_status = status;
+  }
+}
+```
+
+#### `async_ares_AAAA_cb`
+
+```c
+// lib/asyn-ares.c
+
+static void async_ares_AAAA_cb(void *user_data, int status, int timeouts, struct ares_addrinfo *ares_ai)
+{
+  struct Curl_resolv_async *async = user_data;
+  struct async_ares_ctx *ares = async ? &async->ares : NULL;
+
+  (void)timeouts;
+  if (!async) return;
+
+  async->dns_responses |= CURL_DNSQ_AAAA; // AAAAレコードの応答が届いたことをビットフラグで記録
+  async->queries_ongoing--; // 進行中クエリのカウントを1つ減らす
+  async->done = !async->queries_ongoing;
+
+  if (status == ARES_SUCCESS) { // 成功時
+    ares->ares_status = ARES_SUCCESS;
+    // c-ares独自のares_addrinfo_nodeリストをlibcurlのCurl_addrinfoに変換してares->res_Aにセット
+    ares->res_AAAA = async_ares_node2addr(ares_ai->nodes);
+    ares_freeaddrinfo(ares_ai);
+  } else if (ares->ares_status != ARES_SUCCESS) { /* do not overwrite success */ // 失敗時
+    ares->ares_status = status;
+  }
+}
+```
+
+#### `Curl_doh`
 
 ```c
 // lib/doh.c
@@ -2703,25 +2790,24 @@ static CURLcode hostip_resolv_take_result(
 // lib/doh.c
 // WIP
 
-CURLcode Curl_doh_take_result(struct Curl_easy *data,
-                              struct Curl_resolv_async *async,
-                              struct Curl_dns_entry **pdns)
-{
+CURLcode Curl_doh_take_result(
+  struct Curl_easy *data,
+  struct Curl_resolv_async *async,
+  struct Curl_dns_entry **pdns
+) {
   struct doh_probes *dohp = async->doh;
   CURLcode result = CURLE_OK;
   struct dohentry de;
 
   *pdns = NULL; /* defaults to no response */
-  if(!dohp)
-    return CURLE_OUT_OF_MEMORY;
+  if (!dohp) return CURLE_OUT_OF_MEMORY;
 
-  if(dohp->probe_resp[DOH_SLOT_IPV4].probe_mid == UINT32_MAX &&
-     dohp->probe_resp[DOH_SLOT_IPV6].probe_mid == UINT32_MAX) {
+  if (dohp->probe_resp[DOH_SLOT_IPV4].probe_mid == UINT32_MAX &&
+      dohp->probe_resp[DOH_SLOT_IPV6].probe_mid == UINT32_MAX) {
     failf(data, "Could not DoH-resolve: %s", dohp->host);
-    return async->for_proxy ?
-      CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
-  }
-  else if(!dohp->pending) {
+
+    return async->for_proxy ? CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
+  } else if(!dohp->pending) {
     DOHcode rc[DOH_SLOT_COUNT];
     int slot;
 
@@ -2730,17 +2816,12 @@ CURLcode Curl_doh_take_result(struct Curl_easy *data,
     doh_close(data, async);
     /* parse the responses, create the struct and return it! */
     de_init(&de);
-    for(slot = 0; slot < DOH_SLOT_COUNT; slot++) {
+
+    for (slot = 0; slot < DOH_SLOT_COUNT; slot++) {
       struct doh_response *p = &dohp->probe_resp[slot];
-      if(!p->dnstype)
-        continue;
-      rc[slot] = doh_resp_decode(curlx_dyn_uptr(&p->body),
-                                 curlx_dyn_len(&p->body),
-                                 p->dnstype, &de);
-      if(rc[slot]) {
-        CURL_TRC_DNS(data, "DoH: %s type %s for %s", doh_strerror(rc[slot]),
-                     doh_type2name(p->dnstype), dohp->host);
-      }
+      if (!p->dnstype) continue;
+
+      rc[slot] = doh_resp_decode(curlx_dyn_uptr(&p->body), curlx_dyn_len(&p->body), p->dnstype, &de);
     } /* next slot */
 
     if(!rc[DOH_SLOT_IPV4] || !rc[DOH_SLOT_IPV6]) {
@@ -2748,55 +2829,52 @@ CURLcode Curl_doh_take_result(struct Curl_easy *data,
       struct Curl_dns_entry *dns;
       struct Curl_addrinfo *ai;
 
-      if(Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns)) {
+      if (Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns)) {
         CURL_TRC_DNS(data, "hostname: %s", dohp->host);
         doh_show(data, &de);
       }
 
       result = doh2ai(&de, dohp->host, dohp->port, &ai);
-      if(result)
-        goto error;
+      if (result) goto error;
 
       /* we got a response, create a dns entry. */
-      dns = Curl_dnscache_mk_entry(data, async->dns_queries,
-                                   &ai, dohp->host, dohp->port);
-      if(!dns) {
+      dns = Curl_dnscache_mk_entry(data, async->dns_queries, &ai, dohp->host, dohp->port);
+
+      if (!dns) {
         result = CURLE_OUT_OF_MEMORY;
         goto error;
       }
 
       /* Now add and HTTPSRR information if we have */
-#ifdef USE_HTTPSRR
-      if(de.numhttps_rrs > 0 && result == CURLE_OK) {
+      #ifdef USE_HTTPSRR
+      if (de.numhttps_rrs > 0 && result == CURLE_OK) {
         struct Curl_https_rrinfo *hrr = NULL;
-        result = doh_resp_decode_httpsrr(data, de.https_rrs->val,
-                                         de.https_rrs->len, &hrr);
-        if(result) {
+        result = doh_resp_decode_httpsrr(data, de.https_rrs->val, de.https_rrs->len, &hrr);
+
+        if (result) {
           infof(data, "Failed to decode HTTPS RR");
           Curl_dns_entry_unlink(data, &dns);
           goto error;
         }
+
         infof(data, "Some HTTPS RR to process");
-#if defined(DEBUGBUILD) && defined(CURLVERBOSE)
+        #if defined(DEBUGBUILD) && defined(CURLVERBOSE)
         doh_print_httpsrr(data, hrr);
-#endif
+        #endif
         Curl_dns_entry_set_https_rr(dns, hrr);
       }
-#endif /* USE_HTTPSRR */
+      #endif /* USE_HTTPSRR */
 
       /* and add the entry to the cache */
       result = Curl_dnscache_add(data, dns);
       *pdns = dns;
-    } /* address processing done */
-    else {
-      result = async->for_proxy ?
-        CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
+    } else {/* address processing done */
+      result = async->for_proxy ? CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
     }
-
-  } /* !dohp->pending */
-  else
+  } else {/* !dohp->pending */
     /* wait for pending DoH transactions to complete */
     return CURLE_AGAIN;
+  }
 
 error:
   de_cleanup(&de);
@@ -2809,73 +2887,88 @@ error:
 
 ```c
 // lib/asyn-ares.c
-// WIP
-CURLcode Curl_async_take_result(struct Curl_easy *data,
-                                struct Curl_resolv_async *async,
-                                struct Curl_dns_entry **pdns)
-{
+
+CURLcode Curl_async_take_result(
+  struct Curl_easy *data,
+  struct Curl_resolv_async *async,
+  struct Curl_dns_entry **pdns
+) {
   struct async_ares_ctx *ares = &async->ares;
   CURLcode result = CURLE_OK;
 
   DEBUGASSERT(pdns);
   *pdns = NULL;
-  if(!ares)
-    return CURLE_FAILED_INIT;
+  if (!ares) return CURLE_FAILED_INIT;
 
-  if(Curl_ares_perform(ares->channel, 0) < 0) {
+  // 即座に可能な処理を実行
+  // 受信済みのDNSレスポンスがあればコールバックを呼び出す
+  if (Curl_ares_perform(ares->channel, 0) < 0) { // ポーリングエラー
     result = CURLE_UNRECOVERABLE_POLL;
     goto out;
   }
 
-  if(async->queries_ongoing) {
+  // コールバックが呼ばれてqueries_ongoingがデクリメントされた後、
+  // まだ他に実行中の名前解決 = async->queries_ongoingが残っている場合
+  if (async->queries_ongoing) {
     result = CURLE_AGAIN;
     goto out;
   }
 
   /* all c-ares operations done, what is the result to report? */
+  // async_ares_A_cb / async_ares_AAAA_cb が記録したエラーコードを取得
   result = ares->result;
-  if(ares->ares_status == ARES_SUCCESS && !result) {
-    struct Curl_dns_entry *dns =
-      Curl_dnscache_mk_entry2(data, async->dns_queries,
-                             &ares->res_AAAA, &ares->res_A,
-                             async->hostname, async->port);
-    if(!dns) {
+
+  // c-ares が成功かつcurlレベルのエラーもない場合
+  if (ares->ares_status == ARES_SUCCESS && !result) {
+    // A / AAAAの結果をまとめてCurl_dns_entryを作成
+    struct Curl_dns_entry *dns = Curl_dnscache_mk_entry2(
+      data,
+      async->dns_queries,
+      &ares->res_AAAA,
+      &ares->res_A,
+      async->hostname,
+      async->port
+    );
+
+    if (!dns) {
       result = CURLE_OUT_OF_MEMORY;
       goto out;
     }
-#ifdef HTTPSRR_WORKS
-    if(async->dns_queries & CURL_DNSQ_HTTPS) {
-      if(ares->hinfo.complete) {
-        struct Curl_https_rrinfo *lhrr = Curl_httpsrr_dup_move(&ares->hinfo);
-        if(!lhrr)
-          result = CURLE_OUT_OF_MEMORY;
-        else
-          Curl_dns_entry_set_https_rr(dns, lhrr);
+
+    #ifdef HTTPSRR_WORKS
+    if (ares->hinfo.complete) {
+      struct Curl_https_rrinfo *lhrr = Curl_httpsrr_dup_move(&ares->hinfo);
+      // ares->hinfoの保持するデータを新しいCurl_https_rrinfoにコピーしつつ、
+      // hinfo の内部ポインタをNULLにして所有権を移動させる
+
+      if (!lhrr) {
+        result = CURLE_OUT_OF_MEMORY;
+      } else {
+        // Curl_dns_entryにCurl_https_rrinfoをセット
+        Curl_dns_entry_set_https_rr(dns, lhrr);
       }
-      else
-        Curl_dns_entry_set_https_rr(dns, NULL);
+    } else { // 完了していない
+      // Curl_dns_entryにNULLをセット
+      Curl_dns_entry_set_https_rr(dns, NULL);
     }
-#endif
-    if(!result) {
-      *pdns = dns;
-    }
+    #endif
+    if (!result) *pdns = dns;
   }
-  /* if we have not found anything, report the proper
-   * CURLE_COULDNT_RESOLVE_* code */
-  if(!result && !*pdns) {
+
+  /* if we have not found anything, report the proper CURLE_COULDNT_RESOLVE_* code */
+  // c-aresが失敗
+  if (!result && !*pdns) {
     const char *msg = NULL;
-    if(ares->ares_status != ARES_SUCCESS)
-      msg = ares_strerror(ares->ares_status);
+    if (ares->ares_status != ARES_SUCCESS) msg = ares_strerror(ares->ares_status);
     result = Curl_async_failed(data, async, msg);
   }
 
-  CURL_TRC_DNS(data, "ares: is_resolved() result=%d, dns=%sfound",
-               result, *pdns ? "" : "not ");
+  CURL_TRC_DNS(data, "ares: is_resolved() result=%d, dns=%sfound", result, *pdns ? "" : "not ");
   async_ares_cleanup(async);
 
 out:
-  if(result != CURLE_AGAIN)
-    ares->result = result;
+  // 全クエリが完了して得た最終的な結果をセット
+  if (result != CURLE_AGAIN) ares->result = result;
   return result;
 }
 ```
