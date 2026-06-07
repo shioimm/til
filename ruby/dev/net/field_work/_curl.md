@@ -2380,11 +2380,11 @@ CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
   dohp->port = async->port;
 
   /* We are making sub easy handles and want to be called back when one is done. */
-  // DoHリクエスト用のeasyハンドルが完了したときに呼ばれるコールバックを設定
+  // DoHリクエスト用のeasyハンドルが完了するたびに呼ばれるコールバックを設定
   data->sub_xfer_done = doh_probe_done;
 
   /* create IPv4 DoH request */
-  // AレコードのDoHクエリを発行
+  // AレコードのDoHクエリを発行・easyハンドルを作成してmultiに追加
   if (async->dns_queries & CURL_DNSQ_A) {
     result = doh_probe_run( // => doh_probe_run (lib/doh.c)
       data,
@@ -2403,7 +2403,7 @@ CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
   #ifdef USE_IPV6 // IPv6サポートが有効なビルドの場合
   if (async->dns_queries & CURL_DNSQ_AAAA) {
     /* create IPv6 DoH request */
-    // AAAAレコードのDoHクエリを発行
+    // AAAAレコードのDoHクエリを発行・easyハンドルを作成してmultiに追加
     result = doh_probe_run( // => doh_probe_run (lib/doh.c)
       data,
       CURL_DNS_TYPE_AAAA,
@@ -2429,7 +2429,7 @@ CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
       if (!qname) goto error;
     }
 
-    // HTTPS RRのDoHクエリを発行
+    // HTTPS RRのDoHクエリを発行・easyハンドルを作成してmultiに追加
     result = doh_probe_run(
       data,
       CURL_DNS_TYPE_HTTPS,
@@ -2458,59 +2458,62 @@ error:
 
 ```c
 // lib/doh.c
-// WIP
 
-static CURLcode doh_probe_run(struct Curl_easy *data,
-                              DNStype dnstype,
-                              const char *host,
-                              const char *url, CURLM *multi,
-                              uint32_t resolv_id,
-                              uint32_t *pmid)
-{
-  struct Curl_easy *doh = NULL;
+static CURLcode doh_probe_run(
+  struct Curl_easy *data,
+  DNStype dnstype,
+  const char *host,
+  const char *url, CURLM *multi,
+  uint32_t resolv_id,
+  uint32_t *pmid
+) {
+  struct Curl_easy *doh = NULL; // DoHクエリのためのeasyハンドル
   CURLcode result = CURLE_OK;
   timediff_t timeout_ms;
   struct doh_request *doh_req;
-  DOHcode d;
+  DOHcode d; // DNSパケットエンコードの結果
 
-  *pmid = UINT32_MAX;
+  *pmid = UINT32_MAX; // easyハンドルのIDを初期化
 
   doh_req = curlx_calloc(1, sizeof(*doh_req));
-  if(!doh_req)
-    return CURLE_OUT_OF_MEMORY;
-  doh_req->resolv_id = resolv_id;
-  doh_req->dnstype = dnstype;
-  curlx_dyn_init(&doh_req->resp_body, DYN_DOH_RESPONSE);
+  if (!doh_req) return CURLE_OUT_OF_MEMORY;
 
-  d = doh_req_encode(host, dnstype, doh_req->req_body,
-                     sizeof(doh_req->req_body),
-                     &doh_req->req_body_len);
-  if(d) {
+  doh_req->resolv_id = resolv_id; // どの名前解決に属するクエリかを示す識別子をセット
+  doh_req->dnstype = dnstype; // A / AAAA / HTTPS RR
+  curlx_dyn_init(&doh_req->resp_body, DYN_DOH_RESPONSE); // 返ってきたレスポンスボディを保持するdynbufを初期化
+
+  // ホスト名とDNSクエリを規定のフォーマットにエンコード
+  d = doh_req_encode(host, dnstype, doh_req->req_body, sizeof(doh_req->req_body), &doh_req->req_body_len);
+
+  if (d) {
     failf(data, "Failed to encode DoH packet [%d]", d);
     result = CURLE_OUT_OF_MEMORY;
     goto error;
   }
 
   timeout_ms = Curl_timeleft_ms(data);
-  if(timeout_ms < 0) {
+
+  // タイムアウト済みの場合
+  if (timeout_ms < 0) {
     result = CURLE_OPERATION_TIMEDOUT;
     goto error;
   }
 
-  doh_req->req_hds =
-    curl_slist_append(NULL, "Content-Type: application/dns-message");
-  if(!doh_req->req_hds) {
+  // DoHのPOSTリクエストに必要なContent-Typeヘッダをセット
+  doh_req->req_hds = curl_slist_append(NULL, "Content-Type: application/dns-message");
+
+  if (!doh_req->req_hds) {
     result = CURLE_OUT_OF_MEMORY;
     goto error;
   }
 
   /* Curl_open() is the internal version of curl_easy_init() */
+  // フルサービスリゾルバ (DoHサーバ) へのHTTPリクエストを1件送るためのeasyハンドルを作成
   result = Curl_open(&doh);
-  if(result)
-    goto error;
+  if (result) goto error;
 
-  /* pass in the struct pointer via a local variable to please coverity and
-     the gcc typecheck helpers */
+  /* pass in the struct pointer via a local variable to please coverity and the gcc typecheck helpers */
+  // dohのオプションへのバリデーションチェック
   VERBOSE(doh->state.feat = &Curl_trc_feat_dns);
   ERROR_CHECK_SETOPT(CURLOPT_URL, url);
   ERROR_CHECK_SETOPT(CURLOPT_DEFAULT_PROTOCOL, "https");
@@ -2519,32 +2522,27 @@ static CURLcode doh_probe_run(struct Curl_easy *data,
   ERROR_CHECK_SETOPT(CURLOPT_POSTFIELDS, doh_req->req_body);
   ERROR_CHECK_SETOPT(CURLOPT_POSTFIELDSIZE, (long)doh_req->req_body_len);
   ERROR_CHECK_SETOPT(CURLOPT_HTTPHEADER, doh_req->req_hds);
-#ifdef USE_HTTP2
+  #ifdef USE_HTTP2
   ERROR_CHECK_SETOPT(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
   ERROR_CHECK_SETOPT(CURLOPT_PIPEWAIT, 1L);
-#endif
-#ifndef DEBUGBUILD
+  #endif
+  #ifndef DEBUGBUILD
   /* enforce HTTPS if not debug */
   ERROR_CHECK_SETOPT(CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
-#else
+  #else
   /* in debug mode, also allow http */
   ERROR_CHECK_SETOPT(CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
-#endif
+  #endif
   ERROR_CHECK_SETOPT(CURLOPT_TIMEOUT_MS, (long)timeout_ms);
   ERROR_CHECK_SETOPT(CURLOPT_SHARE, (CURLSH *)data->share);
-  if(data->set.err && data->set.err != stderr)
-    ERROR_CHECK_SETOPT(CURLOPT_STDERR, data->set.err);
-  if(Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns))
-    ERROR_CHECK_SETOPT(CURLOPT_VERBOSE, 1L);
-  if(data->set.no_signal)
-    ERROR_CHECK_SETOPT(CURLOPT_NOSIGNAL, 1L);
 
-  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYHOST,
-                     data->set.doh_verifyhost ? 2L : 0L);
-  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYPEER,
-                     data->set.doh_verifypeer ? 1L : 0L);
-  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYSTATUS,
-                     data->set.doh_verifystatus ? 1L : 0L);
+  if (data->set.err && data->set.err != stderr) ERROR_CHECK_SETOPT(CURLOPT_STDERR, data->set.err);
+  if (Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns)) ERROR_CHECK_SETOPT(CURLOPT_VERBOSE, 1L);
+  if (data->set.no_signal) ERROR_CHECK_SETOPT(CURLOPT_NOSIGNAL, 1L);
+
+  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYHOST, data->set.doh_verifyhost ? 2L : 0L);
+  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYPEER, data->set.doh_verifypeer ? 1L : 0L);
+  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYSTATUS, data->set.doh_verifystatus ? 1L : 0L);
 
   /* Inherit *some* SSL options from the user's transfer. This is a
      best-guess as to which options are needed for compatibility. #3661
@@ -2557,43 +2555,27 @@ static CURLcode doh_probe_run(struct Curl_easy *data,
   doh->set.ssl.custom_cafile = data->set.ssl.custom_cafile;
   doh->set.ssl.custom_capath = data->set.ssl.custom_capath;
   doh->set.ssl.custom_cablob = data->set.ssl.custom_cablob;
-  if(data->set.str[STRING_SSL_CAFILE]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CAINFO, data->set.str[STRING_SSL_CAFILE]);
-  }
-  if(data->set.blobs[BLOB_CAINFO]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CAINFO_BLOB, data->set.blobs[BLOB_CAINFO]);
-  }
-  if(data->set.str[STRING_SSL_CAPATH]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CAPATH, data->set.str[STRING_SSL_CAPATH]);
-  }
-  if(data->set.str[STRING_SSL_CRLFILE]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CRLFILE, data->set.str[STRING_SSL_CRLFILE]);
-  }
-  if(data->set.ssl.certinfo)
-    ERROR_CHECK_SETOPT(CURLOPT_CERTINFO, 1L);
-  if(data->set.ssl.fsslctx)
-    ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_FUNCTION, data->set.ssl.fsslctx);
-  if(data->set.ssl.fsslctxp)
-    ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_DATA, data->set.ssl.fsslctxp);
-  if(data->set.fdebug)
-    ERROR_CHECK_SETOPT(CURLOPT_DEBUGFUNCTION, data->set.fdebug);
-  if(data->set.debugdata)
-    ERROR_CHECK_SETOPT(CURLOPT_DEBUGDATA, data->set.debugdata);
-  if(data->set.str[STRING_SSL_EC_CURVES]) {
-    ERROR_CHECK_SETOPT(CURLOPT_SSL_EC_CURVES,
-                       data->set.str[STRING_SSL_EC_CURVES]);
-  }
+  if (data->set.str[STRING_SSL_CAFILE]) ERROR_CHECK_SETOPT(CURLOPT_CAINFO, data->set.str[STRING_SSL_CAFILE]);
+  if (data->set.blobs[BLOB_CAINFO]) ERROR_CHECK_SETOPT(CURLOPT_CAINFO_BLOB, data->set.blobs[BLOB_CAINFO]);
+  if (data->set.str[STRING_SSL_CAPATH]) ERROR_CHECK_SETOPT(CURLOPT_CAPATH, data->set.str[STRING_SSL_CAPATH]);
+  if (data->set.str[STRING_SSL_CRLFILE]) ERROR_CHECK_SETOPT(CURLOPT_CRLFILE, data->set.str[STRING_SSL_CRLFILE]);
+  if (data->set.ssl.certinfo) ERROR_CHECK_SETOPT(CURLOPT_CERTINFO, 1L);
+  if (data->set.ssl.fsslctx) ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_FUNCTION, data->set.ssl.fsslctx);
+  if (data->set.ssl.fsslctxp) ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_DATA, data->set.ssl.fsslctxp);
+  if (data->set.fdebug) ERROR_CHECK_SETOPT(CURLOPT_DEBUGFUNCTION, data->set.fdebug);
+  if (data->set.debugdata) ERROR_CHECK_SETOPT(CURLOPT_DEBUGDATA, data->set.debugdata);
+  if (data->set.str[STRING_SSL_EC_CURVES])
+    ERROR_CHECK_SETOPT(CURLOPT_SSL_EC_CURVES, data->set.str[STRING_SSL_EC_CURVES]);
 
-  (void)curl_easy_setopt(doh, CURLOPT_SSL_OPTIONS,
-                         (long)data->set.ssl.primary.ssl_options);
+  (void)curl_easy_setopt(doh, CURLOPT_SSL_OPTIONS, (long)data->set.ssl.primary.ssl_options);
 
   doh->state.internal = TRUE;
   doh->master_mid = data->mid; /* master transfer of this one */
 
+  // DNSクエリの種別・リクエストボディ・レスポンスバッファをdohのメタデータとして紐付ける
   result = Curl_meta_set(doh, CURL_EZM_DOH_PROBE, doh_req, doh_probe_dtor);
   doh_req = NULL; /* call took ownership */
-  if(result)
-    goto error;
+  if (result) goto error;
 
   /* DoH handles must not inherit private_data. The handles may be passed to
      the user via callbacks and the user will be able to identify them as
@@ -2601,16 +2583,15 @@ static CURLcode doh_probe_run(struct Curl_easy *data,
      private_data via CURLOPT_PRIVATE if they so choose. */
   DEBUGASSERT(!doh->set.private_data);
 
-  if(curl_multi_add_handle(multi, doh))
-    goto error;
+  // dohをmultiに追加する (multi_performを介して非同期HTTPリクエストを開始)
+  if (curl_multi_add_handle(multi, doh)) goto error;
 
   *pmid = doh->mid;
   return CURLE_OK;
 
 error:
   Curl_close(&doh);
-  if(doh_req)
-    doh_probe_dtor(NULL, 0, doh_req);
+  if (doh_req) doh_probe_dtor(NULL, 0, doh_req);
   return result;
 }
 ```
