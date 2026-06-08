@@ -1355,11 +1355,13 @@ static CURLMcode multi_runsingle(
     // WIP
     case MSTATE_PROTOCONNECT:
       mresult = multistate_protoconnect(data, &stream_error, &result);
+      // => multistate_protoconnect (lib/multi.c)
       break;
 
     case MSTATE_PROTOCONNECTING:
       /* protocol-specific connect phase */
       mresult = multistate_protoconnecting(data, &stream_error, &result);
+      // => multistate_protoconnect (lib/multi.c)
       break;
 
     case MSTATE_DO:
@@ -2283,8 +2285,9 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
     // c-aresにAAAAクエリを投入 (ノンブロッキング)
     ares_getaddrinfo(ares->channel, async->hostname, service, &hints, async_ares_AAAA_cb, async);
     // async_ares_AAAA_cb = 結果を取得した際に実行するコールバック
-    // 結果をasyncに格納し、Curl_multi_mark_dirtyで該当ハンドルをdirtyセットに追加して
-    // 次のmulti_performで処理が進むようにする
+    //   - async->queries_ongoing-- で進行中クエリ数を減らし、0になればasync->done=TRUE
+    //   - 成功時: ares_ai->nodesをCurl_addrinfo形式に変換してares->res_AAAAに格納
+    //   - 失敗時: ares->ares_statusにエラーコードをセット
   }
   #endif /* CURLRES_IPV6 */
 
@@ -2301,8 +2304,9 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
     // c-aresにAクエリを投入 (ノンブロッキング)
     ares_getaddrinfo(ares->channel, async->hostname,  service, &hints, async_ares_A_cb, async);
     // async_ares_A_cb = 結果を取得した際に実行するコールバック
-    // 結果をasyncに格納し、Curl_multi_mark_dirtyで該当ハンドルをdirtyセットに追加して
-    // 次のmulti_performで処理が進むようにする
+    //   - async->queries_ongoing-- で進行中クエリ数を減らし、0になればasync->done=TRUE
+    //   - 成功時: ares_ai->nodesをCurl_addrinfo形式に変換してares->res_Aに格納
+    //   - 失敗時: ares->ares_statusにエラーコードをセット
   }
 
   #ifdef USE_HTTPSRR // HTTPS RRが有効なビルドの場合
@@ -2329,7 +2333,7 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
       rrname ? rrname : async->hostname,
       ARES_CLASS_IN,
       ARES_REC_TYPE_HTTPS,
-      async_ares_rr_done,
+      async_ares_rr_done, // => HTTPS RRクエリ完了時に実行されるコールバック async_ares_rr_done (lib/asyn-ares.c)
       async,
       NULL
     );
@@ -2337,12 +2341,97 @@ CURLcode Curl_async_getaddrinfo(struct Curl_easy *data, struct Curl_resolv_async
   #endif /* USE_HTTPSRR */
 
 out:
-  ares->result = result;
+  ares->result = result; // クエリ開始時点での状態をares->resultにセット
   return result ? result : (async->queries_ongoing ? CURLE_AGAIN : CURLE_OK);
 }
 ```
 
-### `Curl_doh`
+#### `async_ares_rr_done`
+
+```c
+// lib/asyn-ares.c
+
+static void async_ares_rr_done(
+  void *user_data,
+  ares_status_t status,
+  size_t timeouts,
+  const ares_dns_record_t *dnsrec
+) {
+  struct Curl_resolv_async *async = user_data;
+  struct async_ares_ctx *ares = async ? &async->ares : NULL;
+
+  if (!async) return;
+
+  (void)timeouts;
+  async->dns_responses |= CURL_DNSQ_HTTPS; // HTTPS RRの応答が届いたことをビットフラグで記録する
+  async->queries_ongoing--; // 進行中クエリのカウントを1つ減らす
+  async->done = !async->queries_ongoing;
+
+  // c-aresがエラーを返した、あるいは応答レコードがなかった場合
+  if ((ARES_SUCCESS != status) || !dnsrec) return;
+
+  // HTTP RRのパース結果をares->resultにセット
+  ares->result = Curl_httpsrr_from_ares(dnsrec, &ares->hinfo);
+}
+```
+
+#### `async_ares_A_cb`
+
+```c
+// lib/asyn-ares.c
+
+static void async_ares_A_cb(void *user_data, int status, int timeouts, struct ares_addrinfo *ares_ai)
+{
+  struct Curl_resolv_async *async = user_data;
+  struct async_ares_ctx *ares = async ? &async->ares : NULL;
+
+  (void)timeouts;
+  if (!async) return;
+
+  async->dns_responses |= CURL_DNSQ_A; // Aレコードの応答が届いたことをビットフラグで記録
+  async->queries_ongoing--; // 進行中クエリのカウントを1つ減らす
+  async->done = !async->queries_ongoing;
+
+  if (status == ARES_SUCCESS) { // 成功時
+    ares->ares_status = ARES_SUCCESS;
+    // c-ares独自のares_addrinfo_nodeリストをlibcurlのCurl_addrinfoに変換してares->res_Aにセット
+    ares->res_A = async_ares_node2addr(ares_ai->nodes);
+    ares_freeaddrinfo(ares_ai);
+  } else if (ares->ares_status != ARES_SUCCESS) { /* do not overwrite success */ // 失敗時
+    ares->ares_status = status;
+  }
+}
+```
+
+#### `async_ares_AAAA_cb`
+
+```c
+// lib/asyn-ares.c
+
+static void async_ares_AAAA_cb(void *user_data, int status, int timeouts, struct ares_addrinfo *ares_ai)
+{
+  struct Curl_resolv_async *async = user_data;
+  struct async_ares_ctx *ares = async ? &async->ares : NULL;
+
+  (void)timeouts;
+  if (!async) return;
+
+  async->dns_responses |= CURL_DNSQ_AAAA; // AAAAレコードの応答が届いたことをビットフラグで記録
+  async->queries_ongoing--; // 進行中クエリのカウントを1つ減らす
+  async->done = !async->queries_ongoing;
+
+  if (status == ARES_SUCCESS) { // 成功時
+    ares->ares_status = ARES_SUCCESS;
+    // c-ares独自のares_addrinfo_nodeリストをlibcurlのCurl_addrinfoに変換してares->res_Aにセット
+    ares->res_AAAA = async_ares_node2addr(ares_ai->nodes);
+    ares_freeaddrinfo(ares_ai);
+  } else if (ares->ares_status != ARES_SUCCESS) { /* do not overwrite success */ // 失敗時
+    ares->ares_status = status;
+  }
+}
+```
+
+#### `Curl_doh`
 
 ```c
 // lib/doh.c
@@ -2380,11 +2469,11 @@ CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
   dohp->port = async->port;
 
   /* We are making sub easy handles and want to be called back when one is done. */
-  // DoHリクエスト用のeasyハンドルが完了したときに呼ばれるコールバックを設定
+  // DoHリクエスト用のeasyハンドルが完了するたびに呼ばれるコールバックを設定
   data->sub_xfer_done = doh_probe_done;
 
   /* create IPv4 DoH request */
-  // AレコードのDoHクエリを発行
+  // AレコードのDoHクエリを発行・easyハンドルを作成してmultiに追加
   if (async->dns_queries & CURL_DNSQ_A) {
     result = doh_probe_run( // => doh_probe_run (lib/doh.c)
       data,
@@ -2403,7 +2492,7 @@ CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
   #ifdef USE_IPV6 // IPv6サポートが有効なビルドの場合
   if (async->dns_queries & CURL_DNSQ_AAAA) {
     /* create IPv6 DoH request */
-    // AAAAレコードのDoHクエリを発行
+    // AAAAレコードのDoHクエリを発行・easyハンドルを作成してmultiに追加
     result = doh_probe_run( // => doh_probe_run (lib/doh.c)
       data,
       CURL_DNS_TYPE_AAAA,
@@ -2429,7 +2518,7 @@ CURLcode Curl_doh(struct Curl_easy *data, struct Curl_resolv_async *async)
       if (!qname) goto error;
     }
 
-    // HTTPS RRのDoHクエリを発行
+    // HTTPS RRのDoHクエリを発行・easyハンドルを作成してmultiに追加
     result = doh_probe_run(
       data,
       CURL_DNS_TYPE_HTTPS,
@@ -2458,59 +2547,62 @@ error:
 
 ```c
 // lib/doh.c
-// WIP
 
-static CURLcode doh_probe_run(struct Curl_easy *data,
-                              DNStype dnstype,
-                              const char *host,
-                              const char *url, CURLM *multi,
-                              uint32_t resolv_id,
-                              uint32_t *pmid)
-{
-  struct Curl_easy *doh = NULL;
+static CURLcode doh_probe_run(
+  struct Curl_easy *data,
+  DNStype dnstype,
+  const char *host,
+  const char *url, CURLM *multi,
+  uint32_t resolv_id,
+  uint32_t *pmid
+) {
+  struct Curl_easy *doh = NULL; // DoHクエリのためのeasyハンドル
   CURLcode result = CURLE_OK;
   timediff_t timeout_ms;
   struct doh_request *doh_req;
-  DOHcode d;
+  DOHcode d; // DNSパケットエンコードの結果
 
-  *pmid = UINT32_MAX;
+  *pmid = UINT32_MAX; // easyハンドルのIDを初期化
 
   doh_req = curlx_calloc(1, sizeof(*doh_req));
-  if(!doh_req)
-    return CURLE_OUT_OF_MEMORY;
-  doh_req->resolv_id = resolv_id;
-  doh_req->dnstype = dnstype;
-  curlx_dyn_init(&doh_req->resp_body, DYN_DOH_RESPONSE);
+  if (!doh_req) return CURLE_OUT_OF_MEMORY;
 
-  d = doh_req_encode(host, dnstype, doh_req->req_body,
-                     sizeof(doh_req->req_body),
-                     &doh_req->req_body_len);
-  if(d) {
+  doh_req->resolv_id = resolv_id; // どの名前解決に属するクエリかを示す識別子をセット
+  doh_req->dnstype = dnstype; // A / AAAA / HTTPS RR
+  curlx_dyn_init(&doh_req->resp_body, DYN_DOH_RESPONSE); // 返ってきたレスポンスボディを保持するdynbufを初期化
+
+  // ホスト名とDNSクエリを規定のフォーマットにエンコード
+  d = doh_req_encode(host, dnstype, doh_req->req_body, sizeof(doh_req->req_body), &doh_req->req_body_len);
+
+  if (d) {
     failf(data, "Failed to encode DoH packet [%d]", d);
     result = CURLE_OUT_OF_MEMORY;
     goto error;
   }
 
   timeout_ms = Curl_timeleft_ms(data);
-  if(timeout_ms < 0) {
+
+  // タイムアウト済みの場合
+  if (timeout_ms < 0) {
     result = CURLE_OPERATION_TIMEDOUT;
     goto error;
   }
 
-  doh_req->req_hds =
-    curl_slist_append(NULL, "Content-Type: application/dns-message");
-  if(!doh_req->req_hds) {
+  // DoHのPOSTリクエストに必要なContent-Typeヘッダをセット
+  doh_req->req_hds = curl_slist_append(NULL, "Content-Type: application/dns-message");
+
+  if (!doh_req->req_hds) {
     result = CURLE_OUT_OF_MEMORY;
     goto error;
   }
 
   /* Curl_open() is the internal version of curl_easy_init() */
+  // フルサービスリゾルバ (DoHサーバ) へのHTTPリクエストを1件送るためのeasyハンドルを作成
   result = Curl_open(&doh);
-  if(result)
-    goto error;
+  if (result) goto error;
 
-  /* pass in the struct pointer via a local variable to please coverity and
-     the gcc typecheck helpers */
+  /* pass in the struct pointer via a local variable to please coverity and the gcc typecheck helpers */
+  // dohのオプションへのバリデーションチェック
   VERBOSE(doh->state.feat = &Curl_trc_feat_dns);
   ERROR_CHECK_SETOPT(CURLOPT_URL, url);
   ERROR_CHECK_SETOPT(CURLOPT_DEFAULT_PROTOCOL, "https");
@@ -2519,32 +2611,27 @@ static CURLcode doh_probe_run(struct Curl_easy *data,
   ERROR_CHECK_SETOPT(CURLOPT_POSTFIELDS, doh_req->req_body);
   ERROR_CHECK_SETOPT(CURLOPT_POSTFIELDSIZE, (long)doh_req->req_body_len);
   ERROR_CHECK_SETOPT(CURLOPT_HTTPHEADER, doh_req->req_hds);
-#ifdef USE_HTTP2
+  #ifdef USE_HTTP2
   ERROR_CHECK_SETOPT(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
   ERROR_CHECK_SETOPT(CURLOPT_PIPEWAIT, 1L);
-#endif
-#ifndef DEBUGBUILD
+  #endif
+  #ifndef DEBUGBUILD
   /* enforce HTTPS if not debug */
   ERROR_CHECK_SETOPT(CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
-#else
+  #else
   /* in debug mode, also allow http */
   ERROR_CHECK_SETOPT(CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
-#endif
+  #endif
   ERROR_CHECK_SETOPT(CURLOPT_TIMEOUT_MS, (long)timeout_ms);
   ERROR_CHECK_SETOPT(CURLOPT_SHARE, (CURLSH *)data->share);
-  if(data->set.err && data->set.err != stderr)
-    ERROR_CHECK_SETOPT(CURLOPT_STDERR, data->set.err);
-  if(Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns))
-    ERROR_CHECK_SETOPT(CURLOPT_VERBOSE, 1L);
-  if(data->set.no_signal)
-    ERROR_CHECK_SETOPT(CURLOPT_NOSIGNAL, 1L);
 
-  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYHOST,
-                     data->set.doh_verifyhost ? 2L : 0L);
-  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYPEER,
-                     data->set.doh_verifypeer ? 1L : 0L);
-  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYSTATUS,
-                     data->set.doh_verifystatus ? 1L : 0L);
+  if (data->set.err && data->set.err != stderr) ERROR_CHECK_SETOPT(CURLOPT_STDERR, data->set.err);
+  if (Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns)) ERROR_CHECK_SETOPT(CURLOPT_VERBOSE, 1L);
+  if (data->set.no_signal) ERROR_CHECK_SETOPT(CURLOPT_NOSIGNAL, 1L);
+
+  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYHOST, data->set.doh_verifyhost ? 2L : 0L);
+  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYPEER, data->set.doh_verifypeer ? 1L : 0L);
+  ERROR_CHECK_SETOPT(CURLOPT_SSL_VERIFYSTATUS, data->set.doh_verifystatus ? 1L : 0L);
 
   /* Inherit *some* SSL options from the user's transfer. This is a
      best-guess as to which options are needed for compatibility. #3661
@@ -2557,43 +2644,27 @@ static CURLcode doh_probe_run(struct Curl_easy *data,
   doh->set.ssl.custom_cafile = data->set.ssl.custom_cafile;
   doh->set.ssl.custom_capath = data->set.ssl.custom_capath;
   doh->set.ssl.custom_cablob = data->set.ssl.custom_cablob;
-  if(data->set.str[STRING_SSL_CAFILE]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CAINFO, data->set.str[STRING_SSL_CAFILE]);
-  }
-  if(data->set.blobs[BLOB_CAINFO]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CAINFO_BLOB, data->set.blobs[BLOB_CAINFO]);
-  }
-  if(data->set.str[STRING_SSL_CAPATH]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CAPATH, data->set.str[STRING_SSL_CAPATH]);
-  }
-  if(data->set.str[STRING_SSL_CRLFILE]) {
-    ERROR_CHECK_SETOPT(CURLOPT_CRLFILE, data->set.str[STRING_SSL_CRLFILE]);
-  }
-  if(data->set.ssl.certinfo)
-    ERROR_CHECK_SETOPT(CURLOPT_CERTINFO, 1L);
-  if(data->set.ssl.fsslctx)
-    ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_FUNCTION, data->set.ssl.fsslctx);
-  if(data->set.ssl.fsslctxp)
-    ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_DATA, data->set.ssl.fsslctxp);
-  if(data->set.fdebug)
-    ERROR_CHECK_SETOPT(CURLOPT_DEBUGFUNCTION, data->set.fdebug);
-  if(data->set.debugdata)
-    ERROR_CHECK_SETOPT(CURLOPT_DEBUGDATA, data->set.debugdata);
-  if(data->set.str[STRING_SSL_EC_CURVES]) {
-    ERROR_CHECK_SETOPT(CURLOPT_SSL_EC_CURVES,
-                       data->set.str[STRING_SSL_EC_CURVES]);
-  }
+  if (data->set.str[STRING_SSL_CAFILE]) ERROR_CHECK_SETOPT(CURLOPT_CAINFO, data->set.str[STRING_SSL_CAFILE]);
+  if (data->set.blobs[BLOB_CAINFO]) ERROR_CHECK_SETOPT(CURLOPT_CAINFO_BLOB, data->set.blobs[BLOB_CAINFO]);
+  if (data->set.str[STRING_SSL_CAPATH]) ERROR_CHECK_SETOPT(CURLOPT_CAPATH, data->set.str[STRING_SSL_CAPATH]);
+  if (data->set.str[STRING_SSL_CRLFILE]) ERROR_CHECK_SETOPT(CURLOPT_CRLFILE, data->set.str[STRING_SSL_CRLFILE]);
+  if (data->set.ssl.certinfo) ERROR_CHECK_SETOPT(CURLOPT_CERTINFO, 1L);
+  if (data->set.ssl.fsslctx) ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_FUNCTION, data->set.ssl.fsslctx);
+  if (data->set.ssl.fsslctxp) ERROR_CHECK_SETOPT(CURLOPT_SSL_CTX_DATA, data->set.ssl.fsslctxp);
+  if (data->set.fdebug) ERROR_CHECK_SETOPT(CURLOPT_DEBUGFUNCTION, data->set.fdebug);
+  if (data->set.debugdata) ERROR_CHECK_SETOPT(CURLOPT_DEBUGDATA, data->set.debugdata);
+  if (data->set.str[STRING_SSL_EC_CURVES])
+    ERROR_CHECK_SETOPT(CURLOPT_SSL_EC_CURVES, data->set.str[STRING_SSL_EC_CURVES]);
 
-  (void)curl_easy_setopt(doh, CURLOPT_SSL_OPTIONS,
-                         (long)data->set.ssl.primary.ssl_options);
+  (void)curl_easy_setopt(doh, CURLOPT_SSL_OPTIONS, (long)data->set.ssl.primary.ssl_options);
 
   doh->state.internal = TRUE;
   doh->master_mid = data->mid; /* master transfer of this one */
 
+  // DNSクエリの種別・リクエストボディ・レスポンスバッファをdohのメタデータとして紐付ける
   result = Curl_meta_set(doh, CURL_EZM_DOH_PROBE, doh_req, doh_probe_dtor);
   doh_req = NULL; /* call took ownership */
-  if(result)
-    goto error;
+  if (result) goto error;
 
   /* DoH handles must not inherit private_data. The handles may be passed to
      the user via callbacks and the user will be able to identify them as
@@ -2601,16 +2672,17 @@ static CURLcode doh_probe_run(struct Curl_easy *data,
      private_data via CURLOPT_PRIVATE if they so choose. */
   DEBUGASSERT(!doh->set.private_data);
 
-  if(curl_multi_add_handle(multi, doh))
-    goto error;
+  // dohをmultiに追加する
+  // -> multi_performを介してDoHサーバ自身の名前解決を行う (同期 or 非同期)
+  // -> オリジンへの非同期HTTPリクエストを開始
+  if (curl_multi_add_handle(multi, doh)) goto error;
 
   *pmid = doh->mid;
   return CURLE_OK;
 
 error:
   Curl_close(&doh);
-  if(doh_req)
-    doh_probe_dtor(NULL, 0, doh_req);
+  if (doh_req) doh_probe_dtor(NULL, 0, doh_req);
   return result;
 }
 ```
@@ -2619,49 +2691,293 @@ error:
 
 ```c
 // lib/hostip.c
-// WIP
 
-CURLcode Curl_resolv_take_result(struct Curl_easy *data, uint32_t resolv_id,
-                                 struct Curl_dns_entry **pdns)
+CURLcode Curl_resolv_take_result(struct Curl_easy *data, uint32_t resolv_id, struct Curl_dns_entry **pdns)
 {
+  // resolv_idで識別される非同期クエリの管理オブジェクトを取得
   struct Curl_resolv_async *async = Curl_async_get(data, resolv_id);
   CURLcode result;
 
   /* If async resolving is ongoing, this must be set */
-  if(!async)
-    return CURLE_FAILED_INIT;
+  if (!async) return CURLE_FAILED_INIT;
 
   /* check if we have the name resolved by now (from someone else) */
-  result = Curl_dnscache_get(data, async->dns_queries,
-                             async->hostname, async->port, pdns);
-  if(*pdns) {
+  // DNSキャッシュを確認
+  result = Curl_dnscache_get(data, async->dns_queries, async->hostname, async->port, pdns);
+
+  // 別のハンドルが同じホスト名を先に解決してキャッシュに追加していた場合
+  // 進行中のクエリを中止してキャッシュの結果を返す
+  if (*pdns) {
     /* Tell a possibly async resolver we no longer need the results. */
     infof(data, "Hostname '%s' was found in DNS cache", async->hostname);
     Curl_async_shutdown(data, async);
     return CURLE_OK;
-  }
-  else if(result) {
+  } else if(result) {
     Curl_async_shutdown(data, async);
     return Curl_async_failed(data, async, NULL);
   }
 
+  // 名前解決結果を回収
   result = hostip_resolv_take_result(data, async, pdns); // => hostip_resolv_take_result (lib/hostip.c)
 
-  if(*pdns) {
+  if (*pdns) { // 結果の取得に成功した場合
     /* Add to cache */
     result = Curl_dnscache_add(data, *pdns);
-    if(result)
-      Curl_dns_entry_unlink(data, pdns);
-  }
-  else if(IS_RESOLV_FAIL(result)) {
-    Curl_dnscache_add_negative(data, async->dns_queries,
-                               async->hostname, async->port);
+    if (result) Curl_dns_entry_unlink(data, pdns);
+  } else if(IS_RESOLV_FAIL(result)) { // 解決に失敗した場合
+    // ネガティブキャッシュに登録
+    Curl_dnscache_add_negative(data, async->dns_queries, async->hostname, async->port);
     failf(data, "Could not resolve: %s:%u", async->hostname, async->port);
+  } else if(result) { // IS_RESOLV_FAIL以外のエラー
+    failf(data, "Error %d resolving %s:%u", result, async->hostname, async->port);
   }
-  else if(result) {
-    failf(data, "Error %d resolving %s:%u",
-          result, async->hostname, async->port);
+  return result;
+}
+```
+
+#### `hostip_resolv_take_result`
+
+```c
+// lib/hostip.c
+
+static CURLcode hostip_resolv_take_result(
+ struct Curl_easy *data,
+ struct Curl_resolv_async *async,
+ struct Curl_dns_entry **pdns
+) {
+  CURLcode result;
+
+  /* If async resolving is ongoing, this must be set */
+  if (!async) return CURLE_FAILED_INIT;
+
+  #ifndef CURL_DISABLE_DOH
+  if (async->doh) {
+    // DoHのeasyハンドルの完了結果を回収
+    result = Curl_doh_take_result(data, async, pdns);
+    // => Curl_doh_take_result (lib/doh.c)
+  } else {
+  #endif
+    // c-aresまたはスレッドの結果を回収
+    result = Curl_async_take_result(data, async, pdns);
+    // => Curl_async_take_result (lib/asyn-ares.c / lib/asyn-thrdd.c)
   }
+
+  if (result == CURLE_AGAIN) { // まだ完了していない場合
+    CURL_TRC_DNS(
+      data,
+      "resolve incomplete, queries=%s, responses=%s, "
+      "ongoing=%d for %s:%d",
+      Curl_resolv_query_str(async->dns_queries),
+      Curl_resolv_query_str(async->dns_responses),
+      async->queries_ongoing, async->hostname, async->port
+    );
+
+    result = CURLE_OK;
+  } else if (result) { // 名前解決に失敗した場合
+    result = Curl_async_failed(data, async, NULL);
+  } else { // 名前解決が完了した場合
+    CURL_TRC_DNS(data, "resolve complete for %s:%u", async->hostname, async->port);
+    DEBUGASSERT(*pdns);
+  }
+
+  return result;
+}
+```
+
+#### `Curl_doh_take_result`
+
+```c
+// lib/doh.c
+
+CURLcode Curl_doh_take_result(
+  struct Curl_easy *data,
+  struct Curl_resolv_async *async,
+  struct Curl_dns_entry **pdns
+) {
+  struct doh_probes *dohp = async->doh;
+  CURLcode result = CURLE_OK;
+  struct dohentry de;
+
+  *pdns = NULL; /* defaults to no response */
+  if (!dohp) return CURLE_OUT_OF_MEMORY;
+
+  if (dohp->probe_resp[DOH_SLOT_IPV4].probe_mid == UINT32_MAX &&
+      dohp->probe_resp[DOH_SLOT_IPV6].probe_mid == UINT32_MAX) {
+    failf(data, "Could not DoH-resolve: %s", dohp->host);
+
+    return async->for_proxy ? CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
+  } else if (!dohp->pending) { // 全DoH応答が揃った場合
+    DOHcode rc[DOH_SLOT_COUNT]; // 結果の配列
+    int slot;
+
+    memset(rc, 0, sizeof(rc));
+    /* remove DoH handles from multi handle and close them */
+    // DoH用のeasyハンドルをmultiから取り外してクローズ
+    doh_close(data, async);
+    /* parse the responses, create the struct and return it! */
+    // struct dohentryを初期化
+    de_init(&de);
+
+    for (slot = 0; slot < DOH_SLOT_COUNT; slot++) {
+      struct doh_response *p = &dohp->probe_resp[slot];
+      if (!p->dnstype) continue; // dnstype == 0 のスロットはクエリを送っていないので読み飛ばす
+
+      // DoHサーバから届いたバイト列をパースしてstruct dohentryにセットし、rcに追加
+      rc[slot] = doh_resp_decode(curlx_dyn_uptr(&p->body), curlx_dyn_len(&p->body), p->dnstype, &de);
+    } /* next slot */
+
+    if (!rc[DOH_SLOT_IPV4] || !rc[DOH_SLOT_IPV6]) { // A / AAAAいずれかがDOH_OK
+      /* we have an address, of one kind or other */
+      struct Curl_dns_entry *dns;
+      struct Curl_addrinfo *ai;
+
+      if (Curl_trc_ft_is_verbose(data, &Curl_trc_feat_dns)) {
+        CURL_TRC_DNS(data, "hostname: %s", dohp->host);
+        doh_show(data, &de);
+      }
+
+      // dohentryのアドレス配列(de.addr[])からCurl_addrinfo のリンクリストを新規作成して返す
+      // アドレスごとにCurl_addrinfo + sockaddr_in(6) + ホスト名を連結する
+      result = doh2ai(&de, dohp->host, dohp->port, &ai);
+      if (result) goto error;
+
+      /* we got a response, create a dns entry. */
+      // Curl_dns_entryを生成
+      dns = Curl_dnscache_mk_entry(data, async->dns_queries, &ai, dohp->host, dohp->port);
+
+      if (!dns) {
+        result = CURLE_OUT_OF_MEMORY;
+        goto error;
+      }
+
+      /* Now add and HTTPSRR information if we have */
+      #ifdef USE_HTTPSRR
+      if (de.numhttps_rrs > 0 && result == CURLE_OK) {
+        struct Curl_https_rrinfo *hrr = NULL;
+        // HTTPS RRのバイト列をパースしてCurl_https_rrinfoに変換
+        result = doh_resp_decode_httpsrr(data, de.https_rrs->val, de.https_rrs->len, &hrr);
+
+        if (result) {
+          infof(data, "Failed to decode HTTPS RR");
+          Curl_dns_entry_unlink(data, &dns);
+          goto error;
+        }
+
+        infof(data, "Some HTTPS RR to process");
+        #if defined(DEBUGBUILD) && defined(CURLVERBOSE)
+        doh_print_httpsrr(data, hrr);
+        #endif
+        // struct Curl_https_rrinfoをCurl_dns_entryに追加
+        Curl_dns_entry_set_https_rr(dns, hrr);
+      }
+      #endif /* USE_HTTPSRR */
+
+      /* and add the entry to the cache */
+      // 結果をキャッシュに保存
+      result = Curl_dnscache_add(data, dns);
+      // 呼び出し元が参照する出力ポインタに完成したエントリをセット = DoHによる名前解決が完了
+      *pdns = dns;
+    } else {/* address processing done */
+      result = async->for_proxy ? CURLE_COULDNT_RESOLVE_PROXY : CURLE_COULDNT_RESOLVE_HOST;
+    }
+  } else {/* !dohp->pending */
+    /* wait for pending DoH transactions to complete */
+    return CURLE_AGAIN;
+  }
+
+error:
+  de_cleanup(&de);
+  Curl_doh_cleanup(data, async);
+  return result;
+}
+```
+
+#### `Curl_async_take_result`
+
+```c
+// lib/asyn-ares.c
+
+CURLcode Curl_async_take_result(
+  struct Curl_easy *data,
+  struct Curl_resolv_async *async,
+  struct Curl_dns_entry **pdns
+) {
+  struct async_ares_ctx *ares = &async->ares;
+  CURLcode result = CURLE_OK;
+
+  DEBUGASSERT(pdns);
+  *pdns = NULL;
+  if (!ares) return CURLE_FAILED_INIT;
+
+  // 即座に可能な処理を実行
+  // 受信済みのDNSレスポンスがあればコールバックを呼び出す
+  if (Curl_ares_perform(ares->channel, 0) < 0) { // ポーリングエラー
+    result = CURLE_UNRECOVERABLE_POLL;
+    goto out;
+  }
+
+  // コールバックが呼ばれてqueries_ongoingがデクリメントされた後、
+  // まだ他に実行中の名前解決 = async->queries_ongoingが残っている場合
+  if (async->queries_ongoing) {
+    result = CURLE_AGAIN;
+    goto out;
+  }
+
+  /* all c-ares operations done, what is the result to report? */
+  // async_ares_A_cb / async_ares_AAAA_cb が記録したエラーコードを取得
+  result = ares->result;
+
+  // c-ares が成功かつcurlレベルのエラーもない場合
+  if (ares->ares_status == ARES_SUCCESS && !result) {
+    // A / AAAAの結果をまとめてCurl_dns_entryを作成
+    struct Curl_dns_entry *dns = Curl_dnscache_mk_entry2(
+      data,
+      async->dns_queries,
+      &ares->res_AAAA,
+      &ares->res_A,
+      async->hostname,
+      async->port
+    );
+
+    if (!dns) {
+      result = CURLE_OUT_OF_MEMORY;
+      goto out;
+    }
+
+    #ifdef HTTPSRR_WORKS
+    if (ares->hinfo.complete) {
+      struct Curl_https_rrinfo *lhrr = Curl_httpsrr_dup_move(&ares->hinfo);
+      // ares->hinfoの保持するデータを新しいCurl_https_rrinfoにコピーしつつ、
+      // hinfo の内部ポインタをNULLにして所有権を移動させる
+
+      if (!lhrr) {
+        result = CURLE_OUT_OF_MEMORY;
+      } else {
+        // Curl_dns_entryにCurl_https_rrinfoをセット
+        Curl_dns_entry_set_https_rr(dns, lhrr);
+      }
+    } else { // 完了していない
+      // Curl_dns_entryにNULLをセット
+      Curl_dns_entry_set_https_rr(dns, NULL);
+    }
+    #endif
+    if (!result) *pdns = dns;
+  }
+
+  /* if we have not found anything, report the proper CURLE_COULDNT_RESOLVE_* code */
+  // c-aresが失敗
+  if (!result && !*pdns) {
+    const char *msg = NULL;
+    if (ares->ares_status != ARES_SUCCESS) msg = ares_strerror(ares->ares_status);
+    result = Curl_async_failed(data, async, msg);
+  }
+
+  CURL_TRC_DNS(data, "ares: is_resolved() result=%d, dns=%sfound", result, *pdns ? "" : "not ");
+  async_ares_cleanup(async);
+
+out:
+  // 全クエリが完了して得た最終的な結果をセット
+  if (result != CURLE_AGAIN) ares->result = result;
   return result;
 }
 ```
