@@ -1566,6 +1566,11 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
     // Curl_cft_http_connectを呼び出しHTTPS-CONNECT (接続時にプロトコルネゴシエーションを行う) フィルタを追加
     result = Curl_cf_https_setup(data, conn, sockindex); // => Curl_cf_https_setup (lib/cf-https-connect.c)
     // HTTPS-CONNECTフィルタはHTTP/1.1 / HTTP/2 / HTTP/3のうちどれを利用するかを決定する
+
+    // Curl_cf_https_setupは内部でcf_hc_add -> cf_hc_createを呼んでおり、
+    // cf_hc_create内でstruct cf_hc_ctx *ctx = curlx_calloc(1, sizeof(*ctx));で
+    // コンテキストがCF_HC_RESOLVに初期化される
+
     if (result) goto out;
   }
   #endif /* !CURL_DISABLE_HTTP */
@@ -3070,33 +3075,62 @@ static CURLcode cf_hc_connect(struct Curl_cfilter *cf, struct Curl_easy *data, b
     // 結果をctx->httpsrr_resolvedにキャッシュ
     ctx->httpsrr_resolved = Curl_conn_dns_resolved_https(data, cf->sockindex);
     // => Curl_conn_dns_resolved_https (lib/cf-dns.c)
+
+    #ifdef DEBUGBUILD
+    // DEBUGBUILD かつ環境変数CURL_DBG_AWAIT_HTTPSRRがある場合
+    if (!ctx->httpsrr_resolved && getenv("CURL_DBG_AWAIT_HTTPSRR")) {
+      CURL_TRC_CF(data, cf, "awaiting HTTPS-RR");
+      return CURLE_OK;
+    }
+    #endif
   }
 
-  // WIP
-  switch(ctx->state) {
-  case CF_HC_RESOLV:
+  switch (ctx->state) {
+  case CF_HC_RESOLV: // コンテキスト struct Curl_cfilter の初期状態
     ctx->state = CF_HC_INIT;
     FALLTHROUGH();
 
-  case CF_HC_INIT:
-    DEBUGASSERT(!cf->next);
+  case CF_HC_INIT: // HTTPバージョンごとに接続を試みるballerのセットアップ
+    DEBUGASSERT(!cf->next); // cf->nextはこの時点では必ずNULL
     CURL_TRC_CF(data, cf, "connect, init");
-    result = cf_hc_set_baller1(cf, data);
-    if(result) {
+
+    // 接続を試みるHTTPバージョンを取得し、1つめのballerとしてctx->ballers[0]にセット
+    // 優先順位:
+    //   1. HTTPS RRに準拠
+    //   2. 優先バージョンの設定に準拠 (--http3-prior-knowledge など)
+    //   3. data->state.http_neg.wanted
+    //   4. data->state.http_neg.allowed
+    result = cf_hc_set_baller1(cf, data); // => cf_hc_set_baller1 (lib/cf-https-connect.c)
+    // ballers[0].alpn_idにALPN_h3 / ALPN_h2 / ALPN_h1のいずれか
+    // ballers[0].transportにTRNSPRT_QUIC / TRNSPRT_TCPのいずれかがセットされる
+
+    if (result) {
       ctx->result = result;
       ctx->state = CF_HC_FAILURE;
       goto out;
     }
-    cf_hc_set_baller2(cf, data);
+
+    // 接続を試みるHTTPバージョンを取得し、2つめのballerとしてctx->ballers[1]にセット
+    // 優先順位:
+    //   1. HTTPS RRに準拠
+    //   2. 優先バージョンの設定に準拠 (--http3-prior-knowledge など)
+    //   3. data->state.http_neg.wanted
+    //   httpsrr_resolved がfalseの場合HTTPS RRの応答を待機
+    cf_hc_set_baller2(cf, data); // => cf_hc_set_baller2 (lib/cf-https-connect.c)
     ctx->started = *Curl_pgrs_now(data);
-    cf_hc_baller_init(&ctx->ballers[0], cf, data);
-    if((ctx->baller_count > 1) || !ctx->ballers_complete) {
+
+    // 接続開始時刻を記録し、ballers[0]のSETUP フィルタを追加
+    cf_hc_baller_init(&ctx->ballers[0], cf, data); // => cf_hc_baller_init (lib/cf-https-connect.c)
+
+    if ((ctx->baller_count > 1) || !ctx->ballers_complete) {
+      // ballers[1]が存在する、またはまだ候補が確定していない場合にタイマを仕掛ける
       Curl_expire(data, ctx->soft_eyeballs_timeout_ms, EXPIRE_ALPN_EYEBALLS);
     }
-    ctx->state = CF_HC_CONNECT;
+
+    ctx->state = CF_HC_CONNECT; // CF_HC_CONNECTに進む
     FALLTHROUGH();
 
-  case CF_HC_CONNECT:
+  case CF_HC_CONNECT: // WIP
     if(!ctx->ballers_complete)
       cf_hc_set_baller2(cf, data);
 
@@ -3209,7 +3243,110 @@ bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *as
 }
 ```
 
-### `cf_setup_connect`
+#### `cf_hc_set_baller1`
+
+```c
+// lib/cf-https-connect.c
+// WIP
+
+static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf,
+                                  struct Curl_easy *data)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+  enum alpnid alpn1 = ALPN_none;
+  VERBOSE(const char *source = "HTTPS-RR");
+
+  DEBUGASSERT(cf->conn->bits.tls_enable_alpn);
+
+  alpn1 = cf_hc_get_httpsrr_alpn(cf, data, ALPN_none);
+  if(alpn1 == ALPN_none) {
+    /* preference is configured and allowed, can we use it? */
+    VERBOSE(source = "preferred version");
+    alpn1 = cf_hc_get_pref_alpn(cf, data, ALPN_none);
+  }
+  if(alpn1 == ALPN_none) {
+    VERBOSE(source = "wanted versions");
+    alpn1 = cf_hc_get_first_alpn(cf, data,
+                                 data->state.http_neg.wanted,
+                                 ALPN_none);
+  }
+  if(alpn1 == ALPN_none) {
+    VERBOSE(source = "allowed versions");
+    alpn1 = cf_hc_get_first_alpn(cf, data,
+                                 data->state.http_neg.allowed,
+                                 ALPN_none);
+  }
+
+  if(alpn1 == ALPN_none) {
+    /* None of the wanted/allowed HTTP versions could be chosen */
+    if(ctx->check_h3_result) {
+      CURL_TRC_CF(data, cf, "unable to use HTTP/3");
+      return ctx->check_h3_result;
+    }
+    CURL_TRC_CF(data, cf, "unable to select HTTP version");
+    return CURLE_FAILED_INIT;
+  }
+
+  cf_hc_baller_assign(&ctx->ballers[0], alpn1, ctx->def_transport);
+  ctx->baller_count = 1;
+  CURL_TRC_CF(data, cf, "1st attempt uses %s from %s",
+              ctx->ballers[0].name, source);
+
+  switch(alpn1) {
+  case ALPN_h1:
+    /* We really want h1, switch off h2 to make it disappear in ALPN */
+    data->state.http_neg.wanted &= (uint8_t)~CURL_HTTP_V2x;
+    break;
+  default:
+    break;
+  }
+
+  return CURLE_OK;
+}
+```
+
+#### `cf_hc_set_baller2`
+
+```c
+// lib/cf-https-connect.c
+// WIP
+
+static void cf_hc_set_baller2(struct Curl_cfilter *cf,
+                              struct Curl_easy *data)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+  enum alpnid alpn2 = ALPN_none, alpn1 = ctx->ballers[0].alpn_id;
+  VERBOSE(const char *source = "HTTPS-RR");
+
+  if(ctx->ballers_complete)
+    return; /* already done */
+  if(!ctx->httpsrr_resolved)
+    return; /* HTTPS-RR pending */
+
+  alpn2 = cf_hc_get_httpsrr_alpn(cf, data, alpn1);
+  if(alpn2 == ALPN_none) {
+    /* preference is configured and allowed, can we use it? */
+    VERBOSE(source = "preferred version");
+    alpn2 = cf_hc_get_pref_alpn(cf, data, alpn1);
+  }
+  if(alpn2 == ALPN_none) {
+    VERBOSE(source = "wanted versions");
+    alpn2 = cf_hc_get_first_alpn(cf, data,
+                                 data->state.http_neg.wanted,
+                                 alpn1);
+  }
+
+  if(alpn2 != ALPN_none) {
+    cf_hc_baller_assign(&ctx->ballers[1], alpn2, ctx->def_transport);
+    ctx->baller_count = 2;
+    CURL_TRC_CF(data, cf, "2nd attempt uses %s from %s",
+                ctx->ballers[1].name, source);
+  }
+  ctx->ballers_complete = TRUE;
+}
+```
+
+#### `cf_setup_connect`
 
 ```c
 // lib/connect.c
