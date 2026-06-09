@@ -3249,8 +3249,7 @@ bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *as
 // lib/cf-https-connect.c
 // WIP
 
-static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf,
-                                  struct Curl_easy *data)
+static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf, struct Curl_easy *data)
 {
   struct cf_hc_ctx *ctx = cf->ctx;
   enum alpnid alpn1 = ALPN_none;
@@ -3258,23 +3257,23 @@ static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf,
 
   DEBUGASSERT(cf->conn->bits.tls_enable_alpn);
 
-  alpn1 = cf_hc_get_httpsrr_alpn(cf, data, ALPN_none);
-  if(alpn1 == ALPN_none) {
+  // HTTPS RRのALPN リストから最初のプロトコルを取得
+  alpn1 = cf_hc_get_httpsrr_alpn(cf, data, ALPN_none); // => cf_hc_get_httpsrr_alpn (lib/cf-https-connect.c)
+
+  if (alpn1 == ALPN_none) {
     /* preference is configured and allowed, can we use it? */
     VERBOSE(source = "preferred version");
     alpn1 = cf_hc_get_pref_alpn(cf, data, ALPN_none);
   }
-  if(alpn1 == ALPN_none) {
+
+  if (alpn1 == ALPN_none) {
     VERBOSE(source = "wanted versions");
-    alpn1 = cf_hc_get_first_alpn(cf, data,
-                                 data->state.http_neg.wanted,
-                                 ALPN_none);
+    alpn1 = cf_hc_get_first_alpn(cf, data,data->state.http_neg.wanted,ALPN_none);
   }
-  if(alpn1 == ALPN_none) {
+
+  if (alpn1 == ALPN_none) {
     VERBOSE(source = "allowed versions");
-    alpn1 = cf_hc_get_first_alpn(cf, data,
-                                 data->state.http_neg.allowed,
-                                 ALPN_none);
+    alpn1 = cf_hc_get_first_alpn(cf, data, data->state.http_neg.allowed, ALPN_none);
   }
 
   if(alpn1 == ALPN_none) {
@@ -3302,6 +3301,119 @@ static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf,
   }
 
   return CURLE_OK;
+}
+```
+
+#### `cf_hc_get_httpsrr_alpn`
+
+```c
+// lib/cf-https-connect.c
+
+static enum alpnid cf_hc_get_httpsrr_alpn(
+  struct Curl_cfilter *cf,
+  struct Curl_easy *data,
+  enum alpnid not_this_one
+) {
+  #ifdef USE_HTTPSRR
+  /* Is there an HTTPSRR use its ALPNs here.
+   * We are here after having selected a connection to a host+port and
+   * can no longer change that. Any HTTPSRR advice for other hosts and ports
+   * we need to ignore. */
+  const struct Curl_https_rrinfo *rr;
+  size_t i;
+
+  /* Do we have HTTPS-RR information? */
+  // フィルタチェーンのDNSフィルタを取得
+  // 名前解決済みなら ctx->dns->hinfo
+  // 非同期クエリの継続中なら Curl_resolv_get_https (lib/hostip.c) でHTTPS RR情報を取得
+  rr = Curl_conn_dns_get_https(data, cf->sockindex); // => Curl_conn_dns_get_https (lib/cf-dns.c)
+
+  // Curl_conn_dns_get_https (lib/cf-dns.c)
+  //
+  //   const struct Curl_https_rrinfo *Curl_conn_dns_get_https(struct Curl_easy *data, int sockindex)
+  //   {
+  //     struct Curl_cfilter *cf = data->conn->cfilter[sockindex];
+  //     for (; cf; cf = cf->next) {
+  //       if (cf->cft == &Curl_cft_dns) {
+  //         struct cf_dns_ctx *ctx = cf->ctx;
+  //         if (ctx->dns) {
+  //           return ctx->dns->hinfo;
+  //         } else {
+  //           return Curl_resolv_get_https(data, ctx->resolv_id); // => Curl_resolv_get_https (lib/hostip.c)
+  //         }
+  //       }
+  //     }
+  //     return NULL;
+  //   }
+
+  // Curl_resolv_get_https (lib/hostip.c)
+  //
+  //   const struct Curl_https_rrinfo *
+  //   Curl_resolv_get_https(struct Curl_easy *data, uint32_t resolv_id)
+  //   {
+  //     struct Curl_resolv_async *async = Curl_async_get(data, resolv_id);
+  //     if (!async) return NULL;
+  //     return Curl_async_get_https(data, async); // => Curl_async_get_https (lib/asyn-ares.c / lib/asyn-thrdd.c)
+  //   }
+
+  // Curl_async_get_https (lib/asyn-ares.c)
+  //
+  //   const struct Curl_https_rrinfo *Curl_async_get_https(
+  //     struct Curl_easy *data,
+  //     struct Curl_resolv_async *async
+  //   ) {
+  //     if (Curl_async_knows_https(data, async)) return &async->ares.hinfo;
+  //     // => Curl_async_knows_https (lib/asyn-ares.c)
+  //     return NULL;
+  //   }
+
+  // Curl_async_knows_https (lib/asyn-ares.c)
+  //
+  //   bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *async)
+  //   {
+  //     (void)data;
+  //     if (async->dns_queries & CURL_DNSQ_HTTPS) {
+  //       return ((async->dns_responses & CURL_DNSQ_HTTPS) || !async->queries_ongoing);
+  //     }
+  //     return TRUE; /* we know it will never come */
+  //   }
+
+  // WIP
+  /* We do not support `rr->no_def_alpn`. */
+  if(Curl_httpsrr_applicable(data, rr) && !rr->no_def_alpn) {
+    for(i = 0; i < CURL_ARRAYSIZE(rr->alpns); ++i) {
+      enum alpnid alpn_rr = (enum alpnid)rr->alpns[i];
+      if(alpn_rr == not_this_one) /* don't want this one */
+        continue;
+      switch(alpn_rr) {
+      case ALPN_h3:
+        if((data->state.http_neg.allowed & CURL_HTTP_V3x) &&
+           cf_hc_may_h3(cf, data)) {
+          return alpn_rr;
+        }
+        break;
+      case ALPN_h2:
+        if(data->state.http_neg.allowed & CURL_HTTP_V2x) {
+          return alpn_rr;
+        }
+        break;
+      case ALPN_h1:
+        if(data->state.http_neg.allowed & CURL_HTTP_V1x) {
+          return alpn_rr;
+        }
+        break;
+      default: /* ignore */
+        break;
+      }
+    }
+  }
+  #else
+  (void)cf;
+  (void)data;
+  (void)not_this_one;
+  #endif
+
+  return ALPN_none;
 }
 ```
 
