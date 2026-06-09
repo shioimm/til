@@ -1311,22 +1311,22 @@ static CURLMcode multi_runsingle(
     }
 
     switch (data->mstate) {
-    case MSTATE_INIT: // 初期状態
+    case MSTATE_INIT: // ハンドルの初期状態
       /* Transitional state. init this transfer. A handle never comes back to this state. */
       mresult = multistate_init(data, &result); // => multistate_init (lib/multi.c)
-      // 転送前の準備を行う
-      // 結果: -> MSTATE_SETUP (CURLM_CALL_MULTI_PERFORM)
+      // Curl_pretransferを呼び出して転送前の準備を行う
+      // 遷移先: MSTATE_SETUP (返り値: CURLM_CALL_MULTI_PERFORM)
       break;
 
-    case MSTATE_SETUP:
+    case MSTATE_SETUP: // タイムアウトをタイマツリーに登録するための状態
       /* Transitional state. Setup things for a new transfer.
          The handlecan come back to this state on a redirect. */
       mresult = multistate_setup(data); // => multistate_setup (lib/multi.c)
       // --max-time と --connect-timeout をタイマーツリーに登録
-      // 結果: -> MSTATE_CONNECT (CURLM_CALL_MULTI_PERFORM)
+      // 遷移先: MSTATE_CONNECT (返り値: CURLM_CALL_MULTI_PERFORM)
       break;
 
-    case MSTATE_CONNECT:
+    case MSTATE_CONNECT: // フィルタチェーンを登録し、接続プールの確認やstruct connectdataの作成を行うための状態
       mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
       // Curl_connectを呼び出す
       //   url_find_or_create_conn:
@@ -1336,71 +1336,71 @@ static CURLMcode multi_runsingle(
       //       - なければ接続上限チェック、struct connectdataにデータをセット
       //   Curl_conn_setup:
       //     - 使用するフィルタをconn->cfilterに登録
-      // 結果:
-      //   - -> MSTATE_PENDING (CURLM_OK)
-      //   - -> MSTATE_PROTOCONNECT (CURLM_CALL_MULTI_PERFORM)
-      //   - -> MSTATE_CONNECTING (CURLM_CALL_MULTI_PERFORM)
+      // 遷移先:
+      //   - MSTATE_PENDING (返り値: CURLM_OK)
+      //   - MSTATE_PROTOCONNECT (返り値: CURLM_CALL_MULTI_PERFORM)
+      //   - MSTATE_CONNECTING (返り値: CURLM_CALL_MULTI_PERFORM)
       break;
 
-    case MSTATE_CONNECTING: // TCP接続完了待ち
+    case MSTATE_CONNECTING: // フィルタチェーンを順に実行し、TCP接続の完了を待つための状態
       /* awaiting a completion of an asynch TCP connect */
       mresult = multistate_connecting(data, &stream_error, &result); // => multistate_connecting (lib/multi.c)
       // Curl_conn_connectを介してconn->cfilter[0]から順にフィルタのdo_connectを呼び、接続の進捗を確認
-      // 結果:
-      //   - -> MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
-      //   - -> MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
-      //   - -> stream_error = TRUE 接続失敗 (CURLM_OK)
+      // 遷移先:
+      //   - MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
+      //   - MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
+      //   - stream_error = TRUE 接続失敗 (CURLM_OK)
       break;
 
     // WIP
-    case MSTATE_PROTOCONNECT:
+    case MSTATE_PROTOCONNECT: // アプリケーションプロトコルレベルの接続処理を開始するための状態
       mresult = multistate_protoconnect(data, &stream_error, &result);
       // => multistate_protoconnect (lib/multi.c)
       break;
 
-    case MSTATE_PROTOCONNECTING:
+    case MSTATE_PROTOCONNECTING:// アプリケーションプロトコルレベルの接続処理の完了を待つための状態
       /* protocol-specific connect phase */
       mresult = multistate_protoconnecting(data, &stream_error, &result);
       // => multistate_protoconnect (lib/multi.c)
       break;
 
-    case MSTATE_DO:
+    case MSTATE_DO: // リクエストの送信を開始するための状態
       mresult = multistate_do(data, &stream_error, &result);
       break;
 
-    case MSTATE_DOING:
+    case MSTATE_DOING: // リクエストの送信が完了するまで継続するための状態
       /* we continue DOING until the DO phase is complete */
       mresult = multistate_doing(data, &stream_error, &result);
       break;
 
-    case MSTATE_DOING_MORE:
+    case MSTATE_DOING_MORE: // 2段階を要するリクエスト送信の後半を行うための状態 (FTPのデータ接続など)
       /*
        * When we are connected, DOING MORE and then go DID
        */
       mresult = multistate_doing_more(data, &stream_error, &result);
       break;
 
-    case MSTATE_DID:
+    case MSTATE_DID: // リクエスト送信を完了し、レスポンス受信の準備をするための状態
       mresult = multistate_did(multi, data);
       break;
 
-    case MSTATE_RATELIMITING: /* limit-rate exceeded in either direction */
+    case MSTATE_RATELIMITING: // --limit-rateによる転送速度制限のため待機中
       mresult = multistate_ratelimiting(data, &result);
       break;
 
-    case MSTATE_PERFORMING:
+    case MSTATE_PERFORMING: // レスポンスデータの転送中
       mresult = multistate_performing(data, &stream_error, &result);
       break;
 
-    case MSTATE_DONE:
+    case MSTATE_DONE: // データ転送完了後の後処理 (接続の再利用登録など) のための状態
       mresult = multistate_done(data, &result);
       break;
 
-    case MSTATE_COMPLETED:
+    case MSTATE_COMPLETED: // 転送が完全に終了した状態
       break;
 
-    case MSTATE_PENDING:
-    case MSTATE_MSGSENT:
+    case MSTATE_PENDING: // 接続数上限などにより接続待ちキューに入っている状態
+    case MSTATE_MSGSENT: // CURLMSG_DONEメッセージをキューに積み終えた状態
       /* handles in these states should NOT be in this list */
       break;
 
@@ -1423,7 +1423,8 @@ static CURLMcode multi_runsingle(
 
 statemachine_end:
 
-    // エラーがあれば接続を切り離してMSTATE_COMPLETEDに遷移させる
+    // エラーがなければCURLOPT_XFERINFOFUNCTIONで設定する進捗コールバックを呼ぶ
+    // エラーがあればMSTATE_COMPLETEDに遷移させる (stream_error = TRUEの場合は接続を切り離す)
     result = is_finished(multi, data, stream_error, result);
 
     if (result) mresult = CURLM_CALL_MULTI_PERFORM;
