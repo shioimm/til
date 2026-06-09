@@ -1619,7 +1619,63 @@ out:
 }
 ```
 
-### `multistate_connecting`
+#### `cf_setup_add`
+
+```c
+// lib/connect.c
+
+static CURLcode cf_setup_add(
+  struct Curl_easy *data,
+  struct connectdata *conn,
+  int sockindex,
+  uint8_t transport,
+  int ssl_mode
+) {
+  struct Curl_cfilter *cf;
+  CURLcode result = CURLE_OK;
+
+  DEBUGASSERT(data);
+  result = cf_setup_create(&cf, data, transport, ssl_mode); // => cf_setup_create (lib/connect.c)
+  if (result) goto out;
+  Curl_conn_cf_add(data, conn, sockindex, cf);
+out:
+  return result;
+}
+
+static CURLcode cf_setup_create(
+ struct Curl_cfilter **pcf,
+ struct Curl_easy *data,
+ uint8_t transport,
+ int ssl_mode
+) {
+  struct Curl_cfilter *cf = NULL;
+  struct cf_setup_ctx *ctx;
+  CURLcode result = CURLE_OK;
+
+  (void)data;
+  ctx = curlx_calloc(1, sizeof(*ctx));
+
+  if (!ctx) {
+    result = CURLE_OUT_OF_MEMORY;
+    goto out;
+  }
+
+  ctx->state = CF_SETUP_INIT; // コンテキストの初期状態
+  ctx->ssl_mode = ssl_mode;
+  ctx->transport = transport;
+
+  result = Curl_cf_create(&cf, &Curl_cft_setup, ctx);
+  if (result) goto out;
+  ctx = NULL;
+
+out:
+  *pcf = result ? NULL : cf;
+  if (ctx) curlx_free(ctx);
+  return result;
+}
+```
+
+#### `multistate_connecting`
 
 ```c
 // lib/multi.c
@@ -1847,9 +1903,9 @@ static CURLcode cf_dns_connect(struct Curl_cfilter *cf, struct Curl_easy *data, 
   // 下位フィルタのdo_connect呼び出しを行う場合
   if (cf->next && !cf->next->connected) {
     bool sub_done;
-    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done); // => Curl_conn_cf_connect (lib/cf-dns.c)
+    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done); // => Curl_conn_cf_connect (lib/cfilters.c)
 
-    // Curl_conn_cf_connect (lib/cf-dns.c)
+    // Curl_conn_cf_connect (lib/lib/cfilters.c)
     //
     // CURLcode Curl_conn_cf_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
     // {
@@ -3103,53 +3159,53 @@ out:
 // lib/connect.c
 // WIP
 
-static CURLcode cf_setup_connect(struct Curl_cfilter *cf,
-                                 struct Curl_easy *data,
-                                 bool *done)
+static CURLcode cf_setup_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
 {
   struct cf_setup_ctx *ctx = cf->ctx;
   CURLcode result = CURLE_OK;
 
-  if(cf->connected) {
+  // 接続済みの場合
+  if (cf->connected) {
     *done = TRUE;
     return CURLE_OK;
   }
 
   /* connect current sub-chain */
 connect_sub_chain:
-  VERBOSE(Curl_conn_trc_filters(data, cf->sockindex, "cf_setup_connect"));
-
-  if(cf->next && !cf->next->connected) {
-    result = Curl_conn_cf_connect(cf->next, data, done);
-    if(result || !*done)
-      return result;
+  if (cf->next && !cf->next->connected) { // 下位フィルタがある場合 (初回は cf->next = NULL なのでスキップ)
+    // 下位フィルタの接続を進める
+    result = Curl_conn_cf_connect(cf->next, data, done); // => Curl_conn_cf_connect (lib/cfilters.c)
+    if (result || !*done) return result;
   }
 
-  if(ctx->state < CF_SETUP_CNNCT_EYEBALLS) {
-    result = cf_ip_happy_insert_after(cf, data, ctx->transport);
-    if(result)
-      return result;
+  if (ctx->state < CF_SETUP_CNNCT_EYEBALLS) { // CF_SETUP_INIT < CF_SETUP_CNNCT_EYEBALLSなので 初回は必ずtrue
+    // "HAPPY-EYEBALLS"フィルタを積む
+    result = cf_ip_happy_insert_after(cf, data, ctx->transport); // => cf_ip_happy_insert_after (lib/cf-ip-happy.c)
+    if (result) return result;
+
+    // ステートをCF_SETUP_CNNCT_EYEBALLS に進める
     ctx->state = CF_SETUP_CNNCT_EYEBALLS;
-    if(!cf->next || !cf->next->connected)
-      goto connect_sub_chain;
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
   }
 
   /* sub-chain connected, do we need to add more? */
-#ifndef CURL_DISABLE_PROXY
-  if(ctx->state < CF_SETUP_CNNCT_SOCKS && cf->conn->bits.socksproxy) {
+  #ifndef CURL_DISABLE_PROXY
+  if (ctx->state < CF_SETUP_CNNCT_SOCKS && cf->conn->bits.socksproxy) {
     struct Curl_peer *dest; /* where SOCKS should tunnel to */
 
-    if(cf->conn->bits.httpproxy)
+    if (cf->conn->bits.httpproxy) {
       dest = cf->conn->http_proxy.peer;
-    else
+    } else {
       dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
-    if(!dest)
-      return CURLE_FAILED_INIT;
+    }
+
+    if (!dest) return CURLE_FAILED_INIT;
 
     result = Curl_cf_socks_proxy_insert_after(
       cf, data, dest, cf->conn->ip_version,
       cf->conn->socks_proxy.proxytype,
-      cf->conn->socks_proxy.creds);
+      cf->conn->socks_proxy.creds
+    );
 
     if(result) {
       /* 'dest' might be freed now so it can't be dereferenced */
@@ -3164,16 +3220,16 @@ connect_sub_chain:
   }
 
   if(ctx->state < CF_SETUP_CNNCT_HTTP_PROXY && cf->conn->bits.httpproxy) {
-#ifdef USE_SSL
+    #ifdef USE_SSL
     if(IS_HTTPS_PROXY(cf->conn->http_proxy.proxytype) &&
        !Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
       result = Curl_cf_ssl_proxy_insert_after(cf, data);
       if(result)
         return result;
     }
-#endif /* USE_SSL */
+    #endif /* USE_SSL */
 
-#ifndef CURL_DISABLE_HTTP
+    #ifndef CURL_DISABLE_HTTP
     if(cf->conn->bits.tunnel_proxy) {
       struct Curl_peer *dest; /* where HTTP should tunnel to */
       dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
@@ -3182,15 +3238,15 @@ connect_sub_chain:
       if(result)
         return result;
     }
-#endif /* !CURL_DISABLE_HTTP */
+    #endif /* !CURL_DISABLE_HTTP */
     ctx->state = CF_SETUP_CNNCT_HTTP_PROXY;
     if(!cf->next || !cf->next->connected)
       goto connect_sub_chain;
   }
-#endif /* !CURL_DISABLE_PROXY */
+  #endif /* !CURL_DISABLE_PROXY */
 
   if(ctx->state < CF_SETUP_CNNCT_HAPROXY) {
-#ifndef CURL_DISABLE_PROXY
+    #ifndef CURL_DISABLE_PROXY
     if(data->set.haproxyprotocol) {
       if(Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
         failf(data, "haproxy protocol not supported with SSL "
@@ -3201,14 +3257,14 @@ connect_sub_chain:
       if(result)
         return result;
     }
-#endif /* !CURL_DISABLE_PROXY */
+    #endif /* !CURL_DISABLE_PROXY */
     ctx->state = CF_SETUP_CNNCT_HAPROXY;
     if(!cf->next || !cf->next->connected)
       goto connect_sub_chain;
   }
 
   if(ctx->state < CF_SETUP_CNNCT_SSL) {
-#ifdef USE_SSL
+    #ifdef USE_SSL
     if((ctx->ssl_mode == CURL_CF_SSL_ENABLE ||
         (ctx->ssl_mode != CURL_CF_SSL_DISABLE &&
          cf->conn->scheme->flags & PROTOPT_SSL)) &&  /* we want SSL */
@@ -3217,7 +3273,7 @@ connect_sub_chain:
       if(result)
         return result;
     }
-#endif /* USE_SSL */
+    #endif /* USE_SSL */
     ctx->state = CF_SETUP_CNNCT_SSL;
     if(!cf->next || !cf->next->connected)
       goto connect_sub_chain;
@@ -3226,6 +3282,35 @@ connect_sub_chain:
   ctx->state = CF_SETUP_DONE;
   cf->connected = TRUE;
   *done = TRUE;
+  return CURLE_OK;
+}
+```
+
+#### `cf_ip_happy_insert_after`
+
+```c
+// lib/cf-ip-happy.c
+
+CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
+                                  struct Curl_easy *data,
+                                  uint8_t transport)
+{
+  cf_ip_connect_create *cf_create;
+  struct Curl_cfilter *cf;
+  CURLcode result;
+
+  /* Need to be first */
+  DEBUGASSERT(cf_at);
+  cf_create = get_cf_create(transport);
+  if(!cf_create) {
+    CURL_TRC_CF(data, cf_at, "unsupported transport type %u", transport);
+    return CURLE_UNSUPPORTED_PROTOCOL;
+  }
+  result = cf_ip_happy_create(&cf, data, cf_at->conn, cf_create, transport);
+  if(result)
+    return result;
+
+  Curl_conn_cf_insert_after(cf_at, cf);
   return CURLE_OK;
 }
 ```
