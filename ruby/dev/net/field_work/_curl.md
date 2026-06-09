@@ -3247,7 +3247,6 @@ bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *as
 
 ```c
 // lib/cf-https-connect.c
-// WIP
 
 static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf, struct Curl_easy *data)
 {
@@ -3439,39 +3438,39 @@ static enum alpnid cf_hc_get_httpsrr_alpn(
 
 ```c
 // lib/cf-https-connect.c
-// WIP
 
-static void cf_hc_set_baller2(struct Curl_cfilter *cf,
-                              struct Curl_easy *data)
+static void cf_hc_set_baller2(struct Curl_cfilter *cf, struct Curl_easy *data)
 {
   struct cf_hc_ctx *ctx = cf->ctx;
   enum alpnid alpn2 = ALPN_none, alpn1 = ctx->ballers[0].alpn_id;
   VERBOSE(const char *source = "HTTPS-RR");
 
-  if(ctx->ballers_complete)
-    return; /* already done */
-  if(!ctx->httpsrr_resolved)
-    return; /* HTTPS-RR pending */
+  if (ctx->ballers_complete) return; /* already done */
+  if (!ctx->httpsrr_resolved) return; /* HTTPS-RR pending */
 
-  alpn2 = cf_hc_get_httpsrr_alpn(cf, data, alpn1);
-  if(alpn2 == ALPN_none) {
+  alpn2 = cf_hc_get_httpsrr_alpn(cf, data, alpn1); // => cf_hc_get_httpsrr_alpn (lib/cf-https-connect.c)
+
+  if (alpn2 == ALPN_none) {
     /* preference is configured and allowed, can we use it? */
+    // data->state.http_neg.preferred (--http3-prior-knowledge や --http2 などで明示的に指定したバージョン) が
+    // allowedに含まれている場合はそれを利用する
     VERBOSE(source = "preferred version");
     alpn2 = cf_hc_get_pref_alpn(cf, data, alpn1);
   }
-  if(alpn2 == ALPN_none) {
+
+  if (alpn2 == ALPN_none) {
     VERBOSE(source = "wanted versions");
-    alpn2 = cf_hc_get_first_alpn(cf, data,
-                                 data->state.http_neg.wanted,
-                                 alpn1);
+    // wantedの中から h3 > h2 > h1 の順で最初に使えるものを利用する
+    alpn2 = cf_hc_get_first_alpn(cf, data, data->state.http_neg.wanted, alpn1);
   }
 
   if(alpn2 != ALPN_none) {
+    // baller2のALPNが決定したらballers[1]にセット
     cf_hc_baller_assign(&ctx->ballers[1], alpn2, ctx->def_transport);
     ctx->baller_count = 2;
-    CURL_TRC_CF(data, cf, "2nd attempt uses %s from %s",
-                ctx->ballers[1].name, source);
+    CURL_TRC_CF(data, cf, "2nd attempt uses %s from %s", ctx->ballers[1].name, source);
   }
+
   ctx->ballers_complete = TRUE;
 }
 ```
