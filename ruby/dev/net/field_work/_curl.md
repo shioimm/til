@@ -3157,7 +3157,6 @@ out:
 
 ```c
 // lib/connect.c
-// WIP
 
 static CURLcode cf_setup_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
 {
@@ -3190,95 +3189,120 @@ connect_sub_chain:
 
   /* sub-chain connected, do we need to add more? */
   #ifndef CURL_DISABLE_PROXY
+  // --- "SOCKS"フィルタの追加と実行 ---
+  // SOCKSプロキシが設定されている場合
   if (ctx->state < CF_SETUP_CNNCT_SOCKS && cf->conn->bits.socksproxy) {
     struct Curl_peer *dest; /* where SOCKS should tunnel to */
 
+    // SOCKSが最終的にトンネルすべき接続先を決定
     if (cf->conn->bits.httpproxy) {
+      // HTTPプロキシも併用している場合はHTTPプロキシ
       dest = cf->conn->http_proxy.peer;
     } else {
+      // HTTPプロキシがなければオリジン
       dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
     }
 
     if (!dest) return CURLE_FAILED_INIT;
 
+    // "SOCKS"フィルタを追加
     result = Curl_cf_socks_proxy_insert_after(
       cf, data, dest, cf->conn->ip_version,
       cf->conn->socks_proxy.proxytype,
       cf->conn->socks_proxy.creds
     );
 
-    if(result) {
+    if (result) {
       /* 'dest' might be freed now so it can't be dereferenced */
       CURL_TRC_CF(data, cf, "added SOCKS filter failed -> %d", result);
       return result;
     }
-    CURL_TRC_CF(data, cf, "added SOCKS filter to %s:%u -> %d",
-                dest->hostname, dest->port, result);
-    ctx->state = CF_SETUP_CNNCT_SOCKS;
-    if(!cf->next || !cf->next->connected)
-      goto connect_sub_chain;
-  }
 
-  if(ctx->state < CF_SETUP_CNNCT_HTTP_PROXY && cf->conn->bits.httpproxy) {
+    CURL_TRC_CF(data, cf, "added SOCKS filter to %s:%u -> %d", dest->hostname, dest->port, result);
+    ctx->state = CF_SETUP_CNNCT_SOCKS;
+
+    // connect_sub_chainの先頭にもどる。もどると"SOCKS"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
+  }
+  // -----------------------------------
+
+  // --- "HTTP-PROXY"フィルタの追加と実行 ---
+  // SOCKSまで終了しており、かつHTTP プロキシが設定されている場合
+  if (ctx->state < CF_SETUP_CNNCT_HTTP_PROXY && cf->conn->bits.httpproxy) {
     #ifdef USE_SSL
-    if(IS_HTTPS_PROXY(cf->conn->http_proxy.proxytype) &&
-       !Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+    // プロキシへの接続にHTTPSを利用し、かつまだSSLフィルタが入っていない場合
+    if (IS_HTTPS_PROXY(cf->conn->http_proxy.proxytype) && !Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+      // "SSL-PROXY"フィルタを追加
       result = Curl_cf_ssl_proxy_insert_after(cf, data);
-      if(result)
-        return result;
+      if (result) return result;
     }
     #endif /* USE_SSL */
 
     #ifndef CURL_DISABLE_HTTP
-    if(cf->conn->bits.tunnel_proxy) {
+    // --proxytunnel が指定されている場合
+    if (cf->conn->bits.tunnel_proxy) {
       struct Curl_peer *dest; /* where HTTP should tunnel to */
       dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
-      result = Curl_cf_http_proxy_insert_after(
-        cf, data, dest, cf->conn->http_proxy.proxytype);
-      if(result)
-        return result;
+
+      // "HTTP-PROXY"フィルタを追加
+      result = Curl_cf_http_proxy_insert_after( cf, data, dest, cf->conn->http_proxy.proxytype);
+      if (result) return result;
     }
     #endif /* !CURL_DISABLE_HTTP */
+
     ctx->state = CF_SETUP_CNNCT_HTTP_PROXY;
-    if(!cf->next || !cf->next->connected)
-      goto connect_sub_chain;
+
+    // connect_sub_chainの先頭にもどる。もどると"SSL-PROXY"か"HTTP-PROXY"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
   }
   #endif /* !CURL_DISABLE_PROXY */
 
-  if(ctx->state < CF_SETUP_CNNCT_HAPROXY) {
+  // HTTPプロキシまで終了している場合
+  if (ctx->state < CF_SETUP_CNNCT_HAPROXY) {
     #ifndef CURL_DISABLE_PROXY
-    if(data->set.haproxyprotocol) {
-      if(Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
-        failf(data, "haproxy protocol not supported with SSL "
-              "encryption in place (QUIC?)");
+    // --haproxy-protocol オプションが指定されている場合
+    if (data->set.haproxyprotocol) {
+      if (Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+        failf(data, "haproxy protocol not supported with SSL " "encryption in place (QUIC?)");
         return CURLE_UNSUPPORTED_PROTOCOL;
       }
+
+      // "HAPROXY"フィルタを追加
       result = Curl_cf_haproxy_insert_after(cf, data);
-      if(result)
-        return result;
+      if (result) return result;
     }
     #endif /* !CURL_DISABLE_PROXY */
+
+    // ステートを進める
     ctx->state = CF_SETUP_CNNCT_HAPROXY;
-    if(!cf->next || !cf->next->connected)
-      goto connect_sub_chain;
+
+    // connect_sub_chainの先頭にもどる。もどると"HAPROXY"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
   }
 
-  if(ctx->state < CF_SETUP_CNNCT_SSL) {
+  // HAPROXYまで終了している場合
+  if (ctx->state < CF_SETUP_CNNCT_SSL) {
     #ifdef USE_SSL
-    if((ctx->ssl_mode == CURL_CF_SSL_ENABLE ||
+    // SSLが必要、かつまだSSLフィルタを追加していない場合
+    if ((ctx->ssl_mode == CURL_CF_SSL_ENABLE ||
         (ctx->ssl_mode != CURL_CF_SSL_DISABLE &&
-         cf->conn->scheme->flags & PROTOPT_SSL)) &&  /* we want SSL */
-       !Curl_conn_is_ssl(cf->conn, cf->sockindex)) { /* it is missing */
+        cf->conn->scheme->flags & PROTOPT_SSL)) &&  /* we want SSL */
+        !Curl_conn_is_ssl(cf->conn, cf->sockindex)) { /* it is missing */
+
+      // "SSL"フィルタを追加
       result = Curl_cf_ssl_insert_after(cf, data);
-      if(result)
-        return result;
+      if (result) return result;
     }
     #endif /* USE_SSL */
+
+    // ステートを進める
     ctx->state = CF_SETUP_CNNCT_SSL;
-    if(!cf->next || !cf->next->connected)
-      goto connect_sub_chain;
+
+    // connect_sub_chainの先頭にもどる。もどると"SSL"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
   }
 
+  // 全ステートが完了し、下位フィルタチェーンもすべて接続済みになった状態
   ctx->state = CF_SETUP_DONE;
   cf->connected = TRUE;
   *done = TRUE;
