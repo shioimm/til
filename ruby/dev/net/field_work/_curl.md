@@ -3048,32 +3048,31 @@ out:
 
 ```c
 // lib/cf-https-connect.c
-// WIP
 
-static CURLcode cf_hc_connect(struct Curl_cfilter *cf,
-                              struct Curl_easy *data,
-                              bool *done)
+static CURLcode cf_hc_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
 {
   struct cf_hc_ctx *ctx = cf->ctx;
   CURLcode result = CURLE_OK;
 
-  if(cf->connected) {
+  // 接続済みの場合
+  if (cf->connected) {
     *done = TRUE;
     return CURLE_OK;
   }
 
   *done = FALSE;
 
-  if(!ctx->httpsrr_resolved) {
+  // ctx->httpsrr_resolved = HTTPS RRのDNSクエリ結果を取得しているかどうか
+  //   - 名前解決が完了してエントリがある
+  //   - or HTTPS RRの応答を受信
+  //   - or HTTPS RRクエリを送信していない
+  if (!ctx->httpsrr_resolved) {
+    // 結果をctx->httpsrr_resolvedにキャッシュ
     ctx->httpsrr_resolved = Curl_conn_dns_resolved_https(data, cf->sockindex);
-#ifdef DEBUGBUILD
-    if(!ctx->httpsrr_resolved && getenv("CURL_DBG_AWAIT_HTTPSRR")) {
-      CURL_TRC_CF(data, cf, "awaiting HTTPS-RR");
-      return CURLE_OK;
-    }
-#endif
+    // => Curl_conn_dns_resolved_https (lib/cf-dns.c)
   }
 
+  // WIP
   switch(ctx->state) {
   case CF_HC_RESOLV:
     ctx->state = CF_HC_INIT;
@@ -3150,6 +3149,63 @@ static CURLcode cf_hc_connect(struct Curl_cfilter *cf,
 out:
   CURL_TRC_CF(data, cf, "connect -> %d, done=%d", result, *done);
   return result;
+}
+```
+
+#### `Curl_conn_dns_resolved_https`
+
+```c
+// lib/cf-dns.c
+
+bool Curl_conn_dns_resolved_https(struct Curl_easy *data, int sockindex)
+{
+  struct Curl_cfilter *cf = data->conn->cfilter[sockindex];
+
+  for(; cf; cf = cf->next) {
+    if (cf->cft == &Curl_cft_dns) {
+      struct cf_dns_ctx *ctx = cf->ctx;
+
+      if (ctx->dns) { // DNS解決済みでエントリあり
+        return TRUE;
+      } else {
+        // 非同期クエリの状態を確認する
+        return Curl_resolv_knows_https(data, ctx->resolv_id); // => Curl_resolv_knows_https (lib/hostip.c)
+      }
+    }
+  }
+  return FALSE;
+}
+```
+
+#### `Curl_resolv_knows_https`
+
+```c
+// lib/hostip.c
+
+bool Curl_resolv_knows_https(struct Curl_easy *data, uint32_t resolv_id)
+{
+  struct Curl_resolv_async *async = Curl_async_get(data, resolv_id);
+  if (!async) return TRUE;
+  return Curl_async_knows_https(data, async);
+  // => Curl_async_knows_https (lib/asyn-ares.c / lib/asyn-thrdd.c)
+}
+```
+
+#### `Curl_async_knows_https`
+
+```c
+// lib/asyn-ares.c
+
+bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *async)
+{
+  (void)data;
+  if (async->dns_queries & CURL_DNSQ_HTTPS) {
+    return (
+      (async->dns_responses & CURL_DNSQ_HTTPS) || // HTTPS RRの応答が届いた
+      !async->queries_ongoing // すべてのクエリが終わった
+    );
+  }
+  return TRUE; /* we know it will never come */
 }
 ```
 
