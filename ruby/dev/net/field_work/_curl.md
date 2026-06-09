@@ -3378,29 +3378,32 @@ static enum alpnid cf_hc_get_httpsrr_alpn(
   //     return TRUE; /* we know it will never come */
   //   }
 
-  // WIP
   /* We do not support `rr->no_def_alpn`. */
-  if(Curl_httpsrr_applicable(data, rr) && !rr->no_def_alpn) {
-    for(i = 0; i < CURL_ARRAYSIZE(rr->alpns); ++i) {
+  // no_def_alpnがtrueでもfalseとして扱う (サポート外のため)
+  if (Curl_httpsrr_applicable(data, rr) && !rr->no_def_alpn) {
+    // HTTPS RRのALPNリストを先頭から順に走査
+    for (i = 0; i < CURL_ARRAYSIZE(rr->alpns); ++i) {
       enum alpnid alpn_rr = (enum alpnid)rr->alpns[i];
-      if(alpn_rr == not_this_one) /* don't want this one */
-        continue;
-      switch(alpn_rr) {
+
+      if (alpn_rr == not_this_one) continue; /* don't want this one */
+
+      switch (alpn_rr) {
       case ALPN_h3:
-        if((data->state.http_neg.allowed & CURL_HTTP_V3x) &&
-           cf_hc_may_h3(cf, data)) {
-          return alpn_rr;
-        }
+        // - allowedにHTTP/3が含まれる
+        // - Unixドメインソケットでない
+        // - HTTPS URLである
+        // - SOCKSプロキシ経由でない
+        // - HTTPプロキシのCONNECTトンネル経由でない
+        // を全て満たす場合はALPN_h3
+        if ((data->state.http_neg.allowed & CURL_HTTP_V3x) && cf_hc_may_h3(cf, data)) return alpn_rr;
         break;
       case ALPN_h2:
-        if(data->state.http_neg.allowed & CURL_HTTP_V2x) {
-          return alpn_rr;
-        }
+        // allowedにHTTP/2が含まれる場合はALPN_h2
+        if (data->state.http_neg.allowed & CURL_HTTP_V2x) return alpn_rr;
         break;
       case ALPN_h1:
-        if(data->state.http_neg.allowed & CURL_HTTP_V1x) {
-          return alpn_rr;
-        }
+        // allowedにHTTP/1が含まれる場合はALPN_h1
+        if (data->state.http_neg.allowed & CURL_HTTP_V1x) return alpn_rr;
         break;
       default: /* ignore */
         break;
@@ -3413,6 +3416,7 @@ static enum alpnid cf_hc_get_httpsrr_alpn(
   (void)not_this_one;
   #endif
 
+  // みつからなければALPN_none
   return ALPN_none;
 }
 ```
