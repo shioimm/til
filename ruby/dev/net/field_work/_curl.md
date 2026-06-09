@@ -1327,6 +1327,29 @@ static CURLMcode multi_runsingle(
       break;
 
     case MSTATE_CONNECT: // フィルタチェーンを登録し、接続プールの確認やstruct connectdataの作成を行うための状態
+
+      // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
+      // Curl_conn_setupの呼び出しによってプロトコル別にフィルタ (Curl_cftype) を追加する
+      //
+      //   /* A connection filter type, e.g. specific implementation. */
+      //   struct Curl_cftype {
+      //     const char *name;                        // 名前
+      //     int flags;                               // フラグ
+      //     int log_level;                           // ログレベル
+      //     Curl_cft_destroy_this *destroy;          // フィルタのリソースを解放する関数
+      //     Curl_cft_connect *do_connect;            // 接続を確立する関数
+      //     Curl_cft_close *do_close;                // 接続をクローズする関数
+      //     Curl_cft_shutdown *do_shutdown;          // 接続をシャットダウンする関数
+      //     Curl_cft_adjust_pollset *adjust_pollset; // 転送のポーリングセットを調整する関数
+      //     Curl_cft_data_pending *has_data_pending; // 接続に未処理データがあるか
+      //     Curl_cft_send *do_send;                  // データを送信する関数
+      //     Curl_cft_recv *do_recv;                  // データを受信する関数
+      //     Curl_cft_cntrl *cntrl;                   // イベント/制御
+      //     Curl_cft_conn_is_alive *is_alive;        // 接続が有効か
+      //     Curl_cft_conn_keep_alive *keep_alive;    // 接続を維持するか
+      //     Curl_cft_query *query;                   // フィルタチェーンに問い合わせる関数
+      //   };
+
       mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
       // Curl_connectを呼び出す
       //   url_find_or_create_conn:
@@ -1336,6 +1359,7 @@ static CURLMcode multi_runsingle(
       //       - なければ接続上限チェック、struct connectdataにデータをセット
       //   Curl_conn_setup:
       //     - 使用するフィルタをconn->cfilterに登録
+      //       - DNS > HTTPS-CONNECT もしくは DNS > SETUP
       // 遷移先:
       //   - MSTATE_PENDING (返り値: CURLM_OK)
       //   - MSTATE_PROTOCONNECT (返り値: CURLM_CALL_MULTI_PERFORM)
@@ -1477,28 +1501,6 @@ CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
     Curl_pgrsTime(data, TIMER_NAMELOOKUP);
     *pconnected = TRUE;
   } else { // 新たにDNS解決 + TCP接続の開始が必要
-    // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
-    // Curl_conn_setupの呼び出しによってプロトコル別にフィルタ (Curl_cftype) を追加する
-    //
-    //   /* A connection filter type, e.g. specific implementation. */
-    //   struct Curl_cftype {
-    //     const char *name;                        // 名前
-    //     int flags;                               // フラグ
-    //     int log_level;                           // ログレベル
-    //     Curl_cft_destroy_this *destroy;          // フィルタのリソースを解放する関数
-    //     Curl_cft_connect *do_connect;            // 接続を確立する関数
-    //     Curl_cft_close *do_close;                // 接続をクローズする関数
-    //     Curl_cft_shutdown *do_shutdown;          // 接続をシャットダウンする関数
-    //     Curl_cft_adjust_pollset *adjust_pollset; // 転送のポーリングセットを調整する関数
-    //     Curl_cft_data_pending *has_data_pending; // 接続に未処理データがあるか
-    //     Curl_cft_send *do_send;                  // データを送信する関数
-    //     Curl_cft_recv *do_recv;                  // データを受信する関数
-    //     Curl_cft_cntrl *cntrl;                   // イベント/制御
-    //     Curl_cft_conn_is_alive *is_alive;        // 接続が有効か
-    //     Curl_cft_conn_keep_alive *keep_alive;    // 接続を維持するか
-    //     Curl_cft_query *query;                   // フィルタチェーンに問い合わせる関数
-    //   };
-
     result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
 
     if (!result) result = Curl_headers_init(data);
@@ -1854,6 +1856,9 @@ static CURLcode cf_dns_connect(struct Curl_cfilter *cf, struct Curl_easy *data, 
     //   if (cf) return cf->cft->do_connect(cf, data, done);
     //   return CURLE_FAILED_INIT;
     // }
+
+    // "HTTPS-CONNECTの場合"のdo_connect = cf_hc_connect (lib/cf-https-connect.c)
+    // "SETUP"の場合のdo_connect = cf_setup_connect (lib/connect.c)
 
     if (result || !sub_done) return result;
     DEBUGASSERT(sub_done);
@@ -2980,5 +2985,247 @@ out:
   // 全クエリが完了して得た最終的な結果をセット
   if (result != CURLE_AGAIN) ares->result = result;
   return result;
+}
+```
+
+### `cf_hc_connect`
+
+```c
+// lib/cf-https-connect.c
+// WIP
+
+static CURLcode cf_hc_connect(struct Curl_cfilter *cf,
+                              struct Curl_easy *data,
+                              bool *done)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+  CURLcode result = CURLE_OK;
+
+  if(cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  *done = FALSE;
+
+  if(!ctx->httpsrr_resolved) {
+    ctx->httpsrr_resolved = Curl_conn_dns_resolved_https(data, cf->sockindex);
+#ifdef DEBUGBUILD
+    if(!ctx->httpsrr_resolved && getenv("CURL_DBG_AWAIT_HTTPSRR")) {
+      CURL_TRC_CF(data, cf, "awaiting HTTPS-RR");
+      return CURLE_OK;
+    }
+#endif
+  }
+
+  switch(ctx->state) {
+  case CF_HC_RESOLV:
+    ctx->state = CF_HC_INIT;
+    FALLTHROUGH();
+
+  case CF_HC_INIT:
+    DEBUGASSERT(!cf->next);
+    CURL_TRC_CF(data, cf, "connect, init");
+    result = cf_hc_set_baller1(cf, data);
+    if(result) {
+      ctx->result = result;
+      ctx->state = CF_HC_FAILURE;
+      goto out;
+    }
+    cf_hc_set_baller2(cf, data);
+    ctx->started = *Curl_pgrs_now(data);
+    cf_hc_baller_init(&ctx->ballers[0], cf, data);
+    if((ctx->baller_count > 1) || !ctx->ballers_complete) {
+      Curl_expire(data, ctx->soft_eyeballs_timeout_ms, EXPIRE_ALPN_EYEBALLS);
+    }
+    ctx->state = CF_HC_CONNECT;
+    FALLTHROUGH();
+
+  case CF_HC_CONNECT:
+    if(!ctx->ballers_complete)
+      cf_hc_set_baller2(cf, data);
+
+    if(cf_hc_baller_is_connecting(&ctx->ballers[0])) {
+      result = cf_hc_baller_connect(&ctx->ballers[0], cf, data, done);
+      if(!result && *done) {
+        result = baller_connected(cf, data, &ctx->ballers[0]);
+        goto out;
+      }
+    }
+
+    if(time_to_start_baller2(cf, data)) {
+      cf_hc_baller_init(&ctx->ballers[1], cf, data);
+    }
+
+    if(cf_hc_baller_is_connecting(&ctx->ballers[1])) {
+      result = cf_hc_baller_connect(&ctx->ballers[1], cf, data, done);
+      if(!result && *done) {
+        result = baller_connected(cf, data, &ctx->ballers[1]);
+        goto out;
+      }
+    }
+
+    if(ctx->ballers[0].result &&
+       (ctx->ballers[1].result ||
+        (ctx->ballers_complete && (ctx->baller_count < 2)))) {
+      /* all have failed. we give up */
+      CURL_TRC_CF(data, cf, "connect, all attempts failed");
+      ctx->result = result = ctx->ballers[0].result;
+      ctx->state = CF_HC_FAILURE;
+      goto out;
+    }
+    result = CURLE_OK;
+    *done = FALSE;
+    break;
+
+  case CF_HC_FAILURE:
+    result = ctx->result;
+    cf->connected = FALSE;
+    *done = FALSE;
+    break;
+
+  case CF_HC_SUCCESS:
+    result = CURLE_OK;
+    cf->connected = TRUE;
+    *done = TRUE;
+    break;
+  }
+
+out:
+  CURL_TRC_CF(data, cf, "connect -> %d, done=%d", result, *done);
+  return result;
+}
+```
+
+### `cf_setup_connect`
+
+```c
+// lib/connect.c
+// WIP
+
+static CURLcode cf_setup_connect(struct Curl_cfilter *cf,
+                                 struct Curl_easy *data,
+                                 bool *done)
+{
+  struct cf_setup_ctx *ctx = cf->ctx;
+  CURLcode result = CURLE_OK;
+
+  if(cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  /* connect current sub-chain */
+connect_sub_chain:
+  VERBOSE(Curl_conn_trc_filters(data, cf->sockindex, "cf_setup_connect"));
+
+  if(cf->next && !cf->next->connected) {
+    result = Curl_conn_cf_connect(cf->next, data, done);
+    if(result || !*done)
+      return result;
+  }
+
+  if(ctx->state < CF_SETUP_CNNCT_EYEBALLS) {
+    result = cf_ip_happy_insert_after(cf, data, ctx->transport);
+    if(result)
+      return result;
+    ctx->state = CF_SETUP_CNNCT_EYEBALLS;
+    if(!cf->next || !cf->next->connected)
+      goto connect_sub_chain;
+  }
+
+  /* sub-chain connected, do we need to add more? */
+#ifndef CURL_DISABLE_PROXY
+  if(ctx->state < CF_SETUP_CNNCT_SOCKS && cf->conn->bits.socksproxy) {
+    struct Curl_peer *dest; /* where SOCKS should tunnel to */
+
+    if(cf->conn->bits.httpproxy)
+      dest = cf->conn->http_proxy.peer;
+    else
+      dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
+    if(!dest)
+      return CURLE_FAILED_INIT;
+
+    result = Curl_cf_socks_proxy_insert_after(
+      cf, data, dest, cf->conn->ip_version,
+      cf->conn->socks_proxy.proxytype,
+      cf->conn->socks_proxy.creds);
+
+    if(result) {
+      /* 'dest' might be freed now so it can't be dereferenced */
+      CURL_TRC_CF(data, cf, "added SOCKS filter failed -> %d", result);
+      return result;
+    }
+    CURL_TRC_CF(data, cf, "added SOCKS filter to %s:%u -> %d",
+                dest->hostname, dest->port, result);
+    ctx->state = CF_SETUP_CNNCT_SOCKS;
+    if(!cf->next || !cf->next->connected)
+      goto connect_sub_chain;
+  }
+
+  if(ctx->state < CF_SETUP_CNNCT_HTTP_PROXY && cf->conn->bits.httpproxy) {
+#ifdef USE_SSL
+    if(IS_HTTPS_PROXY(cf->conn->http_proxy.proxytype) &&
+       !Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+      result = Curl_cf_ssl_proxy_insert_after(cf, data);
+      if(result)
+        return result;
+    }
+#endif /* USE_SSL */
+
+#ifndef CURL_DISABLE_HTTP
+    if(cf->conn->bits.tunnel_proxy) {
+      struct Curl_peer *dest; /* where HTTP should tunnel to */
+      dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
+      result = Curl_cf_http_proxy_insert_after(
+        cf, data, dest, cf->conn->http_proxy.proxytype);
+      if(result)
+        return result;
+    }
+#endif /* !CURL_DISABLE_HTTP */
+    ctx->state = CF_SETUP_CNNCT_HTTP_PROXY;
+    if(!cf->next || !cf->next->connected)
+      goto connect_sub_chain;
+  }
+#endif /* !CURL_DISABLE_PROXY */
+
+  if(ctx->state < CF_SETUP_CNNCT_HAPROXY) {
+#ifndef CURL_DISABLE_PROXY
+    if(data->set.haproxyprotocol) {
+      if(Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+        failf(data, "haproxy protocol not supported with SSL "
+              "encryption in place (QUIC?)");
+        return CURLE_UNSUPPORTED_PROTOCOL;
+      }
+      result = Curl_cf_haproxy_insert_after(cf, data);
+      if(result)
+        return result;
+    }
+#endif /* !CURL_DISABLE_PROXY */
+    ctx->state = CF_SETUP_CNNCT_HAPROXY;
+    if(!cf->next || !cf->next->connected)
+      goto connect_sub_chain;
+  }
+
+  if(ctx->state < CF_SETUP_CNNCT_SSL) {
+#ifdef USE_SSL
+    if((ctx->ssl_mode == CURL_CF_SSL_ENABLE ||
+        (ctx->ssl_mode != CURL_CF_SSL_DISABLE &&
+         cf->conn->scheme->flags & PROTOPT_SSL)) &&  /* we want SSL */
+       !Curl_conn_is_ssl(cf->conn, cf->sockindex)) { /* it is missing */
+      result = Curl_cf_ssl_insert_after(cf, data);
+      if(result)
+        return result;
+    }
+#endif /* USE_SSL */
+    ctx->state = CF_SETUP_CNNCT_SSL;
+    if(!cf->next || !cf->next->connected)
+      goto connect_sub_chain;
+  }
+
+  ctx->state = CF_SETUP_DONE;
+  cf->connected = TRUE;
+  *done = TRUE;
+  return CURLE_OK;
 }
 ```
