@@ -3260,38 +3260,52 @@ static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf, struct Curl_easy *dat
   // HTTPS RRのALPN リストから最初のプロトコルを取得
   alpn1 = cf_hc_get_httpsrr_alpn(cf, data, ALPN_none); // => cf_hc_get_httpsrr_alpn (lib/cf-https-connect.c)
 
+  // ALPN_none = まだALPNが決定していない
+
   if (alpn1 == ALPN_none) {
     /* preference is configured and allowed, can we use it? */
     VERBOSE(source = "preferred version");
+    // data->state.http_neg.preferred (--http3-prior-knowledge や --http2 などで明示的に指定したバージョン) が
+    // allowedに含まれている場合はそれを利用する
     alpn1 = cf_hc_get_pref_alpn(cf, data, ALPN_none);
   }
 
   if (alpn1 == ALPN_none) {
     VERBOSE(source = "wanted versions");
-    alpn1 = cf_hc_get_first_alpn(cf, data,data->state.http_neg.wanted,ALPN_none);
+    // wantedの中から h3 > h2 > h1 の順で最初に使えるものを利用する
+    alpn1 = cf_hc_get_first_alpn(cf, data,data->state.http_neg.wanted, ALPN_none);
   }
 
   if (alpn1 == ALPN_none) {
     VERBOSE(source = "allowed versions");
+    // allowedの中から h3 > h2 > h1 の順で最初に使えるものを利用する
     alpn1 = cf_hc_get_first_alpn(cf, data, data->state.http_neg.allowed, ALPN_none);
   }
 
-  if(alpn1 == ALPN_none) {
+  // ALPNが決定しなかった場合はエラー
+  if (alpn1 == ALPN_none) {
     /* None of the wanted/allowed HTTP versions could be chosen */
-    if(ctx->check_h3_result) {
+    if (ctx->check_h3_result) {
       CURL_TRC_CF(data, cf, "unable to use HTTP/3");
       return ctx->check_h3_result;
     }
+
     CURL_TRC_CF(data, cf, "unable to select HTTP version");
     return CURLE_FAILED_INIT;
   }
 
+  // 決定したALPNをballers[0]にセット
   cf_hc_baller_assign(&ctx->ballers[0], alpn1, ctx->def_transport);
-  ctx->baller_count = 1;
-  CURL_TRC_CF(data, cf, "1st attempt uses %s from %s",
-              ctx->ballers[0].name, source);
+  // => cf_hc_baller_assign (lib/cf-https-connect.c)
+  // alpn1 == ALPN_h3の場合、transportをTRNSPRT_QUICに上書きする
+  // それ以外の場合、ctx->def_transport (TRNSPRT_TCP) をそのまま利用する
 
-  switch(alpn1) {
+  ctx->baller_count = 1;
+  CURL_TRC_CF(data, cf, "1st attempt uses %s from %s", ctx->ballers[0].name, source);
+
+  // baller1がh1 に決まった場合、wantedからCURL_HTTP_V2xを除外する
+  // (TLSハンドシェイク時のALPN拡張にh2が含まれないようにするため)
+  switch (alpn1) {
   case ALPN_h1:
     /* We really want h1, switch off h2 to make it disappear in ALPN */
     data->state.http_neg.wanted &= (uint8_t)~CURL_HTTP_V2x;
