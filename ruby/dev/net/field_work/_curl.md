@@ -3131,38 +3131,64 @@ static CURLcode cf_hc_connect(struct Curl_cfilter *cf, struct Curl_easy *data, b
     FALLTHROUGH();
 
   case CF_HC_CONNECT: // WIP
-    if(!ctx->ballers_complete)
-      cf_hc_set_baller2(cf, data);
+    // HTTPS RRの応答待ちでballers[1]が保留されていた場合、
+    // 呼び出しのたびにcf_hc_set_baller2を試みる (ballers_completeになると以降はスキップ)
+    if (!ctx->ballers_complete) cf_hc_set_baller2(cf, data);
 
-    if(cf_hc_baller_is_connecting(&ctx->ballers[0])) {
+    // ballers[0]が起動済みかつエラーがなければ接続を1ステップ進める
+    if (cf_hc_baller_is_connecting(&ctx->ballers[0])) {
       result = cf_hc_baller_connect(&ctx->ballers[0], cf, data, done);
-      if(!result && *done) {
-        result = baller_connected(cf, data, &ctx->ballers[0]);
+      // => cf_hc_baller_connect (lib/cf-https-connect.c)
+
+      // cf_hc_baller_connect (lib/cf-https-connect.c)
+      //
+      // static CURLcode cf_hc_baller_connect(
+      //   struct cf_hc_baller *b,
+      //   struct Curl_cfilter *cf,
+      //   struct Curl_easy *data,
+      //   bool *done
+      // ) {
+      //   struct Curl_cfilter *save = cf->next;
+      //   cf->next = b->cf;
+      //   b->result = Curl_conn_cf_connect(cf->next, data, done); // 下位フィルタのdo_connectを呼ぶ
+      //   b->cf = cf->next; /* it might mutate */
+      //   cf->next = save;
+      //   return b->result;
+      // }
+
+      if (!result && *done) {
+        result = baller_connected(cf, data, &ctx->ballers[0]); // => baller_connected (lib/cf-https-connect.c)
         goto out;
       }
     }
 
-    if(time_to_start_baller2(cf, data)) {
-      cf_hc_baller_init(&ctx->ballers[1], cf, data);
-    }
+    // - ballers[0]が失敗した
+    // - hard_eyeballs_timeout_msが経過した
+    // - soft_eyeballs_timeout_msが経過した
+    // いずれかの場合cf_hc_baller_initを呼び、ballers[1]の"SETUP"フィルタを追加
+    if (time_to_start_baller2(cf, data)) cf_hc_baller_init(&ctx->ballers[1], cf, data);
+    // => cf_hc_baller_init (lib/cf-https-connect.c)
 
-    if(cf_hc_baller_is_connecting(&ctx->ballers[1])) {
+    // ballers[1]が起動済みかつエラーがなければ接続を1ステップ進める
+    if (cf_hc_baller_is_connecting(&ctx->ballers[1])) {
       result = cf_hc_baller_connect(&ctx->ballers[1], cf, data, done);
-      if(!result && *done) {
-        result = baller_connected(cf, data, &ctx->ballers[1]);
+      // => cf_hc_baller_connect (lib/cf-https-connect.c)
+
+      if (!result && *done) {
+        result = baller_connected(cf, data, &ctx->ballers[1]); // => baller_connected (lib/cf-https-connect.c)
         goto out;
       }
     }
 
-    if(ctx->ballers[0].result &&
-       (ctx->ballers[1].result ||
-        (ctx->ballers_complete && (ctx->baller_count < 2)))) {
+    // すべてのballerに失敗した場合
+    if (ctx->ballers[0].result && (ctx->ballers[1].result || (ctx->ballers_complete && (ctx->baller_count < 2)))) {
       /* all have failed. we give up */
       CURL_TRC_CF(data, cf, "connect, all attempts failed");
       ctx->result = result = ctx->ballers[0].result;
       ctx->state = CF_HC_FAILURE;
       goto out;
     }
+
     result = CURLE_OK;
     *done = FALSE;
     break;
@@ -3475,6 +3501,64 @@ static void cf_hc_set_baller2(struct Curl_cfilter *cf, struct Curl_easy *data)
 }
 ```
 
+#### `baller_connected`
+
+```c
+// lib/cf-https-connect.c
+
+static CURLcode baller_connected(struct Curl_cfilter *cf, struct Curl_easy *data, struct cf_hc_baller *winner)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+
+  /* Make the winner's connection filter out own sub-filter, check, move,
+   * close all remaining. */
+  if (cf->next) {
+    DEBUGASSERT(0);
+    return CURLE_FAILED_INIT;
+  }
+  if (!winner->cf) {
+    DEBUGASSERT(0);
+    return CURLE_FAILED_INIT;
+  }
+
+  // winner->cfに退避されていた勝者のフィルタチェーンをcf->nextにセット
+  cf->next = winner->cf;
+  winner->cf = NULL;
+  // "HTTPS-CONNECT"フィルタの状態を成功にする
+  ctx->state = CF_HC_SUCCESS;
+  // このコンテキストを接続済みにする
+  cf->connected = TRUE;
+
+  // baller_count分のballerを破棄
+  cf_hc_ctx_close(data, ctx);
+  /* ballers may have failf()'d, the winner resets it, so our errorbuf is clean again. */
+  // CURLOPT_ERRORBUFFERに書き込まれた文字列をクリア
+  Curl_reset_fail(data);
+
+  #ifdef USE_NGHTTP2
+  {
+    /* For a negotiated HTTP/2 connection insert the h2 filter. */
+    // cf->nextからTLS ALPNネゴシエーションの結果を取得
+    const char *alpn = Curl_conn_cf_get_alpn_negotiated(cf->next, data);
+
+    if (alpn && !strcmp("h2", alpn)) { // "h2"が返った場合
+      CURLcode result = Curl_http2_switch_at(cf, data); // => Curl_http2_switch_at (lib/http2.c)
+      // - "HTTP/2"フィルタをcf->nextの直前に追加
+      // - "HTTP/2"フィルタ直下に"SSL"フィルタ等があれば接続処理を開始
+      // ("HTTPS-CONNECT" > "HTTP/2" > "SSL" > "HAPPY-EYEBALLS" > "TCP")
+
+      if (result) {
+        ctx->state = CF_HC_FAILURE;
+        ctx->result = result;
+        return result;
+      }
+    }
+  }
+  #endif
+  return CURLE_OK;
+}
+```
+
 #### `cf_setup_connect`
 
 ```c
@@ -3494,7 +3578,7 @@ static CURLcode cf_setup_connect(struct Curl_cfilter *cf, struct Curl_easy *data
   /* connect current sub-chain */
 connect_sub_chain:
   if (cf->next && !cf->next->connected) { // 下位フィルタがある場合 (初回は cf->next = NULL なのでスキップ)
-    // 下位フィルタの接続を進める
+    // 下位フィルタのdo_connectを呼ぶ
     result = Curl_conn_cf_connect(cf->next, data, done); // => Curl_conn_cf_connect (lib/cfilters.c)
     if (result || !*done) return result;
   }
