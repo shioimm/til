@@ -1327,6 +1327,29 @@ static CURLMcode multi_runsingle(
       break;
 
     case MSTATE_CONNECT: // フィルタチェーンを登録し、接続プールの確認やstruct connectdataの作成を行うための状態
+
+      // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
+      // Curl_conn_setupの呼び出しによってプロトコル別にフィルタ (Curl_cftype) を追加する
+      //
+      //   /* A connection filter type, e.g. specific implementation. */
+      //   struct Curl_cftype {
+      //     const char *name;                        // 名前
+      //     int flags;                               // フラグ
+      //     int log_level;                           // ログレベル
+      //     Curl_cft_destroy_this *destroy;          // フィルタのリソースを解放する関数
+      //     Curl_cft_connect *do_connect;            // 接続を確立する関数
+      //     Curl_cft_close *do_close;                // 接続をクローズする関数
+      //     Curl_cft_shutdown *do_shutdown;          // 接続をシャットダウンする関数
+      //     Curl_cft_adjust_pollset *adjust_pollset; // 転送のポーリングセットを調整する関数
+      //     Curl_cft_data_pending *has_data_pending; // 接続に未処理データがあるか
+      //     Curl_cft_send *do_send;                  // データを送信する関数
+      //     Curl_cft_recv *do_recv;                  // データを受信する関数
+      //     Curl_cft_cntrl *cntrl;                   // イベント/制御
+      //     Curl_cft_conn_is_alive *is_alive;        // 接続が有効か
+      //     Curl_cft_conn_keep_alive *keep_alive;    // 接続を維持するか
+      //     Curl_cft_query *query;                   // フィルタチェーンに問い合わせる関数
+      //   };
+
       mresult = multistate_connect(multi, data, &result); // => multistate_connect (lib/multi.c)
       // Curl_connectを呼び出す
       //   url_find_or_create_conn:
@@ -1336,6 +1359,7 @@ static CURLMcode multi_runsingle(
       //       - なければ接続上限チェック、struct connectdataにデータをセット
       //   Curl_conn_setup:
       //     - 使用するフィルタをconn->cfilterに登録
+      //       - DNS > HTTPS-CONNECT もしくは DNS > SETUP
       // 遷移先:
       //   - MSTATE_PENDING (返り値: CURLM_OK)
       //   - MSTATE_PROTOCONNECT (返り値: CURLM_CALL_MULTI_PERFORM)
@@ -1477,28 +1501,6 @@ CURLcode Curl_connect(struct Curl_easy *data, bool *pconnected)
     Curl_pgrsTime(data, TIMER_NAMELOOKUP);
     *pconnected = TRUE;
   } else { // 新たにDNS解決 + TCP接続の開始が必要
-    // libcurlはプロトコルスタックに対応するレイヤードアーキテクチャを採用している
-    // Curl_conn_setupの呼び出しによってプロトコル別にフィルタ (Curl_cftype) を追加する
-    //
-    //   /* A connection filter type, e.g. specific implementation. */
-    //   struct Curl_cftype {
-    //     const char *name;                        // 名前
-    //     int flags;                               // フラグ
-    //     int log_level;                           // ログレベル
-    //     Curl_cft_destroy_this *destroy;          // フィルタのリソースを解放する関数
-    //     Curl_cft_connect *do_connect;            // 接続を確立する関数
-    //     Curl_cft_close *do_close;                // 接続をクローズする関数
-    //     Curl_cft_shutdown *do_shutdown;          // 接続をシャットダウンする関数
-    //     Curl_cft_adjust_pollset *adjust_pollset; // 転送のポーリングセットを調整する関数
-    //     Curl_cft_data_pending *has_data_pending; // 接続に未処理データがあるか
-    //     Curl_cft_send *do_send;                  // データを送信する関数
-    //     Curl_cft_recv *do_recv;                  // データを受信する関数
-    //     Curl_cft_cntrl *cntrl;                   // イベント/制御
-    //     Curl_cft_conn_is_alive *is_alive;        // 接続が有効か
-    //     Curl_cft_conn_keep_alive *keep_alive;    // 接続を維持するか
-    //     Curl_cft_query *query;                   // フィルタチェーンに問い合わせる関数
-    //   };
-
     result = Curl_conn_setup(data, conn, FIRSTSOCKET, CURL_CF_SSL_DEFAULT); // => Curl_conn_setup (lib/connect.c)
 
     if (!result) result = Curl_headers_init(data);
@@ -1564,6 +1566,11 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
     // Curl_cft_http_connectを呼び出しHTTPS-CONNECT (接続時にプロトコルネゴシエーションを行う) フィルタを追加
     result = Curl_cf_https_setup(data, conn, sockindex); // => Curl_cf_https_setup (lib/cf-https-connect.c)
     // HTTPS-CONNECTフィルタはHTTP/1.1 / HTTP/2 / HTTP/3のうちどれを利用するかを決定する
+
+    // Curl_cf_https_setupは内部でcf_hc_add -> cf_hc_createを呼んでおり、
+    // cf_hc_create内でstruct cf_hc_ctx *ctx = curlx_calloc(1, sizeof(*ctx));で
+    // コンテキストがCF_HC_RESOLVに初期化される
+
     if (result) goto out;
   }
   #endif /* !CURL_DISABLE_HTTP */
@@ -1617,7 +1624,63 @@ out:
 }
 ```
 
-### `multistate_connecting`
+#### `cf_setup_add`
+
+```c
+// lib/connect.c
+
+static CURLcode cf_setup_add(
+  struct Curl_easy *data,
+  struct connectdata *conn,
+  int sockindex,
+  uint8_t transport,
+  int ssl_mode
+) {
+  struct Curl_cfilter *cf;
+  CURLcode result = CURLE_OK;
+
+  DEBUGASSERT(data);
+  result = cf_setup_create(&cf, data, transport, ssl_mode); // => cf_setup_create (lib/connect.c)
+  if (result) goto out;
+  Curl_conn_cf_add(data, conn, sockindex, cf);
+out:
+  return result;
+}
+
+static CURLcode cf_setup_create(
+ struct Curl_cfilter **pcf,
+ struct Curl_easy *data,
+ uint8_t transport,
+ int ssl_mode
+) {
+  struct Curl_cfilter *cf = NULL;
+  struct cf_setup_ctx *ctx;
+  CURLcode result = CURLE_OK;
+
+  (void)data;
+  ctx = curlx_calloc(1, sizeof(*ctx));
+
+  if (!ctx) {
+    result = CURLE_OUT_OF_MEMORY;
+    goto out;
+  }
+
+  ctx->state = CF_SETUP_INIT; // コンテキストの初期状態
+  ctx->ssl_mode = ssl_mode;
+  ctx->transport = transport;
+
+  result = Curl_cf_create(&cf, &Curl_cft_setup, ctx);
+  if (result) goto out;
+  ctx = NULL;
+
+out:
+  *pcf = result ? NULL : cf;
+  if (ctx) curlx_free(ctx);
+  return result;
+}
+```
+
+#### `multistate_connecting`
 
 ```c
 // lib/multi.c
@@ -1845,15 +1908,18 @@ static CURLcode cf_dns_connect(struct Curl_cfilter *cf, struct Curl_easy *data, 
   // 下位フィルタのdo_connect呼び出しを行う場合
   if (cf->next && !cf->next->connected) {
     bool sub_done;
-    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done); // => Curl_conn_cf_connect (lib/cf-dns.c)
+    CURLcode result = Curl_conn_cf_connect(cf->next, data, &sub_done); // => Curl_conn_cf_connect (lib/cfilters.c)
 
-    // Curl_conn_cf_connect (lib/cf-dns.c)
+    // Curl_conn_cf_connect (lib/lib/cfilters.c)
     //
     // CURLcode Curl_conn_cf_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
     // {
     //   if (cf) return cf->cft->do_connect(cf, data, done);
     //   return CURLE_FAILED_INIT;
     // }
+
+    // "HTTPS-CONNECTの場合"のdo_connect = cf_hc_connect (lib/cf-https-connect.c)
+    // "SETUP"の場合のdo_connect = cf_setup_connect (lib/connect.c)
 
     if (result || !sub_done) return result;
     DEBUGASSERT(sub_done);
@@ -2980,5 +3046,701 @@ out:
   // 全クエリが完了して得た最終的な結果をセット
   if (result != CURLE_AGAIN) ares->result = result;
   return result;
+}
+```
+
+### `cf_hc_connect`
+
+```c
+// lib/cf-https-connect.c
+
+static CURLcode cf_hc_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+  CURLcode result = CURLE_OK;
+
+  // 接続済みの場合
+  if (cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  *done = FALSE;
+
+  // ctx->httpsrr_resolved = HTTPS RRのDNSクエリ結果を取得しているかどうか
+  //   - 名前解決が完了してエントリがある
+  //   - or HTTPS RRの応答を受信
+  //   - or HTTPS RRクエリを送信していない
+  if (!ctx->httpsrr_resolved) {
+    // 結果をctx->httpsrr_resolvedにキャッシュ
+    ctx->httpsrr_resolved = Curl_conn_dns_resolved_https(data, cf->sockindex);
+    // => Curl_conn_dns_resolved_https (lib/cf-dns.c)
+
+    #ifdef DEBUGBUILD
+    // DEBUGBUILD かつ環境変数CURL_DBG_AWAIT_HTTPSRRがある場合
+    if (!ctx->httpsrr_resolved && getenv("CURL_DBG_AWAIT_HTTPSRR")) {
+      CURL_TRC_CF(data, cf, "awaiting HTTPS-RR");
+      return CURLE_OK;
+    }
+    #endif
+  }
+
+  switch (ctx->state) {
+  case CF_HC_RESOLV: // コンテキスト struct Curl_cfilter の初期状態
+    ctx->state = CF_HC_INIT;
+    FALLTHROUGH();
+
+  case CF_HC_INIT: // HTTPバージョンごとに接続を試みるballerのセットアップ
+    DEBUGASSERT(!cf->next); // cf->nextはこの時点では必ずNULL
+    CURL_TRC_CF(data, cf, "connect, init");
+
+    // 接続を試みるHTTPバージョンを取得し、1つめのballerとしてctx->ballers[0]にセット
+    // 優先順位:
+    //   1. HTTPS RRに準拠
+    //   2. 優先バージョンの設定に準拠 (--http3-prior-knowledge など)
+    //   3. data->state.http_neg.wanted
+    //   4. data->state.http_neg.allowed
+    result = cf_hc_set_baller1(cf, data); // => cf_hc_set_baller1 (lib/cf-https-connect.c)
+    // ballers[0].alpn_idにALPN_h3 / ALPN_h2 / ALPN_h1のいずれか
+    // ballers[0].transportにTRNSPRT_QUIC / TRNSPRT_TCPのいずれかがセットされる
+
+    if (result) {
+      ctx->result = result;
+      ctx->state = CF_HC_FAILURE;
+      goto out;
+    }
+
+    // 接続を試みるHTTPバージョンを取得し、2つめのballerとしてctx->ballers[1]にセット
+    // 優先順位:
+    //   1. HTTPS RRに準拠
+    //   2. 優先バージョンの設定に準拠 (--http3-prior-knowledge など)
+    //   3. data->state.http_neg.wanted
+    //   httpsrr_resolved がfalseの場合HTTPS RRの応答を待機
+    cf_hc_set_baller2(cf, data); // => cf_hc_set_baller2 (lib/cf-https-connect.c)
+    ctx->started = *Curl_pgrs_now(data);
+
+    // 接続開始時刻を記録し、ballers[0]のSETUP フィルタを追加
+    cf_hc_baller_init(&ctx->ballers[0], cf, data); // => cf_hc_baller_init (lib/cf-https-connect.c)
+
+    if ((ctx->baller_count > 1) || !ctx->ballers_complete) {
+      // ballers[1]が存在する、またはまだ候補が確定していない場合にタイマを仕掛ける
+      Curl_expire(data, ctx->soft_eyeballs_timeout_ms, EXPIRE_ALPN_EYEBALLS);
+    }
+
+    ctx->state = CF_HC_CONNECT; // CF_HC_CONNECTに進む
+    FALLTHROUGH();
+
+  case CF_HC_CONNECT: // WIP
+    // HTTPS RRの応答待ちでballers[1]が保留されていた場合、
+    // 呼び出しのたびにcf_hc_set_baller2を試みる (ballers_completeになると以降はスキップ)
+    if (!ctx->ballers_complete) cf_hc_set_baller2(cf, data);
+
+    // ballers[0]が起動済みかつエラーがなければ接続を1ステップ進める
+    if (cf_hc_baller_is_connecting(&ctx->ballers[0])) {
+      result = cf_hc_baller_connect(&ctx->ballers[0], cf, data, done);
+      // => cf_hc_baller_connect (lib/cf-https-connect.c)
+
+      // cf_hc_baller_connect (lib/cf-https-connect.c)
+      //
+      // static CURLcode cf_hc_baller_connect(
+      //   struct cf_hc_baller *b,
+      //   struct Curl_cfilter *cf,
+      //   struct Curl_easy *data,
+      //   bool *done
+      // ) {
+      //   struct Curl_cfilter *save = cf->next;
+      //   cf->next = b->cf;
+      //   b->result = Curl_conn_cf_connect(cf->next, data, done); // 下位フィルタのdo_connectを呼ぶ
+      //   b->cf = cf->next; /* it might mutate */
+      //   cf->next = save;
+      //   return b->result;
+      // }
+
+      if (!result && *done) {
+        result = baller_connected(cf, data, &ctx->ballers[0]); // => baller_connected (lib/cf-https-connect.c)
+        goto out;
+      }
+    }
+
+    // - ballers[0]が失敗した
+    // - hard_eyeballs_timeout_msが経過した
+    // - soft_eyeballs_timeout_msが経過した
+    // いずれかの場合cf_hc_baller_initを呼び、ballers[1]の"SETUP"フィルタを追加
+    if (time_to_start_baller2(cf, data)) cf_hc_baller_init(&ctx->ballers[1], cf, data);
+    // => cf_hc_baller_init (lib/cf-https-connect.c)
+
+    // ballers[1]が起動済みかつエラーがなければ接続を1ステップ進める
+    if (cf_hc_baller_is_connecting(&ctx->ballers[1])) {
+      result = cf_hc_baller_connect(&ctx->ballers[1], cf, data, done);
+      // => cf_hc_baller_connect (lib/cf-https-connect.c)
+
+      if (!result && *done) {
+        result = baller_connected(cf, data, &ctx->ballers[1]); // => baller_connected (lib/cf-https-connect.c)
+        goto out;
+      }
+    }
+
+    // すべてのballerに失敗した場合
+    if (ctx->ballers[0].result && (ctx->ballers[1].result || (ctx->ballers_complete && (ctx->baller_count < 2)))) {
+      /* all have failed. we give up */
+      CURL_TRC_CF(data, cf, "connect, all attempts failed");
+      ctx->result = result = ctx->ballers[0].result;
+      ctx->state = CF_HC_FAILURE;
+      goto out;
+    }
+
+    result = CURLE_OK;
+    *done = FALSE;
+    break;
+
+  case CF_HC_FAILURE:
+    result = ctx->result;
+    cf->connected = FALSE;
+    *done = FALSE;
+    break;
+
+  case CF_HC_SUCCESS:
+    result = CURLE_OK;
+    cf->connected = TRUE;
+    *done = TRUE;
+    break;
+  }
+
+out:
+  CURL_TRC_CF(data, cf, "connect -> %d, done=%d", result, *done);
+  return result;
+}
+```
+
+#### `Curl_conn_dns_resolved_https`
+
+```c
+// lib/cf-dns.c
+
+bool Curl_conn_dns_resolved_https(struct Curl_easy *data, int sockindex)
+{
+  struct Curl_cfilter *cf = data->conn->cfilter[sockindex];
+
+  for(; cf; cf = cf->next) {
+    if (cf->cft == &Curl_cft_dns) {
+      struct cf_dns_ctx *ctx = cf->ctx;
+
+      if (ctx->dns) { // DNS解決済みでエントリあり
+        return TRUE;
+      } else {
+        // 非同期クエリの状態を確認する
+        return Curl_resolv_knows_https(data, ctx->resolv_id); // => Curl_resolv_knows_https (lib/hostip.c)
+      }
+    }
+  }
+  return FALSE;
+}
+```
+
+#### `Curl_resolv_knows_https`
+
+```c
+// lib/hostip.c
+
+bool Curl_resolv_knows_https(struct Curl_easy *data, uint32_t resolv_id)
+{
+  struct Curl_resolv_async *async = Curl_async_get(data, resolv_id);
+  if (!async) return TRUE;
+  return Curl_async_knows_https(data, async);
+  // => Curl_async_knows_https (lib/asyn-ares.c / lib/asyn-thrdd.c)
+}
+```
+
+#### `Curl_async_knows_https`
+
+```c
+// lib/asyn-ares.c
+
+bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *async)
+{
+  (void)data;
+  if (async->dns_queries & CURL_DNSQ_HTTPS) {
+    return (
+      (async->dns_responses & CURL_DNSQ_HTTPS) || // HTTPS RRの応答が届いた
+      !async->queries_ongoing // すべてのクエリが終わった
+    );
+  }
+  return TRUE; /* we know it will never come */
+}
+```
+
+#### `cf_hc_set_baller1`
+
+```c
+// lib/cf-https-connect.c
+
+static CURLcode cf_hc_set_baller1(struct Curl_cfilter *cf, struct Curl_easy *data)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+  enum alpnid alpn1 = ALPN_none;
+  VERBOSE(const char *source = "HTTPS-RR");
+
+  DEBUGASSERT(cf->conn->bits.tls_enable_alpn);
+
+  // HTTPS RRのALPN リストから最初のプロトコルを取得
+  alpn1 = cf_hc_get_httpsrr_alpn(cf, data, ALPN_none); // => cf_hc_get_httpsrr_alpn (lib/cf-https-connect.c)
+
+  // ALPN_none = まだALPNが決定していない
+
+  if (alpn1 == ALPN_none) {
+    /* preference is configured and allowed, can we use it? */
+    VERBOSE(source = "preferred version");
+    // data->state.http_neg.preferred (--http3-prior-knowledge や --http2 などで明示的に指定したバージョン) が
+    // allowedに含まれている場合はそれを利用する
+    alpn1 = cf_hc_get_pref_alpn(cf, data, ALPN_none);
+  }
+
+  if (alpn1 == ALPN_none) {
+    VERBOSE(source = "wanted versions");
+    // wantedの中から h3 > h2 > h1 の順で最初に使えるものを利用する
+    alpn1 = cf_hc_get_first_alpn(cf, data,data->state.http_neg.wanted, ALPN_none);
+  }
+
+  if (alpn1 == ALPN_none) {
+    VERBOSE(source = "allowed versions");
+    // allowedの中から h3 > h2 > h1 の順で最初に使えるものを利用する
+    alpn1 = cf_hc_get_first_alpn(cf, data, data->state.http_neg.allowed, ALPN_none);
+  }
+
+  // ALPNが決定しなかった場合はエラー
+  if (alpn1 == ALPN_none) {
+    /* None of the wanted/allowed HTTP versions could be chosen */
+    if (ctx->check_h3_result) {
+      CURL_TRC_CF(data, cf, "unable to use HTTP/3");
+      return ctx->check_h3_result;
+    }
+
+    CURL_TRC_CF(data, cf, "unable to select HTTP version");
+    return CURLE_FAILED_INIT;
+  }
+
+  // 決定したALPNをballers[0]にセット
+  cf_hc_baller_assign(&ctx->ballers[0], alpn1, ctx->def_transport);
+  // => cf_hc_baller_assign (lib/cf-https-connect.c)
+  // alpn1 == ALPN_h3の場合、transportをTRNSPRT_QUICに上書きする
+  // それ以外の場合、ctx->def_transport (TRNSPRT_TCP) をそのまま利用する
+
+  ctx->baller_count = 1;
+  CURL_TRC_CF(data, cf, "1st attempt uses %s from %s", ctx->ballers[0].name, source);
+
+  // baller1がh1 に決まった場合、wantedからCURL_HTTP_V2xを除外する
+  // (TLSハンドシェイク時のALPN拡張にh2が含まれないようにするため)
+  switch (alpn1) {
+  case ALPN_h1:
+    /* We really want h1, switch off h2 to make it disappear in ALPN */
+    data->state.http_neg.wanted &= (uint8_t)~CURL_HTTP_V2x;
+    break;
+  default:
+    break;
+  }
+
+  return CURLE_OK;
+}
+```
+
+#### `cf_hc_get_httpsrr_alpn`
+
+```c
+// lib/cf-https-connect.c
+
+static enum alpnid cf_hc_get_httpsrr_alpn(
+  struct Curl_cfilter *cf,
+  struct Curl_easy *data,
+  enum alpnid not_this_one
+) {
+  #ifdef USE_HTTPSRR
+  /* Is there an HTTPSRR use its ALPNs here.
+   * We are here after having selected a connection to a host+port and
+   * can no longer change that. Any HTTPSRR advice for other hosts and ports
+   * we need to ignore. */
+  const struct Curl_https_rrinfo *rr;
+  size_t i;
+
+  /* Do we have HTTPS-RR information? */
+  // フィルタチェーンのDNSフィルタを取得
+  // 名前解決済みなら ctx->dns->hinfo
+  // 非同期クエリの継続中なら Curl_resolv_get_https (lib/hostip.c) でHTTPS RR情報を取得
+  rr = Curl_conn_dns_get_https(data, cf->sockindex); // => Curl_conn_dns_get_https (lib/cf-dns.c)
+
+  // Curl_conn_dns_get_https (lib/cf-dns.c)
+  //
+  //   const struct Curl_https_rrinfo *Curl_conn_dns_get_https(struct Curl_easy *data, int sockindex)
+  //   {
+  //     struct Curl_cfilter *cf = data->conn->cfilter[sockindex];
+  //     for (; cf; cf = cf->next) {
+  //       if (cf->cft == &Curl_cft_dns) {
+  //         struct cf_dns_ctx *ctx = cf->ctx;
+  //         if (ctx->dns) {
+  //           return ctx->dns->hinfo;
+  //         } else {
+  //           return Curl_resolv_get_https(data, ctx->resolv_id); // => Curl_resolv_get_https (lib/hostip.c)
+  //         }
+  //       }
+  //     }
+  //     return NULL;
+  //   }
+
+  // Curl_resolv_get_https (lib/hostip.c)
+  //
+  //   const struct Curl_https_rrinfo *
+  //   Curl_resolv_get_https(struct Curl_easy *data, uint32_t resolv_id)
+  //   {
+  //     struct Curl_resolv_async *async = Curl_async_get(data, resolv_id);
+  //     if (!async) return NULL;
+  //     return Curl_async_get_https(data, async); // => Curl_async_get_https (lib/asyn-ares.c / lib/asyn-thrdd.c)
+  //   }
+
+  // Curl_async_get_https (lib/asyn-ares.c)
+  //
+  //   const struct Curl_https_rrinfo *Curl_async_get_https(
+  //     struct Curl_easy *data,
+  //     struct Curl_resolv_async *async
+  //   ) {
+  //     if (Curl_async_knows_https(data, async)) return &async->ares.hinfo;
+  //     // => Curl_async_knows_https (lib/asyn-ares.c)
+  //     return NULL;
+  //   }
+
+  // Curl_async_knows_https (lib/asyn-ares.c)
+  //
+  //   bool Curl_async_knows_https(struct Curl_easy *data, struct Curl_resolv_async *async)
+  //   {
+  //     (void)data;
+  //     if (async->dns_queries & CURL_DNSQ_HTTPS) {
+  //       return ((async->dns_responses & CURL_DNSQ_HTTPS) || !async->queries_ongoing);
+  //     }
+  //     return TRUE; /* we know it will never come */
+  //   }
+
+  /* We do not support `rr->no_def_alpn`. */
+  // no_def_alpnがtrueでもfalseとして扱う (サポート外のため)
+  if (Curl_httpsrr_applicable(data, rr) && !rr->no_def_alpn) {
+    // HTTPS RRのALPNリストを先頭から順に走査
+    for (i = 0; i < CURL_ARRAYSIZE(rr->alpns); ++i) {
+      enum alpnid alpn_rr = (enum alpnid)rr->alpns[i];
+
+      if (alpn_rr == not_this_one) continue; /* don't want this one */
+
+      switch (alpn_rr) {
+      case ALPN_h3:
+        // - allowedにHTTP/3が含まれる
+        // - Unixドメインソケットでない
+        // - HTTPS URLである
+        // - SOCKSプロキシ経由でない
+        // - HTTPプロキシのCONNECTトンネル経由でない
+        // を全て満たす場合はALPN_h3
+        if ((data->state.http_neg.allowed & CURL_HTTP_V3x) && cf_hc_may_h3(cf, data)) return alpn_rr;
+        break;
+      case ALPN_h2:
+        // allowedにHTTP/2が含まれる場合はALPN_h2
+        if (data->state.http_neg.allowed & CURL_HTTP_V2x) return alpn_rr;
+        break;
+      case ALPN_h1:
+        // allowedにHTTP/1が含まれる場合はALPN_h1
+        if (data->state.http_neg.allowed & CURL_HTTP_V1x) return alpn_rr;
+        break;
+      default: /* ignore */
+        break;
+      }
+    }
+  }
+  #else
+  (void)cf;
+  (void)data;
+  (void)not_this_one;
+  #endif
+
+  // みつからなければALPN_none
+  return ALPN_none;
+}
+```
+
+#### `cf_hc_set_baller2`
+
+```c
+// lib/cf-https-connect.c
+
+static void cf_hc_set_baller2(struct Curl_cfilter *cf, struct Curl_easy *data)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+  enum alpnid alpn2 = ALPN_none, alpn1 = ctx->ballers[0].alpn_id;
+  VERBOSE(const char *source = "HTTPS-RR");
+
+  if (ctx->ballers_complete) return; /* already done */
+  if (!ctx->httpsrr_resolved) return; /* HTTPS-RR pending */
+
+  alpn2 = cf_hc_get_httpsrr_alpn(cf, data, alpn1); // => cf_hc_get_httpsrr_alpn (lib/cf-https-connect.c)
+
+  if (alpn2 == ALPN_none) {
+    /* preference is configured and allowed, can we use it? */
+    // data->state.http_neg.preferred (--http3-prior-knowledge や --http2 などで明示的に指定したバージョン) が
+    // allowedに含まれている場合はそれを利用する
+    VERBOSE(source = "preferred version");
+    alpn2 = cf_hc_get_pref_alpn(cf, data, alpn1);
+  }
+
+  if (alpn2 == ALPN_none) {
+    VERBOSE(source = "wanted versions");
+    // wantedの中から h3 > h2 > h1 の順で最初に使えるものを利用する
+    alpn2 = cf_hc_get_first_alpn(cf, data, data->state.http_neg.wanted, alpn1);
+  }
+
+  if(alpn2 != ALPN_none) {
+    // baller2のALPNが決定したらballers[1]にセット
+    cf_hc_baller_assign(&ctx->ballers[1], alpn2, ctx->def_transport);
+    ctx->baller_count = 2;
+    CURL_TRC_CF(data, cf, "2nd attempt uses %s from %s", ctx->ballers[1].name, source);
+  }
+
+  ctx->ballers_complete = TRUE;
+}
+```
+
+#### `baller_connected`
+
+```c
+// lib/cf-https-connect.c
+
+static CURLcode baller_connected(struct Curl_cfilter *cf, struct Curl_easy *data, struct cf_hc_baller *winner)
+{
+  struct cf_hc_ctx *ctx = cf->ctx;
+
+  /* Make the winner's connection filter out own sub-filter, check, move,
+   * close all remaining. */
+  if (cf->next) {
+    DEBUGASSERT(0);
+    return CURLE_FAILED_INIT;
+  }
+  if (!winner->cf) {
+    DEBUGASSERT(0);
+    return CURLE_FAILED_INIT;
+  }
+
+  // winner->cfに退避されていた勝者のフィルタチェーンをcf->nextにセット
+  cf->next = winner->cf;
+  winner->cf = NULL;
+  // "HTTPS-CONNECT"フィルタの状態を成功にする
+  ctx->state = CF_HC_SUCCESS;
+  // このコンテキストを接続済みにする
+  cf->connected = TRUE;
+
+  // baller_count分のballerを破棄
+  cf_hc_ctx_close(data, ctx);
+  /* ballers may have failf()'d, the winner resets it, so our errorbuf is clean again. */
+  // CURLOPT_ERRORBUFFERに書き込まれた文字列をクリア
+  Curl_reset_fail(data);
+
+  #ifdef USE_NGHTTP2
+  {
+    /* For a negotiated HTTP/2 connection insert the h2 filter. */
+    // cf->nextからTLS ALPNネゴシエーションの結果を取得
+    const char *alpn = Curl_conn_cf_get_alpn_negotiated(cf->next, data);
+
+    if (alpn && !strcmp("h2", alpn)) { // "h2"が返った場合
+      CURLcode result = Curl_http2_switch_at(cf, data); // => Curl_http2_switch_at (lib/http2.c)
+      // - "HTTP/2"フィルタをcf->nextの直前に追加
+      // - "HTTP/2"フィルタ直下に"SSL"フィルタ等があれば接続処理を開始
+      // ("HTTPS-CONNECT" > "HTTP/2" > "SSL" > "HAPPY-EYEBALLS" > "TCP")
+
+      if (result) {
+        ctx->state = CF_HC_FAILURE;
+        ctx->result = result;
+        return result;
+      }
+    }
+  }
+  #endif
+  return CURLE_OK;
+}
+```
+
+#### `cf_setup_connect`
+
+```c
+// lib/connect.c
+
+static CURLcode cf_setup_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
+{
+  struct cf_setup_ctx *ctx = cf->ctx;
+  CURLcode result = CURLE_OK;
+
+  // 接続済みの場合
+  if (cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  /* connect current sub-chain */
+connect_sub_chain:
+  if (cf->next && !cf->next->connected) { // 下位フィルタがある場合 (初回は cf->next = NULL なのでスキップ)
+    // 下位フィルタのdo_connectを呼ぶ
+    result = Curl_conn_cf_connect(cf->next, data, done); // => Curl_conn_cf_connect (lib/cfilters.c)
+    if (result || !*done) return result;
+  }
+
+  if (ctx->state < CF_SETUP_CNNCT_EYEBALLS) { // CF_SETUP_INIT < CF_SETUP_CNNCT_EYEBALLSなので 初回は必ずtrue
+    // "HAPPY-EYEBALLS"フィルタを積む
+    result = cf_ip_happy_insert_after(cf, data, ctx->transport); // => cf_ip_happy_insert_after (lib/cf-ip-happy.c)
+    if (result) return result;
+
+    // ステートをCF_SETUP_CNNCT_EYEBALLS に進める
+    ctx->state = CF_SETUP_CNNCT_EYEBALLS;
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
+  }
+
+  /* sub-chain connected, do we need to add more? */
+  #ifndef CURL_DISABLE_PROXY
+  // --- "SOCKS"フィルタの追加と実行 ---
+  // SOCKSプロキシが設定されている場合
+  if (ctx->state < CF_SETUP_CNNCT_SOCKS && cf->conn->bits.socksproxy) {
+    struct Curl_peer *dest; /* where SOCKS should tunnel to */
+
+    // SOCKSが最終的にトンネルすべき接続先を決定
+    if (cf->conn->bits.httpproxy) {
+      // HTTPプロキシも併用している場合はHTTPプロキシ
+      dest = cf->conn->http_proxy.peer;
+    } else {
+      // HTTPプロキシがなければオリジン
+      dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
+    }
+
+    if (!dest) return CURLE_FAILED_INIT;
+
+    // "SOCKS"フィルタを追加
+    result = Curl_cf_socks_proxy_insert_after(
+      cf, data, dest, cf->conn->ip_version,
+      cf->conn->socks_proxy.proxytype,
+      cf->conn->socks_proxy.creds
+    );
+
+    if (result) {
+      /* 'dest' might be freed now so it can't be dereferenced */
+      CURL_TRC_CF(data, cf, "added SOCKS filter failed -> %d", result);
+      return result;
+    }
+
+    CURL_TRC_CF(data, cf, "added SOCKS filter to %s:%u -> %d", dest->hostname, dest->port, result);
+    ctx->state = CF_SETUP_CNNCT_SOCKS;
+
+    // connect_sub_chainの先頭にもどる。もどると"SOCKS"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
+  }
+  // -----------------------------------
+
+  // --- "HTTP-PROXY"フィルタの追加と実行 ---
+  // SOCKSまで終了しており、かつHTTP プロキシが設定されている場合
+  if (ctx->state < CF_SETUP_CNNCT_HTTP_PROXY && cf->conn->bits.httpproxy) {
+    #ifdef USE_SSL
+    // プロキシへの接続にHTTPSを利用し、かつまだSSLフィルタが入っていない場合
+    if (IS_HTTPS_PROXY(cf->conn->http_proxy.proxytype) && !Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+      // "SSL-PROXY"フィルタを追加
+      result = Curl_cf_ssl_proxy_insert_after(cf, data);
+      if (result) return result;
+    }
+    #endif /* USE_SSL */
+
+    #ifndef CURL_DISABLE_HTTP
+    // --proxytunnel が指定されている場合
+    if (cf->conn->bits.tunnel_proxy) {
+      struct Curl_peer *dest; /* where HTTP should tunnel to */
+      dest = Curl_conn_get_destination(cf->conn, cf->sockindex);
+
+      // "HTTP-PROXY"フィルタを追加
+      result = Curl_cf_http_proxy_insert_after( cf, data, dest, cf->conn->http_proxy.proxytype);
+      if (result) return result;
+    }
+    #endif /* !CURL_DISABLE_HTTP */
+
+    ctx->state = CF_SETUP_CNNCT_HTTP_PROXY;
+
+    // connect_sub_chainの先頭にもどる。もどると"SSL-PROXY"か"HTTP-PROXY"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
+  }
+  #endif /* !CURL_DISABLE_PROXY */
+
+  // HTTPプロキシまで終了している場合
+  if (ctx->state < CF_SETUP_CNNCT_HAPROXY) {
+    #ifndef CURL_DISABLE_PROXY
+    // --haproxy-protocol オプションが指定されている場合
+    if (data->set.haproxyprotocol) {
+      if (Curl_conn_is_ssl(cf->conn, cf->sockindex)) {
+        failf(data, "haproxy protocol not supported with SSL " "encryption in place (QUIC?)");
+        return CURLE_UNSUPPORTED_PROTOCOL;
+      }
+
+      // "HAPROXY"フィルタを追加
+      result = Curl_cf_haproxy_insert_after(cf, data);
+      if (result) return result;
+    }
+    #endif /* !CURL_DISABLE_PROXY */
+
+    // ステートを進める
+    ctx->state = CF_SETUP_CNNCT_HAPROXY;
+
+    // connect_sub_chainの先頭にもどる。もどると"HAPROXY"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
+  }
+
+  // HAPROXYまで終了している場合
+  if (ctx->state < CF_SETUP_CNNCT_SSL) {
+    #ifdef USE_SSL
+    // SSLが必要、かつまだSSLフィルタを追加していない場合
+    if ((ctx->ssl_mode == CURL_CF_SSL_ENABLE ||
+        (ctx->ssl_mode != CURL_CF_SSL_DISABLE &&
+        cf->conn->scheme->flags & PROTOPT_SSL)) &&  /* we want SSL */
+        !Curl_conn_is_ssl(cf->conn, cf->sockindex)) { /* it is missing */
+
+      // "SSL"フィルタを追加
+      result = Curl_cf_ssl_insert_after(cf, data);
+      if (result) return result;
+    }
+    #endif /* USE_SSL */
+
+    // ステートを進める
+    ctx->state = CF_SETUP_CNNCT_SSL;
+
+    // connect_sub_chainの先頭にもどる。もどると"SSL"フィルタを実行
+    if (!cf->next || !cf->next->connected) goto connect_sub_chain;
+  }
+
+  // 全ステートが完了し、下位フィルタチェーンもすべて接続済みになった状態
+  ctx->state = CF_SETUP_DONE;
+  cf->connected = TRUE;
+  *done = TRUE;
+  return CURLE_OK;
+}
+```
+
+#### `cf_ip_happy_insert_after`
+
+```c
+// lib/cf-ip-happy.c
+
+CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
+                                  struct Curl_easy *data,
+                                  uint8_t transport)
+{
+  cf_ip_connect_create *cf_create;
+  struct Curl_cfilter *cf;
+  CURLcode result;
+
+  /* Need to be first */
+  DEBUGASSERT(cf_at);
+  cf_create = get_cf_create(transport);
+  if(!cf_create) {
+    CURL_TRC_CF(data, cf_at, "unsupported transport type %u", transport);
+    return CURLE_UNSUPPORTED_PROTOCOL;
+  }
+  result = cf_ip_happy_create(&cf, data, cf_at->conn, cf_create, transport);
+  if(result)
+    return result;
+
+  Curl_conn_cf_insert_after(cf_at, cf);
+  return CURLE_OK;
 }
 ```
