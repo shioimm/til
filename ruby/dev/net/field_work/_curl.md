@@ -1374,6 +1374,49 @@ static CURLMcode multi_runsingle(
       //   - MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
       //   - MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
       //   - stream_error = TRUE 接続失敗 (CURLM_OK)
+
+      // HTTP/HTTPSの場合はこの状態で名前解決からアプリケーションプロトコルレベルの接続まで完了する
+
+      // HTTPSの場合
+      //   1. "DNS" (cf_dns_connect)
+      //      名前解決を開始。完了後にcf->nextを呼び出す
+      //   2. "HTTPS-CONNECT" (cf_hc_connect)
+      //      ALPNを決定しballer[0], baller[1] ("SETUP") を生成して接続を開始
+      //   3. "SETUP" (baller) (cf_setup_connect)
+      //      "HAPPY-EYEBALLS"を追加して呼び出す
+      //   4. "HAPPY-EYEBALLS" (cf_ip_happy_connect)
+      //      IPv4/IPv6イテレータを初期化し、候補アドレスごとに"TCP"を生成して接続を開始
+      //   5. "TCP" (cf_tcp_connect)
+      //      候補アドレスへのソケット作成・TCP接続試行
+      //   6. "HAPPY-EYEBALLS" (cf_ip_happy_connect)
+      //      最初に成功した"TCP"をwinnerに昇格しcf->nextにwinnerの"TCP"フィルタをセット
+      //   7. "SSL" (ssl_cf_connect)
+      //      TLSハンドシェイク
+      //   8. "SETUP" (baller) (cf_setup_connect)
+      //      完了
+      //   9. "HTTPS-CONNECT" (cf_hc_connect)
+      //      winner ballerをcf->nextに昇格・ALPN="h2"なら"HTTP/2"を追加して呼び出す
+      //   10. "HTTP/2" (cf_h2_connect)
+      //       HTTP/2セッションの初期化
+      //   11. "DNS" (cf_dns_connect)
+      //       cf->connected = TRUE
+
+      // HTTPの場合
+      //   1. "DNS" (cf_dns_connect)
+      //      名前解決を開始・完了
+      //   2. "SETUP" (cf_setup_connect)
+      //      "HAPPY-EYEBALLS"を追加して呼び出す
+      //   3. "HAPPY-EYEBALLS" (cf_ip_happy_connect)
+      //      IPv4/IPv6イテレータを初期化し、候補アドレスごとに"TCP"を生成して接続を開始
+      //   4. "TCP" (cf_tcp_connect)
+      //      候補アドレスへのソケット作成・TCP接続試行
+      //   5. "HAPPY-EYEBALLS" (cf_ip_happy_connect)
+      //      最初に成功した"TCP"をwinnerに昇格しcf->nextにwinnerの"TCP"フィルタをセット
+      //   6. "SETUP" (cf_setup_connect)
+      //      完了
+      //   7. "DNS" (cf_dns_connect)
+      //      cf->connected = TRUE
+
       break;
 
     case MSTATE_PROTOCONNECT: // アプリケーションプロトコルレベルの接続処理を開始するための状態
