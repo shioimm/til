@@ -1376,18 +1376,23 @@ static CURLMcode multi_runsingle(
       //   - stream_error = TRUE 接続失敗 (CURLM_OK)
       break;
 
-    // WIP
     case MSTATE_PROTOCONNECT: // アプリケーションプロトコルレベルの接続処理を開始するための状態
+      // TCP/TLS接続が確立した後に行うプロトコル固有のハンドシェイクを行う (HTTP/HTTPSは不要)
       mresult = multistate_protoconnect(data, &stream_error, &result);
       // => multistate_protoconnect (lib/multi.c)
+      // 遷移先:
+      //   - MSTATE_PROTOCONNECTING 接続中 (CURLM_CALL_MULTI_PERFORM)
+      //   - MSTATE_DO 接続中 (CURLM_CALL_MULTI_PERFORM)
+      //   - stream_error = TRUE 接続失敗 (CURLM_OK)
       break;
 
     case MSTATE_PROTOCONNECTING:// アプリケーションプロトコルレベルの接続処理の完了を待つための状態
       /* protocol-specific connect phase */
       mresult = multistate_protoconnecting(data, &stream_error, &result);
-      // => multistate_protoconnect (lib/multi.c)
+      // => multistate_protoconnecting (lib/multi.c)
       break;
 
+    // WIP
     case MSTATE_DO: // リクエストの送信を開始するための状態
       mresult = multistate_do(data, &stream_error, &result);
       break;
@@ -3742,5 +3747,125 @@ CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
 
   Curl_conn_cf_insert_after(cf_at, cf);
   return CURLE_OK;
+}
+```
+
+#### `multistate_protoconnect`
+
+```c
+// lib/multi.c
+
+static CURLMcode multistate_protoconnect(struct Curl_easy *data, bool *stream_error, CURLcode *result)
+{
+  bool protocol_connected = FALSE;
+
+  // 接続を再利用している場合
+  if (!(*result) && data->conn->bits.reuse) {
+    /* ftp seems to hang when protoconnect on reused connection since we
+     * handle PROTOCONNECT in general inside the filters, it seems wrong to
+     * restart this on a reused connection.
+     */
+    // プロトコルレベルの接続処理はスキップしてMSTATE_DOへ遷移
+    // TCP/TLSがすでに確立済みであり、フィルタチェーン内でPROTOCONNECTに相当する処理が完了している状況
+    multistate(data, MSTATE_DO);
+    return CURLM_CALL_MULTI_PERFORM;
+  }
+
+  // 新規接続の場合
+  if (!(*result)) *result = protocol_connect(data, &protocol_connected); // => protocol_connect (lib/multi.c)
+
+  // プロトコル接続中の場合
+  if (!(*result) && !protocol_connected) {
+    /* switch to waiting state */
+    // MSTATE_PROTOCONNECTINGへ遷移
+    multistate(data, MSTATE_PROTOCONNECTING);
+    return CURLM_CALL_MULTI_PERFORM;
+  } else if (!(*result)) { // プロトコル接続が完了した場合
+    /* protocol connect has completed, go WAITDO or DO */
+    // MSTATE_DOへ遷移
+    multistate(data, MSTATE_DO);
+    return CURLM_CALL_MULTI_PERFORM;
+  }
+
+  /* failure detected */
+  multi_posttransfer(data);
+  multi_done(data, *result, TRUE);
+  *stream_error = TRUE;
+
+  return CURLM_OK;
+}
+
+static CURLcode protocol_connect(struct Curl_easy *data, bool *protocol_done)
+{
+  struct connectdata *conn = data->conn;
+  CURLcode result = CURLE_OK;
+
+  DEBUGASSERT(conn);
+  DEBUGASSERT(protocol_done);
+  DEBUGASSERT(Curl_conn_is_connected(conn, FIRSTSOCKET));
+
+  *protocol_done = FALSE;
+
+  if (!conn->bits.protoconnstart) { // プロトコル接続処理をまだ開始していない
+    // アプリケーションレベルのハンドシェイクが必要なプロトコルの場合 (FTP, SMTP, IMAP, POP3)
+    // (HTTP/HTTPS は TCP/TLS の確立自体がフィルタチェーンで完結する)
+    if (conn->scheme->run->connect_it) {
+      /* Call the protocol-specific connect function */
+      // プロトコルレベルの接続処理を開始
+      result = conn->scheme->run->connect_it(data, protocol_done);
+      if (result) return result;
+    }
+    conn->bits.protoconnstart = TRUE;
+  }
+
+  /* Unless this protocol does not have any protocol-connect callback, as
+     then we know we are done. */
+  if (!conn->scheme->run->connecting) *protocol_done = TRUE;
+  return CURLE_OK;
+}
+```
+
+#### `multistate_protoconnecting`
+
+```c
+// lib/multi.c
+
+static CURLMcode multistate_protoconnecting(struct Curl_easy *data, bool *stream_error, CURLcode *result)
+{
+  bool protocol_connected = FALSE;
+
+  /* protocol-specific connect phase */
+  *result = protocol_connecting(data, &protocol_connected);
+
+  // プロトコル接続が完了した場合
+  if (!(*result) && protocol_connected) {
+    /* after the connect has completed, go WAITDO or DO */
+    // MSTATE_DOへ遷移
+    multistate(data, MSTATE_DO);
+    return CURLM_CALL_MULTI_PERFORM;
+  } else if (*result) { // 接続に失敗した
+    /* failure detected */
+    multi_posttransfer(data);
+    multi_done(data, *result, TRUE);
+    *stream_error = TRUE;
+  }
+
+  return CURLM_OK;
+}
+
+static CURLcode protocol_connecting(struct Curl_easy *data, bool *done)
+{
+  CURLcode result = CURLE_OK;
+  struct connectdata *conn = data->conn;
+
+  // 開始した処理を1ステップ進める
+  if (conn && conn->scheme->run->connecting) {
+    *done = FALSE;
+    result = conn->scheme->run->connecting(data, done);
+  } else {
+    *done = TRUE;
+  }
+
+  return result;
 }
 ```
