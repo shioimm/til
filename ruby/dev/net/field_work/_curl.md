@@ -1361,9 +1361,9 @@ static CURLMcode multi_runsingle(
       //     - 使用するフィルタをconn->cfilterに登録
       //       - DNS > HTTPS-CONNECT もしくは DNS > SETUP
       // 遷移先:
-      //   - MSTATE_PENDING (返り値: CURLM_OK)
-      //   - MSTATE_PROTOCONNECT (返り値: CURLM_CALL_MULTI_PERFORM)
-      //   - MSTATE_CONNECTING (返り値: CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_PENDING (返り値: CURLM_OK)
+      // - MSTATE_PROTOCONNECT (返り値: CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_CONNECTING (返り値: CURLM_CALL_MULTI_PERFORM)
       break;
 
     case MSTATE_CONNECTING: // フィルタチェーンを順に実行し、TCP接続の完了を待つための状態
@@ -1371,9 +1371,9 @@ static CURLMcode multi_runsingle(
       mresult = multistate_connecting(data, &stream_error, &result); // => multistate_connecting (lib/multi.c)
       // Curl_conn_connectを介してconn->cfilter[0]から順にフィルタのdo_connectを呼び、接続の進捗を確認
       // 遷移先:
-      //   - MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
-      //   - MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
-      //   - stream_error = TRUE 接続失敗 (CURLM_OK)
+      // - MSTATE_PROTOCONNECT 接続完了 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_CONNECTING 接続中 (CURLM_OK 次回まで待機)
+      // - stream_error = TRUE 接続失敗 (CURLM_OK)
 
       // HTTP/HTTPSの場合はこの状態で名前解決からアプリケーションプロトコルレベルの接続まで完了する
 
@@ -1424,20 +1424,35 @@ static CURLMcode multi_runsingle(
       mresult = multistate_protoconnect(data, &stream_error, &result);
       // => multistate_protoconnect (lib/multi.c)
       // 遷移先:
-      //   - MSTATE_PROTOCONNECTING 接続中 (CURLM_CALL_MULTI_PERFORM)
-      //   - MSTATE_DO 接続中 (CURLM_CALL_MULTI_PERFORM)
-      //   - stream_error = TRUE 接続失敗 (CURLM_OK)
+      // - MSTATE_PROTOCONNECTING 接続中 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_DO 接続完了 (CURLM_CALL_MULTI_PERFORM)
+      // - stream_error = TRUE 接続失敗 (CURLM_OK)
       break;
 
     case MSTATE_PROTOCONNECTING:// アプリケーションプロトコルレベルの接続処理の完了を待つための状態
       /* protocol-specific connect phase */
       mresult = multistate_protoconnecting(data, &stream_error, &result);
       // => multistate_protoconnecting (lib/multi.c)
+      // 遷移先:
+      // - MSTATE_PROTOCONNECTING 接続中 (CURLM_OK)
+      // - MSTATE_DO 接続完了 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_COMPLETED 接続失敗 (CURLM_OK)
       break;
 
-    // WIP
     case MSTATE_DO: // リクエストの送信を開始するための状態
       mresult = multistate_do(data, &stream_error, &result);
+      // => multistate_do (lib/multi.c)
+      // 遷移先:
+      // - MSTATE_DONE connect_only (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_COMPLETED prereqコールバックが失敗 (CURLM_OK)
+      // - MSTATE_DONE ワイルドカード転送でmulti_do成功、未完了、接続の再利用可能 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_COMPLETED ワイルドカード転送でmulti_do成功、未完了、接続の再利用不可能 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_DOING multi_do 成功、未完了 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_DOING_MORE multi_do 成功、完了かつdo_moreあり (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_DID multi_do 成功、完了かつdo_moreなし (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_SETUP CURLE_SEND_ERRORかつ再利用接続・リトライ成功 (CURLM_CALL_MULTI_PERFORM)
+      // - MSTATE_COMPLETED CURLE_SEND_ERRORかつ再利用接続・リトライ失敗 (CURLM_OK)
+      // - MSTATE_COMPLETED multi_do その他エラー (CURLM_OK)
       break;
 
     case MSTATE_DOING: // リクエストの送信が完了するまで継続するための状態
@@ -3910,5 +3925,154 @@ static CURLcode protocol_connecting(struct Curl_easy *data, bool *done)
   }
 
   return result;
+}
+```
+
+#### `multistate_do`
+
+```c
+// lib/multi.c
+
+static CURLMcode multistate_do(struct Curl_easy *data, bool *stream_errorp, CURLcode *resultp)
+{
+  CURLMcode mresult = CURLM_OK;
+  CURLcode result = CURLE_OK;
+
+  if (data->set.fprereq) { // CURLOPT_PREREQFUNCTIONで設定されるコールバック関数
+    int prereq_rc;
+
+    /* call the prerequest callback function */
+    Curl_set_in_callback(data, TRUE);
+    // TCP/TLS接続が確立した直後、リクエスト送信前に実行
+    prereq_rc = data->set.fprereq(
+      data->set.prereq_userp,
+      data->info.primary.remote_ip, // 接続先のIPアドレス
+      data->info.primary.local_ip, // 自身のIPアドレス
+      data->info.primary.remote_port, // 接続先のポート番号
+      data->info.primary.local_port // 自身のポート番号
+    );
+
+    Curl_set_in_callback(data, FALSE);
+
+    if (prereq_rc != CURL_PREREQFUNC_OK) { // ユーザーがリクエストを中断した場合
+      failf(data, "operation aborted by pre-request callback");
+
+      /* failure in pre-request callback - do not do any other processing */
+      result = CURLE_ABORTED_BY_CALLBACK;
+      multi_posttransfer(data);
+      multi_done(data, result, FALSE);
+      *stream_errorp = TRUE;
+
+      goto end;
+    }
+  }
+
+  // CURLOPT_CONNECT_ONLY (接続のみ確立し、データ送受信はアプリケーション側で行う) の場合
+  if (data->set.connect_only && !data->set.connect_only_ws) {
+    // MSTATE_DONEへ遷移
+    multistate(data, MSTATE_DONE);
+    mresult = CURLM_CALL_MULTI_PERFORM;
+  } else {
+    bool dophase_done = FALSE;
+    /* Perform the protocol's DO action */
+    // プロトコルごとのDO (リクエスト送信など) を実行
+    result = multi_do(data, &dophase_done);
+
+    /* When multi_do() returns failure, data->conn might be NULL! */
+
+    if (!result) {
+      if (!dophase_done) { // DOが1回で完了しなかった場合
+        #ifndef CURL_DISABLE_FTP
+        /* some steps needed for wildcard matching */
+        if (data->state.wildcardmatch) {
+          struct WildcardData *wc = data->wildcard;
+
+          if (wc->state == CURLWC_DONE || wc->state == CURLWC_SKIP) {
+            /* skip some states if it is important */
+            multi_done(data, CURLE_OK, FALSE);
+
+            /* if there is no connection left, skip the DONE state */
+            multistate(data, data->conn ? MSTATE_DONE : MSTATE_COMPLETED);
+            mresult = CURLM_CALL_MULTI_PERFORM;
+            goto end;
+          }
+        }
+        #endif
+
+        /* DO was not completed in one function call, we must continue DOING... */
+        // MSTATE_DOINGへ遷移
+        multistate(data, MSTATE_DOING);
+        mresult = CURLM_CALL_MULTI_PERFORM;
+      } else if (data->conn->bits.do_more) { /* after DO, go DO_DONE... or DO_MORE */
+        // DOが1回の呼び出しで完了し、かつプロトコルがDOを2段階に分けて行うことを示すdo_moreがある場合
+        /* we are supposed to do more, but we need to sit down, relax and wait a little while first */
+        multistate(data, MSTATE_DOING_MORE);
+        // MSTATE_DOING_MOREへ遷移
+        mresult = CURLM_CALL_MULTI_PERFORM;
+      } else {
+        // DOが1回の呼び出しで完了した場合
+        /* we are done with the DO, now DID */
+        // MSTATE_DIDへ遷移
+        multistate(data, MSTATE_DID);
+        mresult = CURLM_CALL_MULTI_PERFORM;
+      }
+    } else if ((result == CURLE_SEND_ERROR) && data->conn->bits.reuse) {
+      // CURLE_SEND_ERRORを返し、かつ接続が再利用のものだった場合
+      /*
+       * In this situation, a connection that we were trying to use may have
+       * unexpectedly died. If possible, send the connection back to the
+       * CONNECT phase so we can try again.
+       */
+      const struct Curl_scheme *handler = data->conn->scheme;
+      char *newurl = NULL;
+      followtype follow = FOLLOW_NONE;
+      CURLcode drc;
+
+      // リトライが可能かどうかを判定
+      drc = Curl_retry_request(data, &newurl);
+
+      if (drc) {
+        /* a failure here pretty much implies an out of memory */
+        result = drc;
+        *stream_errorp = TRUE;
+      }
+
+      // リトライを試行
+      multi_posttransfer(data);
+      drc = multi_done(data, result, FALSE);
+
+      /* When set to retry the connection, we must go back to the CONNECT state */
+      if (newurl) {
+        if (!drc || (drc == CURLE_SEND_ERROR)) {
+          follow = FOLLOW_RETRY;
+          drc = multi_follow(data, handler, newurl, follow);
+
+          if (!drc) {
+            multistate(data, MSTATE_SETUP);
+            mresult = CURLM_CALL_MULTI_PERFORM;
+            result = CURLE_OK;
+          } else {
+            /* Follow failed */
+            result = drc;
+          }
+        } else {
+          /* done did not return OK or SEND_ERROR */
+          result = drc;
+        }
+      } else {
+        /* Have error handler disconnect conn if we cannot retry */
+        *stream_errorp = TRUE;
+      }
+      curlx_free(newurl);
+    } else {
+      /* failure detected */
+      multi_posttransfer(data);
+      if (data->conn) multi_done(data, result, FALSE);
+      *stream_errorp = TRUE;
+    }
+  }
+end:
+  *resultp = result;
+  return mresult;
 }
 ```
