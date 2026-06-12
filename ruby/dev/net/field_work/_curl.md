@@ -3784,9 +3784,7 @@ connect_sub_chain:
 ```c
 // lib/cf-ip-happy.c
 
-CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
-                                  struct Curl_easy *data,
-                                  uint8_t transport)
+CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at, struct Curl_easy *data, uint8_t transport)
 {
   cf_ip_connect_create *cf_create;
   struct Curl_cfilter *cf;
@@ -3795,16 +3793,131 @@ CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
   /* Need to be first */
   DEBUGASSERT(cf_at);
   cf_create = get_cf_create(transport);
-  if(!cf_create) {
+
+  if (!cf_create) {
     CURL_TRC_CF(data, cf_at, "unsupported transport type %u", transport);
     return CURLE_UNSUPPORTED_PROTOCOL;
   }
+
   result = cf_ip_happy_create(&cf, data, cf_at->conn, cf_create, transport);
-  if(result)
-    return result;
+  if (result) return result;
 
   Curl_conn_cf_insert_after(cf_at, cf);
   return CURLE_OK;
+}
+
+static CURLcode cf_ip_happy_create(
+  struct Curl_cfilter **pcf,
+  struct Curl_easy *data,
+  struct connectdata *conn,
+  cf_ip_connect_create *cf_create,
+  uint8_t transport
+) {
+  struct cf_ip_happy_ctx *ctx = NULL;
+  CURLcode result;
+
+  (void)data;
+  (void)conn;
+  *pcf = NULL;
+  ctx = curlx_calloc(1, sizeof(*ctx));
+
+  if (!ctx) {
+    result = CURLE_OUT_OF_MEMORY;
+    goto out;
+  }
+
+  ctx->transport = transport;
+  ctx->cf_create = cf_create;
+
+  result = Curl_cf_create(pcf, &Curl_cft_ip_happy, ctx);
+  // "HAPPY-EYEBALLS"フィルタ
+  // do_connect -> cf_ip_happy_connect
+
+out:
+  if (result) {
+    curlx_safefree(*pcf);
+    cf_ip_happy_ctx_destroy(ctx);
+  }
+  return result;
+}
+
+static CURLcode cf_ip_happy_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
+{
+  struct cf_ip_happy_ctx *ctx = cf->ctx;
+  CURLcode result = CURLE_OK;
+
+  /* -Werror=null-dereference finds false positives suddenly. */
+  if (!data) return CURLE_FAILED_INIT;
+
+  if (cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  DEBUGASSERT(ctx);
+  *done = FALSE;
+
+  if (!ctx->dns_resolved) {
+    result = Curl_conn_dns_result(cf->conn, cf->sockindex);
+    if (!result) {
+      ctx->dns_resolved = TRUE;
+    } else if (result == CURLE_AGAIN) {
+      result = CURLE_OK;
+    } else {/* real error */
+      goto out;
+    }
+  }
+
+  switch(ctx->state) {
+  case SCFST_INIT:
+    DEBUGASSERT(CURL_SOCKET_BAD == Curl_conn_cf_get_socket(cf, data));
+    DEBUGASSERT(!cf->connected);
+    result = cf_ip_happy_init(cf, data);
+    if (result) goto out;
+
+    ctx->state = SCFST_WAITING;
+    FALLTHROUGH();
+  case SCFST_WAITING:
+    result = is_connected(cf, data, done);
+
+    if (!result && *done) {
+      DEBUGASSERT(ctx->ballers.winner);
+      DEBUGASSERT(ctx->ballers.winner->cf);
+      DEBUGASSERT(ctx->ballers.winner->cf->connected);
+      /* we have a winner. Install and activate it.
+       * close/free all others. */
+      ctx->state = SCFST_DONE;
+      cf->connected = TRUE;
+      cf->next = ctx->ballers.winner->cf;
+      ctx->ballers.winner->cf = NULL;
+      cf_ip_happy_ctx_clear(cf, data);
+      Curl_expire_done(data, EXPIRE_HAPPY_EYEBALLS);
+      /* whatever errors where reported by ballers, clear our errorbuf */
+      Curl_reset_fail(data);
+
+      if (cf->conn->scheme->protocol & PROTO_FAMILY_SSH)
+        Curl_pgrsTime(data, TIMER_APPCONNECT); /* we are connected already */
+      #ifdef CURLVERBOSE
+      if(Curl_trc_cf_is_verbose(cf, data)) {
+        struct ip_quadruple ipquad;
+        bool is_ipv6;
+        if(!Curl_conn_cf_get_ip_info(cf->next, data, &is_ipv6, &ipquad)) {
+          const char *host;
+          Curl_conn_get_current_host(data, cf->sockindex, &host, NULL);
+          CURL_TRC_CF(data, cf, "Connected to %s (%s) port %u",
+                      host, ipquad.remote_ip, ipquad.remote_port);
+        }
+      }
+      #endif
+      data->info.numconnects++; /* to track the # of connections made */
+    }
+    break;
+  case SCFST_DONE:
+    *done = TRUE;
+    break;
+  }
+out:
+  return result;
 }
 ```
 
