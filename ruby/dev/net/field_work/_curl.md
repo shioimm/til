@@ -3876,9 +3876,9 @@ static CURLcode cf_ip_happy_connect(struct Curl_cfilter *cf, struct Curl_easy *d
 
   if (!ctx->dns_resolved) {
     result = Curl_conn_dns_result(cf->conn, cf->sockindex);
-    if (!result) {
+    if (!result) { // 名前解決済み
       ctx->dns_resolved = TRUE;
-    } else if (result == CURLE_AGAIN) {
+    } else if (result == CURLE_AGAIN) { // 名前解決中
       result = CURLE_OK;
     } else {/* real error */
       goto out;
@@ -3886,43 +3886,47 @@ static CURLcode cf_ip_happy_connect(struct Curl_cfilter *cf, struct Curl_easy *d
   }
 
   switch(ctx->state) {
-  case SCFST_INIT:
+  case SCFST_INIT: // 初期状態
     DEBUGASSERT(CURL_SOCKET_BAD == Curl_conn_cf_get_socket(cf, data));
     DEBUGASSERT(!cf->connected);
-    result = cf_ip_happy_init(cf, data);
+    // IPv4 / IPv6イテレータと最大並行数を初期化
+    result = cf_ip_happy_init(cf, data); //  => cf_ip_happy_init (lib/cf-ip-happy.c)
     if (result) goto out;
 
     ctx->state = SCFST_WAITING;
     FALLTHROUGH();
   case SCFST_WAITING:
-    result = is_connected(cf, data, done);
+    // cf_ip_ballers_runを呼び、接続試行を1ステップ進める
+    result = is_connected(cf, data, done); // => is_connected (lib/cf-ip-happy.c)
+    // is_connected -> cf_ip_ballers_run -> cf_ip_attempt_connect -> cf_tcp_connect ("TCP"フィルタ)
 
-    if (!result && *done) {
+    if (!result && *done) { // winnerが決定した場合
       DEBUGASSERT(ctx->ballers.winner);
       DEBUGASSERT(ctx->ballers.winner->cf);
       DEBUGASSERT(ctx->ballers.winner->cf->connected);
-      /* we have a winner. Install and activate it.
-       * close/free all others. */
+
+      /* we have a winner. Install and activate it. close/free all others. */
       ctx->state = SCFST_DONE;
       cf->connected = TRUE;
-      cf->next = ctx->ballers.winner->cf;
+      cf->next = ctx->ballers.winner->cf; // winnerのTCPフィルタをcf->nextに昇格させる
       ctx->ballers.winner->cf = NULL;
       cf_ip_happy_ctx_clear(cf, data);
       Curl_expire_done(data, EXPIRE_HAPPY_EYEBALLS);
+
       /* whatever errors where reported by ballers, clear our errorbuf */
       Curl_reset_fail(data);
 
-      if (cf->conn->scheme->protocol & PROTO_FAMILY_SSH)
-        Curl_pgrsTime(data, TIMER_APPCONNECT); /* we are connected already */
+      /* we are connected already */
+      if (cf->conn->scheme->protocol & PROTO_FAMILY_SSH) Curl_pgrsTime(data, TIMER_APPCONNECT);
       #ifdef CURLVERBOSE
-      if(Curl_trc_cf_is_verbose(cf, data)) {
+
+      if (Curl_trc_cf_is_verbose(cf, data)) {
         struct ip_quadruple ipquad;
         bool is_ipv6;
-        if(!Curl_conn_cf_get_ip_info(cf->next, data, &is_ipv6, &ipquad)) {
+        if (!Curl_conn_cf_get_ip_info(cf->next, data, &is_ipv6, &ipquad)) {
           const char *host;
           Curl_conn_get_current_host(data, cf->sockindex, &host, NULL);
-          CURL_TRC_CF(data, cf, "Connected to %s (%s) port %u",
-                      host, ipquad.remote_ip, ipquad.remote_port);
+          CURL_TRC_CF(data, cf, "Connected to %s (%s) port %u", host, ipquad.remote_ip, ipquad.remote_port);
         }
       }
       #endif
