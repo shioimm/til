@@ -1314,8 +1314,25 @@ static CURLMcode multi_runsingle(
     case MSTATE_INIT: // ハンドルの初期状態
       /* Transitional state. init this transfer. A handle never comes back to this state. */
       mresult = multistate_init(data, &result); // => multistate_init (lib/multi.c)
-      // Curl_pretransferを呼び出して転送前の準備を行う
+      // 転送前の準備を行う
       // 遷移先: MSTATE_SETUP (返り値: CURLM_CALL_MULTI_PERFORM)
+
+      // lib/multi.c
+      //
+      //   static CURLMcode multistate_init(struct Curl_easy *data, CURLcode *result)
+      //   {
+      //     *result = Curl_pretransfer(data); // => Curl_pretransfer
+      //     if (*result) return CURLM_OK;
+      //
+      //     /* after init, go SETUP */
+      //     multistate(data, MSTATE_SETUP);
+      //     Curl_pgrsTime(data, TIMER_STARTOP);
+      //     return CURLM_CALL_MULTI_PERFORM;
+      //   }
+      //
+      // Curl_pretransfer内部から呼ばれるCurl_http_neg_init (lib/http.c) が
+      // CURLOPT_HTTP_VERSIONの設定値をhttp_neg.wanted / http_neg.allowedに変換し、ALPNに利用する
+
       break;
 
     case MSTATE_SETUP: // タイムアウトをタイマツリーに登録するための状態
@@ -4189,3 +4206,40 @@ end:
   return mresult;
 }
 ```
+
+---
+
+## ALPNの全体フロー
+- 1. `Curl_pretransfer` -> `Curl_http_neg_init`
+  - `CURLOPT_HTTP_VERSION`の値を`http_neg.wanted` / `http_neg.allowed`に変換
+
+```
+CURL_HTTP_VERSION_NONE (デフォルト): wanted = h1|h2,  allowed = h1|h2|h3
+CURL_HTTP_VERSION_2TLS:              wanted = h1|h2,  allowed = h1|h2
+CURL_HTTP_VERSION_3:                 wanted = h1|h2|h3
+```
+
+- 2. `cf_hc_set_baller1`で`ballers[0].alpn_id`を決定 / `cf_hc_set_baller2`で`ballers[1].alpn_id`を決定
+
+```
+優先度
+
+1. HTTPS RR  (cf_hc_get_httpsrr_alpn)
+2. preferred (cf_hc_get_pref_alpn / http_neg.preferred)
+3. wanted    (cf_hc_get_first_alpn / http_neg.wanted)
+4. allowed   (cf_hc_get_first_alpn / http_neg.allowed)
+```
+
+- 3. "SSL"フィルタ生成時に`alpn_spec`を確定
+  - `cf_hc_baller_connect` -> `cf_setup_connect` -> `Curl_cf_ssl_insert_after` -> `cf_ssl_create`
+- 4. TLSハンドシェイク時に候補リストをセット
+  - 各バックエンドが`alpn_spec`をバイナリ形式に変換してサーバに提示 (`ossl_init_session_and_alpns`など)
+- 5. ネゴシエーション結果の保存
+  - ハンドシェイク完了後、各バックエンドがサーバの選択結果を取得
+  - `Curl_alpn_set_negotiated`で`connssl->negotiated.alpn`に保存
+- 6. 結果の利用
+  - `baller_connected`
+    -> `Curl_conn_cf_get_alpn_negotiated`
+    -> `CF_QUERY_ALPN_NEGOTIATED`
+    -> `connssl->negotiated.alpn`
+  - "h2"の場合`Curl_http2_switch_at`で"HTTP/2"フィルタを追加
