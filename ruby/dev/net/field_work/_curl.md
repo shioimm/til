@@ -1021,7 +1021,28 @@ static CURLcode easy_perform(struct Curl_easy *data, bool events)
   } else {
     /* this multi handle will only ever have a single easy handle attached to
        it, so make it use minimal hash sizes */
-    multi = Curl_multi_handle(16, 1, 3, 7, 3);
+    multi = Curl_multi_handle(16, 1, 3, 7, 3); // => Curl_multi_handle (lib/multi.c)
+    // Curl_multi_handle -> Curl_probeipv6 (lib/hostip.c)
+
+    // Curl_probeipv6 (lib/hostip.c)
+    //
+    //   CURLcode Curl_probeipv6(struct Curl_multi *multi)
+    //   {
+    //     /* probe to see if we have a working IPv6 stack */
+    //     // socket(2)をPF_INET6で実行 (IPv6を利用できるかどうかの確認)
+    //     curl_socket_t s = CURL_SOCKET(PF_INET6, SOCK_DGRAM, 0);
+    //     multi->ipv6_works = FALSE; // デフォルトはfalse
+    //
+    //     if (s == CURL_SOCKET_BAD) { // socket(2)に失敗した場合
+    //       if (SOCKERRNO == SOCKENOMEM) return CURLE_OUT_OF_MEMORY; // メモリ不足
+    //     } else {
+    //       multi->ipv6_works = TRUE; // IPv6を利用できる
+    //       sclose(s);
+    //     }
+    //
+    //     return CURLE_OK;
+    //   }
+
     if(!multi) return CURLE_OUT_OF_MEMORY;
   }
 
@@ -1314,8 +1335,25 @@ static CURLMcode multi_runsingle(
     case MSTATE_INIT: // ハンドルの初期状態
       /* Transitional state. init this transfer. A handle never comes back to this state. */
       mresult = multistate_init(data, &result); // => multistate_init (lib/multi.c)
-      // Curl_pretransferを呼び出して転送前の準備を行う
+      // 転送前の準備を行う
       // 遷移先: MSTATE_SETUP (返り値: CURLM_CALL_MULTI_PERFORM)
+
+      // lib/multi.c
+      //
+      //   static CURLMcode multistate_init(struct Curl_easy *data, CURLcode *result)
+      //   {
+      //     *result = Curl_pretransfer(data); // => Curl_pretransfer
+      //     if (*result) return CURLM_OK;
+      //
+      //     /* after init, go SETUP */
+      //     multistate(data, MSTATE_SETUP);
+      //     Curl_pgrsTime(data, TIMER_STARTOP);
+      //     return CURLM_CALL_MULTI_PERFORM;
+      //   }
+      //
+      // Curl_pretransfer内部から呼ばれるCurl_http_neg_init (lib/http.c) が
+      // CURLOPT_HTTP_VERSIONの設定値をhttp_neg.wanted / http_neg.allowedに変換し、ALPNに利用する
+
       break;
 
     case MSTATE_SETUP: // タイムアウトをタイマツリーに登録するための状態
@@ -1649,6 +1687,7 @@ CURLcode Curl_conn_setup(struct Curl_easy *data, struct connectdata *conn, int s
   // DNSフィルタ (Curl_cft_dns) を作成 (クエリの内容を決定)
   dns_queries = Curl_resolv_dns_queries(data, conn->ip_version);
   // => Curl_resolv_dns_queries (lib/hostip.c)
+  // conn->ip_versionは設定値CURLOPT_IPRESOLVE_*によって決定する
 
   // HTTPS RRが有効な場合 (デフォルトON)
   #ifdef USE_HTTPSRR
@@ -1740,6 +1779,40 @@ out:
   *pcf = result ? NULL : cf;
   if (ctx) curlx_free(ctx);
   return result;
+}
+```
+
+#### `Curl_resolv_dns_queries`
+
+```c
+// lib/hostip.c
+
+uint8_t Curl_resolv_dns_queries(struct Curl_easy *data, uint8_t ip_version)
+{
+  (void)data;
+
+  switch (ip_version) {
+  case CURL_IPRESOLVE_V6:
+    return CURL_DNSQ_AAAA;
+  case CURL_IPRESOLVE_V4:
+    return CURL_DNSQ_A;
+  default:
+    if (ipv6works(data)) { // => ipv6works (lib/hostip.c)
+
+      // ipv6works (lib/hostip.c)
+      //
+      //   static bool ipv6works(struct Curl_easy *data)
+      //   {
+      //     DEBUGASSERT(data);
+      //     DEBUGASSERT(data->multi);
+      //     return data ? data->multi->ipv6_works : FALSE;
+      //   }
+
+      return (CURL_DNSQ_A | CURL_DNSQ_AAAA);
+    } else {
+      return CURL_DNSQ_A;
+    }
+  }
 }
 ```
 
@@ -3784,9 +3857,7 @@ connect_sub_chain:
 ```c
 // lib/cf-ip-happy.c
 
-CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
-                                  struct Curl_easy *data,
-                                  uint8_t transport)
+CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at, struct Curl_easy *data, uint8_t transport)
 {
   cf_ip_connect_create *cf_create;
   struct Curl_cfilter *cf;
@@ -3795,16 +3866,136 @@ CURLcode cf_ip_happy_insert_after(struct Curl_cfilter *cf_at,
   /* Need to be first */
   DEBUGASSERT(cf_at);
   cf_create = get_cf_create(transport);
-  if(!cf_create) {
+
+  if (!cf_create) {
     CURL_TRC_CF(data, cf_at, "unsupported transport type %u", transport);
     return CURLE_UNSUPPORTED_PROTOCOL;
   }
+
   result = cf_ip_happy_create(&cf, data, cf_at->conn, cf_create, transport);
-  if(result)
-    return result;
+  if (result) return result;
 
   Curl_conn_cf_insert_after(cf_at, cf);
   return CURLE_OK;
+}
+
+static CURLcode cf_ip_happy_create(
+  struct Curl_cfilter **pcf,
+  struct Curl_easy *data,
+  struct connectdata *conn,
+  cf_ip_connect_create *cf_create,
+  uint8_t transport
+) {
+  struct cf_ip_happy_ctx *ctx = NULL;
+  CURLcode result;
+
+  (void)data;
+  (void)conn;
+  *pcf = NULL;
+  ctx = curlx_calloc(1, sizeof(*ctx));
+
+  if (!ctx) {
+    result = CURLE_OUT_OF_MEMORY;
+    goto out;
+  }
+
+  ctx->transport = transport;
+  ctx->cf_create = cf_create;
+
+  result = Curl_cf_create(pcf, &Curl_cft_ip_happy, ctx);
+  // "HAPPY-EYEBALLS"フィルタ
+  // do_connect -> cf_ip_happy_connect
+
+out:
+  if (result) {
+    curlx_safefree(*pcf);
+    cf_ip_happy_ctx_destroy(ctx);
+  }
+  return result;
+}
+
+static CURLcode cf_ip_happy_connect(struct Curl_cfilter *cf, struct Curl_easy *data, bool *done)
+{
+  struct cf_ip_happy_ctx *ctx = cf->ctx;
+  CURLcode result = CURLE_OK;
+
+  /* -Werror=null-dereference finds false positives suddenly. */
+  if (!data) return CURLE_FAILED_INIT;
+
+  if (cf->connected) {
+    *done = TRUE;
+    return CURLE_OK;
+  }
+
+  DEBUGASSERT(ctx);
+  *done = FALSE;
+
+  if (!ctx->dns_resolved) {
+    result = Curl_conn_dns_result(cf->conn, cf->sockindex);
+    if (!result) { // 名前解決済み
+      ctx->dns_resolved = TRUE;
+    } else if (result == CURLE_AGAIN) { // 名前解決中
+      result = CURLE_OK;
+    } else {/* real error */
+      goto out;
+    }
+  }
+
+  switch(ctx->state) {
+  case SCFST_INIT: // 初期状態
+    DEBUGASSERT(CURL_SOCKET_BAD == Curl_conn_cf_get_socket(cf, data));
+    DEBUGASSERT(!cf->connected);
+    // IPv4 / IPv6イテレータと最大並行数を初期化
+    result = cf_ip_happy_init(cf, data); //  => cf_ip_happy_init (lib/cf-ip-happy.c)
+    if (result) goto out;
+
+    ctx->state = SCFST_WAITING;
+    FALLTHROUGH();
+  case SCFST_WAITING:
+    // cf_ip_ballers_runを呼び、接続試行を1ステップ進める
+    result = is_connected(cf, data, done); // => is_connected (lib/cf-ip-happy.c)
+    // is_connected -> cf_ip_ballers_run -> cf_ip_attempt_connect -> Curl_conn_cf_connect
+    // Curl_conn_cf_connect -> cf_tcp_connect ("TCP"フィルタ) -> do_connect -> connect(2)
+
+    if (!result && *done) { // winnerが決定した場合
+      DEBUGASSERT(ctx->ballers.winner);
+      DEBUGASSERT(ctx->ballers.winner->cf);
+      DEBUGASSERT(ctx->ballers.winner->cf->connected);
+
+      /* we have a winner. Install and activate it. close/free all others. */
+      ctx->state = SCFST_DONE;
+      cf->connected = TRUE;
+      cf->next = ctx->ballers.winner->cf; // winnerのTCPフィルタをcf->nextに昇格させる
+      ctx->ballers.winner->cf = NULL;
+      cf_ip_happy_ctx_clear(cf, data);
+      Curl_expire_done(data, EXPIRE_HAPPY_EYEBALLS);
+
+      /* whatever errors where reported by ballers, clear our errorbuf */
+      Curl_reset_fail(data);
+
+      /* we are connected already */
+      if (cf->conn->scheme->protocol & PROTO_FAMILY_SSH) Curl_pgrsTime(data, TIMER_APPCONNECT);
+      #ifdef CURLVERBOSE
+
+      if (Curl_trc_cf_is_verbose(cf, data)) {
+        struct ip_quadruple ipquad;
+        bool is_ipv6;
+        if (!Curl_conn_cf_get_ip_info(cf->next, data, &is_ipv6, &ipquad)) {
+          const char *host;
+          Curl_conn_get_current_host(data, cf->sockindex, &host, NULL);
+          CURL_TRC_CF(data, cf, "Connected to %s (%s) port %u", host, ipquad.remote_ip, ipquad.remote_port);
+        }
+      }
+      #endif
+      data->info.numconnects++; /* to track the # of connections made */
+    }
+    break;
+  case SCFST_DONE:
+    *done = TRUE;
+    break;
+  }
+out:
+  return result;
 }
 ```
 
@@ -4076,3 +4267,42 @@ end:
   return mresult;
 }
 ```
+
+---
+
+## ALPNの全体フロー
+- 1. `Curl_pretransfer` -> `Curl_http_neg_init`
+  - `CURLOPT_HTTP_VERSION`の値を`http_neg.wanted` / `http_neg.allowed`に変換
+
+```
+CURL_HTTP_VERSION_NONE (デフォルト): wanted = h1|h2,  allowed = h1|h2|h3
+CURL_HTTP_VERSION_2TLS:              wanted = h1|h2,  allowed = h1|h2
+CURL_HTTP_VERSION_3:                 wanted = h1|h2|h3
+```
+
+- 2. `cf_hc_set_baller1`で`ballers[0].alpn_id`を決定 / `cf_hc_set_baller2`で`ballers[1].alpn_id`を決定
+
+```
+優先度
+
+1. HTTPS RR  (cf_hc_get_httpsrr_alpn)
+2. preferred (cf_hc_get_pref_alpn / http_neg.preferred)
+3. wanted    (cf_hc_get_first_alpn / http_neg.wanted)
+4. allowed   (cf_hc_get_first_alpn / http_neg.allowed)
+```
+
+- 3. "SSL"フィルタ生成時に`alpn_spec`を確定
+  - `cf_hc_baller_connect` -> `cf_setup_connect` -> `Curl_cf_ssl_insert_after` -> `cf_ssl_create`
+- 4. TLSハンドシェイク時に候補リストをセット
+  - 各バックエンドが`alpn_spec`をバイナリ形式に変換してサーバに提示 (`ossl_init_session_and_alpns`など)
+- 5. ネゴシエーション結果の保存
+  - ハンドシェイク完了後、各バックエンドがサーバの選択結果を取得
+  - `Curl_alpn_set_negotiated`で`connssl->negotiated.alpn`に保存
+- 6. 結果の利用
+  - `baller_connected`->`Curl_conn_cf_get_alpn_negotiated`->`CF_QUERY_ALPN_NEGOTIATED`->`connssl->negotiated.alpn`
+  - "h2"の場合`Curl_http2_switch_at`で"HTTP/2"フィルタを追加
+
+## 利用可能なアドレスファミリの検出
+- DNSクエリの内容は`Curl_resolv_dns_queries`によって決定する
+- IPv6が利用可能かどうかはsocket(2)を実際に作成することで確認する (`Curl_probeipv6`)
+- IPv4が利用可能かどうかを判断する手段はなく、実際にconnect(2)を行うことによって判定する
