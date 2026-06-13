@@ -5,6 +5,10 @@
 - QUIC通信を優先する Happy Eyeballs Version 3 の提案
   - https://asnokaze.hatenablog.com/entry/2023/10/26/014349
 
+## NSS経由での名前解決
+- getaddrinfo(3)と名前解決ライブラリを統合するのは難しそう
+- HTTPS RRだけ名前解決ライブラリで取得する?デフォルトオプションのセットを用意しておいて切り替えられるようにする?
+
 ## 動作フロー
 ### [前提] IPv6-only/mostly + 464XLAT非対応の検出
 (0) ネットワーク検出 (Section 8)

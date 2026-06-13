@@ -4306,3 +4306,13 @@ CURL_HTTP_VERSION_3:                 wanted = h1|h2|h3
 - DNSクエリの内容は`Curl_resolv_dns_queries`によって決定する
 - IPv6が利用可能かどうかはsocket(2)を実際に作成することで確認する (`Curl_probeipv6`)
 - IPv4が利用可能かどうかを判断する手段はなく、実際にconnect(2)を行うことによって判定する
+
+## NSS経由での名前解決
+- getaddrinfo(3)経由での名前解決の場合はNSS経由での名前解決をgetaddrinfo(3)に移譲する
+- c-ares経由での名前解決の場合は実行しない
+  - c-aresは`ares_init_options`でresolv.confからデータを得ている
+  - curlはresolv.confから取得したデータを上書きできる
+    - `async_ares_set_dns_servers`
+    - `async_ares_set_dns_interface`
+    - `async_ares_set_dns_local_ip4`
+    - `async_ares_set_dns_local_ip6`
