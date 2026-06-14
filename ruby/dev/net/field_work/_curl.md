@@ -4316,3 +4316,7 @@ CURL_HTTP_VERSION_3:                 wanted = h1|h2|h3
     - `async_ares_set_dns_interface`
     - `async_ares_set_dns_local_ip4`
     - `async_ares_set_dns_local_ip6`
+
+## ECH
+- `SSL_set1_ech_config_list` (lib/vtls/openssl.c) でOpenSSLへ設定値を渡す
+- `ossl_connect_step2` (lib/vtls/openssl.c) でハンドシェイクの結果を受け取る (`SSL_ech_get1_status`)
