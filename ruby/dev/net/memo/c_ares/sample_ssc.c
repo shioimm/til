@@ -12,7 +12,7 @@ typedef struct {
     ares_fd_events_t *ares_fds;
     size_t ares_nfds;
     int queries_ongoing;
-} dnsstate_t;
+} dns_state_t;
 
 // https://github.com/c-ares/c-ares/blob/main/include/ares.h
 // struct ares_options {
@@ -82,6 +82,65 @@ sock_state_cb(void *data, ares_socket_t fd, int read_required, int write_require
     if (write_required) state->poll_fds[i].events |= POLLOUT;
 }
 
+static void
+process(dns_state_t *state)
+{
+    struuct timeval tv;
+
+    while (state->queries_ongoing > 0) {
+        int ret;
+        int timeout;
+
+        // 次にタイムアウト処理が必要になるまでの残り時間をtvに格納
+        // 進行中のクエリがなければbreak
+        if (ares_timeout(state->channel, NULL, &tv) == NULL) break;
+
+        timeout = (int)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
+        ret = poll(state->poll_fds, (nfds_t)state->poll_nfds, timeout);
+
+        if (ret < 0) continue; // poll(2) エラー
+
+        if (ret == 0) { // poll(2) タイムアウト
+            // c-ares側のタイムアウト処理を実行
+            ares_process_fd(state->channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
+            continue;
+        }
+
+        state->ares_nfds = 0;
+
+        for (size_t i = 0; i < state->poll_nfds; i++) {
+            // イベントが発生しなかったソケットはスキップ
+            if (state->poll_fds[i].revents == 0) continue;
+
+            size_t index = state->ares_nfds++;
+            state->ares_fds[index].fd = state->poll_fds[i].fd;
+            state->ares_fds[index].events = 0;
+
+            // 読み取り可能イベントが発生した
+            if (state->poll_fds[i].revents & (POLLERR | POLLHUP | POLLIN)) {
+                state->ares_fds[index].events |= ARES_FD_EVENT_READ;
+            }
+            // 書き込み可能イベントが発生した
+            if (state->poll_fds[i].revents & (POLLOUT)) {
+                state->ares_fds[index].events |= ARES_FD_EVENT_WRITE;
+            }
+        }
+
+        // イベントの発生をc-aresに通知
+        // c-aresは
+        //   - ARES_FD_EVENT_READが立っているソケットに対してrecvを呼び、DNSレスポンスを取得
+        //   - ARES_FD_EVENT_WRITEが立っているソケットに対してsendを呼び、DNSクエリを送出
+        //   - 受信したレスポンスを解析し、完了したクエリのコールバックを呼ぶ
+        //   - タイムアウトしたクエリがあれば再送処理
+        ares_process_fds(
+            state->channel,
+            state->ares_fds,
+            state->ares_nfds,
+            ARES_PROCESS_FLAG_NONE
+        );
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -90,12 +149,12 @@ main(int argc, char **argv)
         return 1;        
     }
 
-    dnsstate_t state;
+    dns_state_t state;
     strutct ares_options options;
     int optmask = 0;
 
     memset(&state, 0, sizeof(state));
-    memset(&options, 0, sizeof(options)); 
+    memset(&options, 0, sizeof(options));
 
     ares_library_init(ARES_LIB_INIT_ALL);
 
@@ -103,7 +162,29 @@ main(int argc, char **argv)
     options.sock_state_cb = sock_state_cb;
     options.sock_state_cb_data = &state;
 
-    // WIP
+    if (ares_init_options(&state.channel, &options, optmask) != ARES_SUCCESS) {
+        fprintf(stderr, "ares_init_options failed\n");
+        return 1;
+    }
+
+    {
+        // WIP AAAA
+    }
+
+    {
+        // WIP A
+    }
+
+    {
+        // WIP HTTPS
+    }
+
+    process(&state);
+
+    ares_destroy(state.channel);
+    free(state.poll_fds);
+    free(state.ares_fds);
+    ares_library_cleanup();
 
     return 0;
 }
