@@ -165,6 +165,30 @@ aaaa_callback(void *data, int status, int timeouts, struct ares_addrtinfo *resul
     }
 }
 
+static void
+a_callback(void *data, int status, int timeouts, struct ares_addrtinfo *result)
+{
+    dns_state_t *state = data;
+    (void)timeouts;
+
+    state->queries_ongoing--;
+    printf("[A] %s\n", ares_strerror(status));
+
+    if (result) {
+        struct ares_addrinfo_node *node;
+
+        for (node = result->nodes; node != NULL; node = node->ai_next) {
+            if (node->ai_family == AF_INET) {
+                char buf[64] = "";
+                const struct sockaddr_in *in = (const struct sockaddr_in *)((void *)node->ai_addr);
+                ares_inet_ntop(AF_INET6, &in->sin_addr, buf, sizeof(buf));
+                printf("[A] %s\n", buf);
+            }
+        }
+        ares_freeaddrinfo(result);
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -202,7 +226,13 @@ main(int argc, char **argv)
     }
 
     {
-        // WIP A
+        struct ares_addrinfo_hints hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = PF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_flags = ARES_AI_NUMERICSERV;
+        state.queries_ongoing++;
+        ares_getaddrinfo(state.channel, argv[1], "443", &hints, a_callback, &state);
     }
 
     {
