@@ -46,7 +46,7 @@ typedef struct {
 static void
 sock_state_callback(void *data, ares_socket_t fd, int read_required, int write_required)
 {
-    dns_state_t state *state = data;
+    dns_state_t *state = data;
     size_t i;  // 監視中のソケットエントリの配列のうち、コールバックで通知されたソケット (fd) の位置
 
     for (i = 0; i < state->poll_nfds; i++) {
@@ -85,7 +85,7 @@ sock_state_callback(void *data, ares_socket_t fd, int read_required, int write_r
 static void
 process(dns_state_t *state)
 {
-    struuct timeval tv;
+    struct timeval tv;
 
     while (state->queries_ongoing > 0) {
         int ret;
@@ -142,7 +142,39 @@ process(dns_state_t *state)
 }
 
 static void
-aaaa_callback(void *data, int status, int timeouts, struct ares_addrtinfo *result)
+https_callback(void *data, ares_status_t status, size_t timeouts, const ares_dns_record_t *record)
+{
+    dns_state_t *state = data;
+    (void)timeouts;
+
+    state->queries_ongoing--;
+    printf("[HTTPS] %s\n", ares_strerror(status));
+
+    if (status != ARES_SUCCESS || !record) return;
+
+    for (size_t i = 0; i < ares_dns_record_rr_cnt(record, ARES_SECTION_ANSWER); i++) {
+        const ares_dns_rr_t *rr = ares_dns_record_rr_get_const(record, ARES_SECTION_ANSWER, i);
+        if (ares_dns_rr_get_type(rr) != ARES_REC_TYPE_HTTPS) continue;
+
+        printf(
+            "[HTTPS] priority=%u target=\"%s\"\n",
+            ares_dns_rr_get_u16(rr, ARES_RR_HTTPS_PRIORITY),
+            ares_dns_rr_get_str(rr, ARES_RR_HTTPS_TARGET)
+        );
+
+        size_t opt_count = ares_dns_rr_get_opt_cnt(rr, ARES_RR_HTTPS_PARAMS);
+
+        for (size_t opt = 0; opt < opt_count; opt++) {
+            const unsigned char *val = NULL;
+            size_t len = 0;
+            unsigned short key = ares_dns_rr_get_opt(rr, ARES_RR_HTTPS_PARAMS, opt, &val, &len);
+            printf("[HTTPS]   param key=%u len=%zu\n", (unsigned)key, len);
+        }
+    }
+}
+
+static void
+aaaa_callback(void *data, int status, int timeouts, struct ares_addrinfo *result)
 {
     dns_state_t *state = data;
     (void)timeouts;
@@ -166,7 +198,7 @@ aaaa_callback(void *data, int status, int timeouts, struct ares_addrtinfo *resul
 }
 
 static void
-a_callback(void *data, int status, int timeouts, struct ares_addrtinfo *result)
+a_callback(void *data, int status, int timeouts, struct ares_addrinfo *result)
 {
     dns_state_t *state = data;
     (void)timeouts;
@@ -181,7 +213,7 @@ a_callback(void *data, int status, int timeouts, struct ares_addrtinfo *result)
             if (node->ai_family == AF_INET) {
                 char buf[64] = "";
                 const struct sockaddr_in *in = (const struct sockaddr_in *)((void *)node->ai_addr);
-                ares_inet_ntop(AF_INET6, &in->sin_addr, buf, sizeof(buf));
+                ares_inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf));
                 printf("[A] %s\n", buf);
             }
         }
@@ -198,7 +230,7 @@ main(int argc, char **argv)
     }
 
     dns_state_t state;
-    strutct ares_options options;
+    struct ares_options options;
     int optmask = 0;
 
     memset(&state, 0, sizeof(state));
@@ -206,7 +238,7 @@ main(int argc, char **argv)
 
     ares_library_init(ARES_LIB_INIT_ALL);
 
-    optmask |= ARS_OPT_SOCK_STATE_CB;
+    optmask |= ARES_OPT_SOCK_STATE_CB;
     options.sock_state_cb = sock_state_callback;
     options.sock_state_cb_data = &state;
 
@@ -236,7 +268,16 @@ main(int argc, char **argv)
     }
 
     {
-        // WIP HTTPS
+        state.queries_ongoing++;
+        ares_query_dnsrec(
+            state.channel,
+            argv[1],
+            ARES_CLASS_IN, // クラス
+            ARES_REC_TYPE_HTTPS, // レコード種別
+            https_callback,
+            &state,
+            NULL
+        );
     }
 
     process(&state);
