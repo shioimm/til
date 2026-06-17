@@ -5,10 +5,6 @@
 - QUIC通信を優先する Happy Eyeballs Version 3 の提案
   - https://asnokaze.hatenablog.com/entry/2023/10/26/014349
 
-## NSS経由での名前解決
-- getaddrinfo(3)と名前解決ライブラリを統合するのは難しそう
-- HTTPS RRだけ名前解決ライブラリで取得する?デフォルトオプションのセットを用意しておいて切り替えられるようにする?
-
 ## 動作フロー
 ### [前提] IPv6-only/mostly + 464XLAT非対応の検出
 (0) ネットワーク検出 (Section 8)
@@ -106,6 +102,55 @@ NAT64プレフィックスが既知 (PREF64あり、またはRFC7050で検出済
 - IPv6-only環境にてVPN経由で内部ホスト名を解決 (企業リゾルバがAのみ返却・AAAAを合成不可) している場合:
   - 企業リゾルバにAを問い合わせし、取得したIPv4をIPv4リテラルとして扱いNAT64プレフィックスでローカル合成し、
     接続試行する ((2) に統合)
+
+## NSS経由での名前解決
+- getaddrinfo(3)と名前解決ライブラリを統合するのは難しそう
+- HTTPS RRだけ名前解決ライブラリで取得する?デフォルトオプションのセットを用意しておいて切り替えられるようにする?
+
+## HTTPS RRを元にした並び替えの例
+
+```text
+example.com. 60 IN HTTPS 1 svc1.example.com. (
+  alpn="h3,h2" ipv6hint=2001:****:****:**** ipv4hint=192.*.*.* ech=...
+)
+
+example.com. 60 IN HTTPS 1 svc2.example.com. (
+  alpn="h2" ipv6hint=2001:****:****:**** ipv4hint=192.*.*.*
+)
+```
+
+```text
+// ServicePriorityが低いものを優先して展開する
+// ServicePriorityが同じ場合は対応しているプロトコルを確認する
+
+候補1.
+  service: svc1.example.com.
+  address: 2001:****:****:****
+  transport: QUIC
+  ALPN: h3
+  ECH: あり
+
+候補2.
+  service: svc1.example.com.
+  address: 192.*.*.*
+  transport: QUIC
+  ALPN: h3
+  ECH: あり
+
+候補3.
+  service: svc1.example.com.
+  address: 2001:****:****:****
+  transport: TCP
+  ALPN: h2
+  ECH: あり
+
+候補4.
+  service: svc2.example.com.
+  address: 2001:****:****:****
+  transport: TCP
+  ALPN: h2
+  ECH: なし
+```
 
 ## 構成要素
 - NAT64: IPv6専用環境でのIPv4サービスへの接続

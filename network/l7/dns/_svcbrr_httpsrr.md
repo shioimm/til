@@ -11,6 +11,7 @@
   - 0: AliasMode
   - 0以外: ServiceMode
 - TargetName: owner nameを解決し、実際にアクセスされるホスト名 (必須)
+  - `.`の場合はowner name自身がTargetName
 - SvcParams: SvcParamKey=SvcParamValueのペア (オプション)
   - AliasModeでは無視される
 
