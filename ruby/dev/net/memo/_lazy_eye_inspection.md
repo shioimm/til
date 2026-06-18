@@ -77,3 +77,40 @@
     - クライアントとサーバの2台のホストを直接接続したローカルテストベッド
   - (ii) Web-based Testing Tool
     -  7つのOS上の9種類のブラウザ
+
+## 5 Evaluation
+
+### 5.1 Connection Attempt Delay
+- Mozilla Firefox、Google Chrome、Microsoft Edge、Chromium (Ubuntu LTS 24.04.1)
+- MacOS上でのSafari 17.5
+- curl
+- wget
+
+#### ローカル測定
+- すべてのクライアントアプリケーションはIPv4/IPv6 の両方が提供された場合にIPv6を優先する
+- wget 1.21.3はいかなるフォールバック機構も実装していない (HEを実装していない)
+  - wgetはタイムアウトより大きな遅延がある場合、提供されたIPv4 アドレスを使用せずに失敗する
+- 観測CADの中央値と標準偏差は、IPv6によって接続が確立された最大遅延値から1ms以内に収まる
+- すべてのChromiumベースのブラウザは300msのCADを使用する
+- curlは最も小さい200msのCADを使用する
+- FirefoxはRFCの推奨である250 msに従っているが、IPv6接続確立を250 ms より長く待つ外れ値がいくつか存在する
+
+#### Web測定
+- Safariはローカル測定では一貫して2sであった一方、Webでは50msから最大5sまでの範囲に及び、CAD が動的に適用されている
+- Safari以外の他のWebベース測定では通常CAD値まではIPv6が使われるという明確な傾向が見られる
+  - Safariは、より小さい遅延ではIPv4を使用し、より大きい遅延では再びIPv6を使用する
+  - FirefoxとChrome にも、このような不整合を示すテスト実行が少数あり、10回のテスト反復のうち最大2回しか現れた
+  - Safariでは、6~10回の範囲で現れた
+    - Safariにおいて、ネットワーク環境、アクセスネットワーク、並行するネットワーク活動の有無、
+      アプリケーションウィンドウのフォーカス状態、電源供給の有無のいずれも結果の再現性に目立った影響を与えなかった
+    - Mobile Safari の測定では変動するCAD値と不整合が報告された
+      - iOSを搭載した携帯電話上のIPv6接続では、CADが1秒を超えることはなかった
+        - モバイルデバイスではより小さい値が優先される傾向があると推測される
+      - Appleは、プライバシー保護型プロキシサービスであるiCloud Private Relay (iCPR) を展開している
+        - iCPRの一部として、SafariはMASQUEプロキシを使用し、egress operatorを経由してトラフィックを中継できる
+        - iCPR経由の接続は、リレーネットワークを介してIPトンネルを作成するのではなく、
+          接続したいサーバ名だけをegress nodeに通知するため、Safariと比較してまったく異なるHE挙動を示す
+          - egress node = DNS解決とTCP / UDPのトランスポートプロトコルヘッダまでのスタックを処理するコンポーネント
+        - iCPR経由の測定は、egress operatorがHEをどのように実装しているかを示す
+        - AkamaiとCloudflareのegress nodeは、それぞれ150 / 200msのCADを使用
+        - ユーザはegress node providerを能動的に選択することはできず、Fastlyはproviderとして現れなかった
