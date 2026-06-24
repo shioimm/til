@@ -2,7 +2,7 @@ require "socket"
 require "resolv"
 require "ipaddr"
 
-class IPv4OnlyArpaInquirer
+class NAT64PrefixSearcher
   IPV4ONLY_ARPA = "ipv4only.arpa"
 
   # ipv4only.arpaの既知IPv4アドレス
@@ -20,7 +20,7 @@ class IPv4OnlyArpaInquirer
     @addresses = []
   end
 
-  def query
+  def query_ipv4only_arpa
     Resolv::DNS.open do |dns|
       dns.timeouts = TIMEOUTS
 
@@ -114,8 +114,8 @@ class IPv4OnlyArpaInquirer
   private_constant :AddrInt
 end
 
-inquirer = IPv4OnlyArpaInquirer.new
-answers = inquirer.query
+searcher = NAT64PrefixSearcher.new
+answers = searcher.query_ipv4only_arpa
 
 if answers.empty?
   puts "AAAA not found"; exit
@@ -127,7 +127,7 @@ answers.each do
   puts "  #{IPAddr.new(it.to_int, Socket::AF_INET6)}"
 end
 
-confirmed, tentative = inquirer.detect_nat64_prefixes
+confirmed, tentative = searcher.detect_nat64_prefixes
 
 if confirmed.empty? && tentative.empty?
   puts "AAAA response was received, but it may not be a NAT64 composite address in RFC 6052 format."; exit
