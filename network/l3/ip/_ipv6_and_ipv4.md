@@ -65,6 +65,36 @@
    元のIPv4-IPv6変換アドレスを送信元として通信を開始した端末へ返送する
 5. CLATがIPv6パケットをIPv4パケットに変換し、アプリケーションへ渡す
 
+## ipv4only.arpa
+- DNSにドメイン名"ipv4only.arpa"のAAAAを問い合わせてDNS64が合成したIPv6アドレスを取得することにより、
+  そのネットワークで使用されているNAT64 prefixを推定することができる
+- 取得したIPv6アドレスから既知のIPv4アドレスを除いた部分がNAT64 prefix
+
+```text
+既知のIPv4アドレス
+
+ipv4only.arpa. IN A 192.0.0.170
+ipv4only.arpa. IN A 192.0.0.171
+```
+
+- Well-Known Prefix: 64:ff9b::/96 (そのネットワークのNAT64が64:ff9b::/96宛のパケットを受け付けている場合のみ有効)
+
+#### 動作フロー
+1. DNSにipv4only.arpaのAAAAレコードを問い合わせる
+2. DNS64が192.0.0.170 / 192.0.0.171をNAT64 prefix付きでIPv6アドレスに合成してAAAAレコードとして返す
+3. クライアントはAAAA応答からNAT64 prefixを推定
+4. クライアントは任意のIPv4アドレスをNAT prefixに埋め込んでIPv6アドレスを合成
+5. クライアントがIPv6アドレスへ接続すると、NAT64がIPv4アドレス宛に変換してオリジンサーバへ送信する
+
+#### 関連RFC
+- RFC 6052: IPv4アドレスをIPv6アドレスに埋め込むフォーマットを定義
+- RFC 6146: NAT64 (IPv6クライアントからIPv4サーバへのプロトコル変換) を定義
+- RFC 6147: DNS64 (AレコードからAAAAレコードを合成するDNSの動作) を定義
+- RFC 7050: `ipv4only.arpa`を利用してNAT64 prefixを発見する方法を定義
+  - RFC 8880: RFC 7050を更新 (`ipv4only.arpa`をSpecial-Use Domain Nameとして明確化)
+- RFC 8781: RAのPREF64オプションでNAT64 prefixを通知する方法を定義
+  - RFC 9872: NAT64 prefix discoveryの推奨事項を整理し、RFC 8781のRA PREF64の使用を推奨
+
 ## トンネリング
 - あるプロトコルのパケットを別のプロトコルのパケットにカプセル化して転送する
   - 6in4 / 6rd: IPv6パケットをIPv4パケットにカプセル化して転送する仕組み (減少傾向)
