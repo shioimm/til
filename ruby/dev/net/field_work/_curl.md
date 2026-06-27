@@ -4271,34 +4271,34 @@ end:
 ---
 
 ## ALPNの全体フロー
-- 1. `Curl_pretransfer` -> `Curl_http_neg_init`
+- (1) `Curl_pretransfer` -> `Curl_http_neg_init`
   - `CURLOPT_HTTP_VERSION`の値を`http_neg.wanted` / `http_neg.allowed`に変換
 
 ```
-CURL_HTTP_VERSION_NONE (デフォルト): wanted = h1|h2,  allowed = h1|h2|h3
-CURL_HTTP_VERSION_2TLS:              wanted = h1|h2,  allowed = h1|h2
-CURL_HTTP_VERSION_3:                 wanted = h1|h2|h3
+CURL_HTTP_VERSION_NONE: wanted = h1|h2,  allowed = h1|h2|h3 (デフォルト)
+CURL_HTTP_VERSION_2TLS: wanted = h1|h2,  allowed = h1|h2
+CURL_HTTP_VERSION_3: wanted = h1|h2|h3
 ```
 
-- 2. `cf_hc_set_baller1`で`ballers[0].alpn_id`を決定 / `cf_hc_set_baller2`で`ballers[1].alpn_id`を決定
+- (2) `cf_hc_set_baller1`で`ballers[0].alpn_id`を決定 / `cf_hc_set_baller2`で`ballers[1].alpn_id`を決定
 
 ```
 優先度
 
-1. HTTPS RR  (cf_hc_get_httpsrr_alpn)
+1. HTTPS RR (cf_hc_get_httpsrr_alpn)
 2. preferred (cf_hc_get_pref_alpn / http_neg.preferred)
-3. wanted    (cf_hc_get_first_alpn / http_neg.wanted)
-4. allowed   (cf_hc_get_first_alpn / http_neg.allowed)
+3. wanted (cf_hc_get_first_alpn / http_neg.wanted)
+4. allowed (cf_hc_get_first_alpn / http_neg.allowed)
 ```
 
-- 3. "SSL"フィルタ生成時に`alpn_spec`を確定
+- (3) "SSL"フィルタ生成時に`alpn_spec`を確定
   - `cf_hc_baller_connect` -> `cf_setup_connect` -> `Curl_cf_ssl_insert_after` -> `cf_ssl_create`
-- 4. TLSハンドシェイク時に候補リストをセット
+- (4) TLSハンドシェイク時に候補リストをセット
   - 各バックエンドが`alpn_spec`をバイナリ形式に変換してサーバに提示 (`ossl_init_session_and_alpns`など)
-- 5. ネゴシエーション結果の保存
+- (5) ネゴシエーション結果の保存
   - ハンドシェイク完了後、各バックエンドがサーバの選択結果を取得
   - `Curl_alpn_set_negotiated`で`connssl->negotiated.alpn`に保存
-- 6. 結果の利用
+- (6) 結果の利用
   - `baller_connected`->`Curl_conn_cf_get_alpn_negotiated`->`CF_QUERY_ALPN_NEGOTIATED`->`connssl->negotiated.alpn`
   - "h2"の場合`Curl_http2_switch_at`で"HTTP/2"フィルタを追加
 
