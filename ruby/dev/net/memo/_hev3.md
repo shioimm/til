@@ -20,7 +20,7 @@
   - 上記を満たす場合 -> IPv4接続性ありとみなして宛先がホスト名の場合は (2) 、IPアドレスリテラルの場合は (4) へ
   - 上記を満たさない場合 -> IPv4接続性なしとみなして (1) へ
 
-#### (1) IPアドレス合成 (8.2 / 8.3)
+#### (1) IPアドレス合成 (8.1 / 8.2 / 8.3)
 
 接続先がIPv4アドレスリテラルの場合
 
@@ -48,6 +48,7 @@
   - NAT64 prefixを検出できなかった場合
     - DNS64に依存していると仮定してSVCB/HTTPS、AAAAを問い合わせる
     - -> DNS64により合成AAAAを受け取り候補集合に追加
+      - 受信したAAAAが壊れている場合は (6) Last Resort Local Synthesis が必要になる可能性あり
 
 Section 4.2の条件Aまたは条件Bを満たしたら (3) へ
 
@@ -99,12 +100,12 @@ Section 4.2の条件Aまたは条件Bを満たしたら (3) へ
 - ECHなど、暗号ハンドシェイクの内容がSVCB/HTTPS応答に依存する場合:
   - 条件によっては、TLS/QUICの暗号ハンドシェイク開始前にSVCB/HTTPS応答を待つ必要がある
 
-### IPv6-only/mostly + 464XLAT非対応の場合のフォールバック
+### IPv6-only/mostly + 名前解決を行った場合のフォールバック
 #### (6) Last Resort Local Synthesis (8.4)
 
 IPv6-only/mostly + DNS64環境で、valid A records と broken AAAA records を持つホスト名への対策
 
-- 最後の接続試行を開始した時点でLast Resort Local Synthesis Delay (推奨2s) を開始
+- すべてのIPv6アドレスに対する最後の接続試行を開始した時点でLast Resort Local Synthesis Delay (推奨2s) を開始
 - タイマー発火時点でまだ接続成功していない場合:
   - 1. Aレコードを問い合わせてIPv4アドレスを取得
   - 2. 取得したIPv4アドレスをIPv4リテラルとして扱い、NAT64 prefixが利用可能ならIPv6アドレスをローカル合成
