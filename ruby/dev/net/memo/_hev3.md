@@ -177,6 +177,8 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
 - HTTP Alternative Services (Alt-Svc): SVCBと併用したプロトコルネゴシエーション
 
 ## HEv3のために考慮すること
+- どのHTTPプロトコルをサポートするかによって考慮点が変わってきそう
+
 ### IPv6-only / mostly対応
 - IPv6-only / IPv6-mostlyを判定する
   - ルーティング可能なIPv6アドレスあり
@@ -246,7 +248,6 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
   - Step 3. 2の各サブグループ内でアドレスのソートを行う
 
 ### 接続試行
-- どのHTTPプロトコルをサポートするかによって考慮点が変わってきそう
 - HTTP/3非対応・HTTP/2対応クライアントの場合:
   - エンドポイントがh3対応していてもQUICで接続しない (それはそう)
   - Connection Attempt Delayの間隔は250ms固定またはTCPのRTOのタイミングに合わせる (QUICの場合はPTO)
