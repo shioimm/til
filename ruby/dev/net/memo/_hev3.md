@@ -299,3 +299,4 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
 - IPv6-only / IPv6-mostlyネットワークのためのNAT64 prefixの取得とIPv6アドレス合成
   - 検証環境の構築
 - HTTPS / AAAA (/ A) クエリの非同期送信
+- アドレスリストのソートに進むための判定とHTTPS / AAAA のためのResolution Delay (50ms) の実装
