@@ -266,7 +266,7 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
     - 同一優先度のサービスグループが複数ある: それらのグループをランダムシャッフルする
   - Step 3. 2の各サブグループ内でアドレスのソートを行う
 
-### 接続試行
+#### 接続試行
 - HTTP/3非対応・HTTP/2対応クライアントの場合:
   - エンドポイントがh3対応していてもQUICで接続しない (それはそう)
   - Connection Attempt Delayの間隔は250ms固定またはTCPのRTOのタイミングに合わせる (QUICの場合はPTO)
@@ -290,3 +290,12 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
     - TCP only: TCPハンドシェイク完了
     - TCP + TLS: TLSハンドシェイク完了
     - QUIC: メインハンドシェイク完了
+
+---
+
+(以下HTTP/1.1, HTTPS, HTTP/2クライアントで必要な機能)
+- IPv6接続性の検出
+- IPv4接続性の検出 (経路プローブ)
+- IPv6-only / IPv6-mostlyネットワークのためのNAT64 prefixの取得とIPv6アドレス合成
+  - 検証環境の構築
+- HTTPS / AAAA (/ A) クエリの非同期送信
