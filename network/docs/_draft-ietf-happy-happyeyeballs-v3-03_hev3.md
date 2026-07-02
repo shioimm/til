@@ -476,11 +476,11 @@ svc2.example.com. IN A    192.0.2.2
 
 ### 6.2. Handling Application Layer Protocol Negotiation (ALPN)
 - SVCBレコードに含まれる`alpn`および`no-default-alpn`のSvcParamKeyはSVCB ALPNセットを示し、
-  これは関連するサービスエンドポイントがサポートする基盤となる下位トランスポートプロトコルを指定する
+  これは関連するサービスエンドポイントがサポートする基盤となるトランスポートプロトコルを指定する
 - [SHOULD] クライアントがSVCBレコードを要求する場合、
-  SVCB / HTTPS Resource Records ([SVCB] 7.1.2) で規定された手順を実行し、
-  クライアントとサービスエンドポイントの双方がサポートする基盤となるトランスポートプロトコルを決定するべき
-- [SHOULD NOT] クライアントは、SVCB ALPNセットにクライアント自身がサポートするプロトコルが含まれていない
+  クライアントとサービスエンドポイントの双方がサポートする基盤トランスポートプロトコルを特定するために
+  SVCB / HTTPS Resource Records ([SVCB] 7.1.2) で規定された手順を実行するべき
+- [SHOULD NOT] クライアントは、クライアント自身がサポートするプロトコルがSVCB ALPNセットに含まれていない
   サービスエンドポイントに対して接続を試みるべきではない
 
 ```text
@@ -495,7 +495,7 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 ```
 
 - [SHOULD] HTTP クライアントがAlt-Svc [AltSvc] とSVCB (HTTPS) レコード両方をサポートするHTTPクライアントである場合、
-  クライアントは接続試行がAlt-SvcパラメータとSVCB ALPNセットの両方と整合することを確認する ([SVCB] 9.3)
+  クライアントは接続試行がAlt-SvcパラメータとSVCB ALPNセットの両方と整合するようにするべき ([SVCB] 9.3)
   - (shioimm) e.g.
     - Alt-Svcがh3を指定している & SVCBレコードのalpnにh3が含まれていない -> 接続すべきでない
     - SVCBレコードがalpn=h2,h3を広告している & Alt-Svcがh3を宣言していない -> 接続すべきでない
