@@ -556,7 +556,7 @@ example.com. 60 IN HTTPS 1 svc1.example.com. (alpn="h3" no-default-alpn ipv6hint
 - 接続確立中、DNS応答が変更された場合、クライアントは現在の進行状況に応じて対応する必要がある
   - e.g. DNSプッシュ通知 (DNS Push Notifications) による解決済みアドレスの追加、
     TTLの期限切れによる解決済みアドレスの削除 など
-- [SHOULD] SVCBのIPヒントによって得られたアドレスが対応する名前のA / AAAAレコードに含まれていない場合、
+- [SHOULD] SVCBのアドレスヒントによって得られたアドレスが対応する名前のA / AAAAレコードに含まれていない場合、
   アドレスリストから削除するべき ([SVCB / HTTPS Resource Records])
   - [SHOULD NOT] 接続試行を開始済みのアドレスがリストから削除された場合、接続試行はキャンセルせず、継続するべき
     - (shioimm) 接続確立しても使えないのでは...?
