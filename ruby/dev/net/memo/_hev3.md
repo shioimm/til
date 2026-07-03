@@ -310,6 +310,7 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
     - 大変そう
 - 接続試行中に新しいDNS応答を受信した場合は取得したアドレスをアドレスリストに組み込む
 - 取得しているアドレスに対してアドレスリストのグルーピングとソートを行う
+  - さきにA / AAAAを受信していて、あとからHTTPS RRを受信してh3専用とわかった場合 -> TCP接続できずに失敗
   - (5.1)
     - HTTP/2とHTTP/1.1はいずれも同一のTCP + TLS接続を利用するので、グルーピングの必要はなし
     - `ech`パラメータを持つエンドポイントも分けずに1グループとして扱い、ECHが使えるときだけ使う
@@ -317,6 +318,9 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
     - サービス単位でそのターゲット名のA / AAAA (あるいはHTTPSレコード内のipv4hint / ipv6hint) をグルーピング
       - サービス = `[TargetName, SvcPriority, SvcParams]`
       - `alpn="h3,h2"`と`alpn="h2"`は同じとみなす
+      - h3専用エンドポイントは除外
+      - `no-default-alpn`がついていない`alpn={h3}`はHTTP/2接続グループにまとめる
+        - https://www.rfc-editor.org/rfc/rfc9460#section-7.1.2
     - グループ同士を優先度でソート
     - ターゲットにHTTPS RRが設定されていない、あるいは否定応答を取得した、あるいは遅延のうえRD経過した場合は
       全アドレスを1グループ・同一優先度として扱う
@@ -324,4 +328,13 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
     - サービスに紐づかないアドレス (TargetName`.`のRRがない、かつowner名のA / AAAAはあるような場合) は末尾
   - (5.3)
     - 使用済みアドレスを優先する
-- 接続試行時、HTTPS接続の場合はTLSハンドシェイクまで終わってから他の接続をキャンセルする
+
+| alpn                      | SVCB ALPN set      | Intersection   | 提示ALPNリスト    |
+| -                         | -                  | -              | -                 |
+| alpn="h3,h2"              │ {h3, h2, http/1.1} │ {h2, http/1.1} │ ["h2","http/1.1"] │
+| alpn="h3"                 │ {h3, http/1.1}     │ {http/1.1}     │ ["h2","http/1.1"] │
+| alpn="h2"                 │ {h2, http/1.1}     │ {h2, http/1.1} │ ["h2","http/1.1"] │
+| alpn="h2" no-default-alpn │ {h2}               │ {h2}           │ ["h2","http/1.1"] │
+| alpn="h3" no-default-alpn │ {h3}               │ {}(空)         │ —                 │
+
+- 接続試行時、HTTP接続の場合はTCP、HTTPS接続の場合はTLSハンドシェイクまで終わってから他の接続をキャンセルする
