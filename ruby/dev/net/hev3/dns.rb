@@ -13,9 +13,9 @@ HTTPS_RDATA = begin
 end
 
 TYPE_MAP = {
-  1 =>  { name: "A", data: A_RDATA },
-  28 => { name: "AAAA", data: AAAA_RDATA },
-  65 => { name: "HTTPS", data: HTTPS_RDATA },
+  1 =>  { type: "A", data: A_RDATA },
+  28 => { type: "AAAA", data: AAAA_RDATA },
+  65 => { type: "HTTPS", data: HTTPS_RDATA },
 }
 
 class Query
@@ -29,9 +29,9 @@ class Query
   def question = @data[12, pos - 12 + 4]
 
   def inspect
-    qtype = TYPE_MAP.fetch(type, "TYPE#{type}")
+    qtype = TYPE_MAP.dig(type, :type)
     qname = name.gsub(/[\x00-\x1f]/, ".").delete_prefix(".").delete_suffix(".")
-    "#{qtype[:name]} type=#{qname}"
+    "#{qname} type=#{qtype}"
   end
 
   private
@@ -46,19 +46,20 @@ class Query
   end
 end
 
-def build_rr(name, type, rdata)
-  # NAME / TYPE / CLASS / TTL / RDLENGTH /  RDATA
-  name + [type, 1, 300, rdata.bytesize].pack("nnNn") + rdata
-end
-
 def respond(query)
   q = Query.new(query)
   puts "Received query: #{q.inspect}"
 
-  flags   = "\x84\x00".b # QR=1 / AA=1 / RCODE=0
-  answer  = build_rr(q.name, q.type, TYPE_MAP.dig(q.type, :data))
+  # QR=1 / AA=1 / RCODE=0
+  flags = "\x84\x00".b
+  rdata = TYPE_MAP.dig(q.type, :data)
+
+  # NAME / TYPE / CLASS / TTL / RDLENGTH / RDATA
+  answer  = q.name + [q.type, 1, 300, rdata.bytesize].pack("nnNn") + rdata
   ancount = answer.empty? ? 0 : 1
-  header  = q.id + flags + [1, ancount, 0, 0].pack("nnnn")
+
+  # ID / フラグ / QDCOUNT / ANCOUNT / NSCOUNT / ARCOUNT
+  header = q.id + flags + [1, ancount, 0, 0].pack("nnnn")
 
   header + q.question + answer
 end
@@ -69,11 +70,11 @@ puts "DNS listining on 127.0.0.1:5300"
 
 loop do
   data, addr = sock.recvfrom(512)
-  port, _, ip_address, = addr
+  _, port, _, ip_address, = addr
 
   begin
     response = respond(data)
-    sock.send(response, 0, addr[3], addr[1])
+    sock.send(response, 0, ip_address, port)
   rescue => e
     p e
   end
