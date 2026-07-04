@@ -1,5 +1,7 @@
-require "net/http"
+require "socket"
 require "resolv"
+
+Socket.tcp_fast_fallback = false
 
 NAMESERVER = ["127.0.0.1", 5300]
 HOST = "localhost"
@@ -9,18 +11,25 @@ HTTP_PORT = 8080
 resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
 a_records = resolver.getresources(HOST, Resolv::DNS::Resource::IN::A).map { it.address.to_s }
 
-http =
+sock =
   if ARGV[0] == :https
-    h = Net::HTTP.new(a_records.first, HTTPS_PORT)
-    h.use_ssl = true
-    h.verify_mode = OpenSSL::SSL::VERIFY_NONE
-    h
+    s = Socket.tcp(a_records.first, HTTPS_PORT)
+    ssl_sock = OpenSSL::SSL::SSLSocket.new(s)
+    ssl_sock.hostname = HOST
+    ssl_sock.connect
+    s
   else
-    Net::HTTP.new(a_records.first, HTTP_PORT)
+    Socket.tcp(a_records.first, HTTP_PORT)
   end
 
-request = Net::HTTP::Get.new("/")
-request["Host"] = HOST
+request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
+sock.write request_message
 
-response = http.request(request)
-p response
+response_message = sock.read
+status_line, *rest = response_message.split("\r\n")
+_, body = rest.join("\r\n").split("\r\n\r\n", 2)
+
+puts status_line
+puts body
+
+sock.close
