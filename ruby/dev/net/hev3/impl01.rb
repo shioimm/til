@@ -1,8 +1,6 @@
 require "socket"
 require "resolv"
 
-Socket.tcp_fast_fallback = false
-
 NAMESERVER = ["127.0.0.1", 5300]
 HOST = "localhost"
 HTTPS_PORT = 8443
@@ -10,16 +8,20 @@ HTTP_PORT = 8080
 
 resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
 a_records = resolver.getresources(HOST, Resolv::DNS::Resource::IN::A).map { it.address.to_s }
+s = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
 
 sock =
   if ARGV[0] == :https
-    s = Socket.tcp(a_records.first, HTTPS_PORT)
+    sockaddr = Socket.sockaddr_in(HTTPS_PORT, a_records.first)
+    s.connect(sockaddr)
     ssl_sock = OpenSSL::SSL::SSLSocket.new(s)
     ssl_sock.hostname = HOST
     ssl_sock.connect
-    s
+    ssl_sock
   else
-    Socket.tcp(a_records.first, HTTP_PORT)
+    sockaddr = Socket.sockaddr_in(HTTP_PORT, a_records.first)
+    s.connect(sockaddr)
+    s
   end
 
 request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
