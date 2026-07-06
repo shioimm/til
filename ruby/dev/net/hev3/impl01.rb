@@ -42,13 +42,13 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list}" if DEBUG
+      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
       if @address_candidate_list.any?
         socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
 
         # TODO @address_candidate_listを扱いやすくする
-        _type, addresses = @address_candidate_list.shift
-        sockaddr = Socket.sockaddr_in(@port, addresses.first)
+        address = @address_candidate_list.next_candidate
+        sockaddr = Socket.sockaddr_in(@port, address)
         socket.connect_nonblock(sockaddr, exception: false)
         @connecting_sockets.push socket
       end
@@ -184,19 +184,23 @@ class HTTPClient
 
   class AddressCandidateList # WIP
     def initialize
-      @addresses = []
+      @addresses = {
+        Resolv::DNS::Resource::IN::A => [],
+      }
     end
 
-    def add(record)
-      @addresses << record
+    def add(result)
+      type, records = result
+      @addresses[type] = records
+      # TODO たぶんここでグルーピング・並び替えするべき
     end
 
-    def shift
-      @addresses.shift
+    def next_candidate
+      @addresses[Resolv::DNS::Resource::IN::A].shift # TEMP
     end
 
     def any?
-      @addresses.any?
+      @addresses[Resolv::DNS::Resource::IN::A].any? # TEMP
     end
   end
 end
