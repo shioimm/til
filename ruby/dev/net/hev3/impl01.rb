@@ -11,7 +11,10 @@ class HTTPClient
   HOST = "localhost"
   HTTPS_PORT = 8443
   HTTP_PORT = 8080
-  RECORD_TYPES = [Resolv::DNS::Resource::IN::A].freeze # TODO AAAA / HTTPSレコードを追加
+  RECORD_TYPES = [
+    Resolv::DNS::Resource::IN::A,
+    Resolv::DNS::Resource::IN::AAAA,
+  ].freeze # TODO AAAA / HTTPSレコードを追加
 
   def self.run
     self.new.run
@@ -185,6 +188,7 @@ class HTTPClient
   class AddressCandidateList # WIP
     def initialize
       @addresses = {
+        Resolv::DNS::Resource::IN::AAAA => [],
         Resolv::DNS::Resource::IN::A => [],
       }
     end
