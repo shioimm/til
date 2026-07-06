@@ -21,7 +21,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @hostname_resolution_result = HostnameResolutionResult.new(RECORD_TYPES.size)
     @hostname_resolution_threads = []
-    @record_store = []
+    @address_candidate_list = AddressCandidateList.new
     @connecting_sockets = []
     @connected_socket = nil
     @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
@@ -42,12 +42,12 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @record_store #{@record_store}" if DEBUG
-      if @record_store.any?
+      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list}" if DEBUG
+      if @address_candidate_list.any?
         socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
 
-        # TODO @record_storeを扱いやすくする
-        _type, addresses = @record_store.shift
+        # TODO @address_candidate_listを扱いやすくする
+        _type, addresses = @address_candidate_list.shift
         sockaddr = Socket.sockaddr_in(@port, addresses.first)
         socket.connect_nonblock(sockaddr, exception: false)
         @connecting_sockets.push socket
@@ -97,9 +97,9 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolved_notifier #{resolved_notifier || 'nil'}" if DEBUG
       if resolved_notifier&.any?
         while (result = @hostname_resolution_result.get)
-          # TODO @record_storeを扱いやすくする
+          # TODO @address_candidate_listを扱いやすくする
           # TODO エラーハンドリング・グルーピング・並べ替え
-          @record_store.push(result)
+          @address_candidate_list.add(result)
         end
       end
 
@@ -179,6 +179,24 @@ class HTTPClient
 
     def close_notifier
       @rpipe.close if @notifier
+    end
+  end
+
+  class AddressCandidateList # WIP
+    def initialize
+      @addresses = []
+    end
+
+    def add(record)
+      @addresses << record
+    end
+
+    def shift
+      @addresses.shift
+    end
+
+    def any?
+      @addresses.any?
     end
   end
 end
