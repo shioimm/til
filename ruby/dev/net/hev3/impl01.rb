@@ -14,7 +14,7 @@ class HTTPClient
   RECORD_TYPES = [
     Resolv::DNS::Resource::IN::A,
     Resolv::DNS::Resource::IN::AAAA,
-  ].freeze # TODO AAAA / HTTPSレコードを追加
+  ].freeze # TODO HTTPSレコードを追加
 
   def self.run
     self.new.run
@@ -47,12 +47,11 @@ class HTTPClient
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
       if @address_candidate_list.any?
-        socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
-
-        # TODO @address_candidate_listを扱いやすくする
         address = @address_candidate_list.next_candidate
-        sockaddr = Socket.sockaddr_in(@port, address)
-        socket.connect_nonblock(sockaddr, exception: false)
+        addrinfo = Addrinfo.tcp(address, @port)
+        socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
+
+        socket.connect_nonblock(addrinfo, exception: false)
         @connecting_sockets.push socket
       end
 
@@ -100,11 +99,12 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolved_notifier #{resolved_notifier || 'nil'}" if DEBUG
       if resolved_notifier&.any?
         while (result = @hostname_resolution_result.get)
-          # TODO @address_candidate_listを扱いやすくする
           # TODO エラーハンドリング・グルーピング・並べ替え
           @address_candidate_list.add(result)
         end
       end
+
+      puts "------------------------" if DEBUG
 
       break if @connected_socket
     end
@@ -119,8 +119,11 @@ class HTTPClient
     puts status_line
     puts body
   ensure
-    @connected_socket.close
     @hostname_resolution_result.close_notifier
+
+    @connecting_sockets.each do |connecting_socket|
+      connecting_socket.close
+    end
 
     @hostname_resolution_threads.each do |thread|
       thread.exit
@@ -196,7 +199,7 @@ class HTTPClient
         Resolv::DNS::Resource::IN::AAAA => [],
         Resolv::DNS::Resource::IN::A => [],
       }
-      @last_family = nil
+      @last_type = nil
     end
 
     def add(result)
@@ -213,16 +216,15 @@ class HTTPClient
 
     def next_candidate
       precedences =
-        case @last_family
-        when Resolv::DNS::Resource::IN::A, nil then PRIORITY_ON_V6
-        when Resolv::DNS::Resource::IN::AAAA   then PRIORITY_ON_V4
+        if @last_type == Resolv::DNS::Resource::IN::AAAA then PRIORITY_ON_V4
+        elsif @last_type == Resolv::DNS::Resource::IN::A || @last_type.nil? then PRIORITY_ON_V6
         end
 
       precedences.each do |type|
         address = @addresses[type]&.shift
         next unless address
 
-        @last_family = type
+        @last_type = type
         return address
       end
 
