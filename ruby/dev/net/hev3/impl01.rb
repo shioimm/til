@@ -11,7 +11,10 @@ class HTTPClient
   HOST = "localhost"
   HTTPS_PORT = 8443
   HTTP_PORT = 8080
-  RECORD_TYPES = [Resolv::DNS::Resource::IN::A].freeze # TODO AAAA / HTTPSレコードを追加
+  RECORD_TYPES = [
+    Resolv::DNS::Resource::IN::A,
+    Resolv::DNS::Resource::IN::AAAA,
+  ].freeze # TODO AAAA / HTTPSレコードを追加
 
   def self.run
     self.new.run
@@ -21,7 +24,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @hostname_resolution_result = HostnameResolutionResult.new(RECORD_TYPES.size)
     @hostname_resolution_threads = []
-    @record_store = []
+    @address_candidate_list = AddressCandidateList.new
     @connecting_sockets = []
     @connected_socket = nil
     @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
@@ -42,13 +45,13 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @record_store #{@record_store}" if DEBUG
-      if @record_store.any?
+      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
+      if @address_candidate_list.any?
         socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
 
-        # TODO @record_storeを扱いやすくする
-        _type, addresses = @record_store.shift
-        sockaddr = Socket.sockaddr_in(@port, addresses.first)
+        # TODO @address_candidate_listを扱いやすくする
+        address = @address_candidate_list.next_candidate
+        sockaddr = Socket.sockaddr_in(@port, address)
         socket.connect_nonblock(sockaddr, exception: false)
         @connecting_sockets.push socket
       end
@@ -97,9 +100,9 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolved_notifier #{resolved_notifier || 'nil'}" if DEBUG
       if resolved_notifier&.any?
         while (result = @hostname_resolution_result.get)
-          # TODO @record_storeを扱いやすくする
+          # TODO @address_candidate_listを扱いやすくする
           # TODO エラーハンドリング・グルーピング・並べ替え
-          @record_store.push(result)
+          @address_candidate_list.add(result)
         end
       end
 
@@ -179,6 +182,29 @@ class HTTPClient
 
     def close_notifier
       @rpipe.close if @notifier
+    end
+  end
+
+  class AddressCandidateList # WIP
+    def initialize
+      @addresses = {
+        Resolv::DNS::Resource::IN::AAAA => [],
+        Resolv::DNS::Resource::IN::A => [],
+      }
+    end
+
+    def add(result)
+      type, records = result
+      @addresses[type] = records
+      # TODO たぶんここでグルーピング・並び替えするべき
+    end
+
+    def next_candidate
+      @addresses[Resolv::DNS::Resource::IN::A].shift # TEMP
+    end
+
+    def any?
+      @addresses[Resolv::DNS::Resource::IN::A].any? # TEMP
     end
   end
 end
