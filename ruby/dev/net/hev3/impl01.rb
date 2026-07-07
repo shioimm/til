@@ -186,25 +186,55 @@ class HTTPClient
   end
 
   class AddressCandidateList # WIP
+    PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
+    PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
+
     def initialize
+      @groups = []
+      # TODO @groupsの中に@addressesが必要
       @addresses = {
         Resolv::DNS::Resource::IN::AAAA => [],
         Resolv::DNS::Resource::IN::A => [],
       }
+      @last_family = nil
     end
 
     def add(result)
       type, records = result
-      @addresses[type] = records
-      # TODO たぶんここでグルーピング・並び替えするべき
+
+      # TODO グルーピングが必要
+      if type == Resolv::DNS::Resource::IN::HTTPS
+        # WIP
+      else
+        # TODO アドレスヒントを置き換える処理が必要
+        @addresses[type].concat(records)
+      end
     end
 
     def next_candidate
-      @addresses[Resolv::DNS::Resource::IN::A].shift # TEMP
+      precedences =
+        case @last_family
+        when Resolv::DNS::Resource::IN::A, nil then PRIORITY_ON_V6
+        when Resolv::DNS::Resource::IN::AAAA   then PRIORITY_ON_V4
+        end
+
+      precedences.each do |type|
+        address = @addresses[type]&.shift
+        next unless address
+
+        @last_family = type
+        return address
+      end
+
+      nil
+    end
+
+    def empty?
+      @addresses.all? { |_, addrinfos| addrinfos.empty? }
     end
 
     def any?
-      @addresses[Resolv::DNS::Resource::IN::A].any? # TEMP
+      !empty?
     end
   end
 end
