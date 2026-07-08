@@ -16,6 +16,7 @@ class HTTPClient
     Resolv::DNS::Resource::IN::AAAA,
   ].freeze # TODO HTTPSレコードを追加
 
+  RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
   def self.run
@@ -31,11 +32,13 @@ class HTTPClient
     @connected_socket = nil
     @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
 
-    @now = current_clock_time
+    @resolution_delay_expires_at = nil
     @connection_attempt_delay_expires_at = nil
   end
 
   def run
+    now = current_clock_time
+
     @hostname_resolution_threads.concat(
       RECORD_TYPES.map { |type|
         thread = Thread.new(type) { |type| resolve_hostname(type) }
@@ -51,7 +54,10 @@ class HTTPClient
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
-      if @address_candidate_list.any? \
+      puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
+
+      if @address_candidate_list.any?
+          && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
         address = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address, @port)
@@ -59,21 +65,37 @@ class HTTPClient
         result = socket.connect_nonblock(addrinfo, exception: false)
 
         if result == :wait_writable
-          @connection_attempt_delay_expires_at = @now + CONNECTION_ATTEMPT_DELAY
+          @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
           @connecting_sockets.push socket
         end
       end
 
+      puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
+
+      ends_at =
+        if @address_candidate_list.any?
+          @resolution_delay_expires_at || @connection_attempt_delay_expires_at
+        else
+          Float::INFINITY
+        end
+
+      puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
+
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
+
       resolved_notifier, writable_sockets, _ = IO.select(
         @hostname_resolution_result.notifier,
         @connecting_sockets,
         nil,
-        second_to_timeout(current_clock_time, @connection_attempt_delay_expires_at), # TODO RDタイムアウト設定
+        second_to_timeout(current_clock_time, ends_at),
       )
-      @connection_attempt_delay_expires_at = nil if expired?(@now, @connection_attempt_delay_expires_at)
+
+      now = current_clock_time
+      @resolution_delay_expires_at = nil if expired?(now, @resolution_delay_expires_at)
+      @connection_attempt_delay_expires_at = nil if expired?(now, @connection_attempt_delay_expires_at)
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -111,6 +133,18 @@ class HTTPClient
         while (result = @hostname_resolution_result.get)
           # TODO エラーハンドリング・グルーピング・並べ替え
           @address_candidate_list.add(result)
+        end
+
+        # TODO HTTPS RRを考慮する
+        if @hostname_resolution_result.resolved?(Resolv::DNS::Resource::IN::A)
+          if @hostname_resolution_result.resolved?(Resolv::DNS::Resource::IN::AAAA)
+            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
+            @hostname_resolution_result.close_notifier
+            @resolution_delay_expires_at = nil
+          elsif resolution_store.resolved_successfully?(:ipv4)
+            puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
+            @resolution_delay_expires_at = now + RESOLUTION_DELAY
+          end
         end
       end
 
@@ -176,6 +210,7 @@ class HTTPClient
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
+      @resolved = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
     end
@@ -183,6 +218,7 @@ class HTTPClient
     def add(type, result)
       @mutex.synchronize do
         @results.push [type, result]
+        @resolved.push type
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
@@ -200,6 +236,10 @@ class HTTPClient
       @taken_count += 1
       close if @taken_count == @size
       res
+    end
+
+    def resolved?(type)
+      @resolved.include? type
     end
 
     def close
