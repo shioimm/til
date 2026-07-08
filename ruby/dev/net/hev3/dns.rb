@@ -7,9 +7,17 @@ HTTPS_RDATA = begin
   # <owner name>  IN [SVCB | HTTPS]  <SvcPriority>  <TargetName>  <SvcParams>
   priority   = [1].pack("n")     # <SvcPriority> 1
   target     = "\x00".b          # <TargetName>  "." (<owner name>とおなじ)
-  alpn_value = "\x02h2\x02h3".b  # <SvcParams>   alpn={h2,h3}
-  alpn_param = [1, alpn_value.bytesize].pack("nn") + alpn_value
-  priority + target + alpn_param
+
+  alpn_value     = "\x02h2\x02h3".b             # alpn={h2,h3}
+  alpn_param     = [1, alpn_value.bytesize].pack("nn") + alpn_value
+
+  ipv4hint_value = [127, 0, 0, 1].pack("C4")    # ipv4hint=127.0.0.1
+  ipv4hint_param = [4, ipv4hint_value.bytesize].pack("nn") + ipv4hint_value
+
+  ipv6hint_value = ([0] * 15 + [1]).pack("C16") # ipv6hint=::1
+  ipv6hint_param = [6, ipv6hint_value.bytesize].pack("nn") + ipv6hint_value
+
+  priority + target + alpn_param + ipv4hint_param + ipv6hint_param
 end
 
 TYPE_MAP = {

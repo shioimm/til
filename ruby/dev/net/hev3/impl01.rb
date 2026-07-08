@@ -14,7 +14,7 @@ class HTTPClient
   RECORD_TYPES = [
     Resolv::DNS::Resource::IN::A,
     Resolv::DNS::Resource::IN::AAAA,
-  ].freeze # TODO AAAA / HTTPSレコードを追加
+  ].freeze # TODO HTTPSレコードを追加
 
   def self.run
     self.new.run
@@ -47,12 +47,11 @@ class HTTPClient
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
       if @address_candidate_list.any?
-        socket = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM)
-
-        # TODO @address_candidate_listを扱いやすくする
         address = @address_candidate_list.next_candidate
-        sockaddr = Socket.sockaddr_in(@port, address)
-        socket.connect_nonblock(sockaddr, exception: false)
+        addrinfo = Addrinfo.tcp(address, @port)
+        socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
+
+        socket.connect_nonblock(addrinfo, exception: false)
         @connecting_sockets.push socket
       end
 
@@ -100,11 +99,12 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolved_notifier #{resolved_notifier || 'nil'}" if DEBUG
       if resolved_notifier&.any?
         while (result = @hostname_resolution_result.get)
-          # TODO @address_candidate_listを扱いやすくする
           # TODO エラーハンドリング・グルーピング・並べ替え
           @address_candidate_list.add(result)
         end
       end
+
+      puts "------------------------" if DEBUG
 
       break if @connected_socket
     end
@@ -119,8 +119,11 @@ class HTTPClient
     puts status_line
     puts body
   ensure
-    @connected_socket.close
     @hostname_resolution_result.close_notifier
+
+    @connecting_sockets.each do |connecting_socket|
+      connecting_socket.close
+    end
 
     @hostname_resolution_threads.each do |thread|
       thread.exit
@@ -186,25 +189,54 @@ class HTTPClient
   end
 
   class AddressCandidateList # WIP
+    PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
+    PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
+
     def initialize
+      @groups = []
+      # TODO @groupsの中に@addressesが必要
       @addresses = {
         Resolv::DNS::Resource::IN::AAAA => [],
         Resolv::DNS::Resource::IN::A => [],
       }
+      @last_type = nil
     end
 
     def add(result)
       type, records = result
-      @addresses[type] = records
-      # TODO たぶんここでグルーピング・並び替えするべき
+
+      # TODO グルーピングが必要
+      if type == Resolv::DNS::Resource::IN::HTTPS
+        # WIP
+      else
+        # TODO アドレスヒントを置き換える処理が必要
+        @addresses[type].concat(records)
+      end
     end
 
     def next_candidate
-      @addresses[Resolv::DNS::Resource::IN::A].shift # TEMP
+      precedences =
+        if @last_type == Resolv::DNS::Resource::IN::AAAA then PRIORITY_ON_V4
+        elsif @last_type == Resolv::DNS::Resource::IN::A || @last_type.nil? then PRIORITY_ON_V6
+        end
+
+      precedences.each do |type|
+        address = @addresses[type]&.shift
+        next unless address
+
+        @last_type = type
+        return address
+      end
+
+      nil
+    end
+
+    def empty?
+      @addresses.all? { |_, addrinfos| addrinfos.empty? }
     end
 
     def any?
-      @addresses[Resolv::DNS::Resource::IN::A].any? # TEMP
+      !empty?
     end
   end
 end
