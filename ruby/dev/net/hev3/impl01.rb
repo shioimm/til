@@ -108,7 +108,6 @@ class HTTPClient
             sockopt.int.zero?
           )
 
-          # TODO エラーハンドリング
           if is_connected
             @connecting_sockets.delete writable_socket
 
@@ -123,6 +122,8 @@ class HTTPClient
             end
 
             break
+          else # TODO エラーハンドリング
+            @connection_attempt_delay_expires_at = nil
           end
         end
       end
