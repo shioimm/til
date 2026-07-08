@@ -16,6 +16,8 @@ class HTTPClient
     Resolv::DNS::Resource::IN::AAAA,
   ].freeze # TODO HTTPSレコードを追加
 
+  CONNECTION_ATTEMPT_DELAY = 0.25
+
   def self.run
     self.new.run
   end
@@ -28,6 +30,9 @@ class HTTPClient
     @connecting_sockets = []
     @connected_socket = nil
     @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
+
+    @now = current_clock_time
+    @connection_attempt_delay_expires_at = nil
   end
 
   def run
@@ -46,24 +51,29 @@ class HTTPClient
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
       puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
-      if @address_candidate_list.any?
+      if @address_candidate_list.any? \
+          && !@connection_attempt_delay_expires_at
         address = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address, @port)
         socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
+        result = socket.connect_nonblock(addrinfo, exception: false)
 
-        socket.connect_nonblock(addrinfo, exception: false)
-        @connecting_sockets.push socket
+        if result == :wait_writable
+          @connection_attempt_delay_expires_at = @now + CONNECTION_ATTEMPT_DELAY
+          @connecting_sockets.push socket
+        end
       end
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
-      # TODO RD / CADタイムアウト設定
+      puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
       resolved_notifier, writable_sockets, _ = IO.select(
         @hostname_resolution_result.notifier,
         @connecting_sockets,
         nil,
-        0,
+        second_to_timeout(current_clock_time, @connection_attempt_delay_expires_at), # TODO RDタイムアウト設定
       )
+      @connection_attempt_delay_expires_at = nil if expired?(@now, @connection_attempt_delay_expires_at)
 
       puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
       puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
@@ -139,6 +149,21 @@ class HTTPClient
     rescue => e
       @hostname_resolution_result.add(type, e)
     end
+  end
+
+  def current_clock_time
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  def second_to_timeout(started_at, ends_at)
+    return nil if ends_at == Float::INFINITY || ends_at.nil?
+
+    remaining = (ends_at - started_at)
+    remaining.negative? ? 0 : remaining
+  end
+
+  def expired?(started_at, ends_at)
+    second_to_timeout(started_at, ends_at)&.zero?
   end
 
   class HostnameResolutionResult
