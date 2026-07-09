@@ -27,7 +27,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @hostname_resolution_result = HostnameResolutionResult.new(RECORD_TYPES.size)
     @hostname_resolution_threads = []
-    @address_candidate_list = AddressCandidateList.new
+    @address_candidate_list = AddressCandidateList.new(RECORD_TYPES)
     @connecting_sockets = {}
     @connected_socket = nil
     @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
@@ -54,7 +54,7 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
+      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)&.transform_values(&:records)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
       if @address_candidate_list.any?
@@ -131,7 +131,7 @@ class HTTPClient
 
             if writable_sockets.any? || @connecting_sockets.any?
               # Try other writable socket
-            elsif @address_candidate_list.any? || @hostname_resolution_result.any_unresolved?
+            elsif @address_candidate_list.any? || @address_candidate_list.any_unresolved?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -144,17 +144,17 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolved_notifier #{resolved_notifier || 'nil'}" if DEBUG
       if resolved_notifier&.any?
         while (result = @hostname_resolution_result.get)
-          # TODO エラーハンドリング・グルーピング・並べ替え
           @address_candidate_list.add(result)
+          last_error = result.error unless result.success?
         end
 
         # TODO HTTPS RRを考慮する
-        if @hostname_resolution_result.resolved?(Resolv::DNS::Resource::IN::A)
-          if @hostname_resolution_result.resolved?(Resolv::DNS::Resource::IN::AAAA)
+        if @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::A)
+          if @address_candidate_list.all_resolved?
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             @hostname_resolution_result.close_notifier
             @resolution_delay_expires_at = nil
-          elsif resolution_store.resolved_successfully?(:ipv4)
+          elsif @address_candidate_list.resolved_successfully?(Resolv::DNS::Resource::IN::A)
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
@@ -190,12 +190,10 @@ class HTTPClient
   private
 
   def resolve_hostname(type)
-    begin
-      records = @resolver.getresources(HOST, type).map { it.address.to_s }
-      @hostname_resolution_result.add(type, records)
-    rescue => e
-      @hostname_resolution_result.add(type, e)
-    end
+    records = @resolver.getresources(HOST, type).map { it.address.to_s }
+    @hostname_resolution_result.add(type, records: records)
+  rescue => e
+    @hostname_resolution_result.add(type, error: e)
   end
 
   def current_clock_time
@@ -216,6 +214,12 @@ class HTTPClient
   class HostnameResolutionResult
     HOSTNAME_RESOLUTION_QUEUE_UPDATED = 1
 
+    ResolutionResult = Data.define(:type, :records, :error) do
+      def success?
+        error.nil?
+      end
+    end
+
     attr_reader :notifier
 
     def initialize(size)
@@ -223,15 +227,13 @@ class HTTPClient
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
-      @resolved = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
     end
 
-    def add(type, result)
+    def add(type, records: [], error: nil)
       @mutex.synchronize do
-        @results.push [type, result]
-        @resolved.push type
+        @results.push ResolutionResult.new(type:, records:, error:)
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
@@ -247,26 +249,20 @@ class HTTPClient
       end
 
       @taken_count += 1
-      close if @taken_count == @size
+      close_all if @taken_count == @size
       res
     end
 
-    def resolved?(type)
-      @resolved.include? type
+    def close_notifier
+      @rpipe.close if @notifier
     end
 
-    def any_unresolved?
-      @resolved.size < @size
-    end
+    private
 
     def close
       @rpipe.close
       @notifier = nil
       @wpipe.close
-    end
-
-    def close_notifier
-      @rpipe.close if @notifier
     end
   end
 
@@ -274,25 +270,19 @@ class HTTPClient
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
 
-    def initialize
-      @groups = []
-      # TODO @groupsの中に@addressesが必要
-      @addresses = {
-        Resolv::DNS::Resource::IN::AAAA => [],
-        Resolv::DNS::Resource::IN::A => [],
-      }
+    def initialize(record_types)
+      @record_types = record_types
+      @addresses = {}
       @last_type = nil
     end
 
     def add(result)
-      type, records = result
+      @addresses[result.type] = result
+      return unless result.success?
 
       # TODO グルーピングが必要
-      if type == Resolv::DNS::Resource::IN::HTTPS
+      if result.type == Resolv::DNS::Resource::IN::HTTPS
         # WIP
-      else
-        # TODO アドレスヒントを置き換える処理が必要
-        @addresses[type].concat(records)
       end
     end
 
@@ -303,7 +293,7 @@ class HTTPClient
         end
 
       precedences.each do |type|
-        address = @addresses[type]&.shift
+        address = @addresses[type]&.records&.shift
         next unless address
 
         @last_type = type
@@ -313,8 +303,24 @@ class HTTPClient
       nil
     end
 
+    def resolved?(type)
+      @addresses.key?(type)
+    end
+
+    def resolved_successfully?(type)
+      @addresses[type]&.success?
+    end
+
+    def all_resolved?
+      @record_types.all? { |type| resolved?(type) }
+    end
+
+    def any_unresolved?
+      !all_resolved?
+    end
+
     def empty?
-      @addresses.all? { |_, addrinfos| addrinfos.empty? }
+      @addresses.all? { |_, result| result && result.records.empty? }
     end
 
     def any?
