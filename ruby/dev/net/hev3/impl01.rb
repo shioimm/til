@@ -28,7 +28,7 @@ class HTTPClient
     @hostname_resolution_result = HostnameResolutionResult.new(RECORD_TYPES.size)
     @hostname_resolution_threads = []
     @address_candidate_list = AddressCandidateList.new
-    @connecting_sockets = []
+    @connecting_sockets = {}
     @connected_socket = nil
     @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
 
@@ -48,6 +48,7 @@ class HTTPClient
     )
 
     count = 0 if DEBUG
+    last_error = nil
 
     loop do
       count += 1 if DEBUG
@@ -66,7 +67,7 @@ class HTTPClient
 
         if result == :wait_writable
           @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-          @connecting_sockets.push socket
+          @connecting_sockets[socket] = addrinfo
         end
       end
 
@@ -88,7 +89,7 @@ class HTTPClient
 
       resolved_notifier, writable_sockets, _ = IO.select(
         @hostname_resolution_result.notifier,
-        @connecting_sockets,
+        @connecting_sockets.keys,
         nil,
         second_to_timeout(current_clock_time, ends_at),
       )
@@ -122,8 +123,19 @@ class HTTPClient
             end
 
             break
-          else # TODO エラーハンドリング
-            @connection_attempt_delay_expires_at = nil
+          else
+            failed_ai = @connecting_sockets.delete writable_socket
+            writable_socket.close
+            ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
+            last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
+
+            if writable_sockets.any? || @connecting_sockets.any?
+              # Try other writable socket
+            elsif @address_candidate_list.any? || @hostname_resolution_result.any_unresolved?
+              @connection_attempt_delay_expires_at = nil
+            else
+              raise last_error
+            end
           end
         end
       end
@@ -166,7 +178,7 @@ class HTTPClient
   ensure
     @hostname_resolution_result.close_notifier
 
-    @connecting_sockets.each do |connecting_socket|
+    @connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
     end
 
@@ -241,6 +253,10 @@ class HTTPClient
 
     def resolved?(type)
       @resolved.include? type
+    end
+
+    def any_unresolved?
+      @resolved.size < @size
     end
 
     def close
