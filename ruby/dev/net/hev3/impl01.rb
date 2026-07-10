@@ -62,12 +62,31 @@ class HTTPClient
           && !@connection_attempt_delay_expires_at
         address = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address, @port)
-        socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
-        result = socket.connect_nonblock(addrinfo, exception: false)
 
-        if result == :wait_writable
-          @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-          @connecting_sockets[socket] = addrinfo
+        if @address_candidate_list.empty? && @connecting_sockets.empty? && @address_candidate_list.all_resolved?
+          begin
+            socket = addrinfo.connect
+            if ARGV[0] == :https
+              ssl_socket = OpenSSL::SSL::SSLSocket.new(socket)
+              ssl_socket.hostname = HOST
+              ssl_socket.connect
+              @connected_socket = ssl_socket
+            else
+              @connected_socket = socket
+            end
+          rescue SystemCallError => e
+            socket&.close
+            last_error = e
+            raise last_error
+          end
+        else
+          socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
+          result = socket.connect_nonblock(addrinfo, exception: false)
+
+          if result == :wait_writable
+            @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+            @connecting_sockets[socket] = addrinfo
+          end
         end
       end
 
