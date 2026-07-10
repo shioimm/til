@@ -24,13 +24,15 @@ class HTTPClient
   end
 
   def initialize
+    @use_ssl = ARGV[0] == :https
+    @port = @use_ssl ? HTTPS_PORT : HTTP_PORT
+
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @hostname_resolution_result = HostnameResolutionResult.new(RECORD_TYPES.size)
     @hostname_resolution_threads = []
     @address_candidate_list = AddressCandidateList.new(RECORD_TYPES)
     @connecting_sockets = {}
     @connected_socket = nil
-    @port = ARGV[0] == :https ? HTTPS_PORT : HTTP_PORT
 
     @resolution_delay_expires_at = nil
     @connection_attempt_delay_expires_at = nil
@@ -65,15 +67,8 @@ class HTTPClient
 
         if @address_candidate_list.empty? && @connecting_sockets.empty? && @address_candidate_list.all_resolved?
           begin
-            socket = addrinfo.connect
-            if ARGV[0] == :https
-              ssl_socket = OpenSSL::SSL::SSLSocket.new(socket)
-              ssl_socket.hostname = HOST
-              ssl_socket.connect
-              @connected_socket = ssl_socket
-            else
-              @connected_socket = socket
-            end
+            connected_tcp_socket = addrinfo.connect
+            @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket) : connected_tcp_socket
           rescue SystemCallError => e
             socket&.close
             last_error = e
@@ -130,17 +125,7 @@ class HTTPClient
 
           if is_connected
             @connecting_sockets.delete writable_socket
-
-            if ARGV[0] == :https
-              ssl_socket = OpenSSL::SSL::SSLSocket.new(writable_socket)
-              ssl_socket.hostname = HOST
-              ssl_socket.connect # TODO 接続確認
-              ssl_socket
-              @connected_socket = ssl_socket
-            else
-              @connected_socket = writable_socket
-            end
-
+            @connected_socket = @use_ssl ? connect_with_tls(writable_socket) : writable_socket
             break
           else
             failed_ai = @connecting_sockets.delete writable_socket
@@ -213,6 +198,12 @@ class HTTPClient
     @hostname_resolution_result.add(type, records: records)
   rescue => e
     @hostname_resolution_result.add(type, error: e)
+  end
+
+  def connect_with_tls(socket)
+    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket)
+    ssl_socket.hostname = HOST
+    ssl_socket.connect
   end
 
   def current_clock_time
