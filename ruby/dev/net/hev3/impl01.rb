@@ -73,7 +73,7 @@ class HTTPClient
             connected_tcp_socket = addrinfo.connect
             @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket) : connected_tcp_socket
           rescue SystemCallError => e
-            socket&.close
+            connected_tcp_socket&.close
             last_error = e
             raise last_error
           end
@@ -266,7 +266,10 @@ class HTTPClient
     end
 
     def close_notifier
-      @rpipe.close if @notifier
+      return if @notifier.nil?
+
+      @rpipe.close
+      @notifier = nil
     end
 
     private
