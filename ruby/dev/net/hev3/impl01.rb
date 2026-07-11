@@ -155,13 +155,15 @@ class HTTPClient
           last_error = result.error unless result.success?
         end
 
-        # TODO HTTPS RRを考慮する
         if @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::A)
-          if @address_candidate_list.all_resolved?
+          if @address_candidate_list.all_resolved? ||
+              (@address_candidate_list.resolved?(Resolv::DNS::Resource::IN::HTTPS) &&
+               @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::AAAA))
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             @hostname_resolution_result.close_notifier
             @resolution_delay_expires_at = nil
-          elsif @address_candidate_list.resolved_successfully?(Resolv::DNS::Resource::IN::A)
+          else
+            @address_candidate_list.resolved_successfully?(Resolv::DNS::Resource::IN::A)
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
