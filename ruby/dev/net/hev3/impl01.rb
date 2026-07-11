@@ -284,6 +284,7 @@ class HTTPClient
   end
 
   class AddressCandidateList # WIP
+    # TODO HTTPS / AAAA / A の解決状況によってアドレスヒントを使うかどうかを判断する必要あり
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
 
@@ -297,8 +298,16 @@ class HTTPClient
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
         # TODO グルーピングが必要
+        # TODO AliasModeだった場合はServiceModeレコードを得られるまでHTTPSクエリを再送
+        rr = result.records.first
+        ipv6_address_hints = rr.params[6]&.addresses&.map(&:to_s) || []
+        ipv4_address_hints = rr.params[4]&.addresses&.map(&:to_s) || []
+        @addresses[result.type] ||= {}
+        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = ipv6_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::A] = ipv4_address_hints
       else
         if result.success?
+          # TODO アドレスヒントの置き換え
           @addresses[result.type] = result.records.map { it.address.to_s }
           @errors[result.type] = nil
         else
@@ -315,7 +324,8 @@ class HTTPClient
         end
 
       precedences.each do |type|
-        address = @addresses[type]&.shift
+        address = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
+
         next unless address
 
         @last_type = type
