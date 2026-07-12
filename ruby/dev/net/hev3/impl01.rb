@@ -14,7 +14,8 @@ class HTTPClient
   RECORD_TYPES = [
     Resolv::DNS::Resource::IN::A,
     Resolv::DNS::Resource::IN::AAAA,
-  ].freeze # TODO HTTPSレコードを追加
+    Resolv::DNS::Resource::IN::HTTPS,
+  ].freeze
 
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
@@ -28,9 +29,11 @@ class HTTPClient
     @port = @use_ssl ? HTTPS_PORT : HTTP_PORT
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
-    @hostname_resolution_result = HostnameResolutionResult.new(RECORD_TYPES.size)
+    # TODO ホストの接続性によってHTTPS / AもしくはHTTPS / AAAAになる可能性あり
+    @record_types = RECORD_TYPES
+    @hostname_resolution_result = HostnameResolutionResult.new(@record_types.size)
+    @address_candidate_list = AddressCandidateList.new(@record_types)
     @hostname_resolution_threads = []
-    @address_candidate_list = AddressCandidateList.new(RECORD_TYPES)
     @connecting_sockets = {}
     @connected_socket = nil
 
@@ -42,7 +45,7 @@ class HTTPClient
     now = current_clock_time
 
     @hostname_resolution_threads.concat(
-      RECORD_TYPES.map { |type|
+      @record_types.map { |type|
         thread = Thread.new(type) { |type| resolve_hostname(type) }
         Thread.pass
         thread
@@ -56,7 +59,7 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)&.transform_values(&:records)}" if DEBUG
+      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
       if @address_candidate_list.any?
@@ -70,7 +73,7 @@ class HTTPClient
             connected_tcp_socket = addrinfo.connect
             @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket) : connected_tcp_socket
           rescue SystemCallError => e
-            socket&.close
+            connected_tcp_socket&.close
             last_error = e
             raise last_error
           end
@@ -152,13 +155,15 @@ class HTTPClient
           last_error = result.error unless result.success?
         end
 
-        # TODO HTTPS RRを考慮する
         if @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::A)
-          if @address_candidate_list.all_resolved?
+          if @address_candidate_list.all_resolved? ||
+              (@address_candidate_list.resolved?(Resolv::DNS::Resource::IN::HTTPS) &&
+               @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::AAAA))
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             @hostname_resolution_result.close_notifier
             @resolution_delay_expires_at = nil
-          elsif @address_candidate_list.resolved_successfully?(Resolv::DNS::Resource::IN::A)
+          else
+            @address_candidate_list.resolved_successfully?(Resolv::DNS::Resource::IN::A)
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
@@ -194,8 +199,7 @@ class HTTPClient
   private
 
   def resolve_hostname(type)
-    records = @resolver.getresources(HOST, type).map { it.address.to_s }
-    @hostname_resolution_result.add(type, records: records)
+    @hostname_resolution_result.add(type, records: @resolver.getresources(HOST, type))
   rescue => e
     @hostname_resolution_result.add(type, error: e)
   end
@@ -264,12 +268,15 @@ class HTTPClient
     end
 
     def close_notifier
-      @rpipe.close if @notifier
+      return if @notifier.nil?
+
+      @rpipe.close
+      @notifier = nil
     end
 
     private
 
-    def close
+    def close_all
       @rpipe.close
       @notifier = nil
       @wpipe.close
@@ -277,22 +284,36 @@ class HTTPClient
   end
 
   class AddressCandidateList # WIP
+    # TODO HTTPS / AAAA / A の解決状況によってアドレスヒントを使うかどうかを判断する必要あり
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
 
     def initialize(record_types)
       @record_types = record_types
       @addresses = {}
+      @errors = {}
       @last_type = nil
     end
 
     def add(result)
-      @addresses[result.type] = result
-      return unless result.success?
-
-      # TODO グルーピングが必要
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        # WIP
+        # TODO グルーピングが必要
+        # TODO AliasModeだった場合はServiceModeレコードを得られるまでHTTPSクエリを再送
+        rr = result.records.first
+        ipv6_address_hints = rr.params[6]&.addresses&.map(&:to_s) || []
+        ipv4_address_hints = rr.params[4]&.addresses&.map(&:to_s) || []
+        @addresses[result.type] ||= {}
+        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = ipv6_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::A] = ipv4_address_hints
+      else
+        if result.success?
+          # TODO アドレスヒントの置き換え
+          @addresses[result.type] = result.records.map { it.address.to_s }
+          @errors[result.type] = nil
+        else
+          @addresses[result.type] = []
+          @errors[result.type] = result.error
+        end
       end
     end
 
@@ -303,7 +324,8 @@ class HTTPClient
         end
 
       precedences.each do |type|
-        address = @addresses[type]&.records&.shift
+        address = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
+
         next unless address
 
         @last_type = type
@@ -318,7 +340,7 @@ class HTTPClient
     end
 
     def resolved_successfully?(type)
-      @addresses[type]&.success?
+      resolved?(type) && @errors[type].nil?
     end
 
     def all_resolved?
@@ -330,7 +352,7 @@ class HTTPClient
     end
 
     def empty?
-      @addresses.all? { |_, result| result && result.records.empty? }
+      @addresses.all? { |_, records| records && records.empty? }
     end
 
     def any?
