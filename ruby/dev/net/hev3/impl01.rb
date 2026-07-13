@@ -284,7 +284,6 @@ class HTTPClient
   end
 
   class AddressCandidateList # WIP
-    # TODO HTTPS / AAAA / A の解決状況によってアドレスヒントを使うかどうかを判断する必要あり
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
 
@@ -307,7 +306,10 @@ class HTTPClient
         @addresses[result.type][Resolv::DNS::Resource::IN::A] = ipv4_address_hints
       else
         if result.success?
-          # TODO アドレスヒントの置き換え
+          if (hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type) && !hints.empty?)
+            @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
+          end
+
           @addresses[result.type] = result.records.map { it.address.to_s }
           @errors[result.type] = nil
         else
