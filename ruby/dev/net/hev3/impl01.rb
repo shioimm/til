@@ -130,6 +130,7 @@ class HTTPClient
 
           if is_connected
             @connecting_sockets.delete writable_socket
+            # TBC connect_with_tlsも非同期でやる必要ある...?
             @connected_socket = @use_ssl ? connect_with_tls(writable_socket) : writable_socket
             break
           else
@@ -299,7 +300,8 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        # TODO 複数のレコードが返ってくる前提でグルーピングが必要
+        # TODO @addressesの要素は単なるIPアドレスの文字列でなく接続プロトコルの情報も持つ必要あり
+        # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
         rr = result.records.first
 
         if rr.alias_mode?
