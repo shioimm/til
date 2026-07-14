@@ -20,6 +20,8 @@ class HTTPClient
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
+  attr_reader :hostname_resolution_threads
+
   def self.run
     self.new.run
   end
@@ -32,7 +34,7 @@ class HTTPClient
     # TODO ホストの接続性によってHTTPS / AもしくはHTTPS / AAAAになる可能性あり
     @record_types = RECORD_TYPES
     @hostname_resolution_result = HostnameResolutionResult.new(@record_types.size)
-    @address_candidate_list = AddressCandidateList.new(@record_types)
+    @address_candidate_list = AddressCandidateList.new(@record_types, self)
     @hostname_resolution_threads = []
     @connecting_sockets = {}
     @connected_socket = nil
@@ -128,6 +130,7 @@ class HTTPClient
 
           if is_connected
             @connecting_sockets.delete writable_socket
+            # TBC connect_with_tlsも非同期でやる必要ある...?
             @connected_socket = @use_ssl ? connect_with_tls(writable_socket) : writable_socket
             break
           else
@@ -196,13 +199,13 @@ class HTTPClient
     end
   end
 
-  private
-
   def resolve_hostname(type)
     @hostname_resolution_result.add(type, records: @resolver.getresources(HOST, type))
   rescue => e
     @hostname_resolution_result.add(type, error: e)
   end
+
+  private
 
   def connect_with_tls(socket)
     ssl_socket = OpenSSL::SSL::SSLSocket.new(socket)
@@ -283,22 +286,31 @@ class HTTPClient
     end
   end
 
-  class AddressCandidateList # WIP
+  class AddressCandidateList
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
 
-    def initialize(record_types)
+    def initialize(record_types, client)
       @record_types = record_types
       @addresses = {}
       @errors = {}
       @last_type = nil
+      @client = client
     end
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        # TODO グルーピングが必要
-        # TODO AliasModeだった場合はServiceModeレコードを得られるまでHTTPSクエリを再送
+        # TODO @addressesの要素は単なるIPアドレスの文字列でなく接続プロトコルの情報も持つ必要あり
+        # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
         rr = result.records.first
+
+        if rr.alias_mode?
+          thread = Thread.new(result.type) { |type| client.resolve_hostname(type) }
+          Thread.pass
+          client.hostname_resolution_threads.push(thread)
+          return
+        end
+
         ipv6_address_hints = rr.params[6]&.addresses&.map(&:to_s) || []
         ipv4_address_hints = rr.params[4]&.addresses&.map(&:to_s) || []
         @addresses[result.type] ||= {}
