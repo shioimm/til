@@ -308,7 +308,7 @@ class HTTPClient
 
         return if supported_records.empty?
 
-        # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
+        # TODO http/1.1を含み、SvcPriorityが異なる複数のHTTPS RRが返ってくる想定で優先度ごとにグルーピングする
         condidate = supported_records.first
 
         resolve_hostname_asynchronously!(result.type) if condidate.rr.alias_mode?
@@ -322,6 +322,8 @@ class HTTPClient
         if https_hints&.any?
           ctx, _ = https_hints.first # TODO これでいいのか...?
           @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
+          # TODO 現状typeごとにアドレスを管理しているけど、優先度ごとに管理するようにした方がいいのかも
+          # A/AAAAが奥incidentれて解決できた場合はその値で置き換える
           @addresses[result.type] = result.records.map { [ctx, it.address.to_s] }
         else
           @addresses[result.type] = result.records.map { [nil, it.address.to_s] }
