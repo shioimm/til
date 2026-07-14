@@ -307,12 +307,7 @@ class HTTPClient
         # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
         rr = result.records.first
 
-        if rr.alias_mode?
-          thread = Thread.new(result.type) { |type| client.resolve_hostname(type) }
-          Thread.pass
-          client.hostname_resolution_threads.push(thread)
-          return
-        end
+        resolve_hostname_asynchronously! if rr.alias_mode?
 
         # TODO 実際のHTTPS RRからデータを生成する
         ctx = ::OpenSSL::SSL::SSLContext.new
@@ -324,18 +319,16 @@ class HTTPClient
         @addresses[result.type] ||= {}
         @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = ipv6_address_hints
         @addresses[result.type][Resolv::DNS::Resource::IN::A] = ipv4_address_hints
-      else
-        if result.success?
-          if (hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type) && !hints.empty?)
-            @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
-          end
-
-          @addresses[result.type] = result.records.map { it.address.to_s }
-          @errors[result.type] = nil
-        else
-          @addresses[result.type] = []
-          @errors[result.type] = result.error
+      elsif result.success?
+        if (hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type) && !hints.empty?)
+          @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
         end
+
+        @addresses[result.type] = result.records.map { it.address.to_s }
+        @errors[result.type] = nil
+      else
+        @addresses[result.type] = []
+        @errors[result.type] = result.error
       end
     end
 
@@ -379,6 +372,15 @@ class HTTPClient
 
     def any?
       !empty?
+    end
+
+    private
+
+    def resolve_hostname_asynchronously!(type)
+      thread = Thread.new(type) { |type| @client.resolve_hostname(type) }
+      Thread.pass
+      @client.hostname_resolution_threads.push(thread)
+      return
     end
   end
 end
