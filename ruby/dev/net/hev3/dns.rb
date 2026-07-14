@@ -8,7 +8,7 @@ HTTPS_RDATA = begin
   priority   = [1].pack("n")     # <SvcPriority> 1
   target     = "\x00".b          # <TargetName>  "." (<owner name>とおなじ)
 
-  alpn_value     = "\x02h2\x02h3".b             # alpn={h2,h3}
+  alpn_value     = "\x02http/1.1".b             # alpn={h2,h3}
   alpn_param     = [1, alpn_value.bytesize].pack("nn") + alpn_value
 
   ipv4hint_value = [127, 0, 0, 1].pack("C4")    # ipv4hint=127.0.0.1

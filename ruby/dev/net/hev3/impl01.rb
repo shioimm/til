@@ -303,16 +303,13 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        # TODO @addressesの要素は単なるIPアドレスの文字列でなく接続プロトコルの情報も持つ必要あり
         # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
         rr = result.records.first
 
         resolve_hostname_asynchronously! if rr.alias_mode?
 
-        # TODO 実際のHTTPS RRからデータを生成する
         ctx = ::OpenSSL::SSL::SSLContext.new
-        ctx.alpn_protocols = ["http/1.1"]
-
+        ctx.alpn_protocols = rr.params[1]&.protocol_ids
         ipv6_address_hints = rr.params[6]&.addresses&.map { [ctx, it] } || []
         ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
 
