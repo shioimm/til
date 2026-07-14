@@ -317,11 +317,16 @@ class HTTPClient
         @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = canditate.ipv6_address_hints
         @addresses[result.type][Resolv::DNS::Resource::IN::A] = canditate.ipv4_address_hints
       elsif result.success?
-        if (hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type) && !hints.empty?)
+        https_hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type)
+
+        if https_hints&.any?
+          ctx, _ = https_hints.first # TODO これでいいのか...?
           @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
+          @addresses[result.type] = result.records.map { [ctx, it.address.to_s] }
+        else
+          @addresses[result.type] = result.records.map { [nil, it.address.to_s] }
         end
 
-        @addresses[result.type] = result.records.map { it.address.to_s }
         @errors[result.type] = nil
       else
         @addresses[result.type] = []
@@ -364,7 +369,12 @@ class HTTPClient
     end
 
     def empty?
-      @addresses.all? { |_, records| records && records.empty? }
+      @addresses.all? do |_, records|
+        case records
+        when Hash then records.all? { |_, addrs| addrs.empty? }
+        when Array then records.empty?
+        end
+      end
     end
 
     def any?
