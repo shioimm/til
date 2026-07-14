@@ -5,13 +5,13 @@ AAAA_RDATA = ([0] * 15 + [1]).pack("C16")
 
 HTTPS_RDATA = begin
   # <owner name>  IN [SVCB | HTTPS]  <SvcPriority>  <TargetName>  <SvcParams>
-  priority   = [1].pack("n")     # <SvcPriority> 1
-  target     = "\x00".b          # <TargetName>  "." (<owner name>とおなじ)
+  priority = [1].pack("n") # <SvcPriority> 1
+  target   = "\x00".b # <TargetName>  "." (<owner name>とおなじ)
 
-  alpn_value     = "\x02http/1.1".b             # alpn={h2,h3}
-  alpn_param     = [1, alpn_value.bytesize].pack("nn") + alpn_value
+  alpn_value = "\x08http/1.1".b # alpn=http/1.1
+  alpn_param = [1, alpn_value.bytesize].pack("nn") + alpn_value
 
-  ipv4hint_value = [127, 0, 0, 1].pack("C4")    # ipv4hint=127.0.0.1
+  ipv4hint_value = [127, 0, 0, 1].pack("C4") # ipv4hint=127.0.0.1
   ipv4hint_param = [4, ipv4hint_value.bytesize].pack("nn") + ipv4hint_value
 
   ipv6hint_value = ([0] * 15 + [1]).pack("C16") # ipv6hint=::1

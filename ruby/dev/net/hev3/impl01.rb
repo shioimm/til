@@ -290,8 +290,9 @@ class HTTPClient
   class AddressCandidateList
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
+    SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
 
-    AddressCandidate = Data.define(:ctx, :address)
+    AddressCandidate = Data.define(:rr, :ipv6_address_hints, :ipv4_address_hints)
 
     def initialize(record_types, client)
       @record_types = record_types
@@ -303,19 +304,18 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
+        supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
+
+        return if supported_records.empty?
+
         # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
-        rr = result.records.first
+        condidate = supported_records.first
 
-        resolve_hostname_asynchronously! if rr.alias_mode?
-
-        ctx = ::OpenSSL::SSL::SSLContext.new
-        ctx.alpn_protocols = rr.params[1]&.protocol_ids
-        ipv6_address_hints = rr.params[6]&.addresses&.map { [ctx, it] } || []
-        ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
+        resolve_hostname_asynchronously!(result.type) if condidate.rr.alias_mode?
 
         @addresses[result.type] ||= {}
-        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = ipv6_address_hints
-        @addresses[result.type][Resolv::DNS::Resource::IN::A] = ipv4_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = canditate.ipv6_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::A] = canditate.ipv4_address_hints
       elsif result.success?
         if (hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type) && !hints.empty?)
           @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
@@ -372,6 +372,18 @@ class HTTPClient
     end
 
     private
+
+    def create_address_candidate_from_rr!(rr)
+      alpn = rr.params[1]&.protocol_ids
+
+      if alpn.nil? || (alpn & SUPPORTED_PROTOCOLS).any?
+        ctx = ::OpenSSL::SSL::SSLContext.new
+        ctx.alpn_protocols = rr.params[1]&.protocol_ids
+        ipv6_address_hints = rr.params[6]&.addresses&.map { [ctx, it] } || []
+        ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
+        AddressCandidate.new(rr, ipv6_address_hints, ipv4_address_hints)
+      end
+    end
 
     def resolve_hostname_asynchronously!(type)
       thread = Thread.new(type) { |type| @client.resolve_hostname(type) }
