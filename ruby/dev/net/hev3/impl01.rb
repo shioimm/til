@@ -1,5 +1,6 @@
 require "socket"
 require "resolv"
+require "openssl"
 
 DEBUG = true
 
@@ -67,13 +68,13 @@ class HTTPClient
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
-        address = @address_candidate_list.next_candidate
+        ctx, address = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address, @port)
 
         if @address_candidate_list.empty? && @connecting_sockets.empty? && @address_candidate_list.all_resolved?
           begin
             connected_tcp_socket = addrinfo.connect
-            @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket) : connected_tcp_socket
+            @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket, ctx) : connected_tcp_socket
           rescue SystemCallError => e
             connected_tcp_socket&.close
             last_error = e
@@ -85,7 +86,7 @@ class HTTPClient
 
           if result == :wait_writable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-            @connecting_sockets[socket] = addrinfo
+            @connecting_sockets[socket] = [ctx, addrinfo]
           end
         end
       end
@@ -129,12 +130,12 @@ class HTTPClient
           )
 
           if is_connected
-            @connecting_sockets.delete writable_socket
+            ctx, _ = @connecting_sockets.delete(writable_socket)
             # TBC connect_with_tlsも非同期でやる必要ある...?
-            @connected_socket = @use_ssl ? connect_with_tls(writable_socket) : writable_socket
+            @connected_socket = @use_ssl ? connect_with_tls(writable_socket, ctx) : writable_socket
             break
           else
-            failed_ai = @connecting_sockets.delete writable_socket
+            _, failed_ai = @connecting_sockets.delete writable_socket
             writable_socket.close
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
@@ -207,8 +208,8 @@ class HTTPClient
 
   private
 
-  def connect_with_tls(socket)
-    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket)
+  def connect_with_tls(socket, ctx)
+    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, )
     ssl_socket.hostname = HOST
     ssl_socket.connect
   end
@@ -289,6 +290,9 @@ class HTTPClient
   class AddressCandidateList
     PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
     PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
+    SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
+
+    AddressCandidate = Data.define(:rr, :ipv6_address_hints, :ipv4_address_hints)
 
     def initialize(record_types, client)
       @record_types = record_types
@@ -300,34 +304,35 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        # TODO @addressesの要素は単なるIPアドレスの文字列でなく接続プロトコルの情報も持つ必要あり
-        # TODO のちのちHTTP/2に対応したらプロトコル・優先度ごとにグルーピングが必要
-        rr = result.records.first
+        supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
 
-        if rr.alias_mode?
-          thread = Thread.new(result.type) { |type| client.resolve_hostname(type) }
-          Thread.pass
-          client.hostname_resolution_threads.push(thread)
-          return
-        end
+        return if supported_records.empty?
 
-        ipv6_address_hints = rr.params[6]&.addresses&.map(&:to_s) || []
-        ipv4_address_hints = rr.params[4]&.addresses&.map(&:to_s) || []
+        # TODO http/1.1を含み、SvcPriorityが異なる複数のHTTPS RRが返ってくる想定で優先度ごとにグルーピングする
+        condidate = supported_records.first
+
+        resolve_hostname_asynchronously!(result.type) if condidate.rr.alias_mode?
+
         @addresses[result.type] ||= {}
-        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = ipv6_address_hints
-        @addresses[result.type][Resolv::DNS::Resource::IN::A] = ipv4_address_hints
-      else
-        if result.success?
-          if (hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type) && !hints.empty?)
-            @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
-          end
+        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = canditate.ipv6_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::A] = canditate.ipv4_address_hints
+      elsif result.success?
+        https_hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type)
 
-          @addresses[result.type] = result.records.map { it.address.to_s }
-          @errors[result.type] = nil
+        if https_hints&.any?
+          ctx, _ = https_hints.first # TODO これでいいのか...?
+          @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
+          # TODO 現状typeごとにアドレスを管理しているけど、優先度ごとに管理するようにした方がいいのかも
+          # A/AAAAが奥incidentれて解決できた場合はその値で置き換える
+          @addresses[result.type] = result.records.map { [ctx, it.address.to_s] }
         else
-          @addresses[result.type] = []
-          @errors[result.type] = result.error
+          @addresses[result.type] = result.records.map { [nil, it.address.to_s] }
         end
+
+        @errors[result.type] = nil
+      else
+        @addresses[result.type] = []
+        @errors[result.type] = result.error
       end
     end
 
@@ -338,12 +343,12 @@ class HTTPClient
         end
 
       precedences.each do |type|
-        address = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
+        canditate = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
 
-        next unless address
+        next unless canditate
 
         @last_type = type
-        return address
+        return canditate
       end
 
       nil
@@ -366,11 +371,37 @@ class HTTPClient
     end
 
     def empty?
-      @addresses.all? { |_, records| records && records.empty? }
+      @addresses.all? do |_, records|
+        case records
+        when Hash then records.all? { |_, addrs| addrs.empty? }
+        when Array then records.empty?
+        end
+      end
     end
 
     def any?
       !empty?
+    end
+
+    private
+
+    def create_address_candidate_from_rr!(rr)
+      alpn = rr.params[1]&.protocol_ids
+
+      if alpn.nil? || (alpn & SUPPORTED_PROTOCOLS).any?
+        ctx = ::OpenSSL::SSL::SSLContext.new
+        ctx.alpn_protocols = rr.params[1]&.protocol_ids
+        ipv6_address_hints = rr.params[6]&.addresses&.map { [ctx, it] } || []
+        ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
+        AddressCandidate.new(rr, ipv6_address_hints, ipv4_address_hints)
+      end
+    end
+
+    def resolve_hostname_asynchronously!(type)
+      thread = Thread.new(type) { |type| @client.resolve_hostname(type) }
+      Thread.pass
+      @client.hostname_resolution_threads.push(thread)
+      return
     end
   end
 end
