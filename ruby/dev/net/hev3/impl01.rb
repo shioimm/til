@@ -197,11 +197,13 @@ class HTTPClient
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
     @hostname_resolution_result.count_up
-    thread = Thread.new(type) { |type|
-      @hostname_resolution_result.add(type, records: @resolver.getresources(hostname, type))
+
+    thread = Thread.new(type) do |type|
+      @hostname_resolution_result.add(type, hostname, records: @resolver.getresources(hostname, type))
     rescue => e
-      @hostname_resolution_result.add(type, error: e)
-    }
+      @hostname_resolution_result.add(type, hostname, error: e)
+    end
+
     Thread.pass
     @hostname_resolution_threads.push(thread)
   end
@@ -232,7 +234,7 @@ class HTTPClient
   class HostnameResolutionResult
     HOSTNAME_RESOLUTION_QUEUE_UPDATED = 1
 
-    ResolutionResult = Data.define(:type, :records, :error) do
+    ResolutionResult = Data.define(:type, :hostname, :records, :error) do
       def success?
         error.nil?
       end
@@ -253,9 +255,9 @@ class HTTPClient
       @size += 1
     end
 
-    def add(type, records: [], error: nil)
+    def add(type, hostname, records: [], error: nil)
       @mutex.synchronize do
-        @results.push ResolutionResult.new(type:, records:, error:)
+        @results.push ResolutionResult.new(type:, hostname:, records:, error:)
         @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
       end
     end
