@@ -304,14 +304,20 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        resolve_hostname_asynchronously!(result.type) if result.records.first.alias_mode?
+        if result.records.first.alias_mode?
+          resolve_hostname_asynchronously!(result.type)
+          return
+        end
 
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
         return if supported_records.empty?
 
         candidates = supported_records.group_by { |candidate|
-          if !candidate.rr.target.to_s.empty? # TargetName != .
-             # TODO TargetNameに対してA/AAAAの再クエリが必要
+          target_name = candidate.rr.target.to_s
+
+          if !target_name.empty? # TargetName != .
+            resolve_hostname_asynchronously!(Resolv::DNS::Resource::IN::AAAA, target_name)
+            resolve_hostname_asynchronously!(Resolv::DNS::Resource::IN::A, target_name)
           end
 
           [candidate.rr.priority, candidate.rr.params[1].protocol_ids]
@@ -407,7 +413,6 @@ class HTTPClient
       thread = Thread.new(type) { |type| @client.resolve_hostname(type, hostname) }
       Thread.pass
       @client.hostname_resolution_threads.push(thread)
-      return
     end
   end
 end
