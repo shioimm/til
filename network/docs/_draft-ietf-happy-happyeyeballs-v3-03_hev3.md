@@ -836,3 +836,10 @@ e.g. `www.internal.example.com`に一つのAレコード`198.51.100.42`のみが
 - [RFC9001] "Using TLS to Secure QUIC"
 - [RFC9002] "QUIC Loss Detection and Congestion Control"
 - [V6-MOSTLY] "IPv6-Mostly Networks: Deployment and Operations Considerations"
+
+---
+
+## 感想
+- NSS統合どうするの
+- グループ1にアドレスヒントなし、グループ2にアドレスヒントあり、
+  かつグループ1のA/AAAA未解決の場合グループ2は接続開始できない?

@@ -305,6 +305,24 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
 - アドレスリストのソートに進むための判定とHTTPS / AAAA のためのResolution Delay (50ms) の実装
 - HTTPS応答がAliasModeだった場合はServiceModeレコードを得られるまでHTTPSクエリを再送する
   - 再送分もResolution Delayの対象になる、でいいかな
+- HTTPS応答のTargetNameに対するA / AAAA問い合わせの応答を受信していない場合はA / AAAAクエリを再送する
+
+---
+
+- AliasMode (SvcPriority = 0))
+  - TargetNameに対してHTTPSクエリを再送する
+- ServiceMode (SvcPriority > 0) かつTargetName != .
+  - TargetNameに対してA / AAAAクエリを再送する (クエリが返ってきたらアドレスヒントを置き換え)
+  - A/AAAAが解決済みでなければアドレスヒントを利用する
+  - グルーピングを行う
+- ServiceMode (SvcPriority > 0) かつTargetName == . : SvcParamsを利用する
+  - A/AAAAが解決済みでなければアドレスヒントを利用する
+  - グルーピングを行う
+- owner nameが同じでTargetNameが異なるServiceModeのレコードが複数ある場合もまとめてグルーピングを考える
+- (優先グループにアドレスヒントがなかった場合の仕様が記述されてないので実装依存かもしれない)
+
+---
+
 - HTTPS応答にアドレスヒントがあり、かつ該当アドレスファミリのレコードが未応答の場合はそれをアドレス候補として扱う
   - 該当するアドレスファミリのRRを取得した場合は未送信のアドレスヒントを削除して実際のアドレスに置き換える
     - 大変そう

@@ -49,7 +49,7 @@ class HTTPClient
 
     @hostname_resolution_threads.concat(
       @record_types.map { |type|
-        thread = Thread.new(type) { |type| resolve_hostname(type) }
+        thread = Thread.new(type) { |type| resolve_hostname(type, HOST) }
         Thread.pass
         thread
       }
@@ -200,8 +200,8 @@ class HTTPClient
     end
   end
 
-  def resolve_hostname(type)
-    @hostname_resolution_result.add(type, records: @resolver.getresources(HOST, type))
+  def resolve_hostname(type, hostname)
+    @hostname_resolution_result.add(type, records: @resolver.getresources(hostname, type))
   rescue => e
     @hostname_resolution_result.add(type, error: e)
   end
@@ -304,18 +304,21 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
+        resolve_hostname_asynchronously!(result.type) if result.records.first.alias_mode?
 
+        supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
         return if supported_records.empty?
 
-        # TODO http/1.1を含み、SvcPriorityが異なる複数のHTTPS RRが返ってくる想定で優先度ごとにグルーピングする
-        condidate = supported_records.first
+        candidate = supported_records.first
 
-        resolve_hostname_asynchronously!(result.type) if condidate.rr.alias_mode?
+        # TODO
+        # !candidate.target.to_s.empty? (TargetName != .)の場合はTargetNameに対してA/AAAAの再クエリが必要
+
+        # TODO http/1.1を含み、SvcPriorityが異なる複数のHTTPS RRが返ってくる想定で優先度ごとにグルーピングする
 
         @addresses[result.type] ||= {}
-        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = canditate.ipv6_address_hints
-        @addresses[result.type][Resolv::DNS::Resource::IN::A] = canditate.ipv4_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = candidate.ipv6_address_hints
+        @addresses[result.type][Resolv::DNS::Resource::IN::A] = candidate.ipv4_address_hints
       elsif result.success?
         https_hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type)
 
@@ -323,7 +326,7 @@ class HTTPClient
           ctx, _ = https_hints.first # TODO これでいいのか...?
           @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
           # TODO 現状typeごとにアドレスを管理しているけど、優先度ごとに管理するようにした方がいいのかも
-          # A/AAAAが奥incidentれて解決できた場合はその値で置き換える
+          # A/AAAAが遅れて解決できた場合はその値で置き換える
           @addresses[result.type] = result.records.map { [ctx, it.address.to_s] }
         else
           @addresses[result.type] = result.records.map { [nil, it.address.to_s] }
@@ -343,12 +346,12 @@ class HTTPClient
         end
 
       precedences.each do |type|
-        canditate = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
+        candidate = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
 
-        next unless canditate
+        next unless candidate
 
         @last_type = type
-        return canditate
+        return candidate
       end
 
       nil
@@ -397,8 +400,8 @@ class HTTPClient
       end
     end
 
-    def resolve_hostname_asynchronously!(type)
-      thread = Thread.new(type) { |type| @client.resolve_hostname(type) }
+    def resolve_hostname_asynchronously!(type, hostname = HOST)
+      thread = Thread.new(type) { |type| @client.resolve_hostname(type, hostname) }
       Thread.pass
       @client.hostname_resolution_threads.push(thread)
       return
