@@ -309,13 +309,16 @@ class HTTPClient
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
         return if supported_records.empty?
 
-        candidate = supported_records.first
+        candidates = supported_records.group_by { |candidate|
+          if !candidate.rr.target.to_s.empty? # TargetName != .
+             # TODO TargetNameに対してA/AAAAの再クエリが必要
+          end
 
-        # TODO
-        # !candidate.target.to_s.empty? (TargetName != .)の場合はTargetNameに対してA/AAAAの再クエリが必要
+          [candidate.rr.priority, candidate.rr.params[1].protocol_ids]
+        }
 
-        # TODO http/1.1を含み、SvcPriorityが異なる複数のHTTPS RRが返ってくる想定で優先度ごとにグルーピングする
-
+        # TODO グループを並び替えの上ノーマライズできるようにする
+        candidate = candidates.values.flatten.first # TEMP
         @addresses[result.type] ||= {}
         @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = candidate.ipv6_address_hints
         @addresses[result.type][Resolv::DNS::Resource::IN::A] = candidate.ipv4_address_hints
