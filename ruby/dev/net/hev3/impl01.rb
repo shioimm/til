@@ -21,8 +21,6 @@ class HTTPClient
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
-  attr_reader :hostname_resolution_threads
-
   def self.run
     self.new.run
   end
@@ -34,7 +32,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     # TODO ホストの接続性によってHTTPS / AもしくはHTTPS / AAAAになる可能性あり
     @record_types = RECORD_TYPES
-    @hostname_resolution_result = HostnameResolutionResult.new(@record_types.size)
+    @hostname_resolution_result = HostnameResolutionResult.new
     @address_candidate_list = AddressCandidateList.new(@record_types, self)
     @hostname_resolution_threads = []
     @connecting_sockets = {}
@@ -47,13 +45,9 @@ class HTTPClient
   def run
     now = current_clock_time
 
-    @hostname_resolution_threads.concat(
-      @record_types.map { |type|
-        thread = Thread.new(type) { |type| resolve_hostname(type, HOST) }
-        Thread.pass
-        thread
-      }
-    )
+    @record_types.each do |type|
+      resolve_hostname_asynchronously!(type)
+    end
 
     count = 0 if DEBUG
     last_error = nil
@@ -158,6 +152,7 @@ class HTTPClient
           @address_candidate_list.add(result)
           last_error = result.error unless result.success?
         end
+        @hostname_resolution_result.close_if_done
 
         if @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::A)
           if @address_candidate_list.all_resolved? ||
@@ -200,10 +195,15 @@ class HTTPClient
     end
   end
 
-  def resolve_hostname(type, hostname)
-    @hostname_resolution_result.add(type, records: @resolver.getresources(hostname, type))
-  rescue => e
-    @hostname_resolution_result.add(type, error: e)
+  def resolve_hostname_asynchronously!(type, hostname = HOST)
+    @hostname_resolution_result.count_up
+    thread = Thread.new(type) { |type|
+      @hostname_resolution_result.add(type, records: @resolver.getresources(hostname, type))
+    rescue => e
+      @hostname_resolution_result.add(type, error: e)
+    }
+    Thread.pass
+    @hostname_resolution_threads.push(thread)
   end
 
   private
@@ -240,13 +240,17 @@ class HTTPClient
 
     attr_reader :notifier
 
-    def initialize(size)
-      @size = size
+    def initialize
+      @size = 0
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
+    end
+
+    def count_up
+      @size += 1
     end
 
     def add(type, records: [], error: nil)
@@ -267,8 +271,12 @@ class HTTPClient
       end
 
       @taken_count += 1
-      close_all if @taken_count == @size
       res
+    end
+
+    def close_if_done
+      return if @notifier.nil?
+      close_all if @taken_count == @size
     end
 
     def close_notifier
@@ -304,18 +312,27 @@ class HTTPClient
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
-        resolve_hostname_asynchronously!(result.type) if result.records.first.alias_mode?
+        if result.records.first.alias_mode?
+          @client.resolve_hostname_asynchronously!(result.type)
+          return
+        end
 
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
         return if supported_records.empty?
 
-        candidate = supported_records.first
+        candidates = supported_records.group_by { |candidate|
+          target_name = candidate.rr.target.to_s
 
-        # TODO
-        # !candidate.target.to_s.empty? (TargetName != .)の場合はTargetNameに対してA/AAAAの再クエリが必要
+          if !target_name.empty? # TargetName != .
+            @client.resolve_hostname_asynchronously!(Resolv::DNS::Resource::IN::AAAA, target_name)
+            @client.resolve_hostname_asynchronously!(Resolv::DNS::Resource::IN::A, target_name)
+          end
 
-        # TODO http/1.1を含み、SvcPriorityが異なる複数のHTTPS RRが返ってくる想定で優先度ごとにグルーピングする
+          [candidate.rr.priority, candidate.rr.params[1].protocol_ids]
+        }
 
+        # TODO グループを並び替えの上ノーマライズできるようにする
+        candidate = candidates.values.flatten.first # TEMP
         @addresses[result.type] ||= {}
         @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = candidate.ipv6_address_hints
         @addresses[result.type][Resolv::DNS::Resource::IN::A] = candidate.ipv4_address_hints
@@ -398,13 +415,6 @@ class HTTPClient
         ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
         AddressCandidate.new(rr, ipv6_address_hints, ipv4_address_hints)
       end
-    end
-
-    def resolve_hostname_asynchronously!(type, hostname = HOST)
-      thread = Thread.new(type) { |type| @client.resolve_hostname(type, hostname) }
-      Thread.pass
-      @client.hostname_resolution_threads.push(thread)
-      return
     end
   end
 end
