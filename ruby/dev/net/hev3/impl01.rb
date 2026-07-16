@@ -32,7 +32,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     # TODO ホストの接続性によってHTTPS / AもしくはHTTPS / AAAAになる可能性あり
     @record_types = RECORD_TYPES
-    @hostname_resolution_result = HostnameResolutionResult.new(@record_types.size)
+    @hostname_resolution_result = HostnameResolutionResult.new
     @address_candidate_list = AddressCandidateList.new(@record_types, self)
     @hostname_resolution_threads = []
     @connecting_sockets = {}
@@ -152,6 +152,7 @@ class HTTPClient
           @address_candidate_list.add(result)
           last_error = result.error unless result.success?
         end
+        @hostname_resolution_result.close_if_done
 
         if @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::A)
           if @address_candidate_list.all_resolved? ||
@@ -195,6 +196,7 @@ class HTTPClient
   end
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
+    @hostname_resolution_result.count_up
     thread = Thread.new(type) { |type|
       @hostname_resolution_result.add(type, records: @resolver.getresources(hostname, type))
     rescue => e
@@ -238,13 +240,17 @@ class HTTPClient
 
     attr_reader :notifier
 
-    def initialize(size)
-      @size = size
+    def initialize
+      @size = 0
       @taken_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
+    end
+
+    def count_up
+      @size += 1
     end
 
     def add(type, records: [], error: nil)
@@ -265,8 +271,12 @@ class HTTPClient
       end
 
       @taken_count += 1
-      close_all if @taken_count == @size
       res
+    end
+
+    def close_if_done
+      return if @notifier.nil?
+      close_all if @taken_count == @size
     end
 
     def close_notifier
