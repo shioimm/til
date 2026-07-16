@@ -306,11 +306,49 @@ class HTTPClient
 
     def initialize(record_types, client)
       @record_types = record_types
+      @order = []
       @addresses = {}
       @errors = {}
       @last_type = nil
       @client = client
     end
+
+    # 現状の@addressesの構造
+    # @addresses = {
+    #   Resolv::DNS::Resource::IN::A => [[nil, "127.0.0.1"]],
+    #   Resolv::DNS::Resource::IN::AAAA => [[nil, "::1"]],
+    #   Resolv::DNS::Resource::IN::HTTPS => {
+    #     Resolv::DNS::Resource::IN::AAAA => [
+    #       [#<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>, #<Resolv::IPv6 ::1>]
+    #     ],
+    #     Resolv::DNS::Resource::IN::A => [
+    #       [#<OpenSSL::SSL::SSLContext  @alpn_protocols=["http/1.1"]>, #<Resolv::IPv4 127.0.0.1>]
+    #       ]
+    #     }
+    #   }
+    #
+    # 案
+    # @addresses = {
+    #   "svc1.example.com" => {
+    #     ctx: #<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>,
+    #     Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
+    #     Resolv::DNS::Resource::IN::A => #<Resolv::IPv4 127.0.0.1>,
+    #     Resolv::DNS::Resource::IN::HTTPS => {
+    #       Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
+    #       Resolv::DNS::Resource::IN::A => #<Resolv::IPv 127.0.0.1>,
+    #     }
+    #   },
+    #   "svc2.example.com" => {
+    #     ctx: #<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>,
+    #     Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
+    #     Resolv::DNS::Resource::IN::A => #<Resolv::IPv4 127.0.0.1>,
+    #     Resolv::DNS::Resource::IN::HTTPS => {
+    #       Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
+    #       Resolv::DNS::Resource::IN::A => #<Resolv::IPv 127.0.0.1>,
+    #     }
+    #   },
+    # }
+    # @order = ["svc1.example.com", "svc2.example.com"]
 
     def add(result)
       if result.type == Resolv::DNS::Resource::IN::HTTPS
