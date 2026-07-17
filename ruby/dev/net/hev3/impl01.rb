@@ -63,7 +63,7 @@ class HTTPClient
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
         ctx, address = @address_candidate_list.next_candidate
-        addrinfo = Addrinfo.tcp(address, @port)
+        addrinfo = Addrinfo.tcp(address.to_s, @port)
 
         if @address_candidate_list.empty? && @connecting_sockets.empty? && @address_candidate_list.all_resolved?
           begin
@@ -384,9 +384,9 @@ class HTTPClient
           @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
           # TODO 現状typeごとにアドレスを管理しているけど、優先度ごとに管理するようにした方がいいのかも
           # A/AAAAが遅れて解決できた場合はその値で置き換える
-          @addresses[result.type] = result.records.map { [ctx, it.address.to_s] }
+          @addresses[result.type] = result.records.map { [ctx, it.address] }
         else
-          @addresses[result.type] = result.records.map { [nil, it.address.to_s] }
+          @addresses[result.type] = result.records.map { [nil, it.address] }
         end
 
         @errors[result.type] = nil
