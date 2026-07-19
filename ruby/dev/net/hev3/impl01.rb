@@ -394,6 +394,11 @@ class HTTPClient
         @addresses[result.type][AAAA_TYPE] = candidate.ipv6_address_hints
         @addresses[result.type][A_TYPE] = candidate.ipv4_address_hints
       elsif result.success?
+
+        # TODO @_addressesにもctxを持たせないといけない
+        @_addresses[result.hostname] ||= {} unless @_addresses[result.hostname]
+        @_addresses[result.hostname][result.type] = result.records
+
         https_hints = @addresses.dig(HTTPS_TYPE, result.type)
 
         if https_hints&.any?
