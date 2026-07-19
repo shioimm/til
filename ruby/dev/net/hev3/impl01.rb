@@ -302,7 +302,7 @@ class HTTPClient
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
 
-    AddressCandidate = Data.define(:rr, :ipv6_address_hints, :ipv4_address_hints)
+    AddressCandidate = Data.define(:rr, :ctx, :ipv6_address_hints, :ipv4_address_hints)
 
     def initialize(record_types, client)
       @record_types = record_types
@@ -361,21 +361,26 @@ class HTTPClient
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
         return if supported_records.empty?
 
-        supported_records.each do |candidate|
-          target_name = candidate.rr.target.to_s
+        sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
 
-          if !target_name.empty? # TargetName != .
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
-            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
+        sorted_candidates.each do |candidate|
+          raw_target = candidate.rr.target.to_s
+          hostname = raw_target.empty? ? result.hostname : raw_target
+
+          @order << hostname unless @order.include?(hostname)
+
+          @_addresses[hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
+          @_addresses[hostname][:ctx] = candidate.ctx
+          @_addresses[hostname][HTTPS_TYPE] = {
+            AAAA_TYPE => candidate.ipv6_address_hints.map { |_, a| a },
+            A_TYPE    => candidate.ipv4_address_hints.map { |_, a| a },
+          }
+
+          if !raw_target.empty?
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, hostname)
+            @client.resolve_hostname_asynchronously!(A_TYPE, hostname)
           end
-
-          @_addresses[target_name] ||= {}
-          @_addresses[target_name][HTTPS_TYPE] ||= {}
-          @_addresses[target_name][HTTPS_TYPE][AAAA_TYPE] = candidate.ipv6_address_hints
-          @_addresses[target_name][HTTPS_TYPE][A_TYPE] = candidate.ipv4_address_hints
         end
-        # WIP 並び順をセットする
-        @order = []
 
         candidates = supported_records.group_by { |candidate|
           target_name = candidate.rr.target.to_s
@@ -394,10 +399,9 @@ class HTTPClient
         @addresses[result.type][AAAA_TYPE] = candidate.ipv6_address_hints
         @addresses[result.type][A_TYPE] = candidate.ipv4_address_hints
       elsif result.success?
-
-        # TODO @_addressesにもctxを持たせないといけない
-        @_addresses[result.hostname] ||= {} unless @_addresses[result.hostname]
-        @_addresses[result.hostname][result.type] = result.records
+        @_addresses[result.hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
+        @_addresses[result.hostname][result.type] = result.records.map(&:address)
+        @order << result.hostname unless @order.include?(result.hostname)
 
         https_hints = @addresses.dig(HTTPS_TYPE, result.type)
 
@@ -475,7 +479,7 @@ class HTTPClient
         ctx.alpn_protocols = rr.params[1]&.protocol_ids
         ipv6_address_hints = rr.params[6]&.addresses&.map { [ctx, it] } || []
         ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
-        AddressCandidate.new(rr, ipv6_address_hints, ipv4_address_hints)
+        AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
       end
     end
   end
