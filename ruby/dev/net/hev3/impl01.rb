@@ -8,15 +8,15 @@ DEBUG = true
 # TODO 6to4アドレス合成
 
 class HTTPClient
+  AAAA_TYPE  = Resolv::DNS::Resource::IN::AAAA
+  A_TYPE     = Resolv::DNS::Resource::IN::A
+  HTTPS_TYPE = Resolv::DNS::Resource::IN::HTTPS
+
   NAMESERVER = ["127.0.0.1", 5300]
   HOST = "localhost"
   HTTPS_PORT = 8443
   HTTP_PORT = 8080
-  RECORD_TYPES = [
-    Resolv::DNS::Resource::IN::A,
-    Resolv::DNS::Resource::IN::AAAA,
-    Resolv::DNS::Resource::IN::HTTPS,
-  ].freeze
+  RECORD_TYPES = [A_TYPE, AAAA_TYPE, HTTPS_TYPE].freeze
 
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
@@ -154,15 +154,15 @@ class HTTPClient
         end
         @hostname_resolution_result.close_if_done
 
-        if @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::A)
+        if @address_candidate_list.resolved?(A_TYPE)
           if @address_candidate_list.all_resolved? ||
-              (@address_candidate_list.resolved?(Resolv::DNS::Resource::IN::HTTPS) &&
-               @address_candidate_list.resolved?(Resolv::DNS::Resource::IN::AAAA))
+              (@address_candidate_list.resolved?(HTTPS_TYPE) &&
+               @address_candidate_list.resolved?(AAAA_TYPE))
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             @hostname_resolution_result.close_notifier
             @resolution_delay_expires_at = nil
           else
-            @address_candidate_list.resolved_successfully?(Resolv::DNS::Resource::IN::A)
+            @address_candidate_list.resolved_successfully?(A_TYPE)
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
@@ -298,8 +298,8 @@ class HTTPClient
   end
 
   class AddressCandidateList
-    PRIORITY_ON_V6 = [Resolv::DNS::Resource::IN::AAAA, Resolv::DNS::Resource::IN::A]
-    PRIORITY_ON_V4 = [Resolv::DNS::Resource::IN::A, Resolv::DNS::Resource::IN::AAAA]
+    PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
+    PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
 
     AddressCandidate = Data.define(:rr, :ipv6_address_hints, :ipv4_address_hints)
@@ -308,6 +308,7 @@ class HTTPClient
       @record_types = record_types
       @order = []
       @addresses = {}
+      @_addresses = {}
       @errors = {}
       @last_type = nil
       @client = client
@@ -316,7 +317,7 @@ class HTTPClient
     # 現状の@addressesの構造
     # @addresses = {
     #   Resolv::DNS::Resource::IN::A => [[nil, "127.0.0.1"]],
-    #   Resolv::DNS::Resource::IN::AAAA => [[nil, "::1"]],
+    #   AAAA_TYPE => [[nil, "::1"]],
     #   Resolv::DNS::Resource::IN::HTTPS => {
     #     Resolv::DNS::Resource::IN::AAAA => [
     #       [#<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>, #<Resolv::IPv6 ::1>]
@@ -351,7 +352,7 @@ class HTTPClient
     # @order = ["svc1.example.com", "svc2.example.com"]
 
     def add(result)
-      if result.type == Resolv::DNS::Resource::IN::HTTPS
+      if result.type == HTTPS_TYPE
         if result.records.first.alias_mode?
           @client.resolve_hostname_asynchronously!(result.type)
           return
@@ -360,12 +361,28 @@ class HTTPClient
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
         return if supported_records.empty?
 
+        supported_records.each do |candidate|
+          target_name = candidate.rr.target.to_s
+
+          if !target_name.empty? # TargetName != .
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
+            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
+          end
+
+          @_addresses[target_name] ||= {}
+          @_addresses[target_name][HTTPS_TYPE] ||= {}
+          @_addresses[target_name][HTTPS_TYPE][AAAA_TYPE] = candidate.ipv6_address_hints
+          @_addresses[target_name][HTTPS_TYPE][A_TYPE] = candidate.ipv4_address_hints
+        end
+        # WIP 並び順をセットする
+        @order = []
+
         candidates = supported_records.group_by { |candidate|
           target_name = candidate.rr.target.to_s
 
           if !target_name.empty? # TargetName != .
-            @client.resolve_hostname_asynchronously!(Resolv::DNS::Resource::IN::AAAA, target_name)
-            @client.resolve_hostname_asynchronously!(Resolv::DNS::Resource::IN::A, target_name)
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
+            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
           end
 
           [candidate.rr.priority, candidate.rr.params[1].protocol_ids]
@@ -374,14 +391,14 @@ class HTTPClient
         # TODO グループを並び替えの上ノーマライズできるようにする
         candidate = candidates.values.flatten.first # TEMP
         @addresses[result.type] ||= {}
-        @addresses[result.type][Resolv::DNS::Resource::IN::AAAA] = candidate.ipv6_address_hints
-        @addresses[result.type][Resolv::DNS::Resource::IN::A] = candidate.ipv4_address_hints
+        @addresses[result.type][AAAA_TYPE] = candidate.ipv6_address_hints
+        @addresses[result.type][A_TYPE] = candidate.ipv4_address_hints
       elsif result.success?
-        https_hints = @addresses.dig(Resolv::DNS::Resource::IN::HTTPS, result.type)
+        https_hints = @addresses.dig(HTTPS_TYPE, result.type)
 
         if https_hints&.any?
           ctx, _ = https_hints.first # TODO これでいいのか...?
-          @addresses[Resolv::DNS::Resource::IN::HTTPS][result.type] = []
+          @addresses[HTTPS_TYPE][result.type] = []
           # TODO 現状typeごとにアドレスを管理しているけど、優先度ごとに管理するようにした方がいいのかも
           # A/AAAAが遅れて解決できた場合はその値で置き換える
           @addresses[result.type] = result.records.map { [ctx, it.address] }
@@ -398,12 +415,12 @@ class HTTPClient
 
     def next_candidate
       precedences =
-        if @last_type == Resolv::DNS::Resource::IN::AAAA then PRIORITY_ON_V4
-        elsif @last_type == Resolv::DNS::Resource::IN::A || @last_type.nil? then PRIORITY_ON_V6
+        if @last_type == AAAA_TYPE then PRIORITY_ON_V4
+        elsif @last_type == A_TYPE || @last_type.nil? then PRIORITY_ON_V6
         end
 
       precedences.each do |type|
-        candidate = @addresses[type]&.shift || @addresses[Resolv::DNS::Resource::IN::HTTPS]&.dig(type)&.shift
+        candidate = @addresses[type]&.shift || @addresses[HTTPS_TYPE]&.dig(type)&.shift
 
         next unless candidate
 
