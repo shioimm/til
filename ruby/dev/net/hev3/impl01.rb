@@ -308,48 +308,10 @@ class HTTPClient
       @record_types = record_types
       @order = []
       @addresses = {}
-      @_addresses = {}
       @errors = {}
       @last_type = nil
       @client = client
     end
-
-    # 現状の@addressesの構造
-    # @addresses = {
-    #   Resolv::DNS::Resource::IN::A => [[nil, "127.0.0.1"]],
-    #   AAAA_TYPE => [[nil, "::1"]],
-    #   Resolv::DNS::Resource::IN::HTTPS => {
-    #     Resolv::DNS::Resource::IN::AAAA => [
-    #       [#<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>, #<Resolv::IPv6 ::1>]
-    #     ],
-    #     Resolv::DNS::Resource::IN::A => [
-    #       [#<OpenSSL::SSL::SSLContext  @alpn_protocols=["http/1.1"]>, #<Resolv::IPv4 127.0.0.1>]
-    #       ]
-    #     }
-    #   }
-    #
-    # 案
-    # @addresses = {
-    #   "svc1.example.com" => {
-    #     ctx: #<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>,
-    #     Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
-    #     Resolv::DNS::Resource::IN::A => #<Resolv::IPv4 127.0.0.1>,
-    #     Resolv::DNS::Resource::IN::HTTPS => {
-    #       Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
-    #       Resolv::DNS::Resource::IN::A => #<Resolv::IPv 127.0.0.1>,
-    #     }
-    #   },
-    #   "svc2.example.com" => {
-    #     ctx: #<OpenSSL::SSL::SSLContext @alpn_protocols=["http/1.1"]>,
-    #     Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
-    #     Resolv::DNS::Resource::IN::A => #<Resolv::IPv4 127.0.0.1>,
-    #     Resolv::DNS::Resource::IN::HTTPS => {
-    #       Resolv::DNS::Resource::IN::AAAA => #<Resolv::IPv6 ::1>,
-    #       Resolv::DNS::Resource::IN::A => #<Resolv::IPv 127.0.0.1>,
-    #     }
-    #   },
-    # }
-    # @order = ["svc1.example.com", "svc2.example.com"]
 
     def add(result)
       if result.type == HTTPS_TYPE
@@ -369,11 +331,11 @@ class HTTPClient
 
           @order << hostname unless @order.include?(hostname)
 
-          @_addresses[hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
-          @_addresses[hostname][:ctx] = candidate.ctx
-          @_addresses[hostname][HTTPS_TYPE] = {
-            AAAA_TYPE => candidate.ipv6_address_hints.map { |_, a| a },
-            A_TYPE    => candidate.ipv4_address_hints.map { |_, a| a },
+          @addresses[hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
+          @addresses[hostname][:ctx] = candidate.ctx
+          @addresses[hostname][HTTPS_TYPE] = {
+            AAAA_TYPE => candidate.ipv6_address_hints,
+            A_TYPE    => candidate.ipv4_address_hints,
           }
 
           if !raw_target.empty?
@@ -382,42 +344,14 @@ class HTTPClient
           end
         end
 
-        candidates = supported_records.group_by { |candidate|
-          target_name = candidate.rr.target.to_s
-
-          if !target_name.empty? # TargetName != .
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
-            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
-          end
-
-          [candidate.rr.priority, candidate.rr.params[1].protocol_ids]
-        }
-
-        # TODO グループを並び替えの上ノーマライズできるようにする
-        candidate = candidates.values.flatten.first # TEMP
-        @addresses[result.type] ||= {}
-        @addresses[result.type][AAAA_TYPE] = candidate.ipv6_address_hints
-        @addresses[result.type][A_TYPE] = candidate.ipv4_address_hints
+        @errors[HTTPS_TYPE] = nil
       elsif result.success?
-        @_addresses[result.hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
-        @_addresses[result.hostname][result.type] = result.records.map(&:address)
+        @addresses[result.hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
+        @addresses[result.hostname][result.type] = result.records.map(&:address)
         @order << result.hostname unless @order.include?(result.hostname)
-
-        https_hints = @addresses.dig(HTTPS_TYPE, result.type)
-
-        if https_hints&.any?
-          ctx, _ = https_hints.first # TODO これでいいのか...?
-          @addresses[HTTPS_TYPE][result.type] = []
-          # TODO 現状typeごとにアドレスを管理しているけど、優先度ごとに管理するようにした方がいいのかも
-          # A/AAAAが遅れて解決できた場合はその値で置き換える
-          @addresses[result.type] = result.records.map { [ctx, it.address] }
-        else
-          @addresses[result.type] = result.records.map { [nil, it.address] }
-        end
 
         @errors[result.type] = nil
       else
-        @addresses[result.type] = []
         @errors[result.type] = result.error
       end
     end
@@ -428,20 +362,21 @@ class HTTPClient
         elsif @last_type == A_TYPE || @last_type.nil? then PRIORITY_ON_V6
         end
 
-      precedences.each do |type|
-        candidate = @addresses[type]&.shift || @addresses[HTTPS_TYPE]&.dig(type)&.shift
+      @order.each do |hostname|
+        precedences.each do |type|
+          address = @addresses[hostname][type]&.shift || @addresses[hostname][HTTPS_TYPE]&.dig(type)&.shift
+          next unless address
 
-        next unless candidate
-
-        @last_type = type
-        return candidate
+          @last_type = type
+          return [@addresses[hostname][:ctx], address]
+        end
       end
 
       nil
     end
 
     def resolved?(type)
-      @addresses.key?(type)
+      @errors.key?(type)
     end
 
     def resolved_successfully?(type)
@@ -457,12 +392,11 @@ class HTTPClient
     end
 
     def empty?
-      @addresses.all? do |_, records|
-        case records
-        when Hash then records.all? { |_, addrs| addrs.empty? }
-        when Array then records.empty?
-        end
-      end
+      @order.none? { |hostname|
+        [AAAA_TYPE, A_TYPE].any? { |type|
+          @addresses[hostname][type].any? || @addresses[hostname][HTTPS_TYPE]&.dig(type)&.any?
+        }
+      }
     end
 
     def any?
@@ -477,8 +411,8 @@ class HTTPClient
       if alpn.nil? || (alpn & SUPPORTED_PROTOCOLS).any?
         ctx = ::OpenSSL::SSL::SSLContext.new
         ctx.alpn_protocols = rr.params[1]&.protocol_ids
-        ipv6_address_hints = rr.params[6]&.addresses&.map { [ctx, it] } || []
-        ipv4_address_hints = rr.params[4]&.addresses&.map { [ctx, it] } || []
+        ipv6_address_hints = rr.params[6]&.addresses || []
+        ipv4_address_hints = rr.params[4]&.addresses || []
         AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
       end
     end
