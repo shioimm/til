@@ -357,11 +357,6 @@ class HTTPClient
     end
 
     def next_candidate
-      precedences =
-        if @last_type == AAAA_TYPE then PRIORITY_ON_V4
-        elsif @last_type == A_TYPE || @last_type.nil? then PRIORITY_ON_V6
-        end
-
       @order.each do |hostname|
         precedences.each do |type|
           address = @addresses[hostname][type]&.shift || @addresses[hostname][HTTPS_TYPE]&.dig(type)&.shift
@@ -414,6 +409,12 @@ class HTTPClient
         ipv6_address_hints = rr.params[6]&.addresses || []
         ipv4_address_hints = rr.params[4]&.addresses || []
         AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+      end
+    end
+
+    def precedences
+      if @last_type == AAAA_TYPE then PRIORITY_ON_V4
+      elsif @last_type == A_TYPE || @last_type.nil? then PRIORITY_ON_V6
       end
     end
   end
