@@ -211,7 +211,7 @@ class HTTPClient
   private
 
   def connect_with_tls(socket, ctx)
-    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, )
+    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, ctx)
     ssl_socket.hostname = HOST
     ssl_socket.connect
   end
