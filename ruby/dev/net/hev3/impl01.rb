@@ -348,6 +348,7 @@ class HTTPClient
       elsif result.success?
         @addresses[result.hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
         @addresses[result.hostname][result.type] = result.records.map(&:address)
+        @addresses[result.hostname][HTTPS_TYPE]&.delete(result.type)
         @order << result.hostname unless @order.include?(result.hostname)
 
         @errors[result.type] = nil
