@@ -301,6 +301,7 @@ class HTTPClient
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
+    DEFAULT_ALPN = ["http/1.1"].freeze
 
     AddressCandidate = Data.define(:rr, :ctx, :ipv6_address_hints, :ipv4_address_hints)
 
@@ -402,15 +403,30 @@ class HTTPClient
     private
 
     def create_address_candidate_from_rr!(rr)
-      alpn = rr.params[1]&.protocol_ids
+      alpn_protocols = extract_alpn_protocols_from_rr(rr)
+      return if alpn_protocols.empty?
 
-      if alpn.nil? || (alpn & SUPPORTED_PROTOCOLS).any?
-        ctx = ::OpenSSL::SSL::SSLContext.new
-        ctx.alpn_protocols = rr.params[1]&.protocol_ids
-        ipv6_address_hints = rr.params[6]&.addresses || []
-        ipv4_address_hints = rr.params[4]&.addresses || []
-        AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
-      end
+      ctx = ::OpenSSL::SSL::SSLContext.new
+      ctx.alpn_protocols = alpn_protocols
+      ipv6_address_hints = rr.params[6]&.addresses || []
+      ipv4_address_hints = rr.params[4]&.addresses || []
+      AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+    end
+
+    def extract_alpn_protocols_from_rr(rr)
+      alpn_param = rr.params[1]&.protocol_ids
+      no_default_alpn = rr.params[2]
+
+      svcb_alpn_set =
+        if alpn_param.nil?
+          DEFAULT_ALPN
+        elsif no_default_alpn
+          alpn_param
+        else
+          (alpn_param + DEFAULT_ALPN).uniq
+        end
+
+      svcb_alpn_set & SUPPORTED_PROTOCOLS
     end
 
     def precedences
