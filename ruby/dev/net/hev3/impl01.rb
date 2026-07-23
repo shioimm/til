@@ -16,7 +16,7 @@ class HTTPClient
   HOST = "localhost"
   HTTPS_PORT = 8443
   HTTP_PORT = 8080
-  RECORD_TYPES = [A_TYPE, AAAA_TYPE, HTTPS_TYPE].freeze
+  RECORD_TYPES = [HTTPS_TYPE, AAAA_TYPE, A_TYPE].freeze
 
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
@@ -211,7 +211,7 @@ class HTTPClient
   private
 
   def connect_with_tls(socket, ctx)
-    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, )
+    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, ctx)
     ssl_socket.hostname = HOST
     ssl_socket.connect
   end
@@ -316,7 +316,7 @@ class HTTPClient
     def add(result)
       if result.type == HTTPS_TYPE
         if result.records.first.alias_mode?
-          @client.resolve_hostname_asynchronously!(result.type)
+          @client.resolve_hostname_asynchronously!(result.records.first.target.to_s)
           return
         end
 
