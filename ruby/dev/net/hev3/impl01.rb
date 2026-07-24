@@ -307,7 +307,6 @@ class HTTPClient
 
     def initialize(record_types, client)
       @record_types = record_types
-      @order = []
       @addresses = {}
       @errors = {}
       @last_type = nil
@@ -327,30 +326,33 @@ class HTTPClient
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
 
         sorted_candidates.each do |candidate|
-          raw_target = candidate.rr.target.to_s
-          hostname = raw_target.empty? ? result.hostname : raw_target
+          target_name = candidate.rr.target.to_s
+          hostname = target_name.empty? ? result.hostname : target_name
+          priority = candidate.rr.priority
+          temp_rr = @addresses.delete([hostname, Float::INFINITY])
 
-          @order << hostname unless @order.include?(hostname)
-
-          @addresses[hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
-          @addresses[hostname][:ctx] = candidate.ctx
-          @addresses[hostname][HTTPS_TYPE] = {
-            AAAA_TYPE => candidate.ipv6_address_hints,
-            A_TYPE    => candidate.ipv4_address_hints,
+          @addresses[[hostname, priority]] = {
+            AAAA_TYPE  => temp_rr&.dig(AAAA_TYPE) || [],
+            A_TYPE     => temp_rr&.dig(A_TYPE) || [],
+            HTTPS_TYPE => { AAAA_TYPE => candidate.ipv6_address_hints, A_TYPE => candidate.ipv4_address_hints },
+            :ctx       => candidate.ctx,
           }
 
-          if !raw_target.empty?
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, hostname)
-            @client.resolve_hostname_asynchronously!(A_TYPE, hostname)
+          if !target_name.empty?
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
+            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
           end
         end
 
         @errors[HTTPS_TYPE] = nil
       elsif result.success?
-        @addresses[result.hostname] ||= { AAAA_TYPE => [], A_TYPE => [] }
-        @addresses[result.hostname][result.type] = result.records.map(&:address)
-        @addresses[result.hostname][HTTPS_TYPE]&.delete(result.type)
-        @order << result.hostname unless @order.include?(result.hostname)
+        key =
+          @addresses.keys.find { |(hostname, _priority)| hostname == result.hostname } ||
+          [result.hostname, Float::INFINITY]
+
+        @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [] }
+        @addresses[key][result.type] = result.records.map(&:address)
+        @addresses[key][HTTPS_TYPE]&.delete(result.type)
 
         @errors[result.type] = nil
       else
@@ -359,15 +361,20 @@ class HTTPClient
     end
 
     def next_candidate
-      @order.each do |hostname|
-        precedences.each do |type|
-          address = @addresses[hostname][type]&.shift || @addresses[hostname][HTTPS_TYPE]&.dig(type)&.shift
-          next unless address
+      @addresses
+        .group_by { |(_hostname, priority), _| priority }
+        .sort_by { |priority, _entries| priority }
+        .each do |_priority, entries|
+          precedences.each do |type|
+            candidates = entries.select { |_priority, data| address_available?(data, type) }
+            next if candidates.empty?
 
-          @last_type = type
-          return [@addresses[hostname][:ctx], address]
+            _, data = candidates.to_a.sample
+            address = data[type]&.shift || data[HTTPS_TYPE]&.dig(type)&.shift
+            @last_type = type
+            return [data[:ctx], address]
+          end
         end
-      end
 
       nil
     end
@@ -389,11 +396,7 @@ class HTTPClient
     end
 
     def empty?
-      @order.none? { |hostname|
-        [AAAA_TYPE, A_TYPE].any? { |type|
-          @addresses[hostname][type].any? || @addresses[hostname][HTTPS_TYPE]&.dig(type)&.any?
-        }
-      }
+      @addresses.none? { |_, data| [AAAA_TYPE, A_TYPE].any? { |type| address_available?(data, type) } }
     end
 
     def any?
@@ -433,6 +436,10 @@ class HTTPClient
       if @last_type == AAAA_TYPE then PRIORITY_ON_V4
       elsif @last_type == A_TYPE || @last_type.nil? then PRIORITY_ON_V6
       end
+    end
+
+    def address_available?(data, type)
+      data[type]&.any? || data[HTTPS_TYPE]&.dig(type)&.any?
     end
   end
 end
