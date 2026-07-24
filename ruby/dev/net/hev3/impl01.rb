@@ -315,6 +315,8 @@ class HTTPClient
 
     def add(result)
       if result.type == HTTPS_TYPE
+        return if result.records.empty?
+
         if result.records.first.alias_mode?
           @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
           return
