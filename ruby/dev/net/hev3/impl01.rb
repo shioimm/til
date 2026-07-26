@@ -315,12 +315,15 @@ class HTTPClient
 
     def add(result)
       if result.type == HTTPS_TYPE
+        return if result.records.empty?
+
         if result.records.first.alias_mode?
           @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
           return
         end
 
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
+        @errors[HTTPS_TYPE] = nil
         return if supported_records.empty?
 
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
