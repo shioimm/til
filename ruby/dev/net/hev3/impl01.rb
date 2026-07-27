@@ -359,7 +359,10 @@ class HTTPClient
 
     def add(result)
       if result.type == HTTPS_TYPE
-        return if result.records.empty?
+        if result.records.empty?
+          @errors[HTTPS_TYPE] = nil
+          return
+        end
 
         if result.records.first.alias_mode?
           @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
@@ -390,8 +393,6 @@ class HTTPClient
             @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
           end
         end
-
-        @errors[HTTPS_TYPE] = nil
       elsif result.success?
         key =
           @addresses.keys.find { |(hostname, _priority)| hostname == result.hostname } ||
