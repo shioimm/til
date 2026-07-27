@@ -17,8 +17,6 @@ class HTTPClient
   HOST = "localhost"
   HTTPS_PORT = 8443
   HTTP_PORT = 8080
-  RECORD_TYPES = [HTTPS_TYPE, AAAA_TYPE, A_TYPE].freeze
-
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
@@ -31,8 +29,7 @@ class HTTPClient
     @port = @use_ssl ? HTTPS_PORT : HTTP_PORT
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
-    # TODO ホストの接続性によってHTTPS / AもしくはHTTPS / AAAAになる可能性あり
-    @record_types = RECORD_TYPES
+    @record_types = record_types
     @hostname_resolution_result = HostnameResolutionResult.new
     @address_candidate_list = AddressCandidateList.new(@record_types, self)
     @hostname_resolution_threads = []
@@ -211,6 +208,52 @@ class HTTPClient
 
   private
 
+  def record_types
+    if ipv6_reachable? && ipv4_reachable?
+      [HTTPS_TYPE, AAAA_TYPE, A_TYPE]
+    elsif ipv6_reachable?
+      [HTTPS_TYPE, AAAA_TYPE]
+    elsif ipv4_reachable?
+      [HTTPS_TYPE, A_TYPE]
+    else
+      raise "no network connectivity"
+    end
+  end
+
+  def ipv4_reachable?
+    return @ipv4_reachable if defined?(@ipv4_reachable)
+
+    @ipv4_reachable = begin
+      socket = UDPSocket.new(Socket::AF_INET)
+      socket.connect("8.8.8.8", 443)
+
+      n = IPAddr.new(socket.local_address.ip_address).to_i
+      # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
+      n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
+    rescue SystemCallError, SocketError
+      false
+    ensure
+      socket&.close
+    end
+  end
+
+  def ipv6_reachable?
+    return @ipv6_reachable if defined?(@ipv6_reachable)
+
+    @ipv6_reachable = begin
+      socket = UDPSocket.new(Socket::AF_INET6)
+      socket.connect("2001:4860:4860::8888", 443)
+
+      n = IPAddr.new(socket.local_address.ip_address).to_i
+      # ::, ::1, fe80::/10
+      n != 0 && n != 1 && (n >> 118) != 0x3fa
+    rescue SystemCallError, SocketError
+      false
+    ensure
+      socket&.close
+    end
+  end
+
   def connect_with_tls(socket, ctx)
     ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, ctx)
     ssl_socket.hostname = HOST
@@ -230,36 +273,6 @@ class HTTPClient
 
   def expired?(started_at, ends_at)
     second_to_timeout(started_at, ends_at)&.zero?
-  end
-
-  def ipv4_reachable?
-    socket = UDPSocket.new(Socket::AF_INET)
-    socket.connect("8.8.8.8", 443)
-    n = IPAddr.new(socket.local_address.ip_address).to_i
-
-    return false if n == 0
-    return false if (n & 0xff000000) == 0x7f000000 # 127.0.0.0/8
-    return false if (n & 0xffff0000) == 0xa9fe0000 # 169.254.0.0/16
-    true
-  rescue SystemCallError, SocketError
-    false
-  ensure
-    socket&.close
-  end
-
-  def ipv6_reachable?
-    socket = UDPSocket.new(Socket::AF_INET6)
-    socket.connect("2001:4860:4860::8888", 443)
-    n = IPAddr.new(socket.local_address.ip_address).to_i
-
-    return false if n == 0 # ::
-    return false if n == 1 # ::1
-    return false if (n >> 118) == 0x3fa # fe80::/10
-    true
-  rescue SystemCallError, SocketError
-    false
-  ensure
-    socket&.close
   end
 
   class HostnameResolutionResult
