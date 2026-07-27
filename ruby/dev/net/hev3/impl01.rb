@@ -1,6 +1,7 @@
 require "socket"
 require "resolv"
 require "openssl"
+require "ipaddr"
 
 DEBUG = true
 
@@ -229,6 +230,36 @@ class HTTPClient
 
   def expired?(started_at, ends_at)
     second_to_timeout(started_at, ends_at)&.zero?
+  end
+
+  def ipv4_reachable?
+    socket = UDPSocket.new(Socket::AF_INET)
+    socket.connect("8.8.8.8", 443)
+    n = IPAddr.new(socket.local_address.ip_address).to_i
+
+    return false if n == 0
+    return false if (n & 0xff000000) == 0x7f000000 # 127.0.0.0/8
+    return false if (n & 0xffff0000) == 0xa9fe0000 # 169.254.0.0/16
+    true
+  rescue SystemCallError, SocketError
+    false
+  ensure
+    socket&.close
+  end
+
+  def ipv6_reachable?
+    socket = UDPSocket.new(Socket::AF_INET6)
+    socket.connect("2001:4860:4860::8888", 443)
+    n = IPAddr.new(socket.local_address.ip_address).to_i
+
+    return false if n == 0 # ::
+    return false if n == 1 # ::1
+    return false if (n >> 118) == 0x3fa # fe80::/10
+    true
+  rescue SystemCallError, SocketError
+    false
+  ensure
+    socket&.close
   end
 
   class HostnameResolutionResult
