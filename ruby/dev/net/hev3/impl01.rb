@@ -152,15 +152,14 @@ class HTTPClient
         end
         @hostname_resolution_result.close_if_done
 
-        if @address_candidate_list.resolved?(A_TYPE)
+        if @address_candidate_list.any?
           if @address_candidate_list.all_resolved? ||
               (@address_candidate_list.resolved?(HTTPS_TYPE) &&
                @address_candidate_list.resolved?(AAAA_TYPE))
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             @hostname_resolution_result.close_notifier
             @resolution_delay_expires_at = nil
-          else
-            @address_candidate_list.resolved_successfully?(A_TYPE)
+          elsif @resolution_delay_expires_at.nil?
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
