@@ -17,6 +17,12 @@ class HTTPClient
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
+  WELL_KNOWN_IPV4_ADDRESSES = [
+    IPAddr.new("192.0.0.170").to_i,
+    IPAddr.new("192.0.0.171").to_i,
+  ].freeze
+  NAT64_PREFIX_LENGTHS = [32, 40, 48, 56, 64, 96].freeze
+
   def self.run
     self.new.run
   end
@@ -208,7 +214,7 @@ class HTTPClient
     if ipv6_reachable? && ipv4_reachable?
       [HTTPS_TYPE, AAAA_TYPE, A_TYPE]
     elsif ipv6_reachable?
-      [HTTPS_TYPE, AAAA_TYPE]
+      nat64_prefix ? [HTTPS_TYPE, AAAA_TYPE, A_TYPE] : [HTTPS_TYPE, AAAA_TYPE]
     elsif ipv4_reachable?
       [HTTPS_TYPE, A_TYPE]
     else
@@ -248,6 +254,37 @@ class HTTPClient
     ensure
       socket&.close
     end
+  end
+
+  def nat64_prefix
+    return @nat64_prefix if defined?(@nat64_prefix)
+    @nat64_prefix = detect_nat64_prefix
+  end
+
+  def detect_nat64_prefix
+    addresses = @resolver.getresources("ipv4only.arpa", AAAA_TYPE).map { |rr|
+      AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i)
+    }
+    prefixed_v4s = {}
+
+    addresses.each do |addr_int|
+      NAT64_PREFIX_LENGTHS.each do |prefix_len|
+        next if prefix_len < 96 && !addr_int.u_octet_zero?
+
+        v4 = addr_int.embedded_ipv4(prefix_len)
+        next unless WELL_KNOWN_IPV4_ADDRESSES.include?(v4)
+
+        label = addr_int.label(prefix_len)
+        existing_v4s = prefixed_v4s[label] || []
+        prefixed_v4s[label] = existing | [v4]
+
+        return label if WELL_KNOWN_IPV4_ADDRESSES.all? { |known| prefixed_v4s[label].include?(known) }
+      end
+    end
+
+    nil
+  rescue Resolv::ResolvError, Resolv::ResolvTimeout
+    nil
   end
 
   def connect_with_tls(socket, ctx)
