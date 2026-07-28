@@ -5,9 +5,6 @@ require "ipaddr"
 
 DEBUG = true
 
-# TODO IPv6 / IPv4接続性確認
-# TODO 6to4アドレス合成
-
 class HTTPClient
   AAAA_TYPE  = Resolv::DNS::Resource::IN::AAAA
   A_TYPE     = Resolv::DNS::Resource::IN::A
@@ -489,6 +486,42 @@ class HTTPClient
       data[type]&.any? || data[HTTPS_TYPE]&.dig(type)&.any?
     end
   end
+
+  class AddrInt
+    # TODO 6to4アドレス合成できるようにする
+
+    def initialize(int)
+      @int = int
+    end
+
+    def u_octet_zero?
+      ((@int >> 56) & 0xff).zero?
+    end
+
+    def embedded_ipv4(prefix_len)
+      case prefix_len
+      when 96 then @int & 0xffffffff
+      when 64 then (@int >> 24) & 0xffffffff
+      when 56 then (((@int >> 64) & 0xff) << 24) | ((@int >> 32) & 0xffffff)
+      when 48 then (((@int >> 64) & 0xffff) << 16) | ((@int >> 40) & 0xffff)
+      when 40 then (((@int >> 64) & 0xffffff) << 8) | ((@int >> 48) & 0xff)
+      when 32 then (@int >> 64) & 0xffffffff
+      end
+    end
+
+    def label(prefix_len)
+      "#{IPAddr.new(nat64_prefix(prefix_len), Socket::AF_INET6)}/#{prefix_len}"
+    end
+
+    private
+
+    def nat64_prefix(prefix_len)
+      shift = 128 - prefix_len
+      (@int >> shift) << shift
+    end
+  end
+
+  private_constant :AddrInt
 end
 
 HTTPClient.run
