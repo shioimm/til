@@ -525,10 +525,29 @@ class HTTPClient
   end
 
   class AddrInt
-    # TODO 6to4アドレス合成できるようにする
+    def self.synthesize(ipv4_int, nat64_prefix_str)
+      prefix_addr, prefix_len_str = nat64_prefix_str.split("/")
+      prefix_len = prefix_len_str.to_i
+      prefix_int = IPAddr.new(prefix_addr).to_i
+
+      ipv6_int = case prefix_len
+      when 96 then prefix_int | ipv4_int
+      when 64 then prefix_int | (ipv4_int << 24)
+      when 56 then prefix_int | (((ipv4_int >> 24) & 0xff) << 64) | ((ipv4_int & 0xffffff) << 32)
+      when 48 then prefix_int | (((ipv4_int >> 16) & 0xffff) << 64) | ((ipv4_int & 0xffff) << 40)
+      when 40 then prefix_int | (((ipv4_int >> 8) & 0xffffff) << 64) | ((ipv4_int & 0xff) << 48)
+      when 32 then prefix_int | (ipv4_int << 64)
+      end
+
+      new(ipv6_int)
+    end
 
     def initialize(int)
       @int = int
+    end
+
+    def to_ipaddr
+      IPAddr.new(@int, Socket::AF_INET6)
     end
 
     def u_octet_zero?
