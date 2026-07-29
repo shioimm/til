@@ -5,9 +5,6 @@ require "ipaddr"
 
 DEBUG = true
 
-# TODO IPv6 / IPv4接続性確認
-# TODO 6to4アドレス合成
-
 class HTTPClient
   AAAA_TYPE  = Resolv::DNS::Resource::IN::AAAA
   A_TYPE     = Resolv::DNS::Resource::IN::A
@@ -19,6 +16,12 @@ class HTTPClient
   HTTP_PORT = 8080
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
+
+  WELL_KNOWN_IPV4_ADDRESSES = [
+    IPAddr.new("192.0.0.170").to_i,
+    IPAddr.new("192.0.0.171").to_i,
+  ].freeze
+  NAT64_PREFIX_LENGTHS = [32, 40, 48, 56, 64, 96].freeze
 
   def self.run
     self.new.run
@@ -152,15 +155,14 @@ class HTTPClient
         end
         @hostname_resolution_result.close_if_done
 
-        if @address_candidate_list.resolved?(A_TYPE)
+        if @address_candidate_list.any?
           if @address_candidate_list.all_resolved? ||
               (@address_candidate_list.resolved?(HTTPS_TYPE) &&
                @address_candidate_list.resolved?(AAAA_TYPE))
             puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
             @hostname_resolution_result.close_notifier
             @resolution_delay_expires_at = nil
-          else
-            @address_candidate_list.resolved_successfully?(A_TYPE)
+          elsif @resolution_delay_expires_at.nil?
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
@@ -212,7 +214,7 @@ class HTTPClient
     if ipv6_reachable? && ipv4_reachable?
       [HTTPS_TYPE, AAAA_TYPE, A_TYPE]
     elsif ipv6_reachable?
-      [HTTPS_TYPE, AAAA_TYPE]
+      nat64_prefix ? [HTTPS_TYPE, AAAA_TYPE, A_TYPE] : [HTTPS_TYPE, AAAA_TYPE]
     elsif ipv4_reachable?
       [HTTPS_TYPE, A_TYPE]
     else
@@ -252,6 +254,37 @@ class HTTPClient
     ensure
       socket&.close
     end
+  end
+
+  def nat64_prefix
+    return @nat64_prefix if defined?(@nat64_prefix)
+    @nat64_prefix = detect_nat64_prefix
+  end
+
+  def detect_nat64_prefix
+    addresses = @resolver.getresources("ipv4only.arpa", AAAA_TYPE).map { |rr|
+      AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i)
+    }
+    prefixed_v4s = {}
+
+    addresses.each do |addr_int|
+      NAT64_PREFIX_LENGTHS.each do |prefix_len|
+        next if prefix_len < 96 && !addr_int.u_octet_zero?
+
+        v4 = addr_int.embedded_ipv4(prefix_len)
+        next unless WELL_KNOWN_IPV4_ADDRESSES.include?(v4)
+
+        label = addr_int.label(prefix_len)
+        existing_v4s = prefixed_v4s[label] || []
+        prefixed_v4s[label] = existing | [v4]
+
+        return label if WELL_KNOWN_IPV4_ADDRESSES.all? { |known| prefixed_v4s[label].include?(known) }
+      end
+    end
+
+    nil
+  rescue Resolv::ResolvError, Resolv::ResolvTimeout
+    nil
   end
 
   def connect_with_tls(socket, ctx)
@@ -490,6 +523,42 @@ class HTTPClient
       data[type]&.any? || data[HTTPS_TYPE]&.dig(type)&.any?
     end
   end
+
+  class AddrInt
+    # TODO 6to4アドレス合成できるようにする
+
+    def initialize(int)
+      @int = int
+    end
+
+    def u_octet_zero?
+      ((@int >> 56) & 0xff).zero?
+    end
+
+    def embedded_ipv4(prefix_len)
+      case prefix_len
+      when 96 then @int & 0xffffffff
+      when 64 then (@int >> 24) & 0xffffffff
+      when 56 then (((@int >> 64) & 0xff) << 24) | ((@int >> 32) & 0xffffff)
+      when 48 then (((@int >> 64) & 0xffff) << 16) | ((@int >> 40) & 0xffff)
+      when 40 then (((@int >> 64) & 0xffffff) << 8) | ((@int >> 48) & 0xff)
+      when 32 then (@int >> 64) & 0xffffffff
+      end
+    end
+
+    def label(prefix_len)
+      "#{IPAddr.new(nat64_prefix(prefix_len), Socket::AF_INET6)}/#{prefix_len}"
+    end
+
+    private
+
+    def nat64_prefix(prefix_len)
+      shift = 128 - prefix_len
+      (@int >> shift) << shift
+    end
+  end
+
+  private_constant :AddrInt
 end
 
 HTTPClient.run
