@@ -34,7 +34,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @record_types = record_types
     @hostname_resolution_result = HostnameResolutionResult.new
-    @address_candidate_list = AddressCandidateList.new(@record_types, self)
+    @address_candidate_list = AddressCandidateList.new(@record_types, self, nat64_prefix:)
     @hostname_resolution_threads = []
     @connecting_sockets = {}
     @connected_socket = nil
@@ -382,12 +382,13 @@ class HTTPClient
 
     AddressCandidate = Data.define(:rr, :ctx, :ipv6_address_hints, :ipv4_address_hints)
 
-    def initialize(record_types, client)
+    def initialize(record_types, client, nat64_prefix: nil)
       @record_types = record_types
       @addresses = {}
       @errors = {}
       @last_type = nil
       @client = client
+      @nat64_prefix = nat64_prefix
     end
 
     def add(result)
@@ -432,9 +433,18 @@ class HTTPClient
           [result.hostname, Float::INFINITY]
 
         @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [] }
-        @addresses[key][result.type] = result.records.map(&:address)
-        @addresses[key][HTTPS_TYPE]&.delete(result.type)
 
+        @addresses[key][result.type] =
+          if result.type == A_TYPE && @nat64_prefix
+            result.records.map { |rr|
+              ipv4_int = IPAddr.new_ntoh(rr.address.address).to_i
+              AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
+            }
+          else
+            result.records.map(&:address)
+          end
+
+        @addresses[key][HTTPS_TYPE]&.delete(result.type)
         @errors[result.type] = nil
       else
         @errors[result.type] = result.error
