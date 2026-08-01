@@ -276,7 +276,7 @@ class HTTPClient
 
         label = addr_int.label(prefix_len)
         existing_v4s = prefixed_v4s[label] || []
-        prefixed_v4s[label] = existing | [v4]
+        prefixed_v4s[label] = existing_v4s | [v4]
 
         return label if WELL_KNOWN_IPV4_ADDRESSES.all? { |known| prefixed_v4s[label].include?(known) }
       end
