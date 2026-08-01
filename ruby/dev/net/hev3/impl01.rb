@@ -415,10 +415,14 @@ class HTTPClient
           priority = candidate.rr.priority
           temp_rr = @addresses.delete([hostname, Float::INFINITY])
 
+          synthesized_ipv4_hints = @nat64_prefix ?
+            candidate.ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
+            candidate.ipv4_address_hints
+
           @addresses[[hostname, priority]] = {
             AAAA_TYPE  => temp_rr&.dig(AAAA_TYPE) || [],
             A_TYPE     => temp_rr&.dig(A_TYPE) || [],
-            HTTPS_TYPE => { AAAA_TYPE => candidate.ipv6_address_hints, A_TYPE => candidate.ipv4_address_hints },
+            HTTPS_TYPE => { AAAA_TYPE => candidate.ipv6_address_hints, A_TYPE => synthesized_ipv4_hints },
             :ctx       => candidate.ctx,
           }
 
@@ -434,15 +438,9 @@ class HTTPClient
 
         @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [] }
 
-        @addresses[key][result.type] =
-          if result.type == A_TYPE && @nat64_prefix
-            result.records.map { |rr|
-              ipv4_int = IPAddr.new_ntoh(rr.address.address).to_i
-              AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
-            }
-          else
-            result.records.map(&:address)
-          end
+        @addresses[key][result.type] = result.type == A_TYPE && @nat64_prefix ?
+          result.records.map { |rr| synthesize_with_nat64(rr.address) } :
+          result.records.map(&:address)
 
         @addresses[key][HTTPS_TYPE]&.delete(result.type)
         @errors[result.type] = nil
@@ -521,6 +519,11 @@ class HTTPClient
         end
 
       svcb_alpn_set & SUPPORTED_PROTOCOLS
+    end
+
+    def synthesize_with_nat64_prefix(addr)
+      ipv4_int = IPAddr.new_ntoh(addr.address).to_i
+      AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
     end
 
     def precedences
