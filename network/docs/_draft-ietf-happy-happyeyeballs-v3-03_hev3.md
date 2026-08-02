@@ -843,3 +843,6 @@ e.g. `www.internal.example.com`に一つのAレコード`198.51.100.42`のみが
 - NSS統合どうするの
 - グループ1にアドレスヒントなし、グループ2にアドレスヒントあり、
   かつグループ1のA/AAAA未解決の場合グループ2は接続開始できない?
+- Last Resort Local Synthesisがtrueになる状況において、NAT prefixが取得できる環境である場合、
+  `ipv6_reachable? && !ipv4_reachable` なので実行開始時点でHTTPS / AAAA / Aに対してDNSクエリ済み、
+  かつAレコードに対してもアドレス合成のうえ接続開始済みなので、追加でAレコードに再クエリしても同じ結果になるのでは?
