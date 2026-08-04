@@ -161,7 +161,6 @@ class HTTPClient
             @connected_socket = ssl_socket
             break
           rescue IO::WaitReadable
-            # 継続待機
           rescue OpenSSL::SSL::SSLError, SystemCallError => e
             @tls_handshaking_sockets.delete(ssl_socket)
             ssl_socket.close
@@ -472,7 +471,7 @@ class HTTPClient
         @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [] }
 
         @addresses[key][result.type] = result.type == A_TYPE && @nat64_prefix ?
-          result.records.map { |rr| synthesize_with_nat64(rr.address) } :
+          result.records.map { |rr| synthesize_with_nat64_prefix(rr.address) } :
           result.records.map(&:address)
 
         @addresses[key][HTTPS_TYPE]&.delete(result.type)
