@@ -37,6 +37,7 @@ class HTTPClient
     @address_candidate_list = AddressCandidateList.new(@record_types, self, nat64_prefix:)
     @hostname_resolution_threads = []
     @connecting_sockets = {}
+    @tls_handshaking_sockets = {}
     @connected_socket = nil
 
     @resolution_delay_expires_at = nil
@@ -66,12 +67,13 @@ class HTTPClient
         ctx, address, hostname = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, @port)
 
-        if @address_candidate_list.empty? && @connecting_sockets.empty? && @address_candidate_list.all_resolved?
+        if !@use_ssl &&
+            @address_candidate_list.empty? &&
+            @connecting_sockets.empty? &&
+            @address_candidate_list.all_resolved?
           begin
-            connected_tcp_socket = addrinfo.connect
-            @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket, ctx, hostname) : connected_tcp_socket
+            @connected_socket = addrinfo.connect
           rescue SystemCallError => e
-            connected_tcp_socket&.close
             last_error = e
             raise last_error
           end
@@ -102,8 +104,8 @@ class HTTPClient
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
-      resolved_notifier, writable_sockets, _ = IO.select(
-        @hostname_resolution_result.notifier,
+      readable_ios, writable_sockets, _ = IO.select(
+        (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys,
         @connecting_sockets.keys,
         nil,
         second_to_timeout(current_clock_time, ends_at),
@@ -126,9 +128,12 @@ class HTTPClient
 
           if is_connected
             ctx, _, hostname = @connecting_sockets.delete(writable_socket)
-            # TBC connect_with_tlsも非同期でやる必要ある...?
-            @connected_socket = @use_ssl ? connect_with_tls(writable_socket, ctx, hostname) : writable_socket
-            break
+            if @use_ssl
+              nonblocking_connect_with_tls(writable_socket, ctx, hostname)
+            else
+              @connected_socket = writable_socket
+              break
+            end
           else
             _, failed_ai = @connecting_sockets.delete writable_socket
             writable_socket.close
@@ -146,9 +151,28 @@ class HTTPClient
         end
       end
 
+      ssl_ready_sockets, dns_ready = (readable_ios || []).partition { @tls_handshaking_sockets.key?(it) }
+
+      if ssl_ready_sockets.any?
+        ssl_ready_sockets.each do |ssl_socket|
+          begin
+            ssl_socket.connect_nonblock
+            @tls_handshaking_sockets.delete(ssl_socket)
+            @connected_socket = ssl_socket
+            break
+          rescue IO::WaitReadable
+            # 継続待機
+          rescue OpenSSL::SSL::SSLError, SystemCallError => e
+            @tls_handshaking_sockets.delete(ssl_socket)
+            ssl_socket.close
+            last_error = e
+          end
+        end
+      end
+
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
-      puts "[DEBUG] #{count}: resolved_notifier #{resolved_notifier || 'nil'}" if DEBUG
-      if resolved_notifier&.any?
+      puts "[DEBUG] #{count}: dns_ready #{dns_ready}" if DEBUG
+      if dns_ready.any?
         while (result = @hostname_resolution_result.get)
           @address_candidate_list.add(result)
           last_error = result.error unless result.success?
@@ -188,6 +212,10 @@ class HTTPClient
 
     @connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
+    end
+
+    @tls_handshaking_sockets.each_key do |ssl_socket|
+      ssl_socket.close rescue nil
     end
 
     @hostname_resolution_threads.each do |thread|
@@ -287,10 +315,15 @@ class HTTPClient
     nil
   end
 
-  def connect_with_tls(socket, ctx, hostname)
-    ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, ctx)
+  def nonblocking_connect_with_tls(tcp_socket, ctx, hostname)
+    ssl_socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ctx)
     ssl_socket.hostname = hostname
-    ssl_socket.connect
+    begin
+      ssl_socket.connect_nonblock
+      @connected_socket = ssl_socket
+    rescue IO::WaitReadable
+      @tls_handshaking_sockets[ssl_socket] = hostname
+    end
   end
 
   def current_clock_time
