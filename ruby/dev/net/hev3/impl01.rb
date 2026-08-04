@@ -63,13 +63,13 @@ class HTTPClient
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
-        ctx, address = @address_candidate_list.next_candidate
+        ctx, address, hostname = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, @port)
 
         if @address_candidate_list.empty? && @connecting_sockets.empty? && @address_candidate_list.all_resolved?
           begin
             connected_tcp_socket = addrinfo.connect
-            @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket, ctx) : connected_tcp_socket
+            @connected_socket = @use_ssl ? connect_with_tls(connected_tcp_socket, ctx, hostname) : connected_tcp_socket
           rescue SystemCallError => e
             connected_tcp_socket&.close
             last_error = e
@@ -81,7 +81,7 @@ class HTTPClient
 
           if result == :wait_writable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-            @connecting_sockets[socket] = [ctx, addrinfo]
+            @connecting_sockets[socket] = [ctx, addrinfo, hostname]
           end
         end
       end
@@ -125,9 +125,9 @@ class HTTPClient
           )
 
           if is_connected
-            ctx, _ = @connecting_sockets.delete(writable_socket)
+            ctx, _, hostname = @connecting_sockets.delete(writable_socket)
             # TBC connect_with_tlsも非同期でやる必要ある...?
-            @connected_socket = @use_ssl ? connect_with_tls(writable_socket, ctx) : writable_socket
+            @connected_socket = @use_ssl ? connect_with_tls(writable_socket, ctx, hostname) : writable_socket
             break
           else
             _, failed_ai = @connecting_sockets.delete writable_socket
@@ -287,9 +287,9 @@ class HTTPClient
     nil
   end
 
-  def connect_with_tls(socket, ctx)
+  def connect_with_tls(socket, ctx, hostname)
     ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, ctx)
-    ssl_socket.hostname = HOST
+    ssl_socket.hostname = hostname
     ssl_socket.connect
   end
 
@@ -458,10 +458,10 @@ class HTTPClient
             candidates = entries.select { |_priority, data| address_available?(data, type) }
             next if candidates.empty?
 
-            _, data = candidates.to_a.sample
+            (hostname, _priority), data = candidates.to_a.sample
             address = data[type]&.shift || data[HTTPS_TYPE]&.dig(type)&.shift
             @last_type = type
-            return [data[:ctx], address]
+            return [data[:ctx], address, hostname]
           end
         end
 
