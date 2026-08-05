@@ -79,11 +79,16 @@ class HTTPClient
           end
         else
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
-          result = socket.connect_nonblock(addrinfo, exception: false)
-
-          if result == :wait_writable
+          begin
+            socket.connect_nonblock(addrinfo)
+            @connected_socket = socket
+            break
+          rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             @connecting_sockets[socket] = [ctx, addrinfo, hostname]
+          rescue SystemCallError => e
+            socket.close
+            last_error = e
           end
         end
       end
