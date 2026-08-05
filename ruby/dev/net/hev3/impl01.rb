@@ -173,6 +173,12 @@ class HTTPClient
             last_error = e
           end
         end
+
+        if last_error && !@tls_connected_socket &&
+            !@tls_handshaking_sockets.any? && !@connecting_sockets.any? &&
+            !@address_candidate_list.any? && !@address_candidate_list.any_unresolved?
+          raise last_error
+        end
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
