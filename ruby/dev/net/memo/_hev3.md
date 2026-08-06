@@ -215,6 +215,16 @@ example.com. 60 IN HTTPS 1 svc2.example.com. (
   - IPv6-only / IPv6-mostlyかつIPv4接続性なしの場合、AをIPv6にアドレス合成する必要あり
 - もしくはデフォルトオプションのセットを用意しておいて切り替えられるようにする?
 
+#### NSS統合作戦
+- HTTPS RRはDNS問い合わせ、A/AAAAはgetaddrinfo
+  - HTTPS RRがTargetNameを返した場合はDNS問い合わせする
+- IPv6-only環境での考慮
+  - NAT64 prefixを検出 -> getaddrinfoで得たAレコード / HTTPS RRのipv4hintをアドレス合成する
+  - NAT64 prefixを非検出 -> IPv4では接続不可
+  - NSS統合しない場合と同じかも
+- AI_ADDRCONFIGは立てない
+  - AI_ADDRCONFIGがある場合、DNSにAレコードがあってもローカルに設定済みのIPv4アドレスが無ければAレコードを返さない
+
 ### VPN対応
 - やる...?
   - VPN環境の判定
