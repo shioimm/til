@@ -39,6 +39,7 @@ class HTTPClient
     @connecting_sockets = {}
     @tls_handshaking_sockets = {}
     @connected_socket = nil
+    @tls_connected_socket = nil
 
     @resolution_delay_expires_at = nil
     @connection_attempt_delay_expires_at = nil
@@ -79,11 +80,16 @@ class HTTPClient
           end
         else
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
-          result = socket.connect_nonblock(addrinfo, exception: false)
-
-          if result == :wait_writable
+          begin
+            socket.connect_nonblock(addrinfo)
+            @connected_socket = socket
+            break
+          rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             @connecting_sockets[socket] = [ctx, addrinfo, hostname]
+          rescue SystemCallError => e
+            socket.close
+            last_error = e
           end
         end
       end
@@ -158,7 +164,7 @@ class HTTPClient
           begin
             ssl_socket.connect_nonblock
             @tls_handshaking_sockets.delete(ssl_socket)
-            @connected_socket = ssl_socket
+            @tls_connected_socket = ssl_socket
             break
           rescue IO::WaitReadable
           rescue OpenSSL::SSL::SSLError, SystemCallError => e
@@ -166,6 +172,12 @@ class HTTPClient
             ssl_socket.close
             last_error = e
           end
+        end
+
+        if last_error && !@tls_connected_socket &&
+            !@tls_handshaking_sockets.any? && !@connecting_sockets.any? &&
+            !@address_candidate_list.any? && !@address_candidate_list.any_unresolved?
+          raise last_error
         end
       end
 
@@ -194,13 +206,14 @@ class HTTPClient
 
       puts "------------------------" if DEBUG
 
-      break if @connected_socket
+      break if @connected_socket || @tls_connected_socket
     end
 
+    socket = @tls_connected_socket || @connected_socket
     request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
-    @connected_socket.write request_message
+    socket.write request_message
 
-    response_message = @connected_socket.read
+    response_message = socket.read
     status_line, *rest = response_message.split("\r\n")
     _, body = rest.join("\r\n").split("\r\n\r\n", 2)
 
@@ -319,7 +332,7 @@ class HTTPClient
     ssl_socket.hostname = hostname
     begin
       ssl_socket.connect_nonblock
-      @connected_socket = ssl_socket
+      @tls_connected_socket = ssl_socket
     rescue IO::WaitReadable
       @tls_handshaking_sockets[ssl_socket] = hostname
     end
