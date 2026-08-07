@@ -3,6 +3,8 @@ require "resolv"
 require "openssl"
 require "ipaddr"
 
+require_relative "./getaddrinfo"
+
 DEBUG = true
 
 class HTTPClient
