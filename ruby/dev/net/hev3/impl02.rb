@@ -241,7 +241,16 @@ class HTTPClient
     @hostname_resolution_result.count_up
 
     thread = Thread.new(type) do |type|
-      @hostname_resolution_result.add(type, hostname, records: @resolver.getresources(hostname, type))
+      records =
+        if hostname == HOST && AAAA_TYPE == type
+          Addrinfo.getaddrinfo(hostname, @port, Socket::AF_INET6, :STREAM)
+        elsif hostname == HOST && A_TYPE == type
+          Addrinfo.getaddrinfo(hostname, @port, Socket::AF_INET, :STREAM)
+        else
+          @resolver.getresources(hostname, type)
+        end
+
+      @hostname_resolution_result.add(type, hostname, records:)
     rescue => e
       @hostname_resolution_result.add(type, hostname, error: e)
     end
