@@ -242,10 +242,8 @@ class HTTPClient
 
     thread = Thread.new(type) do |type|
       records =
-        if hostname == HOST && AAAA_TYPE == type
-          Addrinfo.getaddrinfo(hostname, @port, Socket::AF_INET6, :STREAM)
-        elsif hostname == HOST && A_TYPE == type
-          Addrinfo.getaddrinfo(hostname, @port, Socket::AF_INET, :STREAM)
+        if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
+          initial_getresources(type)
         else
           @resolver.getresources(hostname, type)
         end
@@ -260,6 +258,11 @@ class HTTPClient
   end
 
   private
+
+  def initial_getresources(type)
+    family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
+    Addrinfo.getaddrinfo(HOST, @port, family, :STREAM).map { type.new(it.ip_address) }
+  end
 
   def record_types
     if ipv6_reachable? && ipv4_reachable?
