@@ -441,6 +441,7 @@ class HTTPClient
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
     DEFAULT_ALPN = ["http/1.1"].freeze
+    MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
     AddressCandidate = Data.define(:rr, :ctx, :ipv6_address_hints, :ipv4_address_hints)
 
@@ -451,6 +452,7 @@ class HTTPClient
       @last_type = nil
       @client = client
       @nat64_prefix = nat64_prefix
+      @alias_redirect_count = 0
     end
 
     def add(result)
@@ -461,7 +463,14 @@ class HTTPClient
         end
 
         if result.records.first.alias_mode?
-          @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
+          @alias_redirect_count += 1
+
+          if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
+            @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
+          else
+            @errors[HTTPS_TYPE] = Resolv::ResolvError.new("HTTPS alias chain exceeded #{MAX_ALIAS_REDIRECTS}")
+          end
+
           return
         end
 
