@@ -261,7 +261,10 @@ class HTTPClient
 
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
-    Addrinfo.getaddrinfo(HOST, @port, family, :STREAM).map { type.new(it.ip_address) }
+
+    Addrinfo.getaddrinfo(HOST, @port, family, :STREAM).filter_map {
+      type.new(it.ip_address) if !it.ipv6_linklocal?
+    }.uniq
   end
 
   def record_types
