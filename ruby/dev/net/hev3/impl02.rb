@@ -112,6 +112,7 @@ class HTTPClient
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
+      # FIXME 候補リストが空になった後に無限に待機してしまう
       readable_ios, writable_sockets, _ = IO.select(
         (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys,
         @connecting_sockets.keys,
@@ -196,8 +197,7 @@ class HTTPClient
           if @address_candidate_list.all_resolved? ||
               (@address_candidate_list.resolved?(HTTPS_TYPE) &&
                @address_candidate_list.resolved?(AAAA_TYPE))
-            puts "[DEBUG] #{count}: All hostname resolution is finished" if DEBUG
-            @hostname_resolution_result.close_notifier
+            puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
           elsif @resolution_delay_expires_at.nil?
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
@@ -397,7 +397,9 @@ class HTTPClient
     def add(type, hostname, records: [], error: nil)
       @mutex.synchronize do
         @results.push ResolutionResult.new(type:, hostname:, records:, error:)
-        @wpipe.putc HOSTNAME_RESOLUTION_QUEUE_UPDATED
+        @wpipe.putc(HOSTNAME_RESOLUTION_QUEUE_UPDATED) unless @wpipe.closed?
+      rescue Errno::EPIPE
+        # rpipe is closed
       end
     end
 
