@@ -222,6 +222,10 @@ class HTTPClient
     puts status_line
     puts body
   ensure
+    @hostname_resolution_threads.each do |thread|
+      thread.exit
+    end
+
     @hostname_resolution_result.close_notifier
 
     @connecting_sockets.each_key do |connecting_socket|
@@ -230,10 +234,6 @@ class HTTPClient
 
     @tls_handshaking_sockets.each_key do |ssl_socket|
       ssl_socket.close rescue nil
-    end
-
-    @hostname_resolution_threads.each do |thread|
-      thread.exit
     end
   end
 
