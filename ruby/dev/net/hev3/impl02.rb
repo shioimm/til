@@ -226,7 +226,7 @@ class HTTPClient
       thread.exit
     end
 
-    @hostname_resolution_result.close_notifier
+    @hostname_resolution_result.close_all
 
     @connecting_sockets.each_key do |connecting_socket|
       connecting_socket.close
@@ -421,15 +421,6 @@ class HTTPClient
       return if @notifier.nil?
       close_all if @taken_count == @size
     end
-
-    def close_notifier
-      return if @notifier.nil?
-
-      @rpipe.close
-      @notifier = nil
-    end
-
-    private
 
     def close_all
       @rpipe.close
