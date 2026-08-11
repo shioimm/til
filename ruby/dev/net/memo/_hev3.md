@@ -111,6 +111,10 @@ IPv6-only/mostly + DNS64環境で、valid A records と broken AAAA records を�
   - 2. 取得したIPv4アドレスをIPv4リテラルとして扱い、NAT64 prefixが利用可能ならIPv6アドレスをローカル合成
   - 3. 合成したアドレスでHEアルゴリズム ((4)-(5)) を再実行
 
+よく考えてみたらNAT64 prefixを取得できている時点でAレコードへのクエリは行われているはずなので、
+broken AAAAの場合に再クエリするAレコードはすでに合成済みアドレスに対して接続試行済みである可能性は高く、
+Last Resort Local Synthesisとして実装する意味があんまりない気がする
+
 ### VPN環境 (Section 8.5)
 - IPv6-only環境にてVPN経由で内部ホスト名を解決 (企業リゾルバがAのみ返却・AAAAを合成不可) している場合
 
@@ -126,6 +130,8 @@ IPv6-only/mostly + DNS64環境で、valid A records と broken AAAA records を�
 
 - 企業リゾルバにAを問い合わせし、取得したIPv4をIPv4リテラルとして扱いNAT64 prefixでローカル合成し、
   接続試行する ((2) に統合)
+
+通常のアドレス合成パスに吸収されている気がするので特別な処理は不要なのでは
 
 ## HTTPS RRを元にした並び替えの例
 
