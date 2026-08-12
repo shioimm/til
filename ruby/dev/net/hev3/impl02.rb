@@ -92,6 +92,9 @@ class HTTPClient
           rescue SystemCallError => e
             socket.close
             last_error = e
+            # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
+            # 未試行の候補がある場合は待機せずに次のアドレスを試す
+            next if @address_candidate_list.any?
           end
         end
       end
