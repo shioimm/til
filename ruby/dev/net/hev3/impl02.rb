@@ -115,12 +115,15 @@ class HTTPClient
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
-      # FIXME 候補リストが空になった後に無限に待機してしまう
+      waiting_rfds = (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys
+      waiting_wfds = @connecting_sockets.keys
+
+      if waiting_rfds.empty? && write_wait.empty?
+        raise last_error || SocketError.new("no addresses resolved for #{HOST}")
+      end
+
       readable_ios, writable_sockets, _ = IO.select(
-        (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys,
-        @connecting_sockets.keys,
-        nil,
-        second_to_timeout(current_clock_time, ends_at),
+        waiting_rfds, waiting_wfds, nil, second_to_timeout(current_clock_time, ends_at),
       )
 
       now = current_clock_time
