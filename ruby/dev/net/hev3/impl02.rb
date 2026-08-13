@@ -92,6 +92,9 @@ class HTTPClient
           rescue SystemCallError => e
             socket.close
             last_error = e
+            # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
+            # 未試行の候補がある場合は待機せずに次のアドレスを試す
+            next if @address_candidate_list.any?
           end
         end
       end
@@ -112,24 +115,27 @@ class HTTPClient
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
-      # FIXME 候補リストが空になった後に無限に待機してしまう
-      readable_ios, writable_sockets, _ = IO.select(
-        (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys,
-        @connecting_sockets.keys,
-        nil,
-        second_to_timeout(current_clock_time, ends_at),
+      waiting_rfds = (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys
+      waiting_wfds = @connecting_sockets.keys
+
+      if waiting_rfds.empty? && write_wait.empty?
+        raise last_error || SocketError.new("no addresses resolved for #{HOST}")
+      end
+
+      readable_fds, writable_fds, _ = IO.select(
+        waiting_rfds, waiting_wfds, nil, second_to_timeout(current_clock_time, ends_at),
       )
 
       now = current_clock_time
       @resolution_delay_expires_at = nil if expired?(now, @resolution_delay_expires_at)
       @connection_attempt_delay_expires_at = nil if expired?(now, @connection_attempt_delay_expires_at)
 
-      puts "[DEBUG] #{count}: ** Check for writable_sockets **" if DEBUG
-      puts "[DEBUG] #{count}: writable_sockets #{writable_sockets || 'nil'}" if DEBUG
+      puts "[DEBUG] #{count}: ** Check for writable_fds **" if DEBUG
+      puts "[DEBUG] #{count}: writable_fds #{writable_fds || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: connecting_sockets #{@connecting_sockets}" if DEBUG
 
-      if writable_sockets&.any?
-        while (writable_socket = writable_sockets.pop)
+      if writable_fds&.any?
+        while (writable_socket = writable_fds.pop)
           is_connected = (
             sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
             sockopt.int.zero?
@@ -149,7 +155,7 @@ class HTTPClient
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
 
-            if writable_sockets.any? || @connecting_sockets.any?
+            if writable_fds.any? || @connecting_sockets.any?
               # Try other writable socket
             elsif @address_candidate_list.any? || @address_candidate_list.any_unresolved?
               @connection_attempt_delay_expires_at = nil
@@ -160,7 +166,7 @@ class HTTPClient
         end
       end
 
-      ssl_ready_sockets, dns_ready = (readable_ios || []).partition { @tls_handshaking_sockets.key?(it) }
+      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
 
       if ssl_ready_sockets.any?
         ssl_ready_sockets.each do |ssl_socket|
@@ -185,8 +191,8 @@ class HTTPClient
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
-      puts "[DEBUG] #{count}: dns_ready #{dns_ready}" if DEBUG
-      if dns_ready.any?
+      puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
+      if hostname_resolved.any?
         while (result = @hostname_resolution_result.get)
           @address_candidate_list.add(result)
           last_error = result.error unless result.success?
