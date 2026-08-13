@@ -447,7 +447,7 @@ class HTTPClient
     def initialize(record_types, client, nat64_prefix: nil)
       @record_types = record_types
       @addresses = {}
-      @errors = {}
+      @resolved_types = Set.new
       @last_type = nil
       @client = client
       @nat64_prefix = nat64_prefix
@@ -457,7 +457,7 @@ class HTTPClient
     def add(result)
       if result.type == HTTPS_TYPE
         if result.records.empty?
-          @errors[HTTPS_TYPE] = nil
+          @resolved_types << HTTPS_TYPE
           return
         end
 
@@ -467,14 +467,14 @@ class HTTPClient
           if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
             @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
           else
-            @errors[HTTPS_TYPE] = Resolv::ResolvError.new("HTTPS alias chain exceeded #{MAX_ALIAS_REDIRECTS}")
+            @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
           end
 
           return
         end
 
         supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
-        @errors[HTTPS_TYPE] = nil
+        @resolved_types << HTTPS_TYPE
         return if supported_records.empty?
 
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
@@ -513,10 +513,9 @@ class HTTPClient
           result.records.map(&:address)
 
         @addresses[key][HTTPS_TYPE]&.delete(result.type)
-        @errors[result.type] = nil
-      else
-        @errors[result.type] = result.error
       end
+
+      @resolved_types << result.type if result.hostname == HOST
     end
 
     def next_candidate
@@ -539,11 +538,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @errors.key?(type)
-    end
-
-    def resolved_successfully?(type)
-      resolved?(type) && @errors[type].nil?
+      @resolved_types.include?(type)
     end
 
     def all_resolved?

@@ -846,3 +846,4 @@ e.g. `www.internal.example.com`に一つのAレコード`198.51.100.42`のみが
 - Last Resort Local Synthesisがtrueになる状況において、NAT prefixが取得できる環境である場合、
   `ipv6_reachable? && !ipv4_reachable` なので実行開始時点でHTTPS / AAAA / Aに対してDNSクエリ済み、
   かつAレコードに対してもアドレス合成のうえ接続開始済みなので、追加でAレコードに再クエリしても同じ結果になるのでは?
+- 解決したHTTPS RRがAliasModeだった場合は「未解決」になるの?
