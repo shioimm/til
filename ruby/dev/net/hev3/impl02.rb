@@ -118,7 +118,7 @@ class HTTPClient
       waiting_rfds = (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys
       waiting_wfds = @connecting_sockets.keys
 
-      if waiting_rfds.empty? && write_wait.empty?
+      if waiting_rfds.empty? && waiting_wfds.empty?
         raise last_error || SocketError.new("no addresses resolved for #{HOST}")
       end
 
