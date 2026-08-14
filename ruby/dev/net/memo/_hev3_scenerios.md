@@ -11,6 +11,13 @@
 ## 単純なデュアルスタック環境
 
 ```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
+```
+
+
+```text
  Client                    DNS Server
     |    HTTPS?  --->            |
     |     AAAA?  --->            |
@@ -37,19 +44,7 @@
 4. IPv6接続開始
 5. 2ms後にA応答 (2アドレス)
 6. アドレスリストをIPv6 + IPv4へ更新
-7. (追記) 250ms後にIPv4接続開始
-
-```text
-# 推定されるHTTPS RRの例
-
-example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
-```
-
-#### (shioimm)
-- TargetName != `.`の場合はTargetNameに対してA/AAAA再クエリが必要
-- こんなにタイトに同じタイミングでHTTPS / AAAAが返ってくることはないのでは...
-
-## SVCB利用時
+7. 250ms後にIPv4接続開始
 
 ```text
  Client                    DNS Server
@@ -72,7 +67,15 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    |                            |
 ```
 
-## AAAA応答が遅延する場合
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (アドレスヒントなし) / A応答 (2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+4. Resolution Delay開始
+5. 10ms後にAAAA応答 (2アドレス)
+6. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - Resolution Delay終了によって条件Bが成立する前に条件Aが成立
+7. アドレスリストをIPv6 + IPv4へ更新してIPv6接続開始
+8. 250ms後にIPv4接続開始
 
 ```text
  Client                    DNS Server
@@ -99,8 +102,6 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    |                            |
 ```
 
-## SVCB応答が遅延する場合
-
 ```text
  Client                    DNS Server
    |    HTTPS?  --->            |
@@ -140,6 +141,10 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    | Start w/IPv6 + IPv4        |
    |                            |
 ```
+
+#### (shioimm)
+- TargetName != `.`の場合はTargetNameに対してA/AAAA再クエリが必要
+- SvcPriority = 0の場合はAliasModeなので同じTargetNameに対してHTTPS再クエリが必要
 
 ## SVCBヒントによって早期に応答が得られる場合
 
