@@ -16,7 +16,6 @@
 example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 ```
 
-
 ```text
  Client                    DNS Server
     |    HTTPS?  --->            |
@@ -102,6 +101,17 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    |                            |
 ```
 
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (アドレスヒントなし) / A応答 (2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+4. Resolution Delay開始
+5. Resolution Delayタイムアウト
+6. 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+7. IPv4接続開始
+8. 100ms後にAAAA応答 (2アドレス)
+9. アドレスリストをIPv6 + IPv4へ更新
+10. 7から250ms後にIPv6接続開始
+
 ```text
  Client                    DNS Server
    |    HTTPS?  --->            |
@@ -123,6 +133,17 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    |                            |
 ```
 
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. AAAA応答 (2アドレス) / A応答 (2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答あり + HTTPS肯定あるいは否定応答なし = 条件A成立せず
+4. Resolution Delay開始
+5. 10ms後にHTTPS応答 (アドレスヒントなし)
+6. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - Resolution Delay終了によって条件Bが成立する前に条件Aが成立
+7. アドレスリストをIPv6 + IPv4へ更新してIPv6接続開始
+    - 優先度順でアドレスを並び替える必要がある
+8. 250ms後にIPv4接続開始
+
 ```text
  Client                    DNS Server
    |    HTTPS?  --->            |
@@ -141,6 +162,16 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    | Start w/IPv6 + IPv4        |
    |                            |
 ```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. AAAA応答 (2アドレス) / A応答 (2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答あり + HTTPS肯定あるいは否定応答なし = 条件A成立せず
+4. Resolution Delay開始
+5. Resolution Delayタイムアウト
+6. 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+7. IPv6接続開始
+8. 7から250ms後にIPv4接続開始
+    - HTTPS応答次第優先度順でアドレスを並び替える必要がある
 
 #### (shioimm)
 - TargetName != `.`の場合はTargetNameに対してA/AAAA再クエリが必要
