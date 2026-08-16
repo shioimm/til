@@ -506,7 +506,7 @@ class HTTPClient
           @addresses.keys.find { |(hostname, _priority)| hostname == result.hostname } ||
           [result.hostname, Float::INFINITY]
 
-        @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [] }
+        @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [], ctx: default_ctx }
 
         @addresses[key][result.type] = result.type == A_TYPE && @nat64_prefix ?
           result.records.map { |rr| synthesize_with_nat64_prefix(rr.address) } :
@@ -558,6 +558,12 @@ class HTTPClient
     end
 
     private
+
+    def default_ctx
+      ctx = ::OpenSSL::SSL::SSLContext.new
+      ctx.alpn_protocols = DEFAULT_ALPN
+      ctx
+    end
 
     def create_address_candidate_from_rr!(rr)
       alpn_protocols = extract_alpn_protocols_from_rr(rr)
