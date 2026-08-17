@@ -73,7 +73,7 @@ class HTTPClient
         if !@use_ssl &&
             @address_candidate_list.empty? &&
             @connecting_sockets.empty? &&
-            @address_candidate_list.all_resolved?
+            !@hostname_resolution_result.pending?
           begin
             @connected_socket = addrinfo.connect
           rescue SystemCallError => e
@@ -157,7 +157,7 @@ class HTTPClient
 
             if writable_fds.any? || @connecting_sockets.any?
               # Try other writable socket
-            elsif @address_candidate_list.any? || @address_candidate_list.any_unresolved?
+            elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -185,7 +185,7 @@ class HTTPClient
 
         if last_error && !@tls_connected_socket &&
             !@tls_handshaking_sockets.any? && !@connecting_sockets.any? &&
-            !@address_candidate_list.any? && !@address_candidate_list.any_unresolved?
+            !@address_candidate_list.any? && !@hostname_resolution_result.pending?
           raise last_error
         end
       end
@@ -400,6 +400,10 @@ class HTTPClient
       @size += 1
     end
 
+    def pending?
+      @taken_count < @size
+    end
+
     def add(type, hostname, records: [], error: nil)
       @mutex.synchronize do
         @results.push ResolutionResult.new(type:, hostname:, records:, error:)
@@ -515,7 +519,7 @@ class HTTPClient
         @addresses[key][HTTPS_TYPE]&.delete(result.type)
       end
 
-      @resolved_types << result.type if result.hostname == HOST
+      @resolved_types << result.type
     end
 
     def next_candidate
@@ -543,10 +547,6 @@ class HTTPClient
 
     def all_resolved?
       @record_types.all? { |type| resolved?(type) }
-    end
-
-    def any_unresolved?
-      !all_resolved?
     end
 
     def empty?
