@@ -1020,3 +1020,5 @@ e.g. `www.internal.example.com`に一つのAレコード`198.51.100.42`のみが
   `ipv6_reachable? && !ipv4_reachable` なので実行開始時点でHTTPS / AAAA / Aに対してDNSクエリ済み、
   かつAレコードに対してもアドレス合成のうえ接続開始済みなので、追加でAレコードに再クエリしても同じ結果になるのでは?
 - 解決したHTTPS RRがAliasModeだった場合は「未解決」になるの?
+- A/AAAAレコードに基づいて接続開始した後にHTTPS RR応答があり、かつそのパラメータにALPNの指定がある場合、
+  先に接続開始したIPv6 / IPv4アドレスは再試行しなくていいの? (Alt-Srvで対応する?)
