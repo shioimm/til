@@ -174,8 +174,36 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
     - HTTPS応答次第優先度順でアドレスを並び替える必要がある
 
 #### (shioimm)
-- TargetName != `.`の場合はTargetNameに対してA/AAAA再クエリが必要
 - SvcPriority = 0の場合はAliasModeなので同じTargetNameに対してHTTPS再クエリが必要
+- TargetName != `.`の場合はTargetNameに対してA/AAAA再クエリが必要
+
+### TargetName != `.`の場合
+#### AAAA先着
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (アドレスヒントなし) -> TargetNameへA/AAAAクエリ / AAAA (HOST宛2件アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. IPv6接続開始
+5. 2ms後にA応答 (HOST宛2アドレス)
+6. 250ms後に二つ目の接続開始
+    - ここまでにTargetNameのA/AAAA応答あり -> TargetName宛のIPv4接続を開始する
+    - ここまでにTargetNameのAAAA応答あり -> TargetName宛のIPv6接続を開始する
+    - ここまでにTargetNameのDNS応答なし -> HOST宛のIPv4接続を開始する
+
+#### A先着/10ms後にAAAA応答
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (アドレスヒントなし) -> TargetNameへA/AAAAクエリ / A応答 (2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+4. Resolution Delay開始
+5. 10ms後に応答
+    - TargetNameのAAAA応答 -> 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - TargetNameのA応答 -> 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せずRD継続
+    - HOSTのAAAA応答 -> 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+6. アドレスリストをIPv6 + IPv4へ更新してIPv6接続開始
+    - ここまでにTargetNameのAAAA応答あり -> TargetName宛のIPv6接続を開始する
+    - ここまでにHOSTのAAAA応答あり -> HOST宛のIPv6接続を開始する
+7. 250ms後にIPv4接続開始
+    - ここまでにTargetNameのA応答あり -> TargetName宛のIPv4接続を開始する
+    - ここまでにTargetNameのA応答なし -> HOST宛のIPv4接続を開始する
 
 ## SVCBヒントによって早期に応答が得られる場合
 
