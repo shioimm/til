@@ -43,6 +43,7 @@ class HTTPClient
     @connected_socket = nil
     @tls_connected_socket = nil
 
+    @first_connection_attempted = false
     @resolution_delay_expires_at = nil
     @connection_attempt_delay_expires_at = nil
   end
@@ -67,6 +68,7 @@ class HTTPClient
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
+        @first_connection_attempted = true
         ctx, address, hostname = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, @port)
 
@@ -205,7 +207,7 @@ class HTTPClient
                @address_candidate_list.resolved?(AAAA_TYPE))
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
-          elsif @resolution_delay_expires_at.nil?
+          elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
           end
