@@ -205,9 +205,9 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 7. IPv6接続開始
     - アドレスリストがIPv6 (TargetName) + IPv4 (HOST) -> TargetName宛IPv6接続
     - アドレスリストがIPv6 (HOST) + IPv4 (HOST) -> HOST宛IPv6接続
-7. 250ms後にIPv4接続開始
-    - ここまでにTargetNameのA応答あり -> TargetName宛のIPv4接続を開始する
-    - ここまでにTargetNameのA応答なし -> HOST宛のIPv4接続を開始する
+8. 250ms後にIPv4接続開始
+    - 7-8の間にTargetNameのA応答あり -> TargetName宛のIPv4接続を開始する
+    - 7-8の間にTargetNameのA応答なし -> HOST宛のIPv4接続を開始する
 
 #### A先着/Resolution Delayタイムアウト
 1. HTTPS / AAAA / A をDNS問い合わせ
@@ -217,7 +217,7 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 5. Resolution Delayタイムアウト
 6. 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
 7. HOST宛IPv4接続開始
-8. 100ms後に応答
+8. 7から100ms後に応答
     - TargetNameのAAAA応答 -> アドレスリストをIPv6 (TargetName) + IPv4 (HOST) へ更新
     - TargetNameのA応答 -> アドレスリストをIPv4 (TargetName) + IPv4 (HOST) へ更新
     - HOSTのAAAA応答 -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
@@ -225,8 +225,6 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
     - アドレスリストがIPv6 (TargetName) + IPv4 (HOST) -> TargetName宛IPv6接続
     - アドレスリストがIPv4 (TargetName) + IPv4 (HOST) -> TargetName宛IPv4接続
     - アドレスリストがIPv6 (HOST) + IPv4 (HOST) -> HOST宛IPv6接続
-
-- TODO 8-9の間に他の応答があったパターンを考える
 
 ## SVCBヒントによって早期に応答が得られる場合
 
@@ -243,6 +241,21 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
    | Start w/IPv6 + IPv4        |
    |                            |
 ```
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv4hint=192.0.2.1,192.0.2.2
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (IPv4/IPv6アドレスヒントあり)
+3. 優先アドレスファミリ (IPv6アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. IPv6アドレスヒント宛にIPv6接続開始
+5. 4から250ms後、IPv4アドレスヒント宛にIPv4接続開始
+
+### TargetName != `.`の場合
+TODO
 
 ## SVCB/HTTPSが複数のサービス名を返す場合
 
