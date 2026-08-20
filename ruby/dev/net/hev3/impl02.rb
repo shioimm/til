@@ -502,6 +502,11 @@ class HTTPClient
             :ctx       => candidate.ctx,
           }
 
+          # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
+          # treated as positive answers until the real AAAA/A records arrive.
+          @resolved_types << AAAA_TYPE if candidate.ipv6_address_hints.any?
+          @resolved_types << A_TYPE if synthesized_ipv4_hints.any?
+
           if !target_name.empty?
             @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
             @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
