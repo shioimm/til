@@ -255,7 +255,24 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 5. 4から250ms後、IPv4アドレスヒント宛にIPv4接続開始
 
 ### TargetName != `.`の場合
-TODO
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (IPv4/IPv6アドレスヒントあり) -> TargetNameへA/AAAAクエリ
+3. 優先アドレスファミリ (IPv6アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. IPv6アドレスヒント宛にIPv6接続開始
+5. 4から250ms後
+    - TargetNameへのA応答があった場合
+      - -> アドレスリストをIPv6 (アドレスヒント) + IPv4 (TargetName) へ更新
+      - -> TargetName宛IPv4接続開始
+    - TargetNameへのAAAA応答があった場合
+      - -> アドレスリストをIPv6 (TargetName) + IPv4 (アドレスヒント) へ更新
+      - -> アドレスヒント宛IPv4接続開始
+    - HOSTへのA応答があった場合
+      - -> アドレスリストをIPv6 (アドレスヒント) + IPv4 (アドレスヒント) + IPv4 (HOST) へ更新
+      - -> アドレスヒント宛IPv4接続開始
+    - HOSTへのAAAA応答があった場合
+      - -> アドレスリストをIPv6 (アドレスヒント) + IPv4 (アドレスヒント) + IPv6 (HOST) へ更新
+      - -> アドレスヒント宛IPv4接続開始
+    - 応答がなかった場合 -> アドレスヒント宛IPv4接続開始
 
 ## SVCB/HTTPSが複数のサービス名を返す場合
 
