@@ -498,7 +498,10 @@ class HTTPClient
           @addresses[[hostname, priority]] = {
             AAAA_TYPE  => temp_rr&.dig(AAAA_TYPE) || [],
             A_TYPE     => temp_rr&.dig(A_TYPE) || [],
-            HTTPS_TYPE => { AAAA_TYPE => candidate.ipv6_address_hints, A_TYPE => synthesized_ipv4_hints },
+            HTTPS_TYPE => {
+              AAAA_TYPE => temp_rr&.dig(AAAA_TYPE)&.any? ? [] : candidate.ipv6_address_hints,
+              A_TYPE    => temp_rr&.dig(A_TYPE)&.any? ? [] : synthesized_ipv4_hints,
+            },
             :ctx       => candidate.ctx,
           }
 
