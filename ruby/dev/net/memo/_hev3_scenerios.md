@@ -39,7 +39,7 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. HTTPS応答 (アドレスヒントなし) / AAAA応答 (2アドレス)
-3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. IPv6接続開始
 5. 2ms後にA応答 (2アドレス)
 6. アドレスリストをIPv6 + IPv4へ更新
@@ -71,7 +71,7 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
 4. Resolution Delay開始
 5. 10ms後にAAAA応答 (2アドレス)
-6. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+6. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
     - Resolution Delay終了によって条件Bが成立する前に条件Aが成立
 7. アドレスリストをIPv6 + IPv4へ更新してIPv6接続開始
 8. 250ms後にIPv4接続開始
@@ -135,10 +135,10 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. AAAA応答 (2アドレス) / A応答 (2アドレス)
-3. 優先アドレスファミリ (IPv6) の肯定応答あり + HTTPS肯定あるいは否定応答なし = 条件A成立せず
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答あり + HTTPS肯定あるいは否定応答なし = 条件A成立せず
 4. Resolution Delay開始
 5. 10ms後にHTTPS応答 (アドレスヒントなし)
-6. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+6. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
     - Resolution Delay終了によって条件Bが成立する前に条件Aが成立
 7. アドレスリストをIPv6 + IPv4へ更新してIPv6接続開始
     - 優先度順でアドレスを並び替える必要がある
@@ -165,7 +165,7 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. AAAA応答 (2アドレス) / A応答 (2アドレス)
-3. 優先アドレスファミリ (IPv6) の肯定応答あり + HTTPS肯定あるいは否定応答なし = 条件A成立せず
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答あり + HTTPS肯定あるいは否定応答なし = 条件A成立せず
 4. Resolution Delay開始
 5. Resolution Delayタイムアウト
 6. 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
@@ -181,7 +181,7 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 #### AAAA先着
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. HTTPS応答 (アドレスヒントなし) -> TargetNameへA/AAAAクエリ / AAAA (HOST宛2件アドレス)
-3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. HOST宛IPv6接続開始
 5. 2ms後にA応答
     - TargetNameのA応答 -> アドレスリストをIPv6 (HOST) + IPv4 (TargetName) へ更新
@@ -196,9 +196,9 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
 4. Resolution Delay開始
 5. 10ms後に応答
-    - TargetNameのAAAA応答 -> 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - TargetNameのAAAA応答 -> 優先アドレスファミリ (TargetName宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
     - TargetNameのA応答 -> 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せずRD継続
-    - HOSTのAAAA応答 -> 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - HOSTのAAAA応答 -> 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 6. アドレスリストを更新
     - TargetNameのAAAA応答 -> アドレスリストをIPv6 (TargetName) + IPv4 (HOST) へ更新
     - HOSTのAAAA応答あり -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
@@ -299,9 +299,21 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
     |    <--- AAAA (1 address)   |
     |    <--- A (1 address)      |
     |                            |
-    | Update w/IPv6 + IPv4        |
+    | Update w/IPv6 + IPv4       |
     |                            |
 ```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後に応答
+    - HTTPS (TargetName = `.`, alt / ヒントなし) -> altへAAAA/Aクエリ
+    - AAAA (HOST宛2アドレス)
+    - A (HOST宛2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
+5. HOST宛IPv6接続開始
+6. 5から30ms後にalt宛AAAA応答 (1アドレス) / A応答 (1アドレス)
+7. アドレスリストをIPv6 (alt) + IPv4 (alt) + IPv6 (HOST) + IPv4 (HOST)
+8. 5から250ms後にaltとHOSTいずれか優先度の高い方宛IPv4へ接続開始
 
 ## SVCB応答が遅延する場合 (IPv4接続のみ)
 
@@ -323,3 +335,6 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
       | Start w/IPv4               |
       |                            |
 ```
+
+## TODO 考える
+- アドレスヒントよりも後にA/AAAAが届き、かつアドレスヒントの値と同じ/異なる場合
