@@ -175,55 +175,55 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 #### (shioimm)
 - SvcPriority = 0の場合はAliasModeなので同じTargetNameに対してHTTPS再クエリが必要
-- TargetName != `.`の場合はTargetNameに対してA/AAAA再クエリが必要
+- TargetName = altの場合はTargetNameに対してA/AAAA再クエリが必要
 
-### TargetName != `.`の場合
+### TargetName = altの場合
 #### AAAA先着
 1. HTTPS / AAAA / A をDNS問い合わせ
-2. HTTPS応答 (アドレスヒントなし) -> TargetNameへA/AAAAクエリ / AAAA (HOST宛2件アドレス)
+2. HTTPS応答 (アドレスヒントなし) -> altへA/AAAAクエリ / AAAA (HOST宛2件アドレス)
 3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. HOST宛IPv6接続開始
 5. 2ms後にA応答
-    - TargetNameのA応答 -> アドレスリストをIPv6 (HOST) + IPv4 (TargetName) へ更新
+    - altのA応答 -> アドレスリストをIPv6 (HOST) + IPv4 (alt) へ更新
     - HOSTのA応答 -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
 6. 250ms後に二つ目の接続開始
-    - アドレスリストがIPv6 (HOST) + IPv4 (TargetName) -> TargetName宛IPv4接続
+    - アドレスリストがIPv6 (HOST) + IPv4 (alt) -> alt宛IPv4接続
     - アドレスリストがIPv6 (HOST) + IPv4 (HOST) -> HOST宛IPv4接続
 
 #### A先着/10ms後にAAAA応答
 1. HTTPS / AAAA / A をDNS問い合わせ
-2. HTTPS応答 (アドレスヒントなし) -> TargetNameへA/AAAAクエリ / A応答 (2アドレス)
+2. HTTPS応答 (アドレスヒントなし) -> altへA/AAAAクエリ / A応答 (2アドレス)
 3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
 4. Resolution Delay開始
 5. 10ms後に応答
-    - TargetNameのAAAA応答 -> 優先アドレスファミリ (TargetName宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
-    - TargetNameのA応答 -> 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せずRD継続
+    - altのAAAA応答 -> 優先アドレスファミリ (alt宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - altのA応答 -> 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せずRD継続
     - HOSTのAAAA応答 -> 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 6. アドレスリストを更新
-    - TargetNameのAAAA応答 -> アドレスリストをIPv6 (TargetName) + IPv4 (HOST) へ更新
+    - altAAAA応答 -> アドレスリストをIPv6 (alt) + IPv4 (HOST) へ更新
     - HOSTのAAAA応答あり -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
 7. IPv6接続開始
-    - アドレスリストがIPv6 (TargetName) + IPv4 (HOST) -> TargetName宛IPv6接続
+    - アドレスリストがIPv6 (alt) + IPv4 (HOST) -> alt宛IPv6接続
     - アドレスリストがIPv6 (HOST) + IPv4 (HOST) -> HOST宛IPv6接続
 8. 250ms後にIPv4接続開始
-    - 7-8の間にTargetNameのA応答あり -> TargetName宛のIPv4接続を開始する
-    - 7-8の間にTargetNameのA応答なし -> HOST宛のIPv4接続を開始する
+    - 7-8の間にaltのA応答あり -> alt宛のIPv4接続を開始する
+    - 7-8の間にaltのA応答なし -> HOST宛のIPv4接続を開始する
 
 #### A先着/Resolution Delayタイムアウト
 1. HTTPS / AAAA / A をDNS問い合わせ
-2. HTTPS応答 (アドレスヒントなし) -> TargetNameへA/AAAAクエリ / A応答 (2アドレス)
+2. HTTPS応答 (アドレスヒントなし) -> altへA/AAAAクエリ / A応答 (2アドレス)
 3. 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
 4. Resolution Delay開始
 5. Resolution Delayタイムアウト
 6. 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
 7. HOST宛IPv4接続開始
 8. 7から100ms後に応答
-    - TargetNameのAAAA応答 -> アドレスリストをIPv6 (TargetName) + IPv4 (HOST) へ更新
-    - TargetNameのA応答 -> アドレスリストをIPv4 (TargetName) + IPv4 (HOST) へ更新
+    - altのAAAA応答 -> アドレスリストをIPv6 (alt) + IPv4 (HOST) へ更新
+    - altのA応答 -> アドレスリストをIPv4 (alt) + IPv4 (HOST) へ更新
     - HOSTのAAAA応答 -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
 9. 7から250ms後に接続開始
-    - アドレスリストがIPv6 (TargetName) + IPv4 (HOST) -> TargetName宛IPv6接続
-    - アドレスリストがIPv4 (TargetName) + IPv4 (HOST) -> TargetName宛IPv4接続
+    - アドレスリストがIPv6 (alt) + IPv4 (HOST) -> alt宛IPv6接続
+    - アドレスリストがIPv4 (alt) + IPv4 (HOST) -> alt宛IPv4接続
     - アドレスリストがIPv6 (HOST) + IPv4 (HOST) -> HOST宛IPv6接続
 
 ## SVCBヒントによって早期に応答が得られる場合
@@ -249,30 +249,41 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 ```
 
 1. HTTPS / AAAA / A をDNS問い合わせ
-2. HTTPS応答 (IPv4/IPv6アドレスヒントあり)
-3. 優先アドレスファミリ (IPv6アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
+2. HTTPS応答 (TargetName = HOST / アドレスヒントあり)
+3. 優先アドレスファミリ (HOST宛IPv6アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. IPv6アドレスヒント宛にIPv6接続開始
 5. 4から250ms後、IPv4アドレスヒント宛にIPv4接続開始
 
-### TargetName != `.`の場合
+### TargetName = altの場合
 1. HTTPS / AAAA / A をDNS問い合わせ
-2. HTTPS応答 (IPv4/IPv6アドレスヒントあり) -> TargetNameへA/AAAAクエリ
-3. 優先アドレスファミリ (IPv6アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
+2. HTTPS応答 (TargetName = alt / ヒントあり)  -> altへA/AAAAクエリ
+3. 優先アドレスファミリ (alt宛IPv6アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. IPv6アドレスヒント宛にIPv6接続開始
 5. 4から250ms後
-    - TargetNameへのA応答があった場合
-      - -> アドレスリストをIPv6 (アドレスヒント) + IPv4 (TargetName) へ更新
-      - -> TargetName宛IPv4接続開始
-    - TargetNameへのAAAA応答があった場合
-      - -> アドレスリストをIPv6 (TargetName) + IPv4 (アドレスヒント) へ更新
-      - -> アドレスヒント宛IPv4接続開始
+    - altへのA応答があった場合
+      - -> アドレスリストをIPv6 (altアドレスヒント) + IPv4 (alt) へ更新
+      - -> alt宛IPv4接続開始
+    - altへのAAAA応答があった場合
+      - -> アドレスリストをIPv6 (alt) + IPv4 (altアドレスヒント) へ更新
+      - -> altアドレスヒント宛IPv4接続開始
     - HOSTへのA応答があった場合
-      - -> アドレスリストをIPv6 (アドレスヒント) + IPv4 (アドレスヒント) + IPv4 (HOST) へ更新
-      - -> アドレスヒント宛IPv4接続開始
+      - -> アドレスリストをIPv6 (altアドレスヒント) + IPv4 (altアドレスヒント) + IPv4 (HOST) へ更新
+      - -> altアドレスヒント宛 / HOST宛どちらか優先度の高い方へIPv4接続開始
     - HOSTへのAAAA応答があった場合
-      - -> アドレスリストをIPv6 (アドレスヒント) + IPv4 (アドレスヒント) + IPv6 (HOST) へ更新
-      - -> アドレスヒント宛IPv4接続開始
-    - 応答がなかった場合 -> アドレスヒント宛IPv4接続開始
+      - -> アドレスリストをIPv6 (altアドレスヒント) + IPv4 (altアドレスヒント) + IPv6 (HOST) へ更新
+      - -> altアドレスヒント宛IPv4接続開始
+    - 応答がなかった場合 -> altアドレスヒント宛IPv4接続開始
+
+#### IPv6アドレスヒント宛に接続開始後にaltのA/AAAAが届き、かつアドレスヒントの値と異なる場合
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (TargetName = HOST / ヒントなし・TargetName = alt / ヒントあり) -> altへAAAA/Aクエリ
+3. 優先アドレスファミリ (alt宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. アドレスリストをIPv6 (altアドレスヒント) + IPv4 (altアドレスヒント) へ更新
+5. altアドレスヒント宛IPv6接続開始
+6. 5から30ms後にalt宛AAAA応答 (1アドレス) / A応答 (1アドレス)
+7. アドレスリストをIPv6 (alt) + IPv4 (alt) へ更新
+8. 5から250ms後にalt宛IPv4へ接続開始 (IPv6に接続し直す必要なし)
 
 ## SVCB/HTTPSが複数のサービス名を返す場合
 
@@ -305,13 +316,13 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. 30ms後に応答
-    - HTTPS (TargetName = `.`, alt / ヒントなし) -> altへAAAA/Aクエリ
+    - HTTPS (TargetName = HOST・TargetName = alt)  -> altへAAAA/Aクエリ
     - AAAA (HOST宛2アドレス)
     - A (HOST宛2アドレス)
 3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
 5. HOST宛IPv6接続開始
-6. 5から30ms後にalt宛AAAA応答 (1アドレス) / A応答 (1アドレス)
+6. 5から30ms後にalt宛AAAA応答 / A応答
 7. アドレスリストをIPv6 (alt) + IPv4 (alt) + IPv6 (HOST) + IPv4 (HOST)
 8. 5から250ms後にaltとHOSTいずれか優先度の高い方宛IPv4へ接続開始
 
@@ -337,4 +348,4 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 ```
 
 ## TODO 考える
-- アドレスヒントよりも後にA/AAAAが届き、かつアドレスヒントの値と同じ/異なる場合
+- アドレスヒントがIPv6 / IPv4片方しかないパターン
