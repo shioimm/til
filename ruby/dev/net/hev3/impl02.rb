@@ -7,9 +7,6 @@ require_relative "./getaddrinfo"
 
 DEBUG = true
 
-# TODO
-# IPv6 / IPv4-onlyの場合、HTTPS応答のTargetNameに対して対応していないレコードタイプへのクエリをしないようにする
-
 class HTTPClient
   AAAA_TYPE  = Resolv::DNS::Resource::IN::AAAA
   A_TYPE     = Resolv::DNS::Resource::IN::A
@@ -518,8 +515,8 @@ class HTTPClient
           @resolved_types << A_TYPE if ipv4_hints.any?
 
           if !target_name.empty?
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
-            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
+            @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
           end
         end
       elsif result.success?
