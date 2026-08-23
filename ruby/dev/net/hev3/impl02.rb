@@ -7,6 +7,10 @@ require_relative "./getaddrinfo"
 
 DEBUG = true
 
+# TODO
+# IPv6 / IPv4-onlyの場合、HTTPS応答のTargetNameに対して対応していないレコードタイプへのクエリをしないようにする
+# また、対応していないアドレスヒントをアドレスリストから除外する
+
 class HTTPClient
   AAAA_TYPE  = Resolv::DNS::Resource::IN::AAAA
   A_TYPE     = Resolv::DNS::Resource::IN::A
@@ -204,7 +208,7 @@ class HTTPClient
         if @address_candidate_list.any?
           if @address_candidate_list.all_resolved? ||
               (@address_candidate_list.resolved?(HTTPS_TYPE) &&
-               @address_candidate_list.resolved?(AAAA_TYPE))
+               @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
@@ -557,6 +561,10 @@ class HTTPClient
 
     def all_resolved?
       @record_types.all? { |type| resolved?(type) }
+    end
+
+    def preferred_type
+      @record_types.include?(AAAA_TYPE) ? AAAA_TYPE : A_TYPE
     end
 
     def empty?
