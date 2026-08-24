@@ -329,6 +329,12 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 ## SVCB応答が遅延する場合 (IPv4接続のみ)
 
 ```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
+```
+
+```text
  Client                    DNS Server
       |    HTTPS?  --->            |
       |        A?  --->            |
@@ -347,5 +353,15 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
       |                            |
 ```
 
+1. HTTPS / A をDNS問い合わせ
+2. 30ms後にA応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答なし = 条件A成立せず
+4. アドレスリストをIPv4 (HOST) へ更新
+5. Resolution Delay開始
+6. 10ms後にHTTPS (アドレスヒントなし) 応答
+7. HOST宛IPv4接続開始
+
 ## TODO 考える
+- HSVCB応答が遅延する場合 (IPv4/IPv6接続のみ) で、HTTPS RRがIPv6アドレスヒントを持つ場合
+- HSVCB応答が遅延する場合 (IPv4/IPv6接続のみ) で、HTTPS RRのTargetNameがaltの場合
 - アドレスヒントがIPv6 / IPv4片方しかないパターン

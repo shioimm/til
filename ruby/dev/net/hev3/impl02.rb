@@ -204,7 +204,7 @@ class HTTPClient
         if @address_candidate_list.any?
           if @address_candidate_list.all_resolved? ||
               (@address_candidate_list.resolved?(HTTPS_TYPE) &&
-               @address_candidate_list.resolved?(AAAA_TYPE))
+               @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
@@ -495,24 +495,28 @@ class HTTPClient
             candidate.ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
             candidate.ipv4_address_hints
 
+          # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
+          ipv6_hints = @record_types.include?(AAAA_TYPE) ? candidate.ipv6_address_hints : []
+          ipv4_hints = @record_types.include?(A_TYPE) ? synthesized_ipv4_hints : []
+
           @addresses[[hostname, priority]] = {
             AAAA_TYPE  => temp_rr&.dig(AAAA_TYPE) || [],
             A_TYPE     => temp_rr&.dig(A_TYPE) || [],
             HTTPS_TYPE => {
-              AAAA_TYPE => temp_rr&.dig(AAAA_TYPE)&.any? ? [] : candidate.ipv6_address_hints,
-              A_TYPE    => temp_rr&.dig(A_TYPE)&.any? ? [] : synthesized_ipv4_hints,
+              AAAA_TYPE => temp_rr&.dig(AAAA_TYPE)&.any? ? [] : ipv6_hints,
+              A_TYPE    => temp_rr&.dig(A_TYPE)&.any? ? [] : ipv4_hints,
             },
             :ctx       => candidate.ctx,
           }
 
           # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
           # treated as positive answers until the real AAAA/A records arrive.
-          @resolved_types << AAAA_TYPE if candidate.ipv6_address_hints.any?
-          @resolved_types << A_TYPE if synthesized_ipv4_hints.any?
+          @resolved_types << AAAA_TYPE if ipv6_hints.any?
+          @resolved_types << A_TYPE if ipv4_hints.any?
 
           if !target_name.empty?
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name)
-            @client.resolve_hostname_asynchronously!(A_TYPE, target_name)
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
+            @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
           end
         end
       elsif result.success?
@@ -557,6 +561,10 @@ class HTTPClient
 
     def all_resolved?
       @record_types.all? { |type| resolved?(type) }
+    end
+
+    def preferred_type
+      @record_types.include?(AAAA_TYPE) ? AAAA_TYPE : A_TYPE
     end
 
     def empty?
