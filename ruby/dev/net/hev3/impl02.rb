@@ -617,7 +617,9 @@ class HTTPClient
 
     def precedences
       if @last_type == AAAA_TYPE then PRIORITY_ON_V4
-      elsif @last_type == A_TYPE || @last_type.nil? then PRIORITY_ON_V6
+      elsif @last_type == A_TYPE then PRIORITY_ON_V6
+      elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6
+      else PRIORITY_ON_V4
       end
     end
 
