@@ -254,6 +254,9 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 4. IPv6アドレスヒント宛にIPv6接続開始
 5. 4から250ms後、IPv4アドレスヒント宛にIPv4接続開始
 
+#### 優先アドレスファミリではないアドレスヒントのみある場合
+WIP
+
 ### TargetName = altの場合
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. HTTPS応答 (TargetName = alt / ヒントあり)  -> altへA/AAAAクエリ
@@ -359,9 +362,28 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 4. アドレスリストをIPv4 (HOST) へ更新
 5. Resolution Delay開始
 6. 10ms後にHTTPS (アドレスヒントなし) 応答
-7. HOST宛IPv4接続開始
+7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
+8. HOST宛IPv4接続開始
+
+#### HTTPS RRがIPv6アドレスヒントを持つ場合
+1. HTTPS / A をDNS問い合わせ
+2. 30ms後にA応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答なし = 条件A成立せず
+4. アドレスリストをIPv4 (HOST) へ更新
+5. Resolution Delay開始
+6. 10ms後にHTTPS (ipv6hintsあり) 応答
+7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
+8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
+
+#### HTTPS RRのTargetNameがaltの場合
+1. HTTPS / A をDNS問い合わせ
+2. 30ms後にA応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答なし = 条件A成立せず
+4. アドレスリストをIPv4 (HOST) へ更新
+5. Resolution Delay開始
+6. 10ms後にHTTPS (TargetName = alt) 応答 -> altへAクエリ
+7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
+8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
 
 ## TODO 考える
-- HSVCB応答が遅延する場合 (IPv4/IPv6接続のみ) で、HTTPS RRがIPv6アドレスヒントを持つ場合
-- HSVCB応答が遅延する場合 (IPv4/IPv6接続のみ) で、HTTPS RRのTargetNameがaltの場合
 - アドレスヒントがIPv6 / IPv4片方しかないパターン
