@@ -272,7 +272,30 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
     - アドレスリストがIPv6 (HOST宛) + IPv4 (HOST宛アドレスヒント) -> HOST宛アドレスヒントにIPv4接続開始
 
 #### TargetName = altの場合
-WIP
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (TargetName = alt / IPv4アドレスヒント / 優先度高) -> altへA/AAAAクエリ
+3. 優先アドレスファミリの肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+4. アドレスリストをIPv4 (alt宛アドレスヒント) へ更新
+5. Resolution Delay開始〜終了前の間
+    - alt宛AAAA応答あり -> 優先アドレスファミリの肯定応答 + HTTPS肯定応答 = 条件A成立
+      - アドレスリストをIPv6 (alt宛) + IPv4 (alt宛アドレスヒント) へ更新
+        - alt宛にIPv6接続開始
+    - HOST宛AAAA応答あり -> 優先アドレスファミリの肯定応答 + HTTPS肯定応答 = 条件A成立
+      - アドレスリストをIPv4 (alt宛アドレスヒント) + IPv6 (HOST宛) へ更新
+        - alt宛にIPv4接続開始
+    - AAAA応答なし -> 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+      - alt宛A応答あり -> アドレスリストをIPv4 (alt宛) へ更新
+        - alt宛IPv4接続開始
+      - alt宛A応答なし -> アドレスリスト更新なし
+        - alt宛アドレスヒントにIPv4接続開始
+      - HOST宛Aあり -> アドレスリストをIPv4 (alt宛アドレスヒント) / IPv4 (HOST宛) へ更新
+        - alt宛アドレスヒントにIPv4接続開始
+6. 5から250ms後
+    - アドレスリストがIPv6 (alt宛) + IPv4 (alt宛アドレスヒント) -> alt宛アドレスヒントにIPv4接続開始
+    - アドレスリストがIPv4 (alt宛) -> まだ接続していないalt宛IPv4候補があれば接続開始
+      - なければHOST宛IPv4へフォールバック
+    - アドレスリストがIPv4 (alt宛アドレスヒント) -> まだ接続していないalt宛IPv4候補があれば接続開始
+      - なければHOST宛IPv4へフォールバック
 
 ### TargetName = altの場合
 1. HTTPS / AAAA / A をDNS問い合わせ
@@ -345,6 +368,10 @@ WIP
 6. 5から30ms後にalt宛AAAA応答 / A応答
 7. アドレスリストをIPv6 (alt) + IPv4 (alt) + IPv6 (HOST) + IPv4 (HOST)
 8. 5から250ms後にaltとHOSTいずれか優先度の高い方宛IPv4へ接続開始
+
+#### アドレスリストがIPv6 (alt宛 / 優先度高) + IPv4 (HOST宛アドレスヒント) になってしまった
+  - alt宛IPv6開始後、250ms後にまだ接続していないalt宛IPv4候補があれば接続開始
+    - なければHOST宛IPv4へフォールバック
 
 ## SVCB応答が遅延する場合 (IPv4接続のみ)
 
