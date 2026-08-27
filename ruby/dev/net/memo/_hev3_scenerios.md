@@ -254,7 +254,24 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 4. IPv6アドレスヒント宛にIPv6接続開始
 5. 4から250ms後、IPv4アドレスヒント宛にIPv4接続開始
 
-#### 優先アドレスファミリではないアドレスヒントのみある場合
+### 優先アドレスファミリではないアドレスヒントのみある場合
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (TargetName = HOST / IPv4アドレスヒント)
+3. 優先アドレスファミリの肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+4. アドレスリストをIPv4 (HOST宛アドレスヒント) へ更新
+5. Resolution Delay開始〜終了前の間
+    - AAAA応答あり -> 優先アドレスファミリの肯定応答 + HTTPS肯定応答 = 条件A成立
+      - アドレスリストをIPv6 (HOST宛) + IPv4 (HOST宛アドレスヒント) へ更新
+        - HOST宛にIPv6接続開始
+    - AAAA応答なし -> 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+      - A応答あり -> アドレスリストをIPv4 (HOST) へ更新
+        - HOST宛にIPv4接続開始
+      - A応答なし -> アドレスリスト更新なし
+        - HOST宛アドレスヒントにIPv4接続開始
+6. 5から250ms後
+    - アドレスリストがIPv6 (HOST宛) + IPv4 (HOST宛アドレスヒント) -> HOST宛アドレスヒントにIPv4接続開始
+
+#### TargetName = altの場合
 WIP
 
 ### TargetName = altの場合
