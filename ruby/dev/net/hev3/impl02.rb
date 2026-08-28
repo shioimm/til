@@ -458,6 +458,7 @@ class HTTPClient
       @client = client
       @nat64_prefix = nat64_prefix
       @alias_redirect_count = 0
+      @queried_hostnames = [HOST]
     end
 
     def add(result)
@@ -514,9 +515,10 @@ class HTTPClient
           @resolved_types << AAAA_TYPE if ipv6_hints.any?
           @resolved_types << A_TYPE if ipv4_hints.any?
 
-          if !target_name.empty?
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
-            @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+          if !@queried_hostnames.include?(hostname)
+            @queried_hostnames << hostname
+            @client.resolve_hostname_asynchronously!(AAAA_TYPE, hostname) if @record_types.include?(AAAA_TYPE)
+            @client.resolve_hostname_asynchronously!(A_TYPE, hostname) if @record_types.include?(A_TYPE)
           end
         end
       elsif result.success?
