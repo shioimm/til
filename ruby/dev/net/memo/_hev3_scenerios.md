@@ -285,6 +285,32 @@ svc.example.net.  3600 IN HTTPS 1 alt.example.net. alpn="h3,h2" ipv4hint=192.0.2
         - -> HOST宛IPv6接続開始
 6. 250ms後、altへのクエリの応答があるか、およびアドレスリストの優先度に従って接続試行開始
 
+### AliasModeかつMAX_ALIAS_REDIRECTSを超える場合
+
+```text
+推定されるHTTPS RRの例
+(MAX_ALIAS_REDIRECTS(3) の例)
+
+example.com.      3600 IN HTTPS 0 h1.example.net.
+h1.example.net.   3600 IN HTTPS 0 h2.example.net.
+h2.example.net.   3600 IN HTTPS 0 h3.example.net.
+h3.example.net.   3600 IN HTTPS 0 h4.example.net.
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (AliasMode, TargetName = h1) -> h1へHTTPS再クエリ (1回目) / AAAA応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答なし = 条件A成立せず
+4. アドレスリストをIPv6 (HOST) へ更新
+5. Resolution Delay開始
+  - 待機中にA応答があった場合 (HOST宛2アドレス) -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
+  - 待機中にHTTPS応答 (h2) があった場合 -> h2へHTTPS再クエリ ...
+    - h3へのHTTPS応答 (AliasMode) -> MAX_ALIAS_REDIRECTS(3) を超える -> HTTPSを解決済みとみなす
+      - 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS応答 = 条件A成立
+  - Resolution Delayが終了した場合
+    - 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+6. HOST宛IPv6接続開始
+7. 6から250ms後、HOST宛IPv4接続開始
+
 ## SVCBヒントによって早期に応答が得られる場合
 
 ```text
