@@ -236,7 +236,7 @@ svc.example.net. 3600 IN HTTPS 1 .  alpn="h3,h2" ipv6hint=2001:db8::10 ipv4hint=
 ```
 
 1. HTTPS / AAAA / A をDNS問い合わせ
-2. 30ms後にHTTPS応答(AliasMode) -> aliasへHTTPS再クエリ / AAAA応答 (HOST宛2アドレス)
+2. 30ms後にHTTPS応答 (AliasMode) -> aliasへHTTPS再クエリ / AAAA応答 (HOST宛2アドレス)
 3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答なし = 条件A成立せず
 4. アドレスリストをIPv6 (HOST) へ更新
 5. Resolution Delay開始
@@ -255,7 +255,35 @@ svc.example.net. 3600 IN HTTPS 1 .  alpn="h3,h2" ipv6hint=2001:db8::10 ipv4hint=
 6. 250ms後、アドレスリストの優先度に従って接続試行開始
 
 ### AliasModeかつTargetName = altの場合
-WIP
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.      3600 IN HTTPS 0 svc.example.net.
+svc.example.net.  3600 IN HTTPS 1 alt.example.net. alpn="h3,h2" ipv4hint=192.0.2.20
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (AliasMode) -> aliasへHTTPS再クエリ / AAAA応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答なし = 条件A成立せず
+4. アドレスリストをIPv6 (HOST) へ更新
+5. Resolution Delay開始
+    - 待機中にA応答があった場合 (HOST宛2アドレス) -> アドレスリストをIPv6 (HOST) + IPv4(HOST) へ更新
+    - 待機中にHTTPS応答があった場合 -> 条件A成立
+      - HTTPS RRが空 -> HOST宛IPv6接続開始
+      - HTTPS RRがServiceModeかつTargetName = altでIPv6アドレスヒントあり
+        - -> altへA/AAAAクエリ
+        - -> アドレスリストをIPv6 (altアドレスヒント) + IPv6 (HOST) へ更新
+        - -> altアドレスヒント宛IPv6接続開始
+      - HTTPS RRがServiceModeかつTargetName = altでIPv4アドレスヒントあり
+        - -> altへA/AAAAクエリ
+        - -> アドレスリストをIPv4 (altアドレスヒント) + IPv6 (HOST) へ更新
+        - -> altアドレスヒント宛IPv4接続開始
+      - HTTPS RRがServiceModeかつTargetName = altでIPv4アドレスヒントなし
+        - -> altへA/AAAAクエリ
+        - -> アドレスリスト更新なし
+        - -> HOST宛IPv6接続開始
+6. 250ms後、altへのクエリの応答があるか、およびアドレスリストの優先度に従って接続試行開始
 
 ## SVCBヒントによって早期に応答が得られる場合
 
