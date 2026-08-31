@@ -173,6 +173,20 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 8. 7から250ms後にIPv4接続開始
     - HTTPS応答次第優先度順でアドレスを並び替える必要がある
 
+#### AAAA否定応答
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答(アドレスヒントなし) / A応答 (HOST宛2アドレス) / AAAA否定応答
+3. 優先アドレスファミリ (HOST宛IPv6) の否定応答 + HTTPS肯定応答 = 条件A成立
+4. アドレスリストをIPv4 (HOST) へ更新
+5. HOST宛IPv4接続開始
+
+#### A否定応答
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答(アドレスヒントなし) / A否定応答 / AAAA失敗応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. アドレスリストをIPv6 (HOST) へ更新
+5. HOST宛IPv6接続開始
+
 #### (shioimm)
 - SvcPriority = 0の場合はAliasModeなので同じTargetNameに対してHTTPS再クエリが必要
 - TargetName = altの場合はTargetNameに対してA/AAAA再クエリが必要
@@ -382,6 +396,32 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
     - アドレスリストがIPv4 (alt宛アドレスヒント) -> まだ接続していないalt宛IPv4候補があれば接続開始
       - なければHOST宛IPv4へフォールバック
 
+### TargetName = `.`かつIPv6アドレスヒントあり、かつAAAA否定クエリ
+
+```text
+example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2
+```
+
+#### HTTPS RR先着
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (TargetName = "."、IPv6アドレスヒントあり)
+3. 優先アドレスファミリ (HOST宛IPv6アドレスヒント) 肯定応答 + HTTPS肯定応答 = 条件A成立
+4. IPv6アドレスヒント宛にIPv6接続開始
+5. AAAA否定応答
+   - アドレスリスト更新されず
+6. 250ms後に残りのアドレスへ接続開始
+
+#### AAAA先着
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. AAAA否定応答
+   - アドレスリスト更新されず
+3. 30ms後にHTTPS応答 (TargetName = "."、IPv6アドレスヒントあり)
+4. 優先アドレスファミリ (HOST宛IPv6アドレスヒント) 肯定応答 + HTTPS肯定応答 = 条件A成立
+5. IPv6ヒント宛に接続開始
+6. 250ms後に残りのアドレスへ接続開始
+
 ### TargetName = altの場合
 1. HTTPS / AAAA / A をDNS問い合わせ
 2. HTTPS応答 (TargetName = alt / ヒントあり)  -> altへA/AAAAクエリ
@@ -513,6 +553,3 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 6. 10ms後にHTTPS (TargetName = alt) 応答 -> altへAクエリ
 7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
 8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
-
-## TODO 考える
-- アドレスヒントがIPv6 / IPv4片方しかないパターン
