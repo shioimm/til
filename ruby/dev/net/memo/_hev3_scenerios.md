@@ -399,6 +399,8 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2 ipv
 ### TargetName = `.`かつIPv6アドレスヒントあり、かつAAAA否定クエリ
 
 ```text
+# 推定されるHTTPS RRの例
+
 example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2
 ```
 
@@ -456,6 +458,13 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2
 ## SVCB/HTTPSが複数のサービス名を返す場合
 
 ```text
+# 推定されるHTTPS RRの例
+
+example.com. 3600 IN HTTPS 1 .                alpn="h3,h2"
+example.com. 3600 IN HTTPS 2 alt.example.com. alpn="h3,h2"
+```
+
+```text
  Client                    DNS Server
     |    HTTPS?  --->            |
     |     AAAA?  --->            |
@@ -495,8 +504,30 @@ example.com. 3600 IN HTTPS 1 . alpn="h3,h2" ipv6hint=2001:db8::1,2001:db8::2
 8. 5から250ms後にaltとHOSTいずれか優先度の高い方宛IPv4へ接続開始
 
 #### アドレスリストがIPv6 (alt宛 / 優先度高) + IPv4 (HOST宛アドレスヒント) になってしまった
-  - alt宛IPv6開始後、250ms後にまだ接続していないalt宛IPv4候補があれば接続開始
-    - なければHOST宛IPv4へフォールバック
+- alt宛IPv6開始後、250ms後にまだ接続していないalt宛IPv4候補があれば接続開始
+  - なければHOST宛IPv4へフォールバック
+
+### いずれもTargetName = altの場合
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com. 3600 IN HTTPS 1 alt1.example.com. alpn="h3,h2"
+example.com. 3600 IN HTTPS 2 alt2.example.com. alpn="h3,h2"
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答(TargetName = alt1 / alt2、アドレスヒントなし)) -> alt1・alt2それぞれへAAAA/Aクエリ
+    - 同時にHOST宛AAAA応答 (2アドレス)・A応答 (2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. アドレスリストをIPv6 (HOST) + IPv4 (HOST)へ更新
+5. HOST宛IPv6接続開始
+6. 5から10ms後、alt2のAAAA/A応答が先着
+  - アドレスリストをIPv6 (alt2) + IPv6 (HOST) + IPv4(alt2) + IPv4 (HOST) へ更新
+7. 5から250ms後、alt2宛にIPv4接続開始
+8. その後、alt1のAAAA/A応答
+  - アドレスリストをIPv6 (alt1) + IPv6 (alt2) + IPv6 (HOST) + IPv4 (alt1) + IPv4(alt2) + IPv4 (HOST) へ更新
+9. 7から250ms後、alt1宛にIPv6接続開始
 
 ## SVCB応答が遅延する場合 (IPv4接続のみ)
 
