@@ -468,11 +468,15 @@ class HTTPClient
           return
         end
 
-        if result.records.first.alias_mode?
+        # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
+        # all ServiceMode records in the same set MUST be ignored.
+        alias_record = result.records.find(&:alias_mode?)
+
+        if alias_record
           @alias_redirect_count += 1
 
           if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
-            @client.resolve_hostname_asynchronously!(HTTPS_TYPE, result.records.first.target.to_s)
+            @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
           else
             @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
           end
