@@ -325,34 +325,6 @@ h3.example.net.   3600 IN HTTPS 0 h4.example.net.
 6. HOST宛IPv6接続開始
 7. 6から250ms後、HOST宛IPv4接続開始
 
-## 単純なIPv4-only環境
-
-```text
-推定されるHTTPS RRの例
-
-example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
-```
-
-```text
-   Client                    DNS Server
-        |    HTTPS?  --->            |
-        |        A?  --->            |
-        |                            |
-        |        (30ms delay)        |
-        |                            |
-        |    <--- HTTPS (no hints)   |
-        |    <--- A (2 addresses)    |
-        |                            |
-        | Start w/IPv4               |
-        |                            |
-```
-
-1. HTTPS / A をDNS問い合わせ
-2. 30ms後にHTTPS応答 (アドレスヒントなし) / A応答 (2アドレス)
-3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
-4. HOST宛IPv4接続開始
-5. 4から250ms後、HOST宛にもう1件のIPv4アドレスへ接続開始
-
 ## SVCBヒントによって早期に応答が得られる場合
 
 ```text
@@ -612,7 +584,47 @@ example.com.  3600 IN HTTPS 0 alt.example.net.
     - altへA / AAAAクエリ
       - HOST宛にIPv6接続開始
 
-## SVCB応答が遅延する場合 (IPv4接続のみ)
+## IPv4-only環境
+
+```text
+推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
+```
+
+```text
+   Client                    DNS Server
+        |    HTTPS?  --->            |
+        |        A?  --->            |
+        |                            |
+        |        (30ms delay)        |
+        |                            |
+        |    <--- HTTPS (no hints)   |
+        |    <--- A (2 addresses)    |
+        |                            |
+        | Start w/IPv4               |
+        |                            |
+```
+
+1. HTTPS / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (アドレスヒントなし) / A応答 (2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. HOST宛IPv4接続開始
+5. 4から250ms後、HOST宛にもう1件のIPv4アドレスへ接続開始
+
+### HTTPS応答が先着する場合
+WIP
+
+#### HTTPS RRがIPv6アドレスヒントを持つ場合
+WIP
+
+#### HTTPS RRのTargetNameがaltの場合
+WIP
+
+#### HTTPS RRがAliasModeの場合
+WIP
+
+### HTTPS応答が遅延する場合
 
 ```text
 # 推定されるHTTPS RRの例
