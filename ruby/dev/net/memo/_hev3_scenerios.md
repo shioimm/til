@@ -613,7 +613,13 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 5. 4から250ms後、HOST宛にもう1件のIPv4アドレスへ接続開始
 
 ### HTTPS応答が先着する場合
-WIP
+1. HTTPS / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (TargetName = "."、IPv4アドレスヒントあり)
+3. 優先アドレスファミリ (HOST宛IPv4アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
+3. HOST宛 (アドレスヒント) にIPv4接続開始
+4. 3から10ms後に実A応答 (2アドレス)
+    - アドレスリストを実アドレスに更新
+5. 3から250ms後、HOST宛実アドレスにIPv4接続開始
 
 #### HTTPS RRがIPv6アドレスヒントを持つ場合
 WIP
