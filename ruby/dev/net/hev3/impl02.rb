@@ -470,7 +470,8 @@ class HTTPClient
 
         # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
         # all ServiceMode records in the same set MUST be ignored.
-        alias_record = result.records.find(&:alias_mode?)
+        # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
+        alias_record = result.records.select(&:alias_mode?).sample
 
         if alias_record
           @alias_redirect_count += 1
