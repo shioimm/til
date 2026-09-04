@@ -546,10 +546,10 @@ alt1.example.com. 3600 IN HTTPS 1 .                 alpn="h3,h2" ipv6hint=2001:d
 3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答なし = 条件A成立せず
 4. アドレスリストをIPv6 (HOST) へ更新
 5. Resolution Delay開始
-  - 待機中にA応答があった場合 (HOST宛2アドレス) -> アドレスリストをIPv6(HOST) + IPv4(HOST) へ更新
+  - 待機中にA応答があった場合 (HOST宛2アドレス) -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
     - HTTPS応答もしくはResolution Delay終了を待機
   - 待機中にalt1のHTTPS応答 (ServiceMode、TargetName = "."、IPv6 / IPv4アドレスヒントあり) -> 条件A成立
-    - アドレスリストをIPv6 (alt1宛ヒント) + IPv4 (alt1宛ヒント) + IPv6(HOST) へ更新
+    - アドレスリストをIPv6 (alt1宛ヒント) + IPv4 (alt1宛ヒント) + IPv6 (HOST) へ更新
     - alt1へA / AAAAクエリ
       - alt1 (アドレスヒント) 宛にIPv6接続開始
   - 待機中にalt1のHTTPS応答 (ServiceMode、TargetName = "."、IPv6 / IPv4アドレスヒントなし) -> 条件A成立
@@ -557,7 +557,32 @@ alt1.example.com. 3600 IN HTTPS 1 .                 alpn="h3,h2" ipv6hint=2001:d
       - HOST宛にIPv6接続開始
 
 ### 片方がAliasModeの場合
-WIP
+- AliasModeの方を利用し、ServiceModeの方は利用しないべき (RFC9460 2.4.1)
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600 IN HTTPS 1 svc.example.com.  alpn="h3,h2"
+example.com.  3600 IN HTTPS 0 alt.example.net.
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 30ms後にHTTPS応答 (ServiceMode svc.example.com. / AliasMode alt.example.net.) -> alt.example.net.へHTTPS再クエリ
+    - ServiceModeの方は無視
+    - 同時にHOST宛AAAA応答 (2アドレス)
+3. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答なし = 条件A成立せず
+4. アドレスリストをIPv6 (HOST) へ更新
+4. アドレスリストをIPv6 (HOST) へ更新
+5. Resolution Delay開始
+  - 待機中にA応答があった場合 (HOST宛2アドレス) -> アドレスリストをIPv6 (HOST) + IPv4 (HOST) へ更新
+    - HTTPS応答もしくはResolution Delay終了を待機
+  - 待機中にaltのHTTPS応答 (ServiceMode、TargetName = "."、IPv6 / IPv4アドレスヒントあり) -> 条件A成立
+    - アドレスリストをIPv6 (alt宛ヒント) + IPv4 (alt宛ヒント) + IPv6(HOST) へ更新
+    - altへA / AAAAクエリ
+      - alt (アドレスヒント) 宛にIPv6接続開始
+  - 待機中にaltのHTTPS応答 (ServiceMode、TargetName = "."、IPv6 / IPv4アドレスヒントなし) -> 条件A成立
+    - altへA / AAAAクエリ
+      - HOST宛にIPv6接続開始
 
 ## SVCB応答が遅延する場合 (IPv4接続のみ)
 
