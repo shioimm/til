@@ -614,6 +614,15 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 ### HTTPS応答が先着する場合
 1. HTTPS / A をDNS問い合わせ
+2. 20ms後にHTTPS応答 (TargetName = "."、アドレスヒントなし)
+3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+3. 10ms後にA応答 (2アドレス)
+  - 優先アドレスファミリ(HOST宛IPv4)の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. HOST宛IPv4接続開始
+5. 3から250ms後、HOST宛実アドレスにIPv4接続開始
+
+#### HTTPS RRがIPv6アドレスヒントを持つ場合
+1. HTTPS / A をDNS問い合わせ
 2. 30ms後にHTTPS応答 (TargetName = "."、IPv4アドレスヒントあり)
 3. 優先アドレスファミリ (HOST宛IPv4アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
 3. HOST宛 (アドレスヒント) にIPv4接続開始
@@ -621,13 +630,13 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
     - アドレスリストを実アドレスに更新
 5. 3から250ms後、HOST宛実アドレスにIPv4接続開始
 
-#### HTTPS RRがIPv6アドレスヒントを持つ場合
-WIP
-
 #### HTTPS RRのTargetNameがaltの場合
 WIP
 
 #### HTTPS RRがAliasModeの場合
+WIP
+
+#### HTTPS RRがIPv6アドレスヒントを持つ場合
 WIP
 
 ### HTTPS応答が遅延する場合
@@ -666,16 +675,6 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
 8. HOST宛IPv4接続開始
 
-#### HTTPS RRがIPv6アドレスヒントを持つ場合
-1. HTTPS / A をDNS問い合わせ
-2. 30ms後にA応答 (HOST宛2アドレス)
-3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答なし = 条件A成立せず
-4. アドレスリストをIPv4 (HOST) へ更新
-5. Resolution Delay開始
-6. 10ms後にHTTPS (ipv6hintsあり) 応答
-7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
-8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
-
 #### HTTPS RRのTargetNameがaltの場合
 1. HTTPS / A をDNS問い合わせ
 2. 30ms後にA応答 (HOST宛2アドレス)
@@ -683,5 +682,15 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 4. アドレスリストをIPv4 (HOST) へ更新
 5. Resolution Delay開始
 6. 10ms後にHTTPS (TargetName = alt) 応答 -> altへAクエリ
+7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
+8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
+
+#### HTTPS RRがIPv6アドレスヒントを持つ場合
+1. HTTPS / A をDNS問い合わせ
+2. 30ms後にA応答 (HOST宛2アドレス)
+3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答なし = 条件A成立せず
+4. アドレスリストをIPv4 (HOST) へ更新
+5. Resolution Delay開始
+6. 10ms後にHTTPS (ipv6hintsあり) 応答
 7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
 8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
