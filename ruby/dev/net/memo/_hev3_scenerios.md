@@ -608,9 +608,9 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 1. HTTPS / A をDNS問い合わせ
 2. 30ms後にHTTPS応答 (アドレスヒントなし) / A応答 (2アドレス)
-3. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
-4. HOST宛IPv4接続開始
-5. 4から250ms後、HOST宛にもう1件のIPv4アドレスへ接続開始
+    - 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
+3. HOST宛IPv4接続開始
+4. 4から250ms後、HOST宛にもう1件のIPv4アドレスへ接続開始
 
 ### HTTPS応答が先着する場合
 
@@ -622,13 +622,13 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 
 1. HTTPS / A をDNS問い合わせ
 2. 20ms後にHTTPS応答 (TargetName = "."、アドレスヒントなし)
-3. 優先アドレスファミリの肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+    - 優先アドレスファミリの肯定応答なし + HTTPS肯定応答 = 条件A成立せず
 3. 10ms後にA応答 (2アドレス)
     - 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. HOST宛IPv4接続開始
 5. 3から250ms後、HOST宛実アドレスにIPv4接続開始
 
-#### HTTPS RRがIPv6アドレスヒントを持つ場合
+#### HTTPS RRがIPv4アドレスヒントを持つ場合
 
 ```text
 # 推定されるHTTPS RRの例
@@ -638,7 +638,7 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv6hint=2001:db8::30 ipv4hint
 
 1. HTTPS / A をDNS問い合わせ
 2. 30ms後にHTTPS応答 (TargetName = "."、IPv4アドレスヒントあり)
-3. 優先アドレスファミリ (HOST宛IPv4アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - 優先アドレスファミリ (HOST宛IPv4アドレスヒント) の肯定応答 + HTTPS肯定応答 = 条件A成立
 3. HOST宛 (アドレスヒント) にIPv4接続開始
 4. 3から10ms後に実A応答 (2アドレス)
     - アドレスリストを実アドレスに更新
@@ -654,16 +654,35 @@ example.com. 3600 IN HTTPS 1 alt.example.com. alpn="h3,h2"
 
 1. HTTPS / A をDNS問い合わせ
 2. 20ms後にHTTPS応答 (TargetName = alt、アドレスヒントなし) -> altへAクエリ
-3. 優先アドレスファミリの肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+    -  優先アドレスファミリの肯定応答なし + HTTPS肯定応答 = 条件A成立せず
 4. 2から10ms後、HOST宛A応答 (2アドレス)
-  - 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
+    - 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. HOST宛にIPv4接続開始
 5. 4から250ms後
   - ここまでにaltのA応答あり -> アドレスリストを IPv4 (alt) + IPv4 (HOST) に更新のうえalt宛IPv4接続開始
   - ここまでにaltのA応答なし -> HOST宛IPv4接続開始
 
 #### HTTPS RRがAliasModeの場合
-WIP
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.      3600 IN HTTPS 0 svc.example.net.
+svc.example.net.  3600 IN HTTPS 1 .  alpn="h3,h2" ipv4hint=192.0.2.50
+```
+
+1. HTTPS / A をDNS問い合わせ
+2. 20ms後にHTTPS応答 (AliasMode, target = `svc.example.net.`) -> `svc.example.net.`へHTTPS再クエリ
+    - 優先アドレスファミリの肯定応答なし + HTTPS応答なし = 条件A成立せず
+3. 2から10ms後、HOSTの実A応答 (2アドレス)
+    - 優先アドレスファミリ (HOST宛IPv4) 肯定応答 + HTTPS応答なし = 条件A成立せず
+4. Resolution Delay開始
+    - 待機中にsvc.example.net.のHTTPS応答 (ServiceMode、TargetName = "."、IPv4アドレスヒントあり) -> 条件A成立
+      - アドレスリストをIPv4 (svc.example.net.宛ヒント) + IPv4 (HOST) へ更新
+      - svc.example.net.宛A/AAAAクエリ
+      - svc.example.net. (アドレスヒント) 宛にIPv4接続開始
+    - Resolution Delay終了
+      - HOST 宛にIPv4接続開始
 
 #### HTTPS RRがIPv6アドレスヒントのみを持つ場合
 WIP
