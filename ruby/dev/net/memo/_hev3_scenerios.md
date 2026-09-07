@@ -685,7 +685,14 @@ svc.example.net.  3600 IN HTTPS 1 .  alpn="h3,h2" ipv4hint=192.0.2.50
       - HOST 宛にIPv4接続開始
 
 #### HTTPS RRがIPv6アドレスヒントのみを持つ場合
-WIP
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv6hint=2001:db8::1
+```
+
+- ipv6hintは無視されるのでHTTPS応答がIPv4アドレスヒントなしで先着する場合とおなじシナリオになる
 
 ### HTTPS応答が遅延する場合
 
