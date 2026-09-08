@@ -685,7 +685,14 @@ svc.example.net.  3600 IN HTTPS 1 .  alpn="h3,h2" ipv4hint=192.0.2.50
       - HOST 宛にIPv4接続開始
 
 #### HTTPS RRがIPv6アドレスヒントのみを持つ場合
-WIP
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv6hint=2001:db8::1
+```
+
+- ipv6hintは無視されるのでHTTPS応答がIPv4アドレスヒントなしで先着する場合とおなじシナリオになる
 
 ### HTTPS応答が遅延する場合
 
@@ -742,3 +749,43 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
 6. 10ms後にHTTPS (ipv6hintsあり) 応答
 7. 優先アドレスファミリ (HOST宛IPv4) の肯定応答 + HTTPS応答 = 条件A成立
 8. HOST宛IPv4接続開始 (ipv6hintsはアドレスリストに追加しない)
+
+## IPv6-only環境 (NAT64 prefixあり)
+- nat64_prefixとして"64:ff9b::/96"を検出済み
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
+```
+
+```text
+ Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- HTTPS (no hints)   |
+     |    <--- AAAA (2 addresses) |
+     |                            |
+     | Start w/IPv6 (native)      |
+     |                            |
+     |        (2ms delay)         |
+     |                            |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Synthesize A -> IPv6       |
+     | Update w/IPv6 (native+synth)|
+     |                            |
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (アドレスヒントなし) / AAAA応答 (2アドレス)
+    - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. HOST宛IPv6接続開始
+5. 2ms後にA応答 (2アドレス)
+    - NAT64用IPv6アドレスに合成
+6. アドレスリストをIPv6 (HOST宛) + IPv6 (HOST宛NAT64合成済み) へ更新
+7. 250ms後にHOST宛IPv6 (NAT64合成済み) 接続開始
