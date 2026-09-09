@@ -810,8 +810,37 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv4hint=192.0.2.60
       - HOST宛IPv6接続開始
     - A応答あり (HOST宛)
       - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
-      - アドレスリストをIPv6  (HOST宛実アドレスNAT64合成済み) へ更新
+      - アドレスリストをIPv6 (HOST宛実アドレスNAT64合成済み) へ更新
       - 引き続きResolution Delay待機
     - Resolution Delay終了
       - 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
       - HOST宛NAT64合成済みIPv6接続開始
+
+#### TargetName = altの場合
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com. 3600 IN HTTPS 1 alt.example.com. alpn="h3,h2"
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. 20ms後にHTTPS応答 (TargetName = alt、ヒントなし) -> altへAAAA / Aクエリ (NAT64ありなので両方発行される)
+3. 2から10ms後、HOSTのAAAA応答 (2アドレス)
+    - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. HOST宛にIPv6接続開始
+5. 4から250ms後
+    - altのAAAA応答あり
+      - アドレスリストをIPv6 (alt) + IPv6 (HOST) へ更新
+      - alt宛IPv6接続開始
+    - altのA応答あり
+      - アドレスリストをIPv6 (alt宛NAT64合成済み) + IPv6 (HOST) へ更新
+      - alt宛NAT64合成済みIPv6接続開始
+    - HOSTのA応答あり
+      - アドレスリストをIPv6 (HOST) + IPv6 (HOST宛NAT64合成済み) へ更新
+      - HOST宛NAT64合成済みIPv6接続開始
+    - いずれもなし
+      - HOST宛IPv6接続開始
+
+#### TargetName = alt かつ alt自身がIPv4ヒントを持つ場合
+WIP
