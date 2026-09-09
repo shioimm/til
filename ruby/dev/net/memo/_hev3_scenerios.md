@@ -789,3 +789,29 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
     - NAT64用IPv6アドレスに合成
 6. アドレスリストをIPv6 (HOST宛) + IPv6 (HOST宛NAT64合成済み) へ更新
 7. 250ms後にHOST宛IPv6 (NAT64合成済み) 接続開始
+
+### HTTPS応答が先着する場合
+#### IPv4だけアドレスヒントがある場合
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv4hint=192.0.2.60
+```
+
+1. HTTPS / AAAA / A をDNS問い合わせ
+2. HTTPS応答 (TargetName = "."、IPv4アドレスヒントのみ)
+    - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+    - アドレスリストをIPv6  (HOST宛アドレスヒントNAT64合成済み) へ更新
+3. Resolution Delay開始
+    - AAAA応答あり (HOST宛)
+      - 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+      - アドレスリストをIPv6 (HOST宛) + IPv6 (アドレスヒントNAT64合成済み) 更新
+      - HOST宛IPv6接続開始
+    - A応答あり (HOST宛)
+      - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+      - アドレスリストをIPv6  (HOST宛実アドレスNAT64合成済み) へ更新
+      - 引き続きResolution Delay待機
+    - Resolution Delay終了
+      - 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+      - HOST宛NAT64合成済みIPv6接続開始
