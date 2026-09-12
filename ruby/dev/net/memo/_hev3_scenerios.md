@@ -909,8 +909,30 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv4hint=192.0.2.80
 2. 20ms後にHTTPS応答 (TargetName = "."、IPv4アドレスヒントのみ)
   - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
   - 宛先アドレス候補がないのでResolution Delayは開始されない
+  - AAAA応答が返るまで待機を継続
 3. 10ms後にAAAA応答 (2アドレス)
   - アドレスリストをIPv6 (HOST) へ更新
   - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
 4. HOST宛にIPv6接続開始
-5. 5から250ms後、HOST宛IPv6接続開始
+5. 4から250ms後、HOST宛IPv6接続開始
+
+#### TargetName = altの場合
+WIP
+
+#### TargetName = alt かつ alt自身がIPv4ヒントを持つ場合
+WIP
+
+### HTTPS応答が遅延する場合
+#### IPv4だけアドレスヒントがある場合
+1. HTTPS / AAAA をDNS問い合わせ
+2. 30ms後にAAAA応答 (HOST宛2アドレス)
+    -  優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS応答なし = 条件A成立せず
+4. アドレスリストをIPv6 (HOST) へ更新
+5. Resolution Delay開始
+    - HTTPS応答 (TargetName = "."、IPv4アドレスヒントのみ) があった
+      - IPv4接続性がなく、NAT64 prefixもないため、IPv4アドレスヒントはアドレスリストに追加しない
+      - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+      - HOST宛IPv6接続開始
+    - Resolution Delay終了
+      - 何らかの肯定的アドレス応答を受信 + Resolution Delay超過 = 条件B成立
+      - HOST宛IPv6接続開始
