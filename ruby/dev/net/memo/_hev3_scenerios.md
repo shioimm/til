@@ -867,3 +867,50 @@ example.com. 3600 IN HTTPS 1 alt.example.com. alpn="h3,h2" ipv4hint=192.0.2.70
       - Resolution Delay終了はalt宛NAT64合成済みIPv6接続開始
   - Resolution Delay終了
     - alt宛NAT64合成済みIPv6接続開始
+
+## IPv6-only環境 (NAT64 prefixなし)
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2"
+```
+
+```text
+ Client                    DNS Server
+      |    HTTPS?  --->            |
+      |     AAAA?  --->            |
+      |                            |
+      |        (30ms delay)        |
+      |                            |
+      |    <--- HTTPS (no hints)   |
+      |    <--- AAAA (2 addresses) |
+      |                            |
+      | Start w/IPv6               |
+      |                            |
+```
+
+1. HTTPS / AAAA をDNS問い合わせ
+2. 30ms後にHTTPS応答 (アドレスヒントなし) / AAAA応答 (2アドレス)
+  - 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+3. HOST宛IPv6接続開始
+4. 3から250ms後、HOST宛IPv6接続開始
+
+### HTTPS応答が先着する場合
+#### IPv4だけアドレスヒントがある場合
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv4hint=192.0.2.80
+```
+
+1. HTTPS / AAAA をDNS問い合わせ
+2. 20ms後にHTTPS応答 (TargetName = "."、IPv4アドレスヒントのみ)
+  - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+  - 宛先アドレス候補がないのでResolution Delayは開始されない
+3. 10ms後にAAAA応答 (2アドレス)
+  - アドレスリストをIPv6 (HOST) へ更新
+  - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+4. HOST宛にIPv6接続開始
+5. 5から250ms後、HOST宛IPv6接続開始
