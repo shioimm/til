@@ -917,10 +917,46 @@ example.com.  3600  IN  HTTPS  1  .  alpn="h3,h2" ipv4hint=192.0.2.80
 5. 4から250ms後、HOST宛IPv6接続開始
 
 #### TargetName = altの場合
-WIP
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  alt.example.com.  alpn="h3,h2"
+```
+
+1. HTTPS / AAAA をDNS問い合わせ
+2. 20ms後にHTTPS応答 (TargetName = alt、アドレスヒントなし) -> altへAAAAクエリ
+    - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+    - 宛先アドレス候補がないのでResolution Delayは開始されない
+    - HOSTまたはaltのAAAA応答が返るまで待機を継続
+3. 10ms後にAAAA応答 (2アドレス)
+    - HOSTのAAAA応答だった場合 -> アドレスリストをIPv6 (HOST) へ更新
+      - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+      - HOST宛IPv6接続開始
+    - altのAAAA応答だった場合 -> アドレスリストをIPv6 (alt) へ更新
+      - 優先アドレスファミリ (HOST宛IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+      - HOST宛IPv6接続開始
+5. 4から250ms後
+    - ここまでに別ホストのAAAA応答あり -> アドレスリストをIPv6 (alt) + IPv6 (HOST) へ更新のうえ、alt宛IPv6接続開始
 
 #### TargetName = alt かつ alt自身がIPv4ヒントを持つ場合
-WIP
+
+```text
+# 推定されるHTTPS RRの例
+
+example.com.  3600  IN  HTTPS  1  alt.example.com.  alpn="h3,h2" ipv4hint=192.0.2.90
+```
+
+1. HTTPS / AAAA をDNS問い合わせ
+2. 20ms後にHTTPS応答 (TargetName = alt、IPv4アドレスヒントのみ) -> altへAAAAクエリ
+    - 優先アドレスファミリ (IPv6) の肯定応答なし + HTTPS肯定応答 = 条件A成立せず
+    - 宛先アドレス候補がないのでResolution Delayは開始されない
+    - HOSTまたはaltのAAAA応答が返るまで待機を継続
+3. 10ms後にAAAA応答
+    - HOSTのAAAA応答 (2アドレス) -> アドレスリストをIPv6 (HOST) へ更新
+    - altのAAAA応答 (2アドレス) -> アドレスリストをIPv6 (alt) へ更新
+4. 優先アドレスファミリ (IPv6) の肯定応答 + HTTPS肯定応答 = 条件A成立
+5. IPv6接続開始
 
 ### HTTPS応答が遅延する場合
 #### IPv4だけアドレスヒントがある場合
