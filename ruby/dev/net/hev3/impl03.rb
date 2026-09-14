@@ -2,6 +2,7 @@ require "socket"
 require "resolv"
 require "openssl"
 require "ipaddr"
+require "http/2"
 
 require_relative "./getaddrinfo"
 
