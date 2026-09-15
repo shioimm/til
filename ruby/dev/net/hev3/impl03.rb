@@ -239,6 +239,8 @@ class HTTPClient
       break if @connected_socket || @tls_connected_socket
     end
 
+    close_pending_connections
+
     socket = @tls_connected_socket || @connected_socket
     request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
     socket.write request_message
@@ -250,19 +252,15 @@ class HTTPClient
     puts status_line
     puts body
   ensure
+    close_pending_connections
+    close_socket(@tls_connected_socket)
+    close_socket(@connected_socket)
+
     @hostname_resolution_threads.each do |thread|
       thread.exit
     end
 
     @hostname_resolution_result.close_all
-
-    @connecting_sockets.each_key do |connecting_socket|
-      connecting_socket.close
-    end
-
-    @tls_handshaking_sockets.each_key do |ssl_socket|
-      ssl_socket.close rescue nil
-    end
   end
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
@@ -286,6 +284,22 @@ class HTTPClient
   end
 
   private
+
+  def close_socket(socket)
+    socket.close if socket && !socket.closed?
+  rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
+    # Continue cleanup without replacing the original connection/request error.
+    nil
+  end
+
+  def close_pending_connections
+    [@connecting_sockets, @tls_handshaking_sockets].each do |connections|
+      connections.each_key do |socket|
+        close_socket(socket)
+      end
+      connections.clear
+    end
+  end
 
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
@@ -379,8 +393,8 @@ class HTTPClient
 
     advance_tls_handshake(ssl_socket)
   rescue OpenSSL::SSL::SSLError, SystemCallError => e
-    ssl_socket&.close
-    tcp_socket.close unless tcp_socket.closed?
+    close_socket(ssl_socket)
+    close_socket(tcp_socket)
     e
   end
 
@@ -398,7 +412,7 @@ class HTTPClient
     nil
   rescue OpenSSL::SSL::SSLError, SystemCallError => e
     @tls_handshaking_sockets.delete(ssl_socket)
-    ssl_socket.close
+    close_socket(ssl_socket)
     e
   end
 
