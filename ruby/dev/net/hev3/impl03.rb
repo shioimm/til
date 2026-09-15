@@ -87,8 +87,19 @@ class HTTPClient
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
           begin
             socket.connect_nonblock(addrinfo)
-            @connected_socket = socket
-            break
+            if @use_ssl
+              if (error = nonblocking_connect_with_tls(socket, ctx, hostname))
+                last_error = error
+                @connection_attempt_delay_expires_at = nil
+                next
+              end
+              break if @tls_connected_socket
+
+              @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+            else
+              @connected_socket = socket
+              break
+            end
           rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             @connecting_sockets[socket] = [ctx, addrinfo, hostname]
