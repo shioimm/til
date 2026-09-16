@@ -70,7 +70,7 @@ class HTTPClient
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
         @first_connection_attempted = true
-        ctx, address, hostname = @address_candidate_list.next_candidate
+        ctx, address = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, @port)
 
         if !@use_ssl &&
@@ -88,7 +88,7 @@ class HTTPClient
           begin
             socket.connect_nonblock(addrinfo)
             if @use_ssl
-              if (error = nonblocking_connect_with_tls(socket, ctx, hostname))
+              if (error = nonblocking_connect_with_tls(socket, ctx))
                 last_error = error
                 @connection_attempt_delay_expires_at = nil
                 next
@@ -102,7 +102,7 @@ class HTTPClient
             end
           rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-            @connecting_sockets[socket] = [ctx, addrinfo, hostname]
+            @connecting_sockets[socket] = [ctx, addrinfo]
           rescue SystemCallError => e
             socket.close
             last_error = e
@@ -165,10 +165,10 @@ class HTTPClient
           )
 
           if is_connected
-            ctx, _, hostname = @connecting_sockets.delete(writable_socket)
+            ctx, _ = @connecting_sockets.delete(writable_socket)
 
             if @use_ssl
-              if (error = nonblocking_connect_with_tls(writable_socket, ctx, hostname))
+              if (error = nonblocking_connect_with_tls(writable_socket, ctx))
                 last_error = error
                 @connection_attempt_delay_expires_at = nil
               end
@@ -386,10 +386,11 @@ class HTTPClient
     nil
   end
 
-  def nonblocking_connect_with_tls(tcp_socket, ctx, hostname)
+  def nonblocking_connect_with_tls(tcp_socket, ctx)
     ssl_socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ctx)
     ssl_socket.sync_close = true
-    ssl_socket.hostname = hostname
+    # RFC 9460 Section 9.4: SNI identifies the origin, not the TargetName.
+    ssl_socket.hostname = HOST
 
     advance_tls_handshake(ssl_socket)
   rescue OpenSSL::SSL::SSLError, SystemCallError => e
