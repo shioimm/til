@@ -87,8 +87,19 @@ class HTTPClient
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
           begin
             socket.connect_nonblock(addrinfo)
-            @connected_socket = socket
-            break
+            if @use_ssl
+              if (error = nonblocking_connect_with_tls(socket, ctx, hostname))
+                last_error = error
+                @connection_attempt_delay_expires_at = nil
+                next
+              end
+              break if @tls_connected_socket
+
+              @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
+            else
+              @connected_socket = socket
+              break
+            end
           rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             @connecting_sockets[socket] = [ctx, addrinfo, hostname]
@@ -118,11 +129,18 @@ class HTTPClient
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
-      waiting_rfds = (@hostname_resolution_result.notifier || []) + @tls_handshaking_sockets.keys
-      waiting_wfds = @connecting_sockets.keys
+      waiting_rfds = (@hostname_resolution_result.notifier || []) +
+        @tls_handshaking_sockets.select { |_, direction| direction == :read }.keys
+      waiting_wfds = @connecting_sockets.keys +
+        @tls_handshaking_sockets.select { |_, direction| direction == :write }.keys
 
       if waiting_rfds.empty? && waiting_wfds.empty?
-        raise last_error || SocketError.new("no addresses resolved for #{HOST}")
+        # No delay remains: try the next candidate without waiting for IO.
+        next if ends_at.nil?
+
+        if ends_at == Float::INFINITY
+          raise last_error || SocketError.new("no addresses resolved for #{HOST}")
+        end
       end
 
       readable_fds, writable_fds, _ = IO.select(
@@ -137,7 +155,9 @@ class HTTPClient
       puts "[DEBUG] #{count}: writable_fds #{writable_fds || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: connecting_sockets #{@connecting_sockets}" if DEBUG
 
-      if writable_fds&.any?
+      ssl_writable_sockets, writable_fds = (writable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+
+      if writable_fds.any?
         while (writable_socket = writable_fds.pop)
           is_connected = (
             sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
@@ -146,8 +166,14 @@ class HTTPClient
 
           if is_connected
             ctx, _, hostname = @connecting_sockets.delete(writable_socket)
+
             if @use_ssl
-              nonblocking_connect_with_tls(writable_socket, ctx, hostname)
+              if (error = nonblocking_connect_with_tls(writable_socket, ctx, hostname))
+                last_error = error
+                @connection_attempt_delay_expires_at = nil
+              end
+
+              break if @tls_connected_socket
             else
               @connected_socket = writable_socket
               break
@@ -158,7 +184,7 @@ class HTTPClient
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
 
-            if writable_fds.any? || @connecting_sockets.any?
+            if writable_fds.any? || @connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
             elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
@@ -171,26 +197,19 @@ class HTTPClient
 
       ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
 
-      if ssl_ready_sockets.any?
-        ssl_ready_sockets.each do |ssl_socket|
-          begin
-            ssl_socket.connect_nonblock
-            @tls_handshaking_sockets.delete(ssl_socket)
-            @tls_connected_socket = ssl_socket
-            break
-          rescue IO::WaitReadable
-          rescue OpenSSL::SSL::SSLError, SystemCallError => e
-            @tls_handshaking_sockets.delete(ssl_socket)
-            ssl_socket.close
-            last_error = e
-          end
-        end
+      (ssl_ready_sockets + ssl_writable_sockets).uniq.each do |ssl_socket|
+        break if @tls_connected_socket
 
-        if last_error && !@tls_connected_socket &&
-            !@tls_handshaking_sockets.any? && !@connecting_sockets.any? &&
-            !@address_candidate_list.any? && !@hostname_resolution_result.pending?
-          raise last_error
+        if (error = advance_tls_handshake(ssl_socket))
+          last_error = error
+          @connection_attempt_delay_expires_at = nil
         end
+      end
+
+      if last_error && !@connected_socket && !@tls_connected_socket &&
+          @tls_handshaking_sockets.empty? && @connecting_sockets.empty? &&
+          !@address_candidate_list.any? && !@hostname_resolution_result.pending?
+        raise last_error
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
@@ -220,6 +239,8 @@ class HTTPClient
       break if @connected_socket || @tls_connected_socket
     end
 
+    close_pending_connections
+
     socket = @tls_connected_socket || @connected_socket
     request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
     socket.write request_message
@@ -231,19 +252,15 @@ class HTTPClient
     puts status_line
     puts body
   ensure
+    close_pending_connections
+    close_socket(@tls_connected_socket)
+    close_socket(@connected_socket)
+
     @hostname_resolution_threads.each do |thread|
       thread.exit
     end
 
     @hostname_resolution_result.close_all
-
-    @connecting_sockets.each_key do |connecting_socket|
-      connecting_socket.close
-    end
-
-    @tls_handshaking_sockets.each_key do |ssl_socket|
-      ssl_socket.close rescue nil
-    end
   end
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
@@ -267,6 +284,22 @@ class HTTPClient
   end
 
   private
+
+  def close_socket(socket)
+    socket.close if socket && !socket.closed?
+  rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
+    # Continue cleanup without replacing the original connection/request error.
+    nil
+  end
+
+  def close_pending_connections
+    [@connecting_sockets, @tls_handshaking_sockets].each do |connections|
+      connections.each_key do |socket|
+        close_socket(socket)
+      end
+      connections.clear
+    end
+  end
 
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
@@ -355,13 +388,32 @@ class HTTPClient
 
   def nonblocking_connect_with_tls(tcp_socket, ctx, hostname)
     ssl_socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ctx)
+    ssl_socket.sync_close = true
     ssl_socket.hostname = hostname
-    begin
-      ssl_socket.connect_nonblock
-      @tls_connected_socket = ssl_socket
-    rescue IO::WaitReadable
-      @tls_handshaking_sockets[ssl_socket] = hostname
-    end
+
+    advance_tls_handshake(ssl_socket)
+  rescue OpenSSL::SSL::SSLError, SystemCallError => e
+    close_socket(ssl_socket)
+    close_socket(tcp_socket)
+    e
+  end
+
+  # Return nil on success or IO wait, and the exception on failure.
+  def advance_tls_handshake(ssl_socket)
+    ssl_socket.connect_nonblock
+    @tls_handshaking_sockets.delete(ssl_socket)
+    @tls_connected_socket = ssl_socket
+    nil
+  rescue IO::WaitReadable
+    @tls_handshaking_sockets[ssl_socket] = :read
+    nil
+  rescue IO::WaitWritable
+    @tls_handshaking_sockets[ssl_socket] = :write
+    nil
+  rescue OpenSSL::SSL::SSLError, SystemCallError => e
+    @tls_handshaking_sockets.delete(ssl_socket)
+    close_socket(ssl_socket)
+    e
   end
 
   def current_clock_time
