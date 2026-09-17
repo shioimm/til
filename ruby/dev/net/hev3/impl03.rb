@@ -79,6 +79,7 @@ class HTTPClient
             !@hostname_resolution_result.pending?
           begin
             @connected_socket = addrinfo.connect
+            break
           rescue SystemCallError => e
             last_error = e
             raise last_error
