@@ -31,7 +31,7 @@ class HTTPClient
   end
 
   def initialize
-    @use_ssl = ARGV[0] == :https
+    @use_ssl = ARGV[0] == "https"
     @port = @use_ssl ? HTTPS_PORT : HTTP_PORT
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
@@ -79,6 +79,7 @@ class HTTPClient
             !@hostname_resolution_result.pending?
           begin
             @connected_socket = addrinfo.connect
+            break
           rescue SystemCallError => e
             last_error = e
             raise last_error
