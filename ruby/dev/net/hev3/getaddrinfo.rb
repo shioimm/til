@@ -9,37 +9,43 @@ module MockGetaddrinfo
     }
   }
 
+  @config = { addresses: ADDRESSES, delay: nil, error: nil }
+
   class << self
-    # TODO configを設定できるようにする
-    def prepended(_)
-      @config = { addresses: ADDRESSES, delay: nil, error: nil }
+    attr_reader :config
+  end
+
+  def getaddrinfo(hostname, service, family = nil, *, **)
+    return super if numeric?(hostname)
+
+    config = MockGetaddrinfo.config
+    addresses = config[:addresses].fetch(hostname) do
+      raise SocketError, "no mock addresses configured for #{hostname}"
     end
 
-    def getaddrinfo(hostname, service, family = nil, *, **)
-      return super if numeric?(hostname)
+    raise config[:error] if config[:error]
+    sleep config[:delay] if config[:delay]
 
-      resolving_families(family).map { |family|
-        raise @config[:error] if @config[:error]
-        sleep @config[:delay] if @config[:delay]
-
-        Addrinfo.tcp(@config[hostname][family], service)
-      }
-    end
-
-    private
-
-    def resolving_families(family)
-      case family
-      when Socket::AF_INET6, Socket::AF_INET then [family]
-      else [Socket::AF_INET6, Socket::AF_INET]  # nil / AF_UNSPEC
+    resolving_families(family).flat_map do |resolved_family|
+      addresses.fetch(resolved_family, []).map do |address|
+        Addrinfo.tcp(address, service)
       end
     end
+  end
 
-    def numeric?(hostname)
-      IPAddr.new(hostname) && true
-    rescue IPAddr::InvalidAddressError
-      false
+  private
+
+  def resolving_families(family)
+    case family
+    when Socket::AF_INET6, Socket::AF_INET then [family]
+    else [Socket::AF_INET6, Socket::AF_INET]  # nil / AF_UNSPEC
     end
+  end
+
+  def numeric?(hostname)
+    IPAddr.new(hostname) && true
+  rescue IPAddr::InvalidAddressError
+    false
   end
 end
 
