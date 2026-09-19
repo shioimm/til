@@ -641,16 +641,14 @@ class HTTPClient
 
     def default_ctx
       ctx = ::OpenSSL::SSL::SSLContext.new
-      ctx.alpn_protocols = DEFAULT_ALPN
+      ctx.alpn_protocols = SUPPORTED_PROTOCOLS
       ctx
     end
 
     def create_address_candidate_from_rr!(rr)
-      alpn_protocols = extract_alpn_protocols_from_rr(rr)
-      return if alpn_protocols.empty?
+      return if extract_alpn_protocols_from_rr(rr).empty?
 
-      ctx = ::OpenSSL::SSL::SSLContext.new
-      ctx.alpn_protocols = alpn_protocols
+      ctx = default_ctx
       ipv6_address_hints = rr.params[6]&.addresses || []
       ipv4_address_hints = rr.params[4]&.addresses || []
       AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
