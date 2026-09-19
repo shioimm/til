@@ -243,15 +243,7 @@ class HTTPClient
     close_pending_connections
 
     socket = @tls_connected_socket || @connected_socket
-    request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
-    socket.write request_message
-
-    response_message = socket.read
-    status_line, *rest = response_message.split("\r\n")
-    _, body = rest.join("\r\n").split("\r\n\r\n", 2)
-
-    puts status_line
-    puts body
+    request(socket)
   ensure
     close_pending_connections
     close_socket(@tls_connected_socket)
@@ -285,6 +277,29 @@ class HTTPClient
   end
 
   private
+
+  def request(socket)
+    protocol = @use_ssl ? socket.alpn_protocol : nil
+
+    case protocol
+    when nil, "http/1.1"
+      request_http1(socket)
+    else
+      raise IOError, "unsupported negotiated ALPN: #{protocol}"
+    end
+  end
+
+  def request_http1(socket)
+    request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
+    socket.write request_message
+
+    response_message = socket.read
+    status_line, *rest = response_message.split("\r\n")
+    _, body = rest.join("\r\n").split("\r\n\r\n", 2)
+
+    puts status_line
+    puts body
+  end
 
   def close_socket(socket)
     socket.close if socket && !socket.closed?
