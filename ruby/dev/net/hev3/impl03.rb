@@ -306,12 +306,49 @@ class HTTPClient
     connection.on(:frame) { |bytes| socket.write(bytes) }
 
     stream = connection.new_stream
+    status = nil
+    body = "".b
+    completed = false
+    stream_error = nil
+    goaway_error = nil
+
+    stream.on(:headers) do |headers|
+      response_status = headers.to_h[":status"]
+      status = response_status if response_status && !response_status.start_with?("1")
+    end
+
+    stream.on(:data) { |chunk| body << chunk }
+
+    stream.on(:close) do |error|
+      stream_error = error
+      completed = true
+    end
+
+    connection.on(:goaway) do |last_stream, error, _payload|
+      next if completed
+
+      if error != :no_error || stream.id > last_stream
+        goaway_error ||= IOError.new("HTTP/2 GOAWAY: #{error}, last_stream=#{last_stream}, stream=#{stream.id}")
+      end
+    end
+
     stream.headers({
       ":method"    => "GET",
       ":scheme"    => "https",
       ":authority" => "#{HOST}:#{@port}",
       ":path"      => "/",
     }, end_stream: true)
+
+    until completed || goaway_error
+      connection << socket.readpartial(16_384)
+    end
+
+    raise goaway_error if goaway_error
+    raise IOError, "HTTP/2 stream failed: #{stream_error}" if stream_error
+    raise IOError, "HTTP/2 response missing final status" unless status
+
+    puts "HTTP/2 #{status}"
+    puts body
   end
 
   def close_socket(socket)
