@@ -282,6 +282,8 @@ class HTTPClient
     protocol = @use_ssl ? socket.alpn_protocol : nil
 
     case protocol
+    when "h2"
+      request_http2(socket)
     when nil, "http/1.1"
       request_http1(socket)
     else
@@ -564,7 +566,7 @@ class HTTPClient
   class AddressCandidateList
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
-    SUPPORTED_PROTOCOLS = ["http/1.1"].freeze
+    SUPPORTED_PROTOCOLS = ["h2", "http/1.1"].freeze
     DEFAULT_ALPN = ["http/1.1"].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
