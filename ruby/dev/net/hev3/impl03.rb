@@ -301,6 +301,19 @@ class HTTPClient
     puts body
   end
 
+  def request_http2(socket)
+    connection = HTTP2::Client.new
+    connection.on(:frame) { |bytes| socket.write(bytes) }
+
+    stream = connection.new_stream
+    stream.headers({
+      ":method"    => "GET",
+      ":scheme"    => "https",
+      ":authority" => "#{HOST}:#{@port}",
+      ":path"      => "/",
+    }, end_stream: true)
+  end
+
   def close_socket(socket)
     socket.close if socket && !socket.closed?
   rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
