@@ -12,6 +12,7 @@ class HTTPClient
   AAAA_TYPE  = Resolv::DNS::Resource::IN::AAAA
   A_TYPE     = Resolv::DNS::Resource::IN::A
   HTTPS_TYPE = Resolv::DNS::Resource::IN::HTTPS
+  NAT64_PREFIX_RESULT = :nat64_prefix_detected
 
   NAMESERVER = ["127.0.0.1", 5300]
   HOST = "localhost"
@@ -30,12 +31,13 @@ class HTTPClient
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @record_types = record_types
-    prefix = nat64_prefix
-    @record_types << A_TYPE if prefix
+
+    @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
 
     @hostname_resolution_result = HostnameResolutionResult.new
-    @address_candidate_list = AddressCandidateList.new(@record_types, self, nat64_prefix: prefix)
+    @address_candidate_list = AddressCandidateList.new(@record_types, self)
     @hostname_resolution_threads = []
+    @address_query_hostnames = []
     @connecting_sockets = {}
     @tls_handshaking_sockets = {}
     @connected_socket = nil
@@ -52,6 +54,7 @@ class HTTPClient
     @record_types.each do |type|
       resolve_hostname_asynchronously!(type)
     end
+    resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
 
     count = 0 if DEBUG
     last_error = nil
@@ -214,8 +217,12 @@ class HTTPClient
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
       if hostname_resolved.any?
         while (result = @hostname_resolution_result.get)
-          @address_candidate_list.add(result)
-          last_error = result.error unless result.success?
+          if result.type == NAT64_PREFIX_RESULT
+            resolve_hostname_with_nat64_prefix_asynchronously!(result.success? ? result.records.first : nil)
+          else
+            @address_candidate_list.add(result)
+            last_error = result.error unless result.success?
+          end
         end
         @hostname_resolution_result.close_if_done
 
@@ -237,23 +244,22 @@ class HTTPClient
       break if @connected_socket || @tls_connected_socket
     end
 
-    close_pending_connections
+    cancel_pending_operations
 
     socket = @tls_connected_socket || @connected_socket
     request(socket)
   ensure
-    close_pending_connections
+    cancel_pending_operations
     close_socket(@tls_connected_socket)
     close_socket(@connected_socket)
-
-    @hostname_resolution_threads.each do |thread|
-      thread.exit
-    end
-
-    @hostname_resolution_result.close_all
   end
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
+    if address_synthesis_needed?
+      if [AAAA_TYPE, A_TYPE].include?(type) && !@address_query_hostnames.include?(hostname)
+        @address_query_hostnames << hostname
+      end
+    end
     @hostname_resolution_result.count_up
 
     thread = Thread.new(type) do |type|
@@ -274,6 +280,32 @@ class HTTPClient
   end
 
   private
+
+  def resolve_nat64_prefix_asynchronously!
+    # Keep the result notifier open even if all destination queries finish first.
+    @hostname_resolution_result.count_up
+
+    thread = Thread.new do
+      prefix = detect_nat64_prefix!
+      @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
+    rescue => e
+      @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
+    end
+
+    Thread.pass
+    @hostname_resolution_threads.push(thread)
+  end
+
+  def resolve_hostname_with_nat64_prefix_asynchronously!(prefix)
+    return unless prefix
+
+    @address_candidate_list.nat64_prefix = prefix
+    @record_types << A_TYPE unless @record_types.include?(A_TYPE)
+
+    @address_query_hostnames.each do |hostname|
+      resolve_hostname_asynchronously!(A_TYPE, hostname)
+    end
+  end
 
   def request(socket)
     protocol = @use_ssl ? socket.alpn_protocol : nil
@@ -357,13 +389,17 @@ class HTTPClient
     nil
   end
 
-  def close_pending_connections
+  def cancel_pending_operations
     [@connecting_sockets, @tls_handshaking_sockets].each do |connections|
       connections.each_key do |socket|
         close_socket(socket)
       end
       connections.clear
     end
+
+    @hostname_resolution_threads.each(&:exit)
+    @hostname_resolution_threads.each(&:join)
+    @hostname_resolution_result.close_all
   end
 
   def initial_getresources(type)
@@ -384,6 +420,10 @@ class HTTPClient
     else
       raise "no network connectivity"
     end
+  end
+
+  def address_synthesis_needed?
+    ipv6_reachable? && !ipv4_reachable?
   end
 
   def ipv4_reachable?
@@ -420,17 +460,8 @@ class HTTPClient
     end
   end
 
-  def nat64_prefix
-    return @nat64_prefix if defined?(@nat64_prefix)
-
-    @nat64_prefix =
-      if ipv6_reachable? && !ipv4_reachable?
-        detect_nat64_prefix
-      end
-  end
-
-  def detect_nat64_prefix
-    NAT64PrefixDiscovery.new(resolver: @resolver).discover
+  def detect_nat64_prefix!
+    @nat64_discovery.discover!
   rescue Resolv::ResolvError, Resolv::ResolvTimeout
     nil
   end
@@ -551,18 +582,21 @@ class HTTPClient
     ].freeze
     NAT64_PREFIX_LENGTHS = [32, 40, 48, 56, 64, 96].freeze
 
+    attr_reader :prefix
+
     def initialize(resolver:)
       @resolver = resolver
+      @prefix = nil
     end
 
-    def discover
+    def discover!
       records = @resolver.getresources("ipv4only.arpa", AAAA_TYPE)
-      extract_prefix(records)
+      @prefix = extract_prefix!(records)
     end
 
     private
 
-    def extract_prefix(records)
+    def extract_prefix!(records)
       addresses = records.map { |rr|
         AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i)
       }
