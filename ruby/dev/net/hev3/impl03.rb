@@ -30,8 +30,11 @@ class HTTPClient
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @record_types = record_types
+    prefix = nat64_prefix
+    @record_types << A_TYPE if prefix
+
     @hostname_resolution_result = HostnameResolutionResult.new
-    @address_candidate_list = AddressCandidateList.new(@record_types, self, nat64_prefix:)
+    @address_candidate_list = AddressCandidateList.new(@record_types, self, nat64_prefix: prefix)
     @hostname_resolution_threads = []
     @connecting_sockets = {}
     @tls_handshaking_sockets = {}
@@ -375,7 +378,7 @@ class HTTPClient
     if ipv6_reachable? && ipv4_reachable?
       [HTTPS_TYPE, AAAA_TYPE, A_TYPE]
     elsif ipv6_reachable?
-      nat64_prefix ? [HTTPS_TYPE, AAAA_TYPE, A_TYPE] : [HTTPS_TYPE, AAAA_TYPE]
+      [HTTPS_TYPE, AAAA_TYPE]
     elsif ipv4_reachable?
       [HTTPS_TYPE, A_TYPE]
     else
@@ -600,8 +603,22 @@ class HTTPClient
       @last_type = nil
       @client = client
       @nat64_prefix = nat64_prefix
+      @pending_ipv4_hints = {}
+      @resolved_ipv4_hostnames = Set.new
       @alias_redirect_count = 0
       @queried_hostnames = [HOST]
+    end
+
+    def nat64_prefix=(prefix)
+      return if prefix.nil? || prefix == @nat64_prefix
+
+      @nat64_prefix = prefix
+      @pending_ipv4_hints.each do |key, hints|
+        data = @addresses.fetch(key)
+        data[HTTPS_TYPE][A_TYPE] = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        @resolved_types << A_TYPE if hints.any?
+      end
+      @pending_ipv4_hints.clear
     end
 
     def add(result)
@@ -646,9 +663,18 @@ class HTTPClient
 
           # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
           ipv6_hints = @record_types.include?(AAAA_TYPE) ? candidate.ipv6_address_hints : []
-          ipv4_hints = @record_types.include?(A_TYPE) ? synthesized_ipv4_hints : []
+          ipv4_hints = (@nat64_prefix || @record_types.include?(A_TYPE)) ? synthesized_ipv4_hints : []
 
-          @addresses[[hostname, priority]] = {
+          key = [hostname, priority]
+          @pending_ipv4_hints.delete(key)
+          if @resolved_ipv4_hostnames.include?(hostname)
+            ipv4_hints = []
+          elsif !@nat64_prefix && !@record_types.include?(A_TYPE)
+            # Retain unusable hints separately until a prefix is supplied.
+            @pending_ipv4_hints[key] = candidate.ipv4_address_hints
+          end
+
+          @addresses[key] = {
             AAAA_TYPE  => temp_rr&.dig(AAAA_TYPE) || [],
             A_TYPE     => temp_rr&.dig(A_TYPE) || [],
             HTTPS_TYPE => {
@@ -670,6 +696,11 @@ class HTTPClient
           end
         end
       elsif result.success?
+        if result.type == A_TYPE
+          @resolved_ipv4_hostnames << result.hostname
+          @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
+        end
+
         key =
           @addresses.keys.find { |(hostname, _priority)| hostname == result.hostname } ||
           [result.hostname, Float::INFINITY]
