@@ -425,7 +425,11 @@ class HTTPClient
 
   def nat64_prefix
     return @nat64_prefix if defined?(@nat64_prefix)
-    @nat64_prefix = detect_nat64_prefix
+
+    @nat64_prefix =
+      if ipv6_reachable? && !ipv4_reachable?
+        detect_nat64_prefix
+      end
   end
 
   def detect_nat64_prefix
