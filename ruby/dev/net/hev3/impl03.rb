@@ -752,13 +752,11 @@ class HTTPClient
       @candidates
         .group_by { |(_hostname, priority), _| priority }
         .sort_by { |priority, _entries| priority }
-        .each do |_priority, entries|
+        .each do |_priority, candidates|
           precedences.each do |type|
-            candidates = entries.select { |_priority, candidate| address_available?(candidate, type) }
-            next if candidates.empty?
+            candidate, address, hostname = take_available_address(candidates, type)
+            next unless candidate
 
-            (hostname, _priority), candidate = candidates.to_a.sample
-            address = candidate.addresses[type].shift || candidate.address_hints(type).shift
             @last_type = type
             return [candidate.ctx, address, hostname, candidate.port]
           end
@@ -878,6 +876,15 @@ class HTTPClient
       elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6
       else PRIORITY_ON_V4
       end
+    end
+
+    def take_available_address(candidates, type)
+      available_candidates = candidates.select { |_key, candidate| address_available?(candidate, type) }
+      return if available_candidates.empty?
+
+      (hostname, _priority), candidate = available_candidates.sample
+      address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+      [candidate, address, hostname]
     end
 
     def address_available?(candidate, type)
