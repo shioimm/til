@@ -716,11 +716,7 @@ class HTTPClient
           @resolved_types << AAAA_TYPE if ipv6_hints.any?
           @resolved_types << A_TYPE if ipv4_hints.any?
 
-          if !@queried_hostnames.include?(hostname)
-            @queried_hostnames << hostname
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, hostname) if @record_types.include?(AAAA_TYPE)
-            @client.resolve_hostname_asynchronously!(A_TYPE, hostname) if @record_types.include?(A_TYPE)
-          end
+          resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
         end
       elsif result.success?
         addresses = result.records.map(&:address)
@@ -809,6 +805,16 @@ class HTTPClient
 
     def ipv4_addresses_usable?
       !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
+    end
+
+    def queried_hostname?(hostname)
+      @queried_hostnames.include?(hostname)
+    end
+
+    def resolve_target_addresses!(target_name)
+      @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
+      @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+      @queried_hostnames << target_name
     end
 
     def default_ctx
