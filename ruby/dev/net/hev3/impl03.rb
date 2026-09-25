@@ -686,18 +686,16 @@ class HTTPClient
 
           @candidates.delete([hostname, Float::INFINITY])
 
-          ipv4_address_hints = synthesized_ipv4_address_hints(candidate.ipv4_address_hints)
-
           # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
-          ipv6_hints = @record_types.include?(AAAA_TYPE) ? candidate.ipv6_address_hints : []
-          ipv4_hints = (@nat64_prefix || @record_types.include?(A_TYPE)) ? ipv4_address_hints : []
+          ipv6_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
+          ipv4_hints = ipv4_addresses_usable? ? synthesized_ipv4_address_hints(candidate.ipv4_address_hints) : []
 
           key = [hostname, priority, candidate.rr]
           @pending_ipv4_hints.delete(key)
 
           if @resolved_ipv4_hostnames.include?(hostname)
             ipv4_hints = []
-          elsif !@nat64_prefix && !@record_types.include?(A_TYPE)
+          elsif !ipv4_addresses_usable?
             # Retain unusable hints separately until a prefix is supplied.
             @pending_ipv4_hints[key] = candidate.ipv4_address_hints
           end
@@ -778,7 +776,7 @@ class HTTPClient
     end
 
     def preferred_type
-      @record_types.include?(AAAA_TYPE) ? AAAA_TYPE : A_TYPE
+      ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
     def empty?
@@ -805,6 +803,14 @@ class HTTPClient
       @nat64_prefix ?
         ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
         ipv4_address_hints
+    end
+
+    def ipv6_addresses_usable?
+      @record_types.include?(AAAA_TYPE)
+    end
+
+    def ipv4_addresses_usable?
+      !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
     end
 
     def default_ctx
