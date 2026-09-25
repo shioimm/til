@@ -682,7 +682,6 @@ class HTTPClient
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
-          priority = candidate.rr.priority
 
           @candidates.delete([hostname, Float::INFINITY])
 
@@ -690,7 +689,7 @@ class HTTPClient
           ipv6_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
           ipv4_hints = ipv4_addresses_usable? ? synthesized_ipv4_address_hints(candidate.ipv4_address_hints) : []
 
-          key = [hostname, priority, candidate.rr]
+          key = [hostname, candidate.rr.priority, candidate.rr]
           @pending_ipv4_hints.delete(key)
 
           if @resolved_ipv4_hostnames.include?(hostname)
