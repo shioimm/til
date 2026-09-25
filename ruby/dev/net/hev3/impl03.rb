@@ -685,15 +685,12 @@ class HTTPClient
           priority = candidate.rr.priority
 
           @candidates.delete([hostname, Float::INFINITY])
-          resolved = @resolved_addresses.fetch(hostname, {})
 
-          synthesized_ipv4_hints = @nat64_prefix ?
-            candidate.ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
-            candidate.ipv4_address_hints
+          ipv4_address_hints = synthesized_ipv4_address_hints(candidate.ipv4_address_hints)
 
           # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
           ipv6_hints = @record_types.include?(AAAA_TYPE) ? candidate.ipv6_address_hints : []
-          ipv4_hints = (@nat64_prefix || @record_types.include?(A_TYPE)) ? synthesized_ipv4_hints : []
+          ipv4_hints = (@nat64_prefix || @record_types.include?(A_TYPE)) ? ipv4_address_hints : []
 
           key = [hostname, priority, candidate.rr]
           @pending_ipv4_hints.delete(key)
@@ -705,6 +702,7 @@ class HTTPClient
             @pending_ipv4_hints[key] = candidate.ipv4_address_hints
           end
 
+          resolved = @resolved_addresses.fetch(hostname, {})
           @candidates[key] = {
             AAAA_TYPE => resolved.fetch(AAAA_TYPE, []).dup,
             A_TYPE    => resolved.fetch(A_TYPE, []).dup,
@@ -801,6 +799,12 @@ class HTTPClient
       else
         @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
+    end
+
+    def synthesized_ipv4_address_hints(ipv4_address_hints)
+      @nat64_prefix ?
+        ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
+        ipv4_address_hints
     end
 
     def default_ctx
