@@ -669,14 +669,7 @@ class HTTPClient
         alias_record = result.records.select(&:alias_mode?).sample
 
         if alias_record
-          @alias_redirect_count += 1
-
-          if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
-            @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
-          else
-            @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
-          end
-
+          resolve_alias!(alias_record)
           return
         end
 
@@ -799,6 +792,16 @@ class HTTPClient
     end
 
     private
+
+    def resolve_alias!(alias_record)
+      @alias_redirect_count += 1
+
+      if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
+        @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
+      else
+        @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
+      end
+    end
 
     def default_ctx
       ctx = ::OpenSSL::SSL::SSLContext.new
