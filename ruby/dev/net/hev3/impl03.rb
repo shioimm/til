@@ -628,7 +628,15 @@ class HTTPClient
     DEFAULT_ALPN = ["http/1.1"].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
-    AddressCandidate = Data.define(:rr, :ctx, :ipv6_address_hints, :ipv4_address_hints)
+    ConnectionCandidate = Data.define(:rr, :ctx, :addresses, :ipv6_address_hints, :ipv4_address_hints) {
+      def port
+        rr&.params&.[](3)&.port
+      end
+
+      def address_hints(type)
+        type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
+      end
+    }
 
     def initialize(record_types, client, nat64_prefix: nil)
       @record_types = record_types
@@ -649,8 +657,9 @@ class HTTPClient
 
       @nat64_prefix = prefix
       @pending_ipv4_hints.each do |key, hints|
-        data = @candidates.fetch(key)
-        data[HTTPS_TYPE][A_TYPE] = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        candidate = @candidates.fetch(key)
+        normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
         @resolved_types << A_TYPE if hints.any?
       end
       @pending_ipv4_hints.clear
@@ -673,7 +682,7 @@ class HTTPClient
           return
         end
 
-        supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
+        supported_records = result.records.map { |rr| create_connection_candidate_from_rr!(rr) }.compact
         @resolved_types << HTTPS_TYPE
         return if supported_records.empty?
 
@@ -696,26 +705,22 @@ class HTTPClient
             ipv4_hints = []
           elsif !ipv4_addresses_usable?
             # Retain unusable hints separately until a prefix is supplied.
-            @pending_ipv4_hints[key] = candidate.ipv4_address_hints
+            @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
           end
 
           resolved = @resolved_addresses.fetch(hostname, {})
-          @candidates[key] = {
-            AAAA_TYPE => resolved.fetch(AAAA_TYPE, []).dup,
-            A_TYPE    => resolved.fetch(A_TYPE, []).dup,
-            HTTPS_TYPE  => {
-              AAAA_TYPE => resolved.key?(AAAA_TYPE) ? [] : ipv6_hints.dup,
-              A_TYPE    => resolved.key?(A_TYPE) ? [] : ipv4_hints.dup,
-            },
-            :ctx  => candidate.ctx,
-            :port => candidate.rr.params[3]&.port,
-          }
+
+          candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
+          candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
+          candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_hints)
+          candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_hints)
+
+          @candidates[key] = candidate
 
           # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
           # treated as positive answers until the real AAAA/A records arrive.
           @resolved_types << AAAA_TYPE if ipv6_hints.any?
           @resolved_types << A_TYPE if ipv4_hints.any?
-
           resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
         end
       elsif result.success?
@@ -733,9 +738,10 @@ class HTTPClient
         keys = [[result.hostname, Float::INFINITY]] if keys.empty?
 
         keys.each do |key|
-          @candidates[key] ||= { AAAA_TYPE => [], A_TYPE => [], ctx: default_ctx }
-          @candidates[key][result.type] = addresses.dup
-          @candidates[key][HTTPS_TYPE]&.delete(result.type)
+          @candidates[key] ||= build_connection_candidate
+          candidate = @candidates[key]
+          candidate.addresses[result.type] = addresses.dup
+          candidate.address_hints(result.type).clear
         end
       end
 
@@ -748,13 +754,13 @@ class HTTPClient
         .sort_by { |priority, _entries| priority }
         .each do |_priority, entries|
           precedences.each do |type|
-            candidates = entries.select { |_priority, data| address_available?(data, type) }
+            candidates = entries.select { |_priority, candidate| address_available?(candidate, type) }
             next if candidates.empty?
 
-            (hostname, _priority), data = candidates.to_a.sample
-            address = data[type]&.shift || data[HTTPS_TYPE]&.dig(type)&.shift
+            (hostname, _priority), candidate = candidates.to_a.sample
+            address = candidate.addresses[type].shift || candidate.address_hints(type).shift
             @last_type = type
-            return [data[:ctx], address, hostname, data[:port]]
+            return [candidate.ctx, address, hostname, candidate.port]
           end
         end
 
@@ -774,7 +780,7 @@ class HTTPClient
     end
 
     def empty?
-      @candidates.none? { |_, data| [AAAA_TYPE, A_TYPE].any? { |type| address_available?(data, type) } }
+      @candidates.none? { |_, candidate| [AAAA_TYPE, A_TYPE].any? { |type| address_available?(candidate, type) } }
     end
 
     def any?
@@ -823,13 +829,26 @@ class HTTPClient
       ctx
     end
 
-    def create_address_candidate_from_rr!(rr)
+    def create_connection_candidate_from_rr!(rr)
       return if extract_alpn_protocols_from_rr(rr).empty?
 
-      ctx = default_ctx
-      ipv6_address_hints = rr.params[6]&.addresses || []
-      ipv4_address_hints = rr.params[4]&.addresses || []
-      AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+      ConnectionCandidate.new(
+        rr:,
+        ctx: default_ctx,
+        addresses: { AAAA_TYPE => [], A_TYPE => [] },
+        ipv6_address_hints: (rr.params[6]&.addresses || []).dup,
+        ipv4_address_hints: (rr.params[4]&.addresses || []).dup,
+      )
+    end
+
+    def build_connection_candidate
+      ConnectionCandidate.new(
+        rr: nil,
+        ctx: default_ctx,
+        addresses: { AAAA_TYPE => [], A_TYPE => [] },
+        ipv6_address_hints: [],
+        ipv4_address_hints: [],
+      )
     end
 
     def extract_alpn_protocols_from_rr(rr)
@@ -861,8 +880,8 @@ class HTTPClient
       end
     end
 
-    def address_available?(data, type)
-      data[type]&.any? || data[HTTPS_TYPE]&.dig(type)&.any?
+    def address_available?(candidate, type)
+      candidate.addresses[type].any? || candidate.address_hints(type).any?
     end
   end
 
