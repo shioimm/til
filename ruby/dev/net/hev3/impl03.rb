@@ -687,7 +687,7 @@ class HTTPClient
 
           # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
           ipv6_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
-          ipv4_hints = ipv4_addresses_usable? ? synthesized_ipv4_address_hints(candidate.ipv4_address_hints) : []
+          ipv4_hints = ipv4_addresses_usable? ? normalize_ipv4_addresses(candidate.ipv4_address_hints) : []
 
           key = [hostname, candidate.rr.priority, candidate.rr]
           @pending_ipv4_hints.delete(key)
@@ -723,14 +723,13 @@ class HTTPClient
           end
         end
       elsif result.success?
+        addresses = result.records.map(&:address)
+
         if result.type == A_TYPE
           @resolved_ipv4_hostnames << result.hostname
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
+          addresses = normalize_ipv4_addresses(addresses)
         end
-
-        addresses = result.type == A_TYPE && @nat64_prefix ?
-          result.records.map { |rr| synthesize_with_nat64_prefix(rr.address) } :
-          result.records.map(&:address)
 
         (@resolved_addresses[result.hostname] ||= {})[result.type] = addresses
 
@@ -798,7 +797,7 @@ class HTTPClient
       end
     end
 
-    def synthesized_ipv4_address_hints(ipv4_address_hints)
+    def normalize_ipv4_addresses(ipv4_address_hints)
       @nat64_prefix ?
         ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
         ipv4_address_hints
