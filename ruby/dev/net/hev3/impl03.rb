@@ -63,15 +63,15 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@addresses)}" if DEBUG
+      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@candidates)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
         @first_connection_attempted = true
-        ctx, address = @address_candidate_list.next_candidate
-        addrinfo = Addrinfo.tcp(address.to_s, @port)
+        ctx, address, _hostname, port = @address_candidate_list.next_candidate
+        addrinfo = Addrinfo.tcp(address.to_s, port || @port)
 
         if !@use_ssl &&
             @address_candidate_list.empty? &&
@@ -628,11 +628,20 @@ class HTTPClient
     DEFAULT_ALPN = ["http/1.1"].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
-    AddressCandidate = Data.define(:rr, :ctx, :ipv6_address_hints, :ipv4_address_hints)
+    ConnectionCandidate = Data.define(:rr, :ctx, :addresses, :ipv6_address_hints, :ipv4_address_hints) {
+      def port
+        rr&.params&.[](3)&.port
+      end
+
+      def address_hints(type)
+        type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
+      end
+    }
 
     def initialize(record_types, client, nat64_prefix: nil)
       @record_types = record_types
-      @addresses = {}
+      @candidates = {}
+      @resolved_addresses = {}
       @resolved_types = Set.new
       @last_type = nil
       @client = client
@@ -648,8 +657,9 @@ class HTTPClient
 
       @nat64_prefix = prefix
       @pending_ipv4_hints.each do |key, hints|
-        data = @addresses.fetch(key)
-        data[HTTPS_TYPE][A_TYPE] = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        candidate = @candidates.fetch(key)
+        normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
         @resolved_types << A_TYPE if hints.any?
       end
       @pending_ipv4_hints.clear
@@ -668,18 +678,11 @@ class HTTPClient
         alias_record = result.records.select(&:alias_mode?).sample
 
         if alias_record
-          @alias_redirect_count += 1
-
-          if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
-            @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
-          else
-            @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
-          end
-
+          resolve_alias!(alias_record)
           return
         end
 
-        supported_records = result.records.map { |rr| create_address_candidate_from_rr!(rr) }.compact
+        supported_records = result.records.map { |rr| create_connection_candidate_from_rr!(rr) }.compact
         @resolved_types << HTTPS_TYPE
         return if supported_records.empty?
 
@@ -688,82 +691,74 @@ class HTTPClient
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
-          priority = candidate.rr.priority
-          temp_rr = @addresses.delete([hostname, Float::INFINITY])
 
-          synthesized_ipv4_hints = @nat64_prefix ?
-            candidate.ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
-            candidate.ipv4_address_hints
+          @candidates.delete([hostname, Float::INFINITY])
 
           # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
-          ipv6_hints = @record_types.include?(AAAA_TYPE) ? candidate.ipv6_address_hints : []
-          ipv4_hints = (@nat64_prefix || @record_types.include?(A_TYPE)) ? synthesized_ipv4_hints : []
+          ipv6_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
+          ipv4_hints = ipv4_addresses_usable? ? normalize_ipv4_addresses(candidate.ipv4_address_hints) : []
 
-          key = [hostname, priority]
+          key = [hostname, candidate.rr.priority, candidate.rr]
           @pending_ipv4_hints.delete(key)
+
           if @resolved_ipv4_hostnames.include?(hostname)
             ipv4_hints = []
-          elsif !@nat64_prefix && !@record_types.include?(A_TYPE)
+          elsif !ipv4_addresses_usable?
             # Retain unusable hints separately until a prefix is supplied.
-            @pending_ipv4_hints[key] = candidate.ipv4_address_hints
+            @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
           end
 
-          @addresses[key] = {
-            AAAA_TYPE  => temp_rr&.dig(AAAA_TYPE) || [],
-            A_TYPE     => temp_rr&.dig(A_TYPE) || [],
-            HTTPS_TYPE => {
-              AAAA_TYPE => temp_rr&.dig(AAAA_TYPE)&.any? ? [] : ipv6_hints,
-              A_TYPE    => temp_rr&.dig(A_TYPE)&.any? ? [] : ipv4_hints,
-            },
-            :ctx       => candidate.ctx,
-          }
+          resolved = @resolved_addresses.fetch(hostname, {})
+
+          candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
+          candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
+          candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_hints)
+          candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_hints)
+
+          @candidates[key] = candidate
 
           # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
           # treated as positive answers until the real AAAA/A records arrive.
           @resolved_types << AAAA_TYPE if ipv6_hints.any?
           @resolved_types << A_TYPE if ipv4_hints.any?
-
-          if !@queried_hostnames.include?(hostname)
-            @queried_hostnames << hostname
-            @client.resolve_hostname_asynchronously!(AAAA_TYPE, hostname) if @record_types.include?(AAAA_TYPE)
-            @client.resolve_hostname_asynchronously!(A_TYPE, hostname) if @record_types.include?(A_TYPE)
-          end
+          resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
         end
       elsif result.success?
+        addresses = result.records.map(&:address)
+
         if result.type == A_TYPE
           @resolved_ipv4_hostnames << result.hostname
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
+          addresses = normalize_ipv4_addresses(addresses)
         end
 
-        key =
-          @addresses.keys.find { |(hostname, _priority)| hostname == result.hostname } ||
-          [result.hostname, Float::INFINITY]
+        (@resolved_addresses[result.hostname] ||= {})[result.type] = addresses
 
-        @addresses[key] ||= { AAAA_TYPE => [], A_TYPE => [], ctx: default_ctx }
+        keys = @candidates.keys.select { |(hostname, _priority)| hostname == result.hostname }
+        keys = [[result.hostname, Float::INFINITY]] if keys.empty?
 
-        @addresses[key][result.type] = result.type == A_TYPE && @nat64_prefix ?
-          result.records.map { |rr| synthesize_with_nat64_prefix(rr.address) } :
-          result.records.map(&:address)
-
-        @addresses[key][HTTPS_TYPE]&.delete(result.type)
+        keys.each do |key|
+          @candidates[key] ||= build_connection_candidate
+          candidate = @candidates[key]
+          candidate.addresses[result.type] = addresses.dup
+          candidate.address_hints(result.type).clear
+        end
       end
 
       @resolved_types << result.type
     end
 
     def next_candidate
-      @addresses
+      @candidates
         .group_by { |(_hostname, priority), _| priority }
         .sort_by { |priority, _entries| priority }
-        .each do |_priority, entries|
+        .each do |_priority, candidates|
           precedences.each do |type|
-            candidates = entries.select { |_priority, data| address_available?(data, type) }
-            next if candidates.empty?
+            candidate, address, hostname = take_available_address(candidates, type)
+            next unless candidate
 
-            (hostname, _priority), data = candidates.to_a.sample
-            address = data[type]&.shift || data[HTTPS_TYPE]&.dig(type)&.shift
             @last_type = type
-            return [data[:ctx], address, hostname]
+            return [candidate.ctx, address, hostname, candidate.port]
           end
         end
 
@@ -779,11 +774,11 @@ class HTTPClient
     end
 
     def preferred_type
-      @record_types.include?(AAAA_TYPE) ? AAAA_TYPE : A_TYPE
+      ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
     def empty?
-      @addresses.none? { |_, data| [AAAA_TYPE, A_TYPE].any? { |type| address_available?(data, type) } }
+      @candidates.none? { |_, candidate| [AAAA_TYPE, A_TYPE].any? { |type| address_available?(candidate, type) } }
     end
 
     def any?
@@ -792,19 +787,66 @@ class HTTPClient
 
     private
 
+    def resolve_alias!(alias_record)
+      @alias_redirect_count += 1
+
+      if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
+        @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
+      else
+        @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
+      end
+    end
+
+    def normalize_ipv4_addresses(ipv4_address_hints)
+      @nat64_prefix ?
+        ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
+        ipv4_address_hints
+    end
+
+    def ipv6_addresses_usable?
+      @record_types.include?(AAAA_TYPE)
+    end
+
+    def ipv4_addresses_usable?
+      !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
+    end
+
+    def queried_hostname?(hostname)
+      @queried_hostnames.include?(hostname)
+    end
+
+    def resolve_target_addresses!(target_name)
+      @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
+      @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+      @queried_hostnames << target_name
+    end
+
     def default_ctx
       ctx = ::OpenSSL::SSL::SSLContext.new
       ctx.alpn_protocols = SUPPORTED_PROTOCOLS
       ctx
     end
 
-    def create_address_candidate_from_rr!(rr)
+    def create_connection_candidate_from_rr!(rr)
       return if extract_alpn_protocols_from_rr(rr).empty?
 
-      ctx = default_ctx
-      ipv6_address_hints = rr.params[6]&.addresses || []
-      ipv4_address_hints = rr.params[4]&.addresses || []
-      AddressCandidate.new(rr:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+      ConnectionCandidate.new(
+        rr:,
+        ctx: default_ctx,
+        addresses: { AAAA_TYPE => [], A_TYPE => [] },
+        ipv6_address_hints: (rr.params[6]&.addresses || []).dup,
+        ipv4_address_hints: (rr.params[4]&.addresses || []).dup,
+      )
+    end
+
+    def build_connection_candidate
+      ConnectionCandidate.new(
+        rr: nil,
+        ctx: default_ctx,
+        addresses: { AAAA_TYPE => [], A_TYPE => [] },
+        ipv6_address_hints: [],
+        ipv4_address_hints: [],
+      )
     end
 
     def extract_alpn_protocols_from_rr(rr)
@@ -836,8 +878,17 @@ class HTTPClient
       end
     end
 
-    def address_available?(data, type)
-      data[type]&.any? || data[HTTPS_TYPE]&.dig(type)&.any?
+    def take_available_address(candidates, type)
+      available_candidates = candidates.select { |_key, candidate| address_available?(candidate, type) }
+      return if available_candidates.empty?
+
+      (hostname, _priority), candidate = available_candidates.sample
+      address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+      [candidate, address, hostname]
+    end
+
+    def address_available?(candidate, type)
+      candidate.addresses[type].any? || candidate.address_hints(type).any?
     end
   end
 
