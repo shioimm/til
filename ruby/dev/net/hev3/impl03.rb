@@ -651,6 +651,7 @@ class HTTPClient
       @pending_ipv4_hints = {}
       @resolved_ipv4_hostnames = Set.new
       @alias_redirect_count = 0
+      @alias_fallback_hostname = nil
       @queried_hostnames = [HOST]
     end
 
@@ -670,9 +671,11 @@ class HTTPClient
     def add(result)
       if result.type == HTTPS_TYPE
         if result.records.empty?
-          if result.success? && @alias_redirect_count.positive? && !queried_hostname?(result.hostname)
-            resolve_target_addresses!(result.hostname)
+          if result.success? && @alias_redirect_count.positive?
+            @alias_fallback_hostname = result.hostname
+            resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
           end
+
           @resolved_types << HTTPS_TYPE
           return
         end
@@ -730,6 +733,7 @@ class HTTPClient
         end
 
         if result.success? && @alias_redirect_count.positive?
+          @alias_fallback_hostname = result.hostname
           key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate
 
@@ -766,7 +770,14 @@ class HTTPClient
 
     def next_candidate
       @candidates
-        .group_by { |(_hostname, priority), _| priority }
+        .group_by { |(hostname, priority), candidate|
+          group =
+            if    candidate.rr then 0
+            elsif hostname == @alias_fallback_hostname then 1
+            else  2
+            end
+          [group, priority]
+        }
         .sort_by { |priority, _entries| priority }
         .each do |_priority, candidates|
           precedences.each do |type|
