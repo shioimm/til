@@ -725,10 +725,19 @@ class HTTPClient
           # treated as positive answers until the real AAAA/A records arrive.
           @resolved_types << AAAA_TYPE if ipv6_hints.any?
           @resolved_types << A_TYPE if ipv4_hints.any?
+
           resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
         end
-        if result.success? && @alias_redirect_count.positive? && !queried_hostname?(result.hostname)
-          resolve_target_addresses!(result.hostname)
+
+        if result.success? && @alias_redirect_count.positive?
+          key = [result.hostname, Float::INFINITY]
+          @candidates[key] ||= build_connection_candidate
+
+          @resolved_addresses.fetch(result.hostname, {}).each do |type, addresses|
+            @candidates[key].addresses[type] = addresses.dup
+          end
+
+          resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
         end
       elsif result.success?
         addresses = result.records.map(&:address)
