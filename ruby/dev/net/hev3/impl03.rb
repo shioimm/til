@@ -626,6 +626,8 @@ class HTTPClient
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["h2", "http/1.1"].freeze
     DEFAULT_ALPN = ["http/1.1"].freeze
+    # mandatory, alpn, no-default-alpn, port, ipv4hint, ipv6hint
+    SUPPORTED_SVC_PARAM_KEYS = [0, 1, 2, 3, 4, 6].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
     ConnectionCandidate = Data.define(:rr, :ctx, :addresses, :ipv6_address_hints, :ipv4_address_hints) {
@@ -828,6 +830,7 @@ class HTTPClient
     end
 
     def create_connection_candidate_from_rr!(rr)
+      return unless mandatory_params_supported?(rr)
       return if extract_alpn_protocols_from_rr(rr).empty?
 
       ConnectionCandidate.new(
@@ -849,9 +852,24 @@ class HTTPClient
       )
     end
 
+    def mandatory_params_supported?(rr)
+      mandatory = rr.params[0]
+      return true unless mandatory
+
+      keys = mandatory.keys
+      return false if keys.empty?
+      return false if keys.include?(0)
+      return false unless keys == keys.sort.uniq
+
+      keys.all? { SUPPORTED_SVC_PARAM_KEYS.include?(it) && !rr.params[it].nil? }
+    end
+
     def extract_alpn_protocols_from_rr(rr)
       alpn_param = rr.params[1]&.protocol_ids
       no_default_alpn = rr.params[2]
+
+      return [] if no_default_alpn && alpn_param.nil?
+      return [] if alpn_param&.empty?
 
       svcb_alpn_set =
         if alpn_param.nil?
