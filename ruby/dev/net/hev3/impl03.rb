@@ -647,6 +647,7 @@ class HTTPClient
       @resolved_addresses = {}
       @resolved_types = Set.new
       @last_types = {}
+      @selected_addresses = {}
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -761,7 +762,7 @@ class HTTPClient
         keys.each do |key|
           @candidates[key] ||= build_connection_candidate
           candidate = @candidates[key]
-          candidate.addresses[result.type] = addresses.dup
+          candidate.addresses[result.type] = addresses.reject { @selected_addresses[key]&.include?(it.to_s) }
           candidate.address_hints(result.type).clear
         end
       end
@@ -790,6 +791,8 @@ class HTTPClient
               next unless address
 
               @last_types[key] = type
+              @selected_addresses[key] ||= []
+              @selected_addresses[key] << address.to_s
               return [candidate.ctx, address, key.first, candidate.port]
             end
           end
