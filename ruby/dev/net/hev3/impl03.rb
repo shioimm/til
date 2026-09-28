@@ -692,7 +692,7 @@ class HTTPClient
           return
         end
 
-        supported_records = result.records.map { |rr| create_connection_candidate_from_rr!(rr) }.compact
+        supported_records = result.records.filter_map { |rr| build_connection_candidate!(rr) }
         @resolved_types << HTTPS_TYPE
 
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
@@ -737,7 +737,7 @@ class HTTPClient
         if result.success? && @alias_redirect_count.positive?
           @alias_fallback_hostname = result.hostname
           key = [result.hostname, Float::INFINITY]
-          @candidates[key] ||= build_connection_candidate
+          @candidates[key] ||= build_connection_candidate!
 
           @resolved_addresses.fetch(result.hostname, {}).each do |type, addresses|
             @candidates[key].addresses[type] = addresses.dup
@@ -760,7 +760,7 @@ class HTTPClient
         keys = [[result.hostname, Float::INFINITY]] if keys.empty?
 
         keys.each do |key|
-          @candidates[key] ||= build_connection_candidate
+          @candidates[key] ||= build_connection_candidate!
           candidate = @candidates[key]
           candidate.addresses[result.type] = addresses.reject { @selected_addresses[key]&.include?(it.to_s) }
           candidate.address_hints(result.type).clear
@@ -863,26 +863,18 @@ class HTTPClient
       ctx
     end
 
-    def create_connection_candidate_from_rr!(rr)
-      return unless mandatory_params_supported?(rr)
-      return if extract_alpn_protocols_from_rr(rr).empty?
+    def build_connection_candidate!(rr = nil)
+      if rr
+        return if !mandatory_params_supported?(rr)
+        return if extract_alpn_protocols_from_rr(rr).empty?
+      end
 
       ConnectionCandidate.new(
         rr:,
         ctx: default_ctx,
         addresses: { AAAA_TYPE => [], A_TYPE => [] },
-        ipv6_address_hints: (rr.params[6]&.addresses || []).dup,
-        ipv4_address_hints: (rr.params[4]&.addresses || []).dup,
-      )
-    end
-
-    def build_connection_candidate
-      ConnectionCandidate.new(
-        rr: nil,
-        ctx: default_ctx,
-        addresses: { AAAA_TYPE => [], A_TYPE => [] },
-        ipv6_address_hints: [],
-        ipv4_address_hints: [],
+        ipv6_address_hints: (rr&.params&.[](6)&.addresses || []).dup,
+        ipv4_address_hints: (rr&.params&.[](4)&.addresses || []).dup,
       )
     end
 
