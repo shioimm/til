@@ -685,14 +685,11 @@ class HTTPClient
         end
 
         supported_records = result.records.filter_map { |rr| build_connection_candidate!(rr) }
-        @resolved_types << HTTPS_TYPE
-
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
 
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
-
           @candidates.delete([hostname, Float::INFINITY])
 
           # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
@@ -745,7 +742,8 @@ class HTTPClient
           addresses = normalize_ipv4_addresses(addresses)
         end
 
-        (@resolved_addresses[result.hostname] ||= {})[result.type] = addresses
+        @resolved_addresses[result.hostname] ||= {}
+        @resolved_addresses[result.hostname][result.type] = addresses
 
         keys = @candidates.keys.select { |(hostname, _priority)| hostname == result.hostname }
         keys = [[result.hostname, Float::INFINITY]] if keys.empty?
