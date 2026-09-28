@@ -643,6 +643,7 @@ class HTTPClient
     def initialize(record_types, client, nat64_prefix: nil)
       @record_types = record_types
       @candidates = {}
+      @candidate_order = {}
       @resolved_addresses = {}
       @resolved_types = Set.new
       @last_types = {}
@@ -780,19 +781,17 @@ class HTTPClient
         }
         .sort_by { |priority, _entries| priority }
         .each do |_priority, candidates|
-          available_candidates = candidates.select { |_key, candidate|
-            [AAAA_TYPE, A_TYPE].any? { |type| address_available?(candidate, type) }
-          }
-          key, candidate = available_candidates.sample
-          next unless candidate
+          ordered_candidates = candidates.sort_by { |key, _candidate| @candidate_order[key] ||= rand }
 
-          precedences(key).each do |type|
-            address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+          ordered_candidates.each do |key, candidate|
+            precedences(key).each do |type|
+              address = candidate.addresses[type].shift || candidate.address_hints(type).shift
 
-            next unless address
+              next unless address
 
-            @last_types[key] = type
-            return [candidate.ctx, address, key.first, candidate.port]
+              @last_types[key] = type
+              return [candidate.ctx, address, key.first, candidate.port]
+            end
           end
         end
 
