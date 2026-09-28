@@ -651,7 +651,6 @@ class HTTPClient
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
-      @resolved_ipv4_hostnames = Set.new
       @alias_redirect_count = 0
       @alias_fallback_hostname = nil
       @queried_hostnames = [HOST]
@@ -710,14 +709,14 @@ class HTTPClient
           key = [hostname, candidate.rr.priority, candidate.rr]
           @pending_ipv4_hints.delete(key)
 
-          if @resolved_ipv4_hostnames.include?(hostname)
+          resolved = @resolved_addresses.fetch(hostname, {})
+
+          if resolved.key?(A_TYPE)
             ipv4_hints = []
           elsif !ipv4_addresses_usable?
             # Retain unusable hints separately until a prefix is supplied.
             @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
           end
-
-          resolved = @resolved_addresses.fetch(hostname, {})
 
           candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
           candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
@@ -749,7 +748,6 @@ class HTTPClient
         addresses = result.records.map(&:address)
 
         if result.type == A_TYPE
-          @resolved_ipv4_hostnames << result.hostname
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
           addresses = normalize_ipv4_addresses(addresses)
         end
