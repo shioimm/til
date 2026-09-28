@@ -769,32 +769,18 @@ class HTTPClient
     end
 
     def next_candidate
-      @candidates
-        .group_by { |(hostname, priority), candidate|
-          group =
-            if    candidate.rr then 0
-            elsif hostname == @alias_fallback_hostname then 1
-            else  2
-            end
-          [group, priority]
-        }
-        .sort_by { |priority, _entries| priority }
-        .each do |_priority, candidates|
-          ordered_candidates = candidates.sort_by { |key, _candidate| @candidate_order[key] ||= rand }
+      ordered_candidates.each do |key, candidate|
+        precedences(key).each do |type|
+          address = candidate.addresses[type].shift || candidate.address_hints(type).shift
 
-          ordered_candidates.each do |key, candidate|
-            precedences(key).each do |type|
-              address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+          next unless address
 
-              next unless address
-
-              @last_types[key] = type
-              @selected_addresses[key] ||= []
-              @selected_addresses[key] << address.to_s
-              return [candidate.ctx, address, key.first, candidate.port]
-            end
-          end
+          @last_types[key] = type
+          @selected_addresses[key] ||= []
+          @selected_addresses[key] << address.to_s
+          return [candidate.ctx, address, key.first, candidate.port]
         end
+      end
 
       nil
     end
@@ -910,6 +896,19 @@ class HTTPClient
     def synthesize_with_nat64_prefix(addr)
       ipv4_int = IPAddr.new_ntoh(addr.address).to_i
       AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
+    end
+
+    def ordered_candidates
+      @candidates.sort_by { |key, candidate|
+        hostname, priority = key
+        group =
+          if    candidate.rr then 0
+          elsif hostname == @alias_fallback_hostname then 1
+          else  2
+          end
+
+        [group, priority, @candidate_order[key] ||= rand]
+      }
     end
 
     def precedences(key)
