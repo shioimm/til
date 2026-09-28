@@ -645,7 +645,7 @@ class HTTPClient
       @candidates = {}
       @resolved_addresses = {}
       @resolved_types = Set.new
-      @last_type = nil
+      @last_types = {}
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -780,12 +780,19 @@ class HTTPClient
         }
         .sort_by { |priority, _entries| priority }
         .each do |_priority, candidates|
-          precedences.each do |type|
-            candidate, address, hostname = take_available_address(candidates, type)
-            next unless candidate
+          available_candidates = candidates.select { |_key, candidate|
+            [AAAA_TYPE, A_TYPE].any? { |type| address_available?(candidate, type) }
+          }
+          key, candidate = available_candidates.sample
+          next unless candidate
 
-            @last_type = type
-            return [candidate.ctx, address, hostname, candidate.port]
+          precedences(key).each do |type|
+            address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+
+            next unless address
+
+            @last_types[key] = type
+            return [candidate.ctx, address, key.first, candidate.port]
           end
         end
 
@@ -913,21 +920,12 @@ class HTTPClient
       AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
     end
 
-    def precedences
-      if @last_type == AAAA_TYPE then PRIORITY_ON_V4
-      elsif @last_type == A_TYPE then PRIORITY_ON_V6
+    def precedences(key)
+      if @last_types[key] == AAAA_TYPE then PRIORITY_ON_V4
+      elsif @last_types[key] == A_TYPE then PRIORITY_ON_V6
       elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6
       else PRIORITY_ON_V4
       end
-    end
-
-    def take_available_address(candidates, type)
-      available_candidates = candidates.select { |_key, candidate| address_available?(candidate, type) }
-      return if available_candidates.empty?
-
-      (hostname, _priority), candidate = available_candidates.sample
-      address = candidate.addresses[type].shift || candidate.address_hints(type).shift
-      [candidate, address, hostname]
     end
 
     def address_available?(candidate, type)
