@@ -672,21 +672,14 @@ class HTTPClient
     def add(result)
       if result.type == HTTPS_TYPE
         if result.records.empty?
-          if result.success? && @alias_redirect_count.positive?
-            @alias_fallback_hostname = result.hostname
-            resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
-          end
-
-          @resolved_types << HTTPS_TYPE
+          handle_empty_https_rr!(result)
           return
         end
 
         # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
         # all ServiceMode records in the same set MUST be ignored.
         # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
-        alias_record = result.records.select(&:alias_mode?).sample
-
-        if alias_record
+        if (alias_record = result.records.select(&:alias_mode?).sample)
           resolve_alias!(alias_record)
           return
         end
@@ -806,6 +799,15 @@ class HTTPClient
     end
 
     private
+
+    def handle_empty_https_rr!(result)
+      if result.success? && @alias_redirect_count.positive?
+        @alias_fallback_hostname = result.hostname
+        resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
+      end
+
+      @resolved_types << HTTPS_TYPE
+    end
 
     def resolve_alias!(alias_record)
       @alias_redirect_count += 1
