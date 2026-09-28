@@ -724,15 +724,7 @@ class HTTPClient
         end
 
         if result.success? && @alias_redirect_count.positive?
-          @alias_fallback_hostname = result.hostname
-          key = [result.hostname, Float::INFINITY]
-          @candidates[key] ||= build_connection_candidate!
-
-          @resolved_addresses.fetch(result.hostname, {}).each do |type, addresses|
-            @candidates[key].addresses[type] = addresses.dup
-          end
-
-          resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
+          add_alias_fallback_candidate(result.hostname)
         end
       elsif result.success?
         addresses = result.records.map(&:address)
@@ -815,6 +807,18 @@ class HTTPClient
       else
         @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
+    end
+
+    def add_alias_fallback_candidate(hostname)
+      @alias_fallback_hostname = hostname
+      key = [hostname, Float::INFINITY]
+      @candidates[key] ||= build_connection_candidate!
+
+      @resolved_addresses.fetch(hostname, {}).each do |type, addresses|
+        @candidates[key].addresses[type] = addresses.dup
+      end
+
+      resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
 
     def normalize_ipv4_addresses(ipv4_address_hints)
