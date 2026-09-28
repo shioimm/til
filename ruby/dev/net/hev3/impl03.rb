@@ -651,6 +651,7 @@ class HTTPClient
       @pending_ipv4_hints = {}
       @resolved_ipv4_hostnames = Set.new
       @alias_redirect_count = 0
+      @alias_fallback_hostname = nil
       @queried_hostnames = [HOST]
     end
 
@@ -670,6 +671,11 @@ class HTTPClient
     def add(result)
       if result.type == HTTPS_TYPE
         if result.records.empty?
+          if result.success? && @alias_redirect_count.positive?
+            @alias_fallback_hostname = result.hostname
+            resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
+          end
+
           @resolved_types << HTTPS_TYPE
           return
         end
@@ -686,7 +692,6 @@ class HTTPClient
 
         supported_records = result.records.map { |rr| create_connection_candidate_from_rr!(rr) }.compact
         @resolved_types << HTTPS_TYPE
-        return if supported_records.empty?
 
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
 
@@ -723,7 +728,20 @@ class HTTPClient
           # treated as positive answers until the real AAAA/A records arrive.
           @resolved_types << AAAA_TYPE if ipv6_hints.any?
           @resolved_types << A_TYPE if ipv4_hints.any?
+
           resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
+        end
+
+        if result.success? && @alias_redirect_count.positive?
+          @alias_fallback_hostname = result.hostname
+          key = [result.hostname, Float::INFINITY]
+          @candidates[key] ||= build_connection_candidate
+
+          @resolved_addresses.fetch(result.hostname, {}).each do |type, addresses|
+            @candidates[key].addresses[type] = addresses.dup
+          end
+
+          resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
         end
       elsif result.success?
         addresses = result.records.map(&:address)
@@ -752,7 +770,14 @@ class HTTPClient
 
     def next_candidate
       @candidates
-        .group_by { |(_hostname, priority), _| priority }
+        .group_by { |(hostname, priority), candidate|
+          group =
+            if    candidate.rr then 0
+            elsif hostname == @alias_fallback_hostname then 1
+            else  2
+            end
+          [group, priority]
+        }
         .sort_by { |priority, _entries| priority }
         .each do |_priority, candidates|
           precedences.each do |type|
