@@ -690,37 +690,7 @@ class HTTPClient
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
-          @candidates.delete([hostname, Float::INFINITY])
-
-          # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
-          ipv6_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
-          ipv4_hints = ipv4_addresses_usable? ? normalize_ipv4_addresses(candidate.ipv4_address_hints) : []
-
-          key = [hostname, candidate.rr.priority, candidate.rr]
-          @pending_ipv4_hints.delete(key)
-
-          resolved = @resolved_addresses.fetch(hostname, {})
-
-          if resolved.key?(A_TYPE)
-            ipv4_hints = []
-          elsif !ipv4_addresses_usable?
-            # Retain unusable hints separately until a prefix is supplied.
-            @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
-          end
-
-          candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
-          candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
-          candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_hints)
-          candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_hints)
-
-          @candidates[key] = candidate
-
-          # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
-          # treated as positive answers until the real AAAA/A records arrive.
-          @resolved_types << AAAA_TYPE if ipv6_hints.any?
-          @resolved_types << A_TYPE if ipv4_hints.any?
-
-          resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
+          add_service_candidate(hostname, candidate)
         end
 
         if result.success? && @alias_redirect_count.positive?
@@ -807,6 +777,40 @@ class HTTPClient
       else
         @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
+    end
+
+    def add_service_candidate(hostname, candidate)
+      @candidates.delete([hostname, Float::INFINITY])
+
+      # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
+      ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
+      ipv4_address_hints = ipv4_addresses_usable? ? normalize_ipv4_addresses(candidate.ipv4_address_hints) : []
+
+      key = [hostname, candidate.rr.priority, candidate.rr]
+      @pending_ipv4_hints.delete(key)
+
+      resolved = @resolved_addresses.fetch(hostname, {})
+
+      if resolved.key?(A_TYPE)
+        ipv4_address_hints = []
+      elsif !ipv4_addresses_usable?
+        # Retain unusable hints separately until a prefix is supplied.
+        @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
+      end
+
+      candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
+      candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
+      candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
+      candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+
+      @candidates[key] = candidate
+
+      # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
+      # treated as positive answers until the real AAAA/A records arrive.
+      @resolved_types << AAAA_TYPE if ipv6_address_hints.any?
+      @resolved_types << A_TYPE if ipv4_address_hints.any?
+
+      resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
 
     def add_alias_fallback_candidate(hostname)
