@@ -705,7 +705,9 @@ class HTTPClient
         @resolved_addresses[result.hostname][result.type] = addresses
 
         keys = @candidates.keys.select { |(hostname, _priority)| hostname == result.hostname }
-        keys = [[result.hostname, Float::INFINITY]] if keys.empty?
+        if keys.empty? || result.hostname == HOST
+          keys |= [[result.hostname, Float::INFINITY]]
+        end
 
         keys.each do |key|
           @candidates[key] ||= build_connection_candidate!
@@ -777,7 +779,7 @@ class HTTPClient
     end
 
     def add_service_candidate(hostname, candidate)
-      @candidates.delete([hostname, Float::INFINITY])
+      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
