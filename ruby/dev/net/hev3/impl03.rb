@@ -35,7 +35,7 @@ class HTTPClient
     @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
 
     @hostname_resolution_result = HostnameResolutionResult.new
-    @address_candidate_list = AddressCandidateList.new(@record_types, self)
+    @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
     @hostname_resolution_threads = []
     @address_query_hostnames = []
     @connecting_sockets = {}
@@ -71,7 +71,7 @@ class HTTPClient
           && !@connection_attempt_delay_expires_at
         @first_connection_attempted = true
         ctx, address, _hostname, port = @address_candidate_list.next_candidate
-        addrinfo = Addrinfo.tcp(address.to_s, port || @port)
+        addrinfo = Addrinfo.tcp(address.to_s, port)
 
         if !@use_ssl &&
             @address_candidate_list.empty? &&
@@ -630,18 +630,15 @@ class HTTPClient
     SUPPORTED_SVC_PARAM_KEYS = [0, 1, 2, 3, 4, 6].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
-    ConnectionCandidate = Data.define(:rr, :ctx, :addresses, :ipv6_address_hints, :ipv4_address_hints) {
-      def port
-        rr&.params&.[](3)&.port
-      end
-
+    ConnectionCandidate = Data.define(:rr, :port, :ctx, :addresses, :ipv6_address_hints, :ipv4_address_hints) {
       def address_hints(type)
         type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
       end
     }
 
-    def initialize(record_types, client, nat64_prefix: nil)
+    def initialize(record_types, client, origin_port:, nat64_prefix: nil)
       @record_types = record_types
+      @origin_port = origin_port
       @candidates = {}
       @candidate_order = {}
       @resolved_addresses = {}
@@ -708,7 +705,9 @@ class HTTPClient
         @resolved_addresses[result.hostname][result.type] = addresses
 
         keys = @candidates.keys.select { |(hostname, _priority)| hostname == result.hostname }
-        keys = [[result.hostname, Float::INFINITY]] if keys.empty?
+        if keys.empty? || result.hostname == HOST
+          keys |= [[result.hostname, Float::INFINITY]]
+        end
 
         keys.each do |key|
           @candidates[key] ||= build_connection_candidate!
@@ -780,7 +779,7 @@ class HTTPClient
     end
 
     def add_service_candidate(hostname, candidate)
-      @candidates.delete([hostname, Float::INFINITY])
+      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
@@ -863,6 +862,7 @@ class HTTPClient
 
       ConnectionCandidate.new(
         rr:,
+        port: rr&.params&.[](3)&.port || @origin_port,
         ctx: default_ctx,
         addresses: { AAAA_TYPE => [], A_TYPE => [] },
         ipv6_address_hints: (rr&.params&.[](6)&.addresses || []).dup,
