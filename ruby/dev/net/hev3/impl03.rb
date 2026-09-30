@@ -850,6 +850,7 @@ class HTTPClient
 
     def default_ctx
       ctx = ::OpenSSL::SSL::SSLContext.new
+      ctx.set_params
       ctx.alpn_protocols = SUPPORTED_PROTOCOLS
       ctx
     end
