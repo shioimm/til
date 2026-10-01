@@ -325,8 +325,8 @@ class HTTPClient
     socket.write request_message
 
     response_message = socket.read
-    status_line, *rest = response_message.split("\r\n")
-    _, body = rest.join("\r\n").split("\r\n\r\n", 2)
+    header_section, body = response_message.split("\r\n\r\n", 2)
+    status_line = header_section.split("\r\n", 2).first
 
     puts status_line
     puts body
