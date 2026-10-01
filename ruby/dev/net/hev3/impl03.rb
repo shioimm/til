@@ -21,13 +21,16 @@ class HTTPClient
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
-  def self.run
-    self.new.run
+  def self.run(**options)
+    self.new(**options).run
   end
 
-  def initialize
+  def initialize(ipv4_connectivity: nil, ipv6_connectivity: nil)
     @use_ssl = ARGV[0] == "https"
     @port = @use_ssl ? HTTPS_PORT : HTTP_PORT
+
+    @ipv4_reachable = ipv4_connectivity
+    @ipv6_reachable = ipv6_connectivity
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @record_types = record_types
@@ -427,7 +430,7 @@ class HTTPClient
   end
 
   def ipv4_reachable?
-    return @ipv4_reachable if defined?(@ipv4_reachable)
+    return @ipv4_reachable unless @ipv4_reachable.nil?
 
     @ipv4_reachable = begin
       socket = UDPSocket.new(Socket::AF_INET)
@@ -444,7 +447,7 @@ class HTTPClient
   end
 
   def ipv6_reachable?
-    return @ipv6_reachable if defined?(@ipv6_reachable)
+    return @ipv6_reachable unless @ipv6_reachable.nil?
 
     @ipv6_reachable = begin
       socket = UDPSocket.new(Socket::AF_INET6)
