@@ -321,7 +321,7 @@ class HTTPClient
   end
 
   def request_http1(socket)
-    request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
+    request_message = "GET / HTTP/1.1\r\nHost: #{HOST}:#{@port}\r\nConnection: close\r\n\r\n"
     socket.write request_message
 
     response_message = socket.read
