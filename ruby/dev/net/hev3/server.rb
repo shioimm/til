@@ -4,9 +4,10 @@ require "socket"
 require "openssl"
 require "http/2"
 
-# $ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+# $ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost"
 # $ ruby server.rb cert.pem key.pem
-# $ curl --http2 -k -v https://localhost:8443/
+# $ curl --http2 --cacert cert.pem -v https://localhost:8443/
+# $ SSL_CERT_FILE=cert.pem ruby impl03.rb https
 abort "Usage: ruby #{$PROGRAM_NAME} CERT KEY" unless ARGV.size == 2
 
 ctx = OpenSSL::SSL::SSLContext.new
