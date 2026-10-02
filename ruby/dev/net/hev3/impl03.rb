@@ -640,16 +640,21 @@ class HTTPClient
     }
 
     class CandidateAddresses
+      attr_reader :last_type
       attr_writer :candidates
 
       def initialize
         @candidates = {}
         @non_candidates = []
+        @last_type = nil
       end
 
       def next(type, hints)
         address = unselected_address(type, hints)
-        @non_candidates << address.to_s if address
+        return unless address
+
+        @non_candidates << address.to_s
+        @last_type = type
         address
       end
 
@@ -671,7 +676,6 @@ class HTTPClient
       @candidate_order = {}
       @resolved_addresses = {}
       @resolved_types = Set.new
-      @last_types = {}
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -743,12 +747,11 @@ class HTTPClient
 
     def next_candidate
       ordered_candidates.each do |key, candidate|
-        precedences(key).each do |type|
+        precedences(candidate.addresses.last_type).each do |type|
           address = candidate.addresses.next(type, candidate.address_hints(type))
 
           next unless address
 
-          @last_types[key] = type
           return [candidate.ctx, address, key.first, candidate.port]
         end
       end
@@ -940,9 +943,9 @@ class HTTPClient
       }
     end
 
-    def precedences(key)
-      if @last_types[key] == AAAA_TYPE then PRIORITY_ON_V4
-      elsif @last_types[key] == A_TYPE then PRIORITY_ON_V6
+    def precedences(last_type)
+      if last_type == AAAA_TYPE then PRIORITY_ON_V4
+      elsif last_type == A_TYPE then PRIORITY_ON_V6
       elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6
       else PRIORITY_ON_V4
       end
