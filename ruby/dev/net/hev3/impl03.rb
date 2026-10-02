@@ -639,6 +639,31 @@ class HTTPClient
       end
     }
 
+    class CandidateAddresses
+      attr_writer :candidates
+
+      def initialize
+        @candidates = {}
+        @non_candidates = []
+      end
+
+      def next(type, hints)
+        address = unselected_address(type, hints)
+        @non_candidates << address.to_s if address
+        address
+      end
+
+      def any?(type, hints)
+        !unselected_address(type, hints).nil?
+      end
+
+      private
+
+      def unselected_address(type, hints)
+        @candidates.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
+      end
+    end
+
     def initialize(record_types, client, origin_port:, nat64_prefix: nil)
       @record_types = record_types
       @origin_port = origin_port
@@ -647,7 +672,6 @@ class HTTPClient
       @resolved_addresses = {}
       @resolved_types = Set.new
       @last_types = {}
-      @selected_addresses = {}
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -662,7 +686,7 @@ class HTTPClient
       @nat64_prefix = prefix
       @pending_ipv4_hints.each do |key, hints|
         candidate = @candidates.fetch(key)
-        normalized_ipv4_hints = unselected_addresses(key, hints.map { |hint| synthesize_with_nat64_prefix(hint) })
+        normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
         candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
         @resolved_types << A_TYPE if hints.any?
       end
@@ -707,16 +731,10 @@ class HTTPClient
         @resolved_addresses[result.hostname] ||= {}
         @resolved_addresses[result.hostname][result.type] = addresses
 
-        keys = @candidates.keys.select { |(hostname, _priority)| hostname == result.hostname }
-        if keys.empty? || result.hostname == HOST
-          keys |= [[result.hostname, Float::INFINITY]]
-        end
-
-        keys.each do |key|
+        if result.hostname == HOST || @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+          key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
-          candidate = @candidates[key]
-          candidate.addresses[result.type] = unselected_addresses(key, addresses)
-          candidate.address_hints(result.type).clear
+          @candidates[key].addresses.candidates = @resolved_addresses[result.hostname]
         end
       end
 
@@ -726,13 +744,11 @@ class HTTPClient
     def next_candidate
       ordered_candidates.each do |key, candidate|
         precedences(key).each do |type|
-          address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+          address = candidate.addresses.next(type, candidate.address_hints(type))
 
           next unless address
 
           @last_types[key] = type
-          @selected_addresses[key] ||= []
-          @selected_addresses[key] << address.to_s
           return [candidate.ctx, address, key.first, candidate.port]
         end
       end
@@ -782,7 +798,7 @@ class HTTPClient
     end
 
     def add_service_candidate(hostname, candidate)
-      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST
+      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST || hostname == @alias_fallback_hostname
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
@@ -791,7 +807,8 @@ class HTTPClient
       key = [hostname, candidate.rr.priority, candidate.rr]
       @pending_ipv4_hints.delete(key)
 
-      resolved = @resolved_addresses.fetch(hostname, {})
+      @resolved_addresses[hostname] ||= {}
+      resolved = @resolved_addresses[hostname]
 
       if resolved.key?(A_TYPE)
         ipv4_address_hints = []
@@ -800,15 +817,13 @@ class HTTPClient
         @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
       end
 
-      ipv6_address_hints = unselected_addresses(key, ipv6_address_hints)
-      ipv4_address_hints = unselected_addresses(key, ipv4_address_hints)
+      @candidates[key] ||= candidate
+      candidate = @candidates[key]
+
       candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
       candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
-      candidate.addresses[AAAA_TYPE] = unselected_addresses(key, resolved.fetch(AAAA_TYPE, []))
-      candidate.addresses[A_TYPE] = unselected_addresses(key, resolved.fetch(A_TYPE, []))
-
-      @candidates[key] = candidate
+      candidate.addresses.candidates = resolved
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
@@ -823,15 +838,10 @@ class HTTPClient
       key = [hostname, Float::INFINITY]
       @candidates[key] ||= build_connection_candidate!
 
-      @resolved_addresses.fetch(hostname, {}).each do |type, addresses|
-        @candidates[key].addresses[type] = unselected_addresses(key, addresses)
-      end
+      @resolved_addresses[hostname] ||= {}
+      @candidates[key].addresses.candidates = @resolved_addresses[hostname]
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
-    end
-
-    def unselected_addresses(key, addresses)
-      addresses.reject { @selected_addresses[key]&.include?(it.to_s) }
     end
 
     def normalize_ipv4_addresses(ipv4_address_hints)
@@ -875,7 +885,7 @@ class HTTPClient
         rr:,
         port: rr&.params&.[](3)&.port || @origin_port,
         ctx: default_ctx,
-        addresses: { AAAA_TYPE => [], A_TYPE => [] },
+        addresses: CandidateAddresses.new,
         ipv6_address_hints: (rr&.params&.[](6)&.addresses || []).dup,
         ipv4_address_hints: (rr&.params&.[](4)&.addresses || []).dup,
       )
@@ -939,7 +949,7 @@ class HTTPClient
     end
 
     def address_available?(candidate, type)
-      candidate.addresses[type].any? || candidate.address_hints(type).any?
+      candidate.addresses.any?(type, candidate.address_hints(type))
     end
   end
 
