@@ -321,12 +321,12 @@ class HTTPClient
   end
 
   def request_http1(socket)
-    request_message = "GET / HTTP/1.1\r\nHost: #{HOST}\r\nConnection: close\r\n\r\n"
+    request_message = "GET / HTTP/1.1\r\nHost: #{HOST}:#{@port}\r\nConnection: close\r\n\r\n"
     socket.write request_message
 
     response_message = socket.read
-    status_line, *rest = response_message.split("\r\n")
-    _, body = rest.join("\r\n").split("\r\n\r\n", 2)
+    header_section, body = response_message.split("\r\n\r\n", 2)
+    status_line = header_section.split("\r\n", 2).first
 
     puts status_line
     puts body
