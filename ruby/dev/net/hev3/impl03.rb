@@ -639,6 +639,29 @@ class HTTPClient
       end
     }
 
+    class ResolutionState
+      def initialize
+        @resolved_addresses = {}
+        @resolved_types = Set.new
+      end
+
+      def addresses(hostname)
+        @resolved_addresses[hostname] ||= {}
+      end
+
+      def update(hostname, type, addresses)
+        self.addresses(hostname)[type] = addresses
+      end
+
+      def mark_resolved(type)
+        @resolved_types << type
+      end
+
+      def resolved?(type)
+        @resolved_types.include?(type)
+      end
+    end
+
     class CandidateAddresses
       attr_reader :last_type
       attr_writer :candidates
@@ -674,8 +697,7 @@ class HTTPClient
       @origin_port = origin_port
       @candidates = {}
       @candidate_order = {}
-      @resolved_addresses = {}
-      @resolved_types = Set.new
+      @resolution_state = ResolutionState.new
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -692,7 +714,7 @@ class HTTPClient
         candidate = @candidates.fetch(key)
         normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
         candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
-        @resolved_types << A_TYPE if hints.any?
+        @resolution_state.mark_resolved(A_TYPE) if hints.any?
       end
       @pending_ipv4_hints.clear
     end
@@ -732,17 +754,16 @@ class HTTPClient
           addresses = normalize_ipv4_addresses(addresses)
         end
 
-        @resolved_addresses[result.hostname] ||= {}
-        @resolved_addresses[result.hostname][result.type] = addresses
+        @resolution_state.update(result.hostname, result.type, addresses)
 
         if result.hostname == HOST || @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
           key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
-          @candidates[key].addresses.candidates = @resolved_addresses[result.hostname]
+          @candidates[key].addresses.candidates = @resolution_state.addresses(result.hostname)
         end
       end
 
-      @resolved_types << result.type
+      @resolution_state.mark_resolved(result.type)
     end
 
     def next_candidate
@@ -760,7 +781,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @resolved_types.include?(type)
+      @resolution_state.resolved?(type)
     end
 
     def all_resolved?
@@ -787,7 +808,7 @@ class HTTPClient
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
       end
 
-      @resolved_types << HTTPS_TYPE
+      @resolution_state.mark_resolved(HTTPS_TYPE)
     end
 
     def resolve_alias!(alias_record)
@@ -796,7 +817,7 @@ class HTTPClient
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
       else
-        @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -810,8 +831,7 @@ class HTTPClient
       key = [hostname, candidate.rr.priority, candidate.rr]
       @pending_ipv4_hints.delete(key)
 
-      @resolved_addresses[hostname] ||= {}
-      resolved = @resolved_addresses[hostname]
+      resolved = @resolution_state.addresses(hostname)
 
       if resolved.key?(A_TYPE)
         ipv4_address_hints = []
@@ -830,8 +850,8 @@ class HTTPClient
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @resolved_types << AAAA_TYPE if ipv6_address_hints.any?
-      @resolved_types << A_TYPE if ipv4_address_hints.any?
+      @resolution_state.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
+      @resolution_state.mark_resolved(A_TYPE) if ipv4_address_hints.any?
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
@@ -841,8 +861,7 @@ class HTTPClient
       key = [hostname, Float::INFINITY]
       @candidates[key] ||= build_connection_candidate!
 
-      @resolved_addresses[hostname] ||= {}
-      @candidates[key].addresses.candidates = @resolved_addresses[hostname]
+      @candidates[key].addresses.candidates = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
