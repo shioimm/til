@@ -662,7 +662,7 @@ class HTTPClient
       @nat64_prefix = prefix
       @pending_ipv4_hints.each do |key, hints|
         candidate = @candidates.fetch(key)
-        normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        normalized_ipv4_hints = unselected_addresses(key, hints.map { |hint| synthesize_with_nat64_prefix(hint) })
         candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
         @resolved_types << A_TYPE if hints.any?
       end
@@ -715,7 +715,7 @@ class HTTPClient
         keys.each do |key|
           @candidates[key] ||= build_connection_candidate!
           candidate = @candidates[key]
-          candidate.addresses[result.type] = addresses.reject { @selected_addresses[key]&.include?(it.to_s) }
+          candidate.addresses[result.type] = unselected_addresses(key, addresses)
           candidate.address_hints(result.type).clear
         end
       end
@@ -800,10 +800,13 @@ class HTTPClient
         @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
       end
 
-      candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
-      candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
+      ipv6_address_hints = unselected_addresses(key, ipv6_address_hints)
+      ipv4_address_hints = unselected_addresses(key, ipv4_address_hints)
       candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
       candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+
+      candidate.addresses[AAAA_TYPE] = unselected_addresses(key, resolved.fetch(AAAA_TYPE, []))
+      candidate.addresses[A_TYPE] = unselected_addresses(key, resolved.fetch(A_TYPE, []))
 
       @candidates[key] = candidate
 
@@ -821,10 +824,14 @@ class HTTPClient
       @candidates[key] ||= build_connection_candidate!
 
       @resolved_addresses.fetch(hostname, {}).each do |type, addresses|
-        @candidates[key].addresses[type] = addresses.dup
+        @candidates[key].addresses[type] = unselected_addresses(key, addresses)
       end
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
+    end
+
+    def unselected_addresses(key, addresses)
+      addresses.reject { @selected_addresses[key]&.include?(it.to_s) }
     end
 
     def normalize_ipv4_addresses(ipv4_address_hints)
