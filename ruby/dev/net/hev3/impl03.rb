@@ -21,13 +21,16 @@ class HTTPClient
   RESOLUTION_DELAY = 0.05
   CONNECTION_ATTEMPT_DELAY = 0.25
 
-  def self.run
-    self.new.run
+  def self.run(**options)
+    self.new(**options).run
   end
 
-  def initialize
+  def initialize(ipv4_connectivity: nil, ipv6_connectivity: nil)
     @use_ssl = ARGV[0] == "https"
     @port = @use_ssl ? HTTPS_PORT : HTTP_PORT
+
+    @ipv4_reachable = ipv4_connectivity
+    @ipv6_reachable = ipv6_connectivity
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
     @record_types = record_types
@@ -427,7 +430,7 @@ class HTTPClient
   end
 
   def ipv4_reachable?
-    return @ipv4_reachable if defined?(@ipv4_reachable)
+    return @ipv4_reachable unless @ipv4_reachable.nil?
 
     @ipv4_reachable = begin
       socket = UDPSocket.new(Socket::AF_INET)
@@ -444,7 +447,7 @@ class HTTPClient
   end
 
   def ipv6_reachable?
-    return @ipv6_reachable if defined?(@ipv6_reachable)
+    return @ipv6_reachable unless @ipv6_reachable.nil?
 
     @ipv6_reachable = begin
       socket = UDPSocket.new(Socket::AF_INET6)
@@ -636,15 +639,65 @@ class HTTPClient
       end
     }
 
+    class ResolutionState
+      def initialize
+        @resolved_addresses = {}
+        @resolved_types = Set.new
+      end
+
+      def addresses(hostname)
+        @resolved_addresses[hostname] ||= {}
+      end
+
+      def update(hostname, type, addresses)
+        self.addresses(hostname)[type] = addresses
+      end
+
+      def mark_resolved(type)
+        @resolved_types << type
+      end
+
+      def resolved?(type)
+        @resolved_types.include?(type)
+      end
+    end
+
+    class CandidateAddresses
+      attr_reader :last_type
+      attr_writer :candidates
+
+      def initialize
+        @candidates = {}
+        @non_candidates = []
+        @last_type = nil
+      end
+
+      def next(type, hints)
+        address = unselected_address(type, hints)
+        return unless address
+
+        @non_candidates << address.to_s
+        @last_type = type
+        address
+      end
+
+      def any?(type, hints)
+        !unselected_address(type, hints).nil?
+      end
+
+      private
+
+      def unselected_address(type, hints)
+        @candidates.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
+      end
+    end
+
     def initialize(record_types, client, origin_port:, nat64_prefix: nil)
       @record_types = record_types
       @origin_port = origin_port
       @candidates = {}
       @candidate_order = {}
-      @resolved_addresses = {}
-      @resolved_types = Set.new
-      @last_types = {}
-      @selected_addresses = {}
+      @resolution_state = ResolutionState.new
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -661,7 +714,7 @@ class HTTPClient
         candidate = @candidates.fetch(key)
         normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
         candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
-        @resolved_types << A_TYPE if hints.any?
+        @resolution_state.mark_resolved(A_TYPE) if hints.any?
       end
       @pending_ipv4_hints.clear
     end
@@ -701,35 +754,25 @@ class HTTPClient
           addresses = normalize_ipv4_addresses(addresses)
         end
 
-        @resolved_addresses[result.hostname] ||= {}
-        @resolved_addresses[result.hostname][result.type] = addresses
+        @resolution_state.update(result.hostname, result.type, addresses)
 
-        keys = @candidates.keys.select { |(hostname, _priority)| hostname == result.hostname }
-        if keys.empty? || result.hostname == HOST
-          keys |= [[result.hostname, Float::INFINITY]]
-        end
-
-        keys.each do |key|
+        if result.hostname == HOST || @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+          key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
-          candidate = @candidates[key]
-          candidate.addresses[result.type] = addresses.reject { @selected_addresses[key]&.include?(it.to_s) }
-          candidate.address_hints(result.type).clear
+          @candidates[key].addresses.candidates = @resolution_state.addresses(result.hostname)
         end
       end
 
-      @resolved_types << result.type
+      @resolution_state.mark_resolved(result.type)
     end
 
     def next_candidate
       ordered_candidates.each do |key, candidate|
-        precedences(key).each do |type|
-          address = candidate.addresses[type].shift || candidate.address_hints(type).shift
+        precedences(candidate.addresses.last_type).each do |type|
+          address = candidate.addresses.next(type, candidate.address_hints(type))
 
           next unless address
 
-          @last_types[key] = type
-          @selected_addresses[key] ||= []
-          @selected_addresses[key] << address.to_s
           return [candidate.ctx, address, key.first, candidate.port]
         end
       end
@@ -738,7 +781,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @resolved_types.include?(type)
+      @resolution_state.resolved?(type)
     end
 
     def all_resolved?
@@ -765,7 +808,7 @@ class HTTPClient
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
       end
 
-      @resolved_types << HTTPS_TYPE
+      @resolution_state.mark_resolved(HTTPS_TYPE)
     end
 
     def resolve_alias!(alias_record)
@@ -774,12 +817,12 @@ class HTTPClient
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
       else
-        @resolved_types << HTTPS_TYPE # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
     def add_service_candidate(hostname, candidate)
-      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST
+      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST || hostname == @alias_fallback_hostname
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
@@ -788,7 +831,7 @@ class HTTPClient
       key = [hostname, candidate.rr.priority, candidate.rr]
       @pending_ipv4_hints.delete(key)
 
-      resolved = @resolved_addresses.fetch(hostname, {})
+      resolved = @resolution_state.addresses(hostname)
 
       if resolved.key?(A_TYPE)
         ipv4_address_hints = []
@@ -797,17 +840,18 @@ class HTTPClient
         @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
       end
 
-      candidate.addresses[AAAA_TYPE] = resolved.fetch(AAAA_TYPE, []).dup
-      candidate.addresses[A_TYPE] = resolved.fetch(A_TYPE, []).dup
+      @candidates[key] ||= candidate
+      candidate = @candidates[key]
+
       candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
       candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
-      @candidates[key] = candidate
+      candidate.addresses.candidates = resolved
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @resolved_types << AAAA_TYPE if ipv6_address_hints.any?
-      @resolved_types << A_TYPE if ipv4_address_hints.any?
+      @resolution_state.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
+      @resolution_state.mark_resolved(A_TYPE) if ipv4_address_hints.any?
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
@@ -817,9 +861,7 @@ class HTTPClient
       key = [hostname, Float::INFINITY]
       @candidates[key] ||= build_connection_candidate!
 
-      @resolved_addresses.fetch(hostname, {}).each do |type, addresses|
-        @candidates[key].addresses[type] = addresses.dup
-      end
+      @candidates[key].addresses.candidates = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
@@ -865,7 +907,7 @@ class HTTPClient
         rr:,
         port: rr&.params&.[](3)&.port || @origin_port,
         ctx: default_ctx,
-        addresses: { AAAA_TYPE => [], A_TYPE => [] },
+        addresses: CandidateAddresses.new,
         ipv6_address_hints: (rr&.params&.[](6)&.addresses || []).dup,
         ipv4_address_hints: (rr&.params&.[](4)&.addresses || []).dup,
       )
@@ -920,16 +962,16 @@ class HTTPClient
       }
     end
 
-    def precedences(key)
-      if @last_types[key] == AAAA_TYPE then PRIORITY_ON_V4
-      elsif @last_types[key] == A_TYPE then PRIORITY_ON_V6
+    def precedences(last_type)
+      if last_type == AAAA_TYPE then PRIORITY_ON_V4
+      elsif last_type == A_TYPE then PRIORITY_ON_V6
       elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6
       else PRIORITY_ON_V4
       end
     end
 
     def address_available?(candidate, type)
-      candidate.addresses[type].any? || candidate.address_hints(type).any?
+      candidate.addresses.any?(type, candidate.address_hints(type))
     end
   end
 
