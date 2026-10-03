@@ -32,7 +32,7 @@ class HTTPClient
     @ipv4_reachable = ipv4_connectivity
     @ipv6_reachable = ipv6_connectivity
 
-    @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER])
+    @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER], raise_timeout_errors: true)
     @record_types = record_types
 
     @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
@@ -220,6 +220,8 @@ class HTTPClient
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
       if hostname_resolved.any?
         while (result = @hostname_resolution_result.get)
+          raise result.error if result.unexpected_error?
+
           if result.type == NAT64_PREFIX_RESULT
             resolve_hostname_with_nat64_prefix_asynchronously!(result.success? ? result.records.first : nil)
           else
@@ -521,6 +523,23 @@ class HTTPClient
     ResolutionResult = Data.define(:type, :hostname, :records, :error) do
       def success?
         error.nil?
+      end
+
+      def unexpected_error?
+        case error
+        when nil,
+             Resolv::ResolvError,
+             Resolv::ResolvTimeout,
+             SocketError,
+             Errno::ECONNREFUSED,
+             Errno::ECONNRESET,
+             Errno::ENETUNREACH,
+             Errno::EHOSTUNREACH,
+             Errno::ETIMEDOUT
+          false
+        else
+          true
+        end
       end
     end
 
