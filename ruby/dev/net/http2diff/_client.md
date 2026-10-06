@@ -3,11 +3,12 @@ https://github.com/nurse/net-http/blob/8ac46b06f4c63388d03c59a1f05c036a9e8a99b3/
 
 ```ruby
 # 元URLを持つClientオブジェクトを作成
-client = Net::HTTP.client('https://files.example.com')
+client = Net::HTTP.client('https://files.example.com') # => Net::HTTP.client
 
 File.open('download.bin', 'wb') do |file|
   # #stream = #build_request -> #perform
-  client.stream(:get, '/large-file') do |response| # HTTPリクエストを送り、レスポンスボディを少しずつ読み取る
+  client.stream(:get, '/large-file') do |response| # => Client#stream
+    # HTTPリクエストを送り、レスポンスボディを少しずつ読み取る
     response.raise_for_status
 
     # サーバから受信したメッセージボディをチャンクごとにdownload.binへ書き込み
@@ -16,18 +17,37 @@ File.open('download.bin', 'wb') do |file|
 end
 
 # Requestオブジェクトを作成
-request = client.build_request(:post, '/items', json: {name: 'one'})
+request = client.build_request(:post, '/items', json: {name: 'one'}) # => Client#build_request
 # Requestオブジェクトの内容を上書き
-request = request.with(headers: {'X-Trace' => 'example'})
+request = request.with(headers: {'X-Trace' => 'example'}) # => Request#with
 
 # リクエストを送信
-response = client.perform(request)
+response = client.perform(request) # => Client#perform
 
 # ブロックなしで呼び出す -> レスポンス全文を読み込み
 # ブロックありで呼び出す -> レスポンスをチャンクごとに読み込み
 
 client.close
 Net::HTTP::Client.shutdown # Explicitly release the process-wide connections.
+```
+
+---
+
+```ruby
+module Net
+  class HTTP < Protocol
+    def self.client(base_url = nil, **options)
+      client = Client.new(base_url, **options) # => Client#initialize
+      return client unless block_given?
+
+      begin
+        yield client
+      ensure
+        client.close
+      end
+    end
+  end
+end
 ```
 
 ```ruby
@@ -55,6 +75,7 @@ module Net
     # A reusable synchronous HTTP client. Compatible connections are automatically
     # shared process-wide; cookies, authentication and cancellation are client-local.
     class Client
+      # Client::DEFAULTS
       DEFAULTS = {
         headers: {},
         protocols: [:http2, :http1],
@@ -138,34 +159,63 @@ module Net
       end
 
       attr_reader :cookie_jar
+
+      # Client#initialize
       def initialize(base_url = nil, **options)
+        # Client::DEFAULTSにない設定名があれば例外
         unknown = options.keys - DEFAULTS.keys
         raise ArgumentError, "unknown options: #{unknown.join(', ')}" unless unknown.empty?
+
+        # デフォルトの初期値にoptionsをmergeして初期化
         @options = DEFAULTS.merge(options)
-        @options[:headers] = Request.headers(@options[:headers])
+        @options[:headers] = Request.headers(@options[:headers]) # => Request.headers ()
         @options[:protocols] = Array(@options[:protocols]).dup.freeze
+
+        # プロトコルが1つ以上ある、かつ含まれているプロトコル名が:http1か:http2であることを検証
         unless !@options[:protocols].empty? && (@options[:protocols] - [:http1, :http2]).empty?
           raise ArgumentError, 'protocols must contain :http1 and/or :http2'
         end
+
+        # Client::TLS_KEYSにない設定名があれば例外
         unknown_tls = @options[:tls].keys - TLS_KEYS
         raise ArgumentError, "unknown TLS settings: #{unknown_tls.join(', ')}" unless unknown_tls.empty?
+
+        # Client#snapshot -> Request#snapshot (設定をコピー)
         @options[:tls] = snapshot(@options[:tls])
         @options[:auth] = snapshot(@options[:auth])
         @options[:proxy] = snapshot(@options[:proxy])
         @options[:middleware] = @options[:middleware].dup.freeze
+
+        # @optionsを検証
         validate_options(@options)
         @options.freeze
         @base_url = base_url && URI(base_url.to_s).freeze
+
+        # ベースURLがある場合は、schemeがhttp / httpsであり、hostnameがあり、userinfoがないこと
         if @base_url && (!%w[http https].include?(@base_url.scheme) || !@base_url.hostname || @base_url.userinfo)
           raise ArgumentError, 'base_url must be an absolute HTTP(S) URL without userinfo'
         end
-        @cookie_jar = options[:cookies].is_a?(CookieJar) ? options[:cookies] : (options[:cookies] ? CookieJar.new : nil)
-        @mutex, @active, @closed, @pid = Mutex.new, {}, false, Process.pid
+
+        # Cookieを保存する場所を決める
+        @cookie_jar = options[:cookies].is_a?(CookieJar) ?
+          options[:cookies] : (options[:cookies] ? CookieJar.new : nil)
+
+        @mutex = Mutex.new # Clientの状態更新を排他制御するためのミューテックス
+        @active = {}       # このClientで実行中のOperationを記録するためのハッシュ
+        @closed = false    # Clientがクローズされたかどうか
+        @pid = Process.pid # 現在のプロセスID (fork後にプロセスが変わったことを検出するためのもの)
+
+        # 認証情報を送ってよい接続先の範囲
         @auth_origin = @base_url && [@base_url.scheme, @base_url.hostname.downcase, @base_url.port]
-        @digest_mutex, @digest_count = Mutex.new, 0
+
+        @digest_mutex = Mutex.new # 複数のリクエストによるカウンタの同時更新を排他制御するためのミューテックス
+        @digest_count = 0 # 認証に使うnonce countの元になるカウンタ
+
+        # Client#buffered_getを利用できるかどうか
         @simple_get = @base_url && @base_url.scheme == 'http' && @options[:proxy].nil? &&
           DEFAULTS.all? { |key, value| key == :proxy || @options[key] == value }
-        @get_templates = {}
+
+        @get_templates = {} # Client#buffered_getで用いるリクエスト情報を保存するハッシュ
       end
 
       def build_request(method, url = nil, headers: {}, body: nil, json: UNSET, form: nil, multipart: nil, params: nil, **options)
@@ -196,15 +246,18 @@ module Net
         Request.new(method, uri, headers: headers, body: body, **options)
       end
 
+      # Client#request
       def request(method, url = nil, **options, &block)
         if @simple_get && !block && options.empty? && (method == :get || method == 'get' || method == 'GET') && url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
           return buffered_get(url)
         end
         perform(build_request(method, url, **options), &block)
       end
+
       %w[head post put patch delete options trace].each do |verb|
         define_method(verb) { |url = nil, **options, &block| request(verb, url, **options, &block) }
       end
+
       def get(url = nil, **options, &block)
         if @simple_get && !block && options.empty? && url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
           buffered_get(url)
@@ -212,9 +265,11 @@ module Net
           request(:get, url, **options, &block)
         end
       end
+
+      # Client#stream
       def stream(method, url = nil, **options, &block)
         raise ArgumentError, 'stream requires a block' unless block
-        request(method, url, **options, &block)
+        request(method, url, **options, &block) # => Client#request
       end
 
       def perform(request, &block)
@@ -312,6 +367,7 @@ module Net
         end
       end
 
+      # Client#snapshot
       def snapshot(value)
         Request.snapshot(value)
       end
