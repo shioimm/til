@@ -248,10 +248,17 @@ module Net
 
       # Client#request
       def request(method, url = nil, **options, &block)
-        if @simple_get && !block && options.empty? && (method == :get || method == 'get' || method == 'GET') && url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
-          return buffered_get(url)
+        if @simple_get &&
+           !block &&
+           options.empty? &&
+           (method == :get || method == 'get' || method == 'GET') && # GETリクエスト
+           url.is_a?(String) && url.start_with?('/') && !url.start_with?('//') # 別のホストを指定しうるURLではない
+
+          return buffered_get(url) # => Client#buffered_get
         end
-        perform(build_request(method, url, **options), &block)
+
+        req = build_request(method, url, **options) # => Client#build_request
+        perform(req, &block) # => Client#perform
       end
 
       %w[head post put patch delete options trace].each do |verb|
