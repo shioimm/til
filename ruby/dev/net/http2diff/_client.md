@@ -140,19 +140,28 @@ module Net
         end
 
         private
+
+        # Client.reset_process
+        # Clientクラスが管理する共有資源をリセット
         def reset_process
           return if @pid == Process.pid
           @pool.shutdown if @pool
           @pool_mutex = Mutex.new
           @pool, @operations, @pid = nil, {}, Process.pid
         end
+
+        # Client.register
         def register(operation)
-          reset_process
+          reset_process # => Client.reset_process
+
           @pool_mutex.synchronize do
             @operations[operation] = true
-            @pool ||= Pool.new(**@pool_options)
+            # プロセス全体の共有プールを作成
+            @pool ||= Pool.new(**@pool_options) # => Pool#initialize
           end
         end
+
+        # Client.unregister
         def unregister(operation)
           @pool_mutex.synchronize { @operations.delete(operation) }
         end
@@ -257,6 +266,7 @@ module Net
           return buffered_get(url) # => Client#buffered_get
         end
 
+        # WIP
         req = build_request(method, url, **options) # => Client#build_request
         perform(req, &block) # => Client#perform
       end
@@ -265,11 +275,16 @@ module Net
         define_method(verb) { |url = nil, **options, &block| request(verb, url, **options, &block) }
       end
 
+      # Client#get
       def get(url = nil, **options, &block)
-        if @simple_get && !block && options.empty? && url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
-          buffered_get(url)
+        if @simple_get &&
+           !block &&
+           options.empty? &&
+           url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
+
+          buffered_get(url) # => Client#buffered_get
         else
-          request(:get, url, **options, &block)
+          request(:get, url, **options, &block) # => Client#request
         end
       end
 
@@ -343,34 +358,64 @@ module Net
 
       private
 
+      # Client#buffered_get TLSを利用しないHTTP通信でのGET
       # Reuse immutable URL/route preparation for the common buffered H1 GET.
       # The same shared pool, operation registration and cancellation rules apply.
       def buffered_get(url)
-        reset_after_fork
-        operation = Operation.new(@options)
+        reset_after_fork # => Client#reset_after_fork
+        operation = Operation.new(@options) # => Operation#initialize (lib/net/http/client/runtime.rb)
+
         template = @mutex.synchronize do
           raise ClosedError, 'client is closed' if @closed
-          prepared = @get_templates[url]
+          prepared = @get_templates[url] # テンプレートをキャッシュから取得
+
+          # 例
+          # @get_templates[url] = [
+          #   request,                # Client::Request
+          #   route_key,              # 接続を共有できるか判定するキー
+          #   request.request_target  # 送信するパスとクエリ
+          # ]
+
           unless prepared
-            request = build_request(:get, url)
-            prepared = [request, route_key(request, @options, nil), request.request_target.freeze].freeze
+            request = build_request(:get, url) # => Client#build_request
+            prepared = [
+              request,
+              route_key(request, @options, nil), # => Client#route_key
+              request.request_target.freeze
+            ].freeze
+
             @get_templates.shift if @get_templates.size >= 64
             @get_templates[url.dup.freeze] = prepared
           end
+
+          # Operationを実行中として登録する
           @active[operation] = true
           prepared
         end
-        pool = Client.send(:register, operation)
+
+        # コネクションプールを取得
+        pool = Client.send(:register, operation) # => Client.register
         entry = slot = nil
+
         begin
-          request, key, target = template
-          entry, slot = pool.acquire(key, operation, origin: key[0]) { ConnectionFactory.open(request, @options, operation, nil) }
-          entry.session.buffered_get(target, operation)
+          request, # GETを表すClient::Request
+          key,     # 接続を共有できる条件をまとめたroute key
+          target = template # パスとクエリ
+          entry, # 接続のセッションなどを持つ接続プールのエントリ
+          slot = # 予約を表す値
+            pool.acquire( # => Pool#acquire プールに対して接続の取得と予約の依頼
+              key, # 再利用できる接続を探す条件
+              operation, # 待機中に期限・キャンセルを確認するための情報
+              origin: key[0] # 接続数をorigin単位で管理するための情報
+            ) { ConnectionFactory.open(request, @options, operation, nil) } # => ConnectionFactory.open 接続をつくる
+
+          # 取得した接続でGETを送信
+          entry.session.buffered_get(target, operation) # => H1Session#buffered_get
         ensure
-          operation.detach
-          pool.release(entry, slot) if entry
-          @mutex.synchronize { @active.delete(operation) }
-          Client.send(:unregister, operation)
+          operation.detach # Operationに登録したキャンセル用callbackをデタッチ
+          pool.release(entry, slot) if entry # プールに接続を返却
+          @mutex.synchronize { @active.delete(operation) } # このClientインスタンスの実行中一覧からOperationを削除
+          Client.send(:unregister, operation) # => Client.unregister
         end
       end
 
@@ -409,8 +454,12 @@ module Net
         end
       end
 
+      # Client#reset_after_fork
+      # Clientを作ったプロセスと現在のプロセスが同じかどうかを確認する
       def reset_after_fork
         return if @pid == Process.pid
+
+        # 子プロセスの場合、親の実行中リクエストやロックをそのまま使うことはできないため、状態を作り直す
         @mutex, @active, @pid = Mutex.new, {}, Process.pid
         @digest_mutex = Mutex.new
       end
@@ -423,9 +472,11 @@ module Net
         proxy
       end
 
+      # Client#route_key
       def route_key(request, options, proxy)
         # Values are immutable snapshots or identity-bearing TLS objects. Request
         # credentials never enter this key; proxy credentials necessarily do.
+        # [scheme・ホスト名・ポート, プロキシURL, 許可するHTTPプロトコル, TLS設定, 接続のkeep-alive設定]
         [request.origin, proxy && proxy.to_s, options[:protocols], options[:tls], options[:idle_timeout]].freeze
       end
 
