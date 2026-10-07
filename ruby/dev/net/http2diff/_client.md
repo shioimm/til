@@ -3,11 +3,12 @@ https://github.com/nurse/net-http/blob/8ac46b06f4c63388d03c59a1f05c036a9e8a99b3/
 
 ```ruby
 # 元URLを持つClientオブジェクトを作成
-client = Net::HTTP.client('https://files.example.com')
+client = Net::HTTP.client('https://files.example.com') # => Net::HTTP.client
 
 File.open('download.bin', 'wb') do |file|
   # #stream = #build_request -> #perform
-  client.stream(:get, '/large-file') do |response| # HTTPリクエストを送り、レスポンスボディを少しずつ読み取る
+  client.stream(:get, '/large-file') do |response| # => Client#stream
+    # HTTPリクエストを送り、レスポンスボディを少しずつ読み取る
     response.raise_for_status
 
     # サーバから受信したメッセージボディをチャンクごとにdownload.binへ書き込み
@@ -16,18 +17,37 @@ File.open('download.bin', 'wb') do |file|
 end
 
 # Requestオブジェクトを作成
-request = client.build_request(:post, '/items', json: {name: 'one'})
+request = client.build_request(:post, '/items', json: {name: 'one'}) # => Client#build_request
 # Requestオブジェクトの内容を上書き
-request = request.with(headers: {'X-Trace' => 'example'})
+request = request.with(headers: {'X-Trace' => 'example'}) # => Request#with
 
 # リクエストを送信
-response = client.perform(request)
+response = client.perform(request) # => Client#perform
 
 # ブロックなしで呼び出す -> レスポンス全文を読み込み
 # ブロックありで呼び出す -> レスポンスをチャンクごとに読み込み
 
 client.close
 Net::HTTP::Client.shutdown # Explicitly release the process-wide connections.
+```
+
+---
+
+```ruby
+module Net
+  class HTTP < Protocol
+    def self.client(base_url = nil, **options)
+      client = Client.new(base_url, **options) # => Client#initialize
+      return client unless block_given?
+
+      begin
+        yield client
+      ensure
+        client.close
+      end
+    end
+  end
+end
 ```
 
 ```ruby
@@ -55,6 +75,7 @@ module Net
     # A reusable synchronous HTTP client. Compatible connections are automatically
     # shared process-wide; cookies, authentication and cancellation are client-local.
     class Client
+      # Client::DEFAULTS
       DEFAULTS = {
         headers: {},
         protocols: [:http2, :http1],
@@ -119,53 +140,91 @@ module Net
         end
 
         private
+
+        # Client.reset_process
+        # Clientクラスが管理する共有資源をリセット
         def reset_process
           return if @pid == Process.pid
           @pool.shutdown if @pool
           @pool_mutex = Mutex.new
           @pool, @operations, @pid = nil, {}, Process.pid
         end
+
+        # Client.register
         def register(operation)
-          reset_process
+          reset_process # => Client.reset_process
+
           @pool_mutex.synchronize do
             @operations[operation] = true
-            @pool ||= Pool.new(**@pool_options)
+            # プロセス全体の共有プールを作成
+            @pool ||= Pool.new(**@pool_options) # => Pool#initialize
           end
         end
+
+        # Client.unregister
         def unregister(operation)
           @pool_mutex.synchronize { @operations.delete(operation) }
         end
       end
 
       attr_reader :cookie_jar
+
+      # Client#initialize
       def initialize(base_url = nil, **options)
+        # Client::DEFAULTSにない設定名があれば例外
         unknown = options.keys - DEFAULTS.keys
         raise ArgumentError, "unknown options: #{unknown.join(', ')}" unless unknown.empty?
+
+        # デフォルトの初期値にoptionsをmergeして初期化
         @options = DEFAULTS.merge(options)
-        @options[:headers] = Request.headers(@options[:headers])
+        @options[:headers] = Request.headers(@options[:headers]) # => Request.headers ()
         @options[:protocols] = Array(@options[:protocols]).dup.freeze
+
+        # プロトコルが1つ以上ある、かつ含まれているプロトコル名が:http1か:http2であることを検証
         unless !@options[:protocols].empty? && (@options[:protocols] - [:http1, :http2]).empty?
           raise ArgumentError, 'protocols must contain :http1 and/or :http2'
         end
+
+        # Client::TLS_KEYSにない設定名があれば例外
         unknown_tls = @options[:tls].keys - TLS_KEYS
         raise ArgumentError, "unknown TLS settings: #{unknown_tls.join(', ')}" unless unknown_tls.empty?
+
+        # Client#snapshot -> Request#snapshot (設定をコピー)
         @options[:tls] = snapshot(@options[:tls])
         @options[:auth] = snapshot(@options[:auth])
         @options[:proxy] = snapshot(@options[:proxy])
         @options[:middleware] = @options[:middleware].dup.freeze
+
+        # @optionsを検証
         validate_options(@options)
         @options.freeze
         @base_url = base_url && URI(base_url.to_s).freeze
+
+        # ベースURLがある場合は、schemeがhttp / httpsであり、hostnameがあり、userinfoがないこと
         if @base_url && (!%w[http https].include?(@base_url.scheme) || !@base_url.hostname || @base_url.userinfo)
           raise ArgumentError, 'base_url must be an absolute HTTP(S) URL without userinfo'
         end
-        @cookie_jar = options[:cookies].is_a?(CookieJar) ? options[:cookies] : (options[:cookies] ? CookieJar.new : nil)
-        @mutex, @active, @closed, @pid = Mutex.new, {}, false, Process.pid
+
+        # Cookieを保存する場所を決める
+        @cookie_jar = options[:cookies].is_a?(CookieJar) ?
+          options[:cookies] : (options[:cookies] ? CookieJar.new : nil)
+
+        @mutex = Mutex.new # Clientの状態更新を排他制御するためのミューテックス
+        @active = {}       # このClientで実行中のOperationを記録するためのハッシュ
+        @closed = false    # Clientがクローズされたかどうか
+        @pid = Process.pid # 現在のプロセスID (fork後にプロセスが変わったことを検出するためのもの)
+
+        # 認証情報を送ってよい接続先の範囲
         @auth_origin = @base_url && [@base_url.scheme, @base_url.hostname.downcase, @base_url.port]
-        @digest_mutex, @digest_count = Mutex.new, 0
+
+        @digest_mutex = Mutex.new # 複数のリクエストによるカウンタの同時更新を排他制御するためのミューテックス
+        @digest_count = 0 # 認証に使うnonce countの元になるカウンタ
+
+        # Client#buffered_getを利用できるかどうか
         @simple_get = @base_url && @base_url.scheme == 'http' && @options[:proxy].nil? &&
           DEFAULTS.all? { |key, value| key == :proxy || @options[key] == value }
-        @get_templates = {}
+
+        @get_templates = {} # Client#buffered_getで用いるリクエスト情報を保存するハッシュ
       end
 
       def build_request(method, url = nil, headers: {}, body: nil, json: UNSET, form: nil, multipart: nil, params: nil, **options)
@@ -196,25 +255,43 @@ module Net
         Request.new(method, uri, headers: headers, body: body, **options)
       end
 
+      # Client#request
       def request(method, url = nil, **options, &block)
-        if @simple_get && !block && options.empty? && (method == :get || method == 'get' || method == 'GET') && url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
-          return buffered_get(url)
+        if @simple_get &&
+           !block &&
+           options.empty? &&
+           (method == :get || method == 'get' || method == 'GET') && # GETリクエスト
+           url.is_a?(String) && url.start_with?('/') && !url.start_with?('//') # 別のホストを指定しうるURLではない
+
+          return buffered_get(url) # => Client#buffered_get
         end
-        perform(build_request(method, url, **options), &block)
+
+        # WIP
+        req = build_request(method, url, **options) # => Client#build_request
+        perform(req, &block) # => Client#perform
       end
+
       %w[head post put patch delete options trace].each do |verb|
         define_method(verb) { |url = nil, **options, &block| request(verb, url, **options, &block) }
       end
+
+      # Client#get
       def get(url = nil, **options, &block)
-        if @simple_get && !block && options.empty? && url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
-          buffered_get(url)
+        if @simple_get &&
+           !block &&
+           options.empty? &&
+           url.is_a?(String) && url.start_with?('/') && !url.start_with?('//')
+
+          buffered_get(url) # => Client#buffered_get
         else
-          request(:get, url, **options, &block)
+          request(:get, url, **options, &block) # => Client#request
         end
       end
+
+      # Client#stream
       def stream(method, url = nil, **options, &block)
         raise ArgumentError, 'stream requires a block' unless block
-        request(method, url, **options, &block)
+        request(method, url, **options, &block) # => Client#request
       end
 
       def perform(request, &block)
@@ -281,37 +358,68 @@ module Net
 
       private
 
+      # Client#buffered_get TLSを利用しないHTTP通信でのGET
       # Reuse immutable URL/route preparation for the common buffered H1 GET.
       # The same shared pool, operation registration and cancellation rules apply.
       def buffered_get(url)
-        reset_after_fork
-        operation = Operation.new(@options)
+        reset_after_fork # => Client#reset_after_fork
+        operation = Operation.new(@options) # => Operation#initialize (lib/net/http/client/runtime.rb)
+
         template = @mutex.synchronize do
           raise ClosedError, 'client is closed' if @closed
-          prepared = @get_templates[url]
+          prepared = @get_templates[url] # テンプレートをキャッシュから取得
+
+          # 例
+          # @get_templates[url] = [
+          #   request,                # Client::Request
+          #   route_key,              # 接続を共有できるか判定するキー
+          #   request.request_target  # 送信するパスとクエリ
+          # ]
+
           unless prepared
-            request = build_request(:get, url)
-            prepared = [request, route_key(request, @options, nil), request.request_target.freeze].freeze
+            request = build_request(:get, url) # => Client#build_request
+            prepared = [
+              request,
+              route_key(request, @options, nil), # => Client#route_key
+              request.request_target.freeze
+            ].freeze
+
             @get_templates.shift if @get_templates.size >= 64
             @get_templates[url.dup.freeze] = prepared
           end
+
+          # Operationを実行中として登録する
           @active[operation] = true
           prepared
         end
-        pool = Client.send(:register, operation)
+
+        # コネクションプールを取得
+        pool = Client.send(:register, operation) # => Client.register
         entry = slot = nil
+
         begin
-          request, key, target = template
-          entry, slot = pool.acquire(key, operation, origin: key[0]) { ConnectionFactory.open(request, @options, operation, nil) }
-          entry.session.buffered_get(target, operation)
+          request, # GETを表すClient::Request
+          key,     # 接続を共有できる条件をまとめたroute key
+          target = template # パスとクエリ
+          entry, # 接続のセッションなどを持つ接続プールのエントリ
+          slot = # 予約を表す値
+            pool.acquire( # => Pool#acquire プールに対して接続の取得と予約の依頼
+              key, # 再利用できる接続を探す条件
+              operation, # 待機中に期限・キャンセルを確認するための情報
+              origin: key[0] # 接続数をorigin単位で管理するための情報
+            ) { ConnectionFactory.open(request, @options, operation, nil) } # => ConnectionFactory.open 接続をつくる
+
+          # 取得した接続でGETを送信
+          entry.session.buffered_get(target, operation) # => H1Session#buffered_get
         ensure
-          operation.detach
-          pool.release(entry, slot) if entry
-          @mutex.synchronize { @active.delete(operation) }
-          Client.send(:unregister, operation)
+          operation.detach # Operationに登録したキャンセル用callbackをデタッチ
+          pool.release(entry, slot) if entry # プールに接続を返却
+          @mutex.synchronize { @active.delete(operation) } # このClientインスタンスの実行中一覧からOperationを削除
+          Client.send(:unregister, operation) # => Client.unregister
         end
       end
 
+      # Client#snapshot
       def snapshot(value)
         Request.snapshot(value)
       end
@@ -346,8 +454,12 @@ module Net
         end
       end
 
+      # Client#reset_after_fork
+      # Clientを作ったプロセスと現在のプロセスが同じかどうかを確認する
       def reset_after_fork
         return if @pid == Process.pid
+
+        # 子プロセスの場合、親の実行中リクエストやロックをそのまま使うことはできないため、状態を作り直す
         @mutex, @active, @pid = Mutex.new, {}, Process.pid
         @digest_mutex = Mutex.new
       end
@@ -360,9 +472,11 @@ module Net
         proxy
       end
 
+      # Client#route_key
       def route_key(request, options, proxy)
         # Values are immutable snapshots or identity-bearing TLS objects. Request
         # credentials never enter this key; proxy credentials necessarily do.
+        # [scheme・ホスト名・ポート, プロキシURL, 許可するHTTPプロトコル, TLS設定, 接続のkeep-alive設定]
         [request.origin, proxy && proxy.to_s, options[:protocols], options[:tls], options[:idle_timeout]].freeze
       end
 
