@@ -291,7 +291,7 @@ module Net
         end
 
         req = build_request(method, url, **options) # => Client#build_request
-        perform(req, &block) # => Client#perform WIP
+        perform(req, &block) # => Client#perform
       end
 
       %w[head post put patch delete options trace].each do |verb|
@@ -317,11 +317,13 @@ module Net
         request(method, url, **options, &block) # => Client#request
       end
 
+      # Client#perform
       def perform(request, &block)
-        if request.is_a?(Net::HTTPRequest)
+        if request.is_a?(Net::HTTPRequest) # 既存のNet::HTTPRequestオブジェクトの場合
           uri = request.uri || (@base_url && @base_url.merge(request.path))
           headers = request.to_hash
           body = request.body_stream || request.body
+
           if (form = request.instance_variable_get(:@body_data))
             # set_form defers serialization until sending. Snapshot it through
             # the shared body layer without mutating the caller's request.
@@ -334,32 +336,47 @@ module Net
             end
             headers.delete('content-length')
           end
-          request = build_request(request.method, uri, headers: headers, body: body)
+
+          # Net::HTTPRequestオブジェクトをもとにしてClient::Requestオブジェクトを作成する
+          request = build_request(request.method, uri, headers: headers, body: body) # => Client#build_request
         end
+
         raise ArgumentError, 'expected Client::Request or Net::HTTPRequest' unless request.is_a?(Request)
+
+        # Requestの設定でClientの設定を上書きする
         options = @options.merge(request.options)
+
         if request.options.key?(:middleware)
+          # options[:middleware]は上書きでなく連結する
           options[:middleware] = @options[:middleware] + request.options[:middleware]
         end
-        validate_options(options)
-        operation = Operation.new(options)
-        reset_after_fork
+
+        validate_options(options) # => Client#validate_options 設定を検証
+        operation = Operation.new(options) # => Client::Operation#initialize (lib/net/http/client/runtime.rb)
+        reset_after_fork # => Client#reset_after_fork
+
         @mutex.synchronize do
           raise ClosedError, 'client is closed' if @closed
           @active[operation] = true
         end
-        pool = Client.send(:register, operation)
-        begin
-          terminal = proc { |req| execute(req, operation, pool, &block) }
+
+        # コネクションプールを取得
+        pool = Client.send(:register, operation) # => Client.register
+
+        begin # 実際の送信処理をmiddlewareでラップし、順に呼び出す
+          terminal = proc { |req| execute(req, operation, pool, &block) } # => Client#execute WIP
+
+          # middlewareの配列を最後の要素から順に登録する。middlewareは外部からAPI経由で渡せる
           options[:middleware].reverse_each do |middleware|
             downstream = terminal
             terminal = proc { |req| middleware.call(req, downstream) }
           end
-          terminal.call(request)
+
+          terminal.call(request) # Client#execute を呼び出す
         ensure
-          operation.detach
-          @mutex.synchronize { @active.delete(operation) }
-          Client.send(:unregister, operation)
+          operation.detach # Operationに登録したキャンセル用callbackをデタッチ
+          @mutex.synchronize { @active.delete(operation) } # このClientインスタンスの実行中一覧からOperationを削除
+          Client.send(:unregister, operation) # => Client.unregister
         end
       end
 
@@ -386,7 +403,7 @@ module Net
       # The same shared pool, operation registration and cancellation rules apply.
       def buffered_get(url)
         reset_after_fork # => Client#reset_after_fork
-        operation = Operation.new(@options) # => Operation#initialize (lib/net/http/client/runtime.rb)
+        operation = Operation.new(@options) # => Client::Operation#initialize (lib/net/http/client/runtime.rb)
 
         template = @mutex.synchronize do
           raise ClosedError, 'client is closed' if @closed
@@ -447,33 +464,49 @@ module Net
         Request.snapshot(value)
       end
 
+      # Client#validate_options
       def validate_options(options)
         unknown = options.keys - DEFAULTS.keys
         raise ArgumentError, "unknown options: #{unknown.join(', ')}" unless unknown.empty?
+
         protocols = options[:protocols]
         unless protocols.is_a?(Array) && !protocols.empty? && (protocols - [:http1, :http2]).empty?
           raise ArgumentError, 'protocols must contain :http1 and/or :http2'
         end
+
         unless options[:tls].is_a?(Hash) && (options[:tls].keys - TLS_KEYS).empty?
           raise ArgumentError, 'invalid TLS options'
         end
+
         auth = options[:auth]
-        if auth && !(auth.is_a?(Array) && ((auth[0] == :bearer && auth.size == 2) || ([:basic,:digest].include?(auth[0]) && auth.size == 3)))
+        if auth &&
+           !(auth.is_a?(Array) &&
+             ((auth[0] == :bearer && auth.size == 2) || ([:basic,:digest].include?(auth[0]) && auth.size == 3)))
           raise ArgumentError, 'invalid authentication options'
         end
+
         unless options[:middleware].is_a?(Array) && options[:middleware].all? { |item| item.respond_to?(:call) }
           raise ArgumentError, 'middleware must be an array of callable objects'
         end
+
         [:open_timeout, :read_timeout, :write_timeout, :pool_timeout, :idle_timeout, :retry_delay].each do |name|
           value = options[name]
-          raise ArgumentError, "#{name} must be a positive finite number" unless value.is_a?(Numeric) && value.finite? && value > 0
+          unless value.is_a?(Numeric) && value.finite? && value > 0
+            raise ArgumentError, "#{name} must be a positive finite number"
+          end
         end
+
         [:timeout, :max_response_bytes].each do |name|
           value = options[name]
-          raise ArgumentError, "#{name} must be nil or positive" if value && !(value.is_a?(Numeric) && value.finite? && value > 0)
+          if value && !(value.is_a?(Numeric) && value.finite? && value > 0)
+            raise ArgumentError, "#{name} must be nil or positive"
+          end
         end
+
         [:retries, :max_redirects].each do |name|
-          raise ArgumentError, "#{name} must be a nonnegative integer" unless options[name].is_a?(Integer) && options[name] >= 0
+          unless options[name].is_a?(Integer) && options[name] >= 0
+            raise ArgumentError, "#{name} must be a nonnegative integer"
+          end
         end
       end
 
