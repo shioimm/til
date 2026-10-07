@@ -227,21 +227,42 @@ module Net
         @get_templates = {} # Client#buffered_getで用いるリクエスト情報を保存するハッシュ
       end
 
-      def build_request(method, url = nil, headers: {}, body: nil, json: UNSET, form: nil, multipart: nil, params: nil, **options)
+      # Client#build_request
+      def build_request(
+        method,
+        url = nil,
+        headers: {},
+        body: nil,
+        json: UNSET, # => Client::UNSET (Object.new.freeze)
+        form: nil,
+        multipart: nil,
+        params: nil,
+        **options
+      )
+        # Client::DEFAULTSにない設定名があれば例外
         unknown = options.keys - DEFAULTS.keys
         raise ArgumentError, "unknown options: #{unknown.join(', ')}" unless unknown.empty?
+
         url = @base_url if url.nil?
         raise ArgumentError, 'URL is required' unless url
+
+        # URLをURIオブジェクトへ変換
         uri = URI(url.to_s)
         uri = @base_url.merge(uri) if @base_url && !uri.absolute?
+
+        # paramsが指定されていればURLのクエリ用にエンコード
         if params
           query = URI.encode_www_form(params)
           uri.query = [uri.query, query].compact.reject(&:empty?).join('&')
         end
+
+        # ヘッダをまとめ、ボディの指定方法が重複していないかを確認
         headers = @options[:headers].merge(Request.headers(headers))
         json_given = !json.equal?(UNSET)
         specified = [body, form, multipart].count { |value| !value.nil? } + (json_given ? 1 : 0)
         raise ArgumentError, 'choose one of body, json, form, multipart' if specified > 1
+
+        # ボディの指定方法に応じてbody, headersをセット
         if json_given
           body = JSON.generate(json)
           headers = headers.merge('content-type'=>['application/json'])
@@ -252,7 +273,10 @@ module Net
           body = MultipartBody.new(multipart)
           headers = headers.merge('content-type'=>["multipart/form-data; boundary=#{body.boundary}"])
         end
+
+        # ここまでで用意したuri, headers, body, 引数で受け取ったmethod, optionsを用いてRequest.new
         Request.new(method, uri, headers: headers, body: body, **options)
+        # => Client::Request#initialize (lib/net/http/client/request.rb)
       end
 
       # Client#request
@@ -266,9 +290,8 @@ module Net
           return buffered_get(url) # => Client#buffered_get
         end
 
-        # WIP
         req = build_request(method, url, **options) # => Client#build_request
-        perform(req, &block) # => Client#perform
+        perform(req, &block) # => Client#perform WIP
       end
 
       %w[head post put patch delete options trace].each do |verb|
