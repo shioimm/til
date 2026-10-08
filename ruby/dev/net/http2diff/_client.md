@@ -536,6 +536,7 @@ module Net
         [request.origin, proxy && proxy.to_s, options[:protocols], options[:tls], options[:idle_timeout]].freeze
       end
 
+      # Client#authorization
       def authorization(auth, request)
         return nil unless auth
         type, *args = auth
@@ -561,20 +562,27 @@ module Net
 
         # actionがnilになるまで = リクエストの再試行 / リダイレクト / 認証の再送 が不要になるまでループする
         loop do
-          operation.check!
+          # キャンセル済みならCancelledError、タイムアウト済みならRequestTimeoutを発生させる
+          operation.check! # => Client::Operation#check!
+
           headers = request.headers.dup
+
+          # 圧縮が有効な場合かつAccept-Encodingが未設定の場合に設定
           headers['accept-encoding'] ||= ['gzip;q=1.0,deflate;q=0.6,identity;q=0.3'] if options[:compress]
 
+          # 現在の送信先が認証の基準originと一致する場合、設定された認証情報からヘッダ値を作成
           if request.origin == auth_origin
-            auth = authorization(options[:auth], request)
+            auth = authorization(options[:auth], request) #=> Client#authorization
             headers['authorization'] ||= [auth] if auth
           end
 
+          # @cookie_jarがあるがRequestにCookieヘッダが明示されていない場合は、URLに合うCookie値を作成
           if @cookie_jar && !headers.key?('cookie')
-            cookie = @cookie_jar.header(request.uri)
+            cookie = @cookie_jar.header(request.uri) # => Client::CookieJar#header
             headers['cookie'] = [cookie] unless cookie.empty?
           end
 
+          # WIP
           attempt = request.with(headers: headers)
           proxy = proxy_for(request.uri, options[:proxy])
           key = route_key(attempt, options, proxy)
