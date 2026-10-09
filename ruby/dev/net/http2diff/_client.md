@@ -536,6 +536,7 @@ module Net
         [request.origin, proxy && proxy.to_s, options[:protocols], options[:tls], options[:idle_timeout]].freeze
       end
 
+      # Client#authorization
       def authorization(auth, request)
         return nil unless auth
         type, *args = auth
@@ -547,31 +548,49 @@ module Net
         end
       end
 
+      # Client#execute
+      # 呼び出し側の例 execute(req, operation, pool, &block)
+      #   initial   ... middlewareでラップしたRequest
+      #   operation ... 今回の実行の設定・期限・キャンセルを管理するOperation
+      #   pool      ... 共有コネクションプール
       def execute(initial, operation, pool)
-        options = operation.options
-        request = initial
+        options = operation.options # timeout、認証、retry、redirectなどの設定を取得
+        request = initial # request = 送信するリクエスト
         retries = redirects = 0
-        challenged = false
-        auth_origin = @auth_origin || initial.origin
+        challenged = false # challenged = Digest認証のチャレンジに対応済みかどうか
+        auth_origin = @auth_origin || initial.origin # auth_origin = 設定された認証情報を送る基準のorigin
+
+        # actionがnilになるまで = リクエストの再試行 / リダイレクト / 認証の再送 が不要になるまでループする
         loop do
-          operation.check!
+          # キャンセル済みならCancelledError、タイムアウト済みならRequestTimeoutを発生させる
+          operation.check! # => Client::Operation#check!
+
           headers = request.headers.dup
+
+          # 圧縮が有効な場合かつAccept-Encodingが未設定の場合に設定
           headers['accept-encoding'] ||= ['gzip;q=1.0,deflate;q=0.6,identity;q=0.3'] if options[:compress]
+
+          # 現在の送信先が認証の基準originと一致する場合、設定された認証情報からヘッダ値を作成
           if request.origin == auth_origin
-            auth = authorization(options[:auth], request)
+            auth = authorization(options[:auth], request) #=> Client#authorization
             headers['authorization'] ||= [auth] if auth
           end
+
+          # @cookie_jarがあるがRequestにCookieヘッダが明示されていない場合は、URLに合うCookie値を作成
           if @cookie_jar && !headers.key?('cookie')
-            cookie = @cookie_jar.header(request.uri)
+            cookie = @cookie_jar.header(request.uri) # => Client::CookieJar#header
             headers['cookie'] = [cookie] unless cookie.empty?
           end
+
+          # WIP
           attempt = request.with(headers: headers)
           proxy = proxy_for(request.uri, options[:proxy])
           key = route_key(attempt, options, proxy)
           entry = reservation = nil
           response = nil
-          action = nil
+          action = nil # レスポンスを返す前に必要な次の処理を格納する
           visible = false
+
           begin
             entry, reservation = pool.acquire(key, operation, origin: key[0]) { ConnectionFactory.open(attempt, options, operation, proxy) }
             response = entry.session.exchange(attempt, operation, reservation) do |res|

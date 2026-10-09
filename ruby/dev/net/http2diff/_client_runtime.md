@@ -43,6 +43,7 @@ module Net
           @callback = nil
         end
 
+        # Client::Operation#check!
         def check!
           raise CancelledError, 'request cancelled' if @cancelled
           raise RequestTimeout, 'request deadline exceeded' if @deadline && Clock.now >= @deadline
