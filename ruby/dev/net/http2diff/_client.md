@@ -444,7 +444,7 @@ module Net
 
           entry, # 接続のセッションなどを持つ接続プールのエントリ
           slot = # 予約を表す値
-            pool.acquire( # => Pool#acquire プールに対して接続の取得と予約の依頼
+            pool.acquire( # => Client::Pool#acquire プールに対して接続の取得と予約の依頼
               key, # 再利用できる接続を探す条件
               operation, # 待機中に期限・キャンセルを確認するための情報
               origin: key[0] # 接続数をorigin単位で管理するための情報
@@ -598,12 +598,13 @@ module Net
           visible = false # レスポンスを返すことができるかどうか
 
           begin
-            entry, reservation = pool.acquire( # => Pool#acquire プールに対して接続の取得と予約の依頼
+            entry, reservation = pool.acquire( # => Client::Pool#acquire プールに対して接続の取得と予約の依頼
               key,
               operation,
               origin: key[0] # 接続数をorigin単位で管理するための情報
             ) { ConnectionFactory.open(attempt, options, operation, proxy) } # => ConnectionFactory.open 接続を作成
 
+            # WIP
             response = entry.session.exchange(attempt, operation, reservation) do |res|
               @cookie_jar.store(request.uri, res) if @cookie_jar
 
