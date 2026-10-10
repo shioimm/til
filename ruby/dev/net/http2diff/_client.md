@@ -441,9 +441,10 @@ module Net
           request, # GETを表すClient::Request
           key,     # 接続を共有できる条件をまとめたroute key
           target = template # パスとクエリ
+
           entry, # 接続のセッションなどを持つ接続プールのエントリ
           slot = # 予約を表す値
-            pool.acquire( # => Pool#acquire プールに対して接続の取得と予約の依頼
+            pool.acquire( # => Client::Pool#acquire プールに対して接続の取得と予約の依頼
               key, # 再利用できる接続を探す条件
               operation, # 待機中に期限・キャンセルを確認するための情報
               origin: key[0] # 接続数をorigin単位で管理するための情報
@@ -520,11 +521,14 @@ module Net
         @digest_mutex = Mutex.new
       end
 
+      # Client#proxy_for
       def proxy_for(uri, setting)
         proxy = setting == :ENV ? uri.find_proxy : setting
         return nil unless proxy
+
         proxy = URI(proxy.to_s)
         raise ArgumentError, 'proxy must be an HTTP URL' unless proxy.scheme == 'http' && proxy.hostname
+
         proxy
       end
 
@@ -583,28 +587,49 @@ module Net
           end
 
           # WIP
-          attempt = request.with(headers: headers)
-          proxy = proxy_for(request.uri, options[:proxy])
-          key = route_key(attempt, options, proxy)
-          entry = reservation = nil
+          attempt = request.with(headers: headers) # => Request#with 圧縮・認証・Cookieのヘッダを反映したRequest
+          proxy = proxy_for(request.uri, options[:proxy]) # => Client#proxy_for 今回の送信先で利用するプロキシ
+          key = route_key(attempt, options, proxy) # => Client#route_key 再利用できる接続を探すキー
+
+          entry = nil # entry = 接続のセッションなどを持つ接続プールのエントリ
+          reservation = nil # reservation = 予約を表す値
           response = nil
           action = nil # レスポンスを返す前に必要な次の処理を格納する
-          visible = false
+          visible = false # レスポンスを返すことができるかどうか
 
           begin
-            entry, reservation = pool.acquire(key, operation, origin: key[0]) { ConnectionFactory.open(attempt, options, operation, proxy) }
+            entry, reservation = pool.acquire( # => Client::Pool#acquire プールに対して接続の取得と予約の依頼
+              key,
+              operation,
+              origin: key[0] # 接続数をorigin単位で管理するための情報
+            ) { ConnectionFactory.open(attempt, options, operation, proxy) } # => ConnectionFactory.open 接続を作成
+
+            # WIP
             response = entry.session.exchange(attempt, operation, reservation) do |res|
               @cookie_jar.store(request.uri, res) if @cookie_jar
-              if res.code == '401' && !challenged && request.origin == auth_origin && options[:auth] && options[:auth][0] == :digest && request.replayable?
+
+              if res.code == '401' &&
+                 !challenged &&
+                 request.origin == auth_origin &&
+                 options[:auth] &&
+                 options[:auth][0] == :digest &&
+                 request.replayable?
+
                 if (digest = digest_authorization(res, attempt, options[:auth]))
                   action = [:digest, digest]
                 end
-              elsif options[:follow_redirects] && %w[301 302 303 307 308].include?(res.code) && res['location']
+              elsif options[:follow_redirects] &&
+                    %w[301 302 303 307 308].include?(res.code) &&
+                    res['location']
+
                 raise RedirectError, 'too many redirects' if redirects >= options[:max_redirects]
                 action = [:redirect, res['location']]
-              elsif retries < options[:retries] && retryable?(request) && %w[429 502 503 504].include?(res.code)
+              elsif retries < options[:retries] &&
+                    retryable?(request) &&
+                    %w[429 502 503 504].include?(res.code)
                 action = [:retry, retry_after(res, options[:retry_delay])]
               end
+
               if action
                 # Closing an unread response releases H1 or resets only this H2 stream.
               else
