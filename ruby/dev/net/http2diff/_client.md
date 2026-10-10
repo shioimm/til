@@ -603,7 +603,6 @@ module Net
               origin: key[0] # 接続数をorigin単位で管理するための情報
             ) { ConnectionFactory.open(attempt, options, operation, proxy) } # => ConnectionFactory.open 接続を作成
 
-            # WIP
             response = entry.session.exchange(attempt, operation, reservation) { |res|
               # => Client::Pool::Entry#session
               #      - Client::H1Session#exchange
@@ -662,39 +661,69 @@ module Net
             pool.release(entry, reservation) if entry # => Client::Pool#release
           end
 
+          # 次のアクションがなければレスポンスを返して終了
           return response unless action
-          case action[0]
+
+          current_action, action_payload = action
+
+          case current_action
           when :digest
             challenged = true
-            request = request.with(headers: request.headers.merge('authorization'=>[action[1]]))
+
+            # Authorizationヘッダを上書き (次のループでDigest認証の再送を行う)
+            request = request.with(headers: request.headers.merge('authorization'=>[action_payload]))
+
           when :redirect
-            redirects += 1
-            target = request.uri.merge(action[1])
+            redirects += 1 # リダイレクト回数をカウント
+            target = request.uri.merge(action_payload) # リダイレクト先を取得
+
             unless %w[http https].include?(target.scheme) && target.hostname && !target.userinfo
               raise RedirectError, 'redirect target must be an HTTP(S) URL without userinfo'
             end
-            raise RedirectError, 'HTTPS to HTTP redirect rejected' if request.uri.scheme == 'https' && target.scheme != 'https'
+
+            if request.uri.scheme == 'https' && target.scheme != 'https'
+              raise RedirectError, 'HTTPS to HTTP redirect rejected'
+            end
+
             method = request.method
             body = request.body
             headers = request.headers.dup
-            if response.code == '303' && method != 'HEAD' || %w[301 302].include?(response.code) && method == 'POST'
+
+            # ステータスコードに応じてリクエストメソッドを上書き
+            if response.code == '303' &&
+               method != 'HEAD' ||
+               %w[301 302].include?(response.code) &&
+               method == 'POST'
+
               method, body = 'GET', nil
               %w[content-type content-length transfer-encoding].each { |name| headers.delete(name) }
+
             elsif !request.replayable?
               raise RedirectError, 'redirect requires a replayable body'
             end
+
+            # リダイレクト先のoriginが現在の送信先と異なる場合は認証・Cookie・Hostの明示的なヘッダを削除
             if [target.scheme, target.hostname.downcase, target.port] != request.origin
               %w[authorization proxy-authorization cookie host].each { |name| headers.delete(name) }
             end
+
+            # リクエストを上書き (次のループでリダイレクト先にリクエスト)
             request = request.with(method: method, uri: target, headers: headers, body: body)
+
           when :retry
+            # リトライ回数をカウント
             retries += 1
-            until (remaining = action[1]) <= 0
+
+            # 残りの待機時間が0になるまで
+            until (remaining = action_payload) <= 0
               pause = [remaining, 0.05, operation.remaining].compact.min
-              sleep(pause)
-              operation.check!
-              action[1] -= pause
+              sleep(pause) # 再送待機
+
+              # キャンセル済みならCancelledError、タイムアウト済みならRequestTimeoutを発生させる
+              operation.check! # => Client::Operation#check!
+              action_payload -= pause
             end
+
           end
         end
       end
