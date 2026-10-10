@@ -586,7 +586,6 @@ module Net
             headers['cookie'] = [cookie] unless cookie.empty?
           end
 
-          # WIP
           attempt = request.with(headers: headers) # => Request#with 圧縮・認証・Cookieのヘッダを反映したRequest
           proxy = proxy_for(request.uri, options[:proxy]) # => Client#proxy_for 今回の送信先で利用するプロキシ
           key = route_key(attempt, options, proxy) # => Client#route_key 再利用できる接続を探すキー
@@ -605,46 +604,64 @@ module Net
             ) { ConnectionFactory.open(attempt, options, operation, proxy) } # => ConnectionFactory.open 接続を作成
 
             # WIP
-            response = entry.session.exchange(attempt, operation, reservation) do |res|
-              @cookie_jar.store(request.uri, res) if @cookie_jar
+            response = entry.session.exchange(attempt, operation, reservation) { |res|
+              # => Client::Pool::Entry#session
+              #      - Client::H1Session#exchange
+              #      - Client::HTTP2::Session#exchange
 
-              if res.code == '401' &&
-                 !challenged &&
-                 request.origin == auth_origin &&
-                 options[:auth] &&
-                 options[:auth][0] == :digest &&
-                 request.replayable?
+              # CookieJarが有効ならレスポンスのSet-CookieヘッダからCookieを保存する
+              @cookie_jar.store(request.uri, res) if @cookie_jar # => Client::CookieJar#store
 
-                if (digest = digest_authorization(res, attempt, options[:auth]))
+              if res.code == '401' &&             # 認証が必要
+                 !challenged &&                   # まだDigest認証のチャレンに応答していない
+                 request.origin == auth_origin && # 認証情報を送ることができるoriginである
+                 options[:auth] &&                # 認証設定がある
+                 options[:auth][0] == :digest &&  #認証方式がDigest
+                 request.replayable?              # ボディをもう一度読み出して再送可能
+
+                # Authorizationヘッダの値を作成 -> 値がある場合
+                if (digest = digest_authorization(res, attempt, options[:auth])) # => Client#digest_authorization
                   action = [:digest, digest]
                 end
-              elsif options[:follow_redirects] &&
-                    %w[301 302 303 307 308].include?(res.code) &&
-                    res['location']
 
+              elsif options[:follow_redirects] &&                 # 自動リダイレクトが有効
+                    %w[301 302 303 307 308].include?(res.code) && # ステータスコードがリダイレクトを意図
+                    res['location']                               # リダイレクト先を示すLocationヘッダがある
+
+                # リダイレクト回数が上限に達していたら例外
                 raise RedirectError, 'too many redirects' if redirects >= options[:max_redirects]
+
                 action = [:redirect, res['location']]
-              elsif retries < options[:retries] &&
-                    retryable?(request) &&
-                    %w[429 502 503 504].include?(res.code)
-                action = [:retry, retry_after(res, options[:retry_delay])]
+
+              elsif retries < options[:retries] &&         # 再試行回数が上限未満
+                    retryable?(request) &&                 # Clientが安全に再試行できることを判断できるRequest
+                    %w[429 502 503 504].include?(res.code) # ステータスコードが再試行を意図
+
+                delay = retry_after(res, options[:retry_delay])# => Client#retry_after
+                action = [:retry, retry_after(res, delay]
               end
 
-              if action
+              if action # actionがある場合は、認証の再送・リダイレクト・再試行のいずれかが必要
                 # Closing an unread response releases H1 or resets only this H2 stream.
               else
                 visible = true
                 block_given? ? yield(res) : res.read_body
               end
-            end
+            }
+
           rescue IOError, EOFError, SystemCallError, Net::ReadTimeout, Net::WriteTimeout, Net::OpenTimeout => error
-            operation.check!
+            # キャンセル済みならCancelledError、タイムアウト済みならRequestTimeoutを発生させる
+            operation.check! # => Client::Operation#check!
             raise if visible || error.is_a?(PoolTimeout) || retries >= options[:retries] || !retryable?(request)
+
             action = [:retry, options[:retry_delay]]
           ensure
-            operation.detach
-            pool.release(entry, reservation) if entry
+            operation.detach # Operationに登録したキャンセル用callbackをデタッチ
+
+            # 予約を解放し、最終使用時刻の更新と閉じた接続を削除
+            pool.release(entry, reservation) if entry # => Client::Pool#release
           end
+
           return response unless action
           case action[0]
           when :digest
@@ -685,45 +702,72 @@ module Net
       def retryable?(request)
         %w[GET HEAD PUT DELETE OPTIONS TRACE].include?(request.method) && request.replayable?
       end
+
+      # Client#retry_after
       def retry_after(response, fallback)
         value = response['retry-after']
         return fallback unless value
+
         value.match?(/\A\d+\z/) ? value.to_i : [Time.httpdate(value) - Time.now, 0].max
       rescue ArgumentError
         fallback
       end
+
+      # Client#digest_authorization
+      # サーバのDigest認証チャレンジを読み、再送時に付与するAuthorizationヘッダの値を作る
       def digest_authorization(response, request, auth)
         challenge = (response.get_fields('www-authenticate') || []).find { |v| v.match?(/\ADigest\s+/i) }
         return nil unless challenge
-        fields = challenge.sub(/\ADigest\s+/i, '').scan(/([\w-]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^,\s]+))/).each_with_object({}) do |(k,v,u), h|
-          h[k.downcase] = (v.nil? ? u : v).to_s.gsub(/\\(.)/, '\\1')
-        end
+
+        fields =
+          challenge
+            .sub(/\ADigest\s+/i, '')
+            .scan(/([\w-]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^,\s]+))/)
+            .each_with_object({}) { |(k,v,u), h| h[k.downcase] = (v.nil? ? u : v).to_s.gsub(/\\(.)/, '\\1') }
+
         realm, nonce = fields.values_at('realm', 'nonce')
         return nil unless realm && nonce
+
         algorithm = fields.fetch('algorithm', 'MD5')
         base = algorithm.sub(/-sess\z/i, '').upcase
         return nil unless %w[MD5 SHA-256 SHA-512-256].include?(base)
-        digest = base == 'SHA-512-256' ? OpenSSL::Digest.new('SHA512-256') : (base == 'SHA-256' ? Digest::SHA256 : Digest::MD5)
+
+        digest =
+          case base
+          when 'SHA-512-256' then OpenSSL::Digest.new('SHA512-256')
+          when 'SHA-256' then Digest::SHA256
+          else  Digest::MD5
+          end
+
         hash = proc { |text| digest.hexdigest(text) }
         qop = fields['qop'] && fields['qop'].split(/,\s*/).find { |v| v == 'auth' }
+
         return nil if fields['qop'] && !qop
+
         cnonce = SecureRandom.hex(16)
         count = @digest_mutex.synchronize { @digest_count += 1 }
         nc = format('%08x', count)
         ha1 = hash.call("#{auth[1]}:#{realm}:#{auth[2]}")
+
         session_algorithm = algorithm.match?(/-sess\z/i)
         ha1 = hash.call("#{ha1}:#{nonce}:#{cnonce}") if session_algorithm
         ha2 = hash.call("#{request.method}:#{request.request_target}")
+
         result = hash.call(qop ? "#{ha1}:#{nonce}:#{nc}:#{cnonce}:#{qop}:#{ha2}" : "#{ha1}:#{nonce}:#{ha2}")
+
         values = {username: auth[1], realm: realm, nonce: nonce, uri: request.request_target, response: result}
         values[:cnonce] = cnonce if qop || session_algorithm
         values[:opaque] = fields['opaque'] if fields['opaque']
+
         quote = proc { |v| '"' + v.to_s.gsub(/["\\]/) { |c| "\\#{c}" } + '"' }
+
         result = values.map { |k,v| "#{k}=#{quote.call(v)}" }
         result << "algorithm=#{algorithm}"
         result.concat(["qop=auth", "nc=#{nc}"]) if qop
-        'Digest ' + result.join(', ')
+
+        "Digest #{result.join(', ')}"
       end
+
       private_constant :DEFAULTS, :TLS_KEYS, :UNSET
     end
   end

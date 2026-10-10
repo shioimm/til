@@ -1,4 +1,4 @@
-## client.rb
+## client/pool.rb
 https://github.com/nurse/net-http/blob/8ac46b06f4c63388d03c59a1f05c036a9e8a99b3/lib/net/http/client/pool.rb
 
 ```ruby
@@ -113,10 +113,13 @@ module Net
           end
         end
 
+        # Client::Pool#release
         def release(entry, reservation)
           entry.session.release(reservation)
+
           @mutex.synchronize do
             entry.used_at = Clock.now
+
             if @closed || entry.session.closed?
               @entries.delete(entry)
               entry.session.close
