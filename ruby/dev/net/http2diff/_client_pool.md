@@ -23,17 +23,25 @@ module Net
 
         # Client::Pool#acquire
         def acquire(key, operation, origin: key)
-          # WIP
-          reset_after_fork
+          reset_after_fork # => Client::Pool#reset_after_fork
           deadline = nil
 
+          # ループの終了条件
+          #   - プール内の既存Sessionを予約できた場合
+          #   - 新規接続のSessionを予約できた場合
           loop do
-            operation.check!
+            # キャンセル済みならCancelledError、タイムアウト済みならRequestTimeoutを発生させる
+            operation.check! # => Client::Operation#check!
+
             create = false
-            lease = @mutex.synchronize do
-              raise ClosedError, 'connection pool shut down' if @closed
-              reap
-              found = nil
+
+            lease = @mutex.synchronize {
+              raise ClosedError, 'connection pool shut down' if @closed # プールがシャットダウン済み
+
+              reap # => Client::Pool#reap 使えなくなったSessionや待機期限を過ぎたSessionを一覧から取り除く
+              found = nil # 既存の接続の探索結果 [Entry, 予約情報] を格納する
+
+              # WIP
               @entries.each do |entry|
                 next unless entry.key == key
                 reservation = entry.session.reserve
@@ -70,7 +78,7 @@ module Net
                 end
               end
               found
-            end
+            }
 
             return lease if lease
 
@@ -147,24 +155,49 @@ module Net
 
         private
 
+        # Client::Pool#reap
+        # 使用できないSessionを閉じ、そのSessionを保持するEntryをプールから削除
         def reap
           now = Clock.now
           return if now < @next_reap
-          @next_reap = now + @idle_timeout
+
+          @next_reap = now + @idle_timeout # 現在から@idle_timeout後
+
           @entries.delete_if do |entry|
-            expired = entry.session.closed? || (entry.session.idle? && now - entry.used_at >= @idle_timeout)
+            expired =
+              # Sessionがすでに閉じている
+              entry.session.closed? ||
+              # Sessionの最後の利用から@idle_timeout以上経過
+              (entry.session.idle? && now - entry.used_at >= @idle_timeout)
+
             entry.session.close if expired
             expired
           end
-          nearest = @entries.select { |entry| entry.session.idle? }.map { |entry| entry.used_at + @idle_timeout }.min
+
+          # 残ったEntryのうち待機中のものを選び、それぞれの期限を計算して最も早い時刻を取得
+          nearest = @entries.filter_map { |entry| entry.used_at + @idle_timeout if entry.session.idle? }.min
+
           @next_reap = nearest || now + @idle_timeout
         end
 
+        # Client::Pool#reset_after_fork
         def reset_after_fork
           return if @pid == Process.pid
+
           # No inherited mutex may be acquired in a forked child.
+
+          # アプリケーションがforkされている場合 = プロセスIDが変わっていた場合、
+          # fork後のPoolの状態を確認し、接続を待つ期限の変数を準備する
+
+          # 親から引き継いだソケットを子プロセス側で破棄
           @entries.each { |entry| entry.session.discard_after_fork }
-          @entries, @connecting, @connecting_origins = [], {}, {}
+          # => - Client::H1Session#discard_after_fork
+          #    - Client::H2::Session#discard_after_fork
+
+          # Poolの接続一覧・接続作成中の記録・Mutexなどを初期化
+          @entries = []
+          @connecting = {}
+          @connecting_origins = {}
           @mutex = Mutex.new
           @closed = false
           @next_reap = 0
