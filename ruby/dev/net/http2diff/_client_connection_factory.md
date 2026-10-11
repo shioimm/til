@@ -8,11 +8,19 @@ module Net
     class Client
       class ConnectionFactory
         # H3 adds another connector here. It does not masquerade as a TCP socket.
+        # Client::ConnectionFactory.open WIP
         def self.open(request, options, operation, proxy, http: nil)
           uri = request.uri
-          http ||= Net::HTTP.new(uri.hostname, uri.port, proxy && proxy.hostname,
-                               proxy && proxy.port, proxy && proxy.user && URI::RFC2396_PARSER.unescape(proxy.user),
-                               proxy && proxy.password && URI::RFC2396_PARSER.unescape(proxy.password))
+
+          http ||= Net::HTTP.new(
+            uri.hostname,
+            uri.port,
+            proxy && proxy.hostname,
+            proxy && proxy.port,
+            proxy && proxy.user && URI::RFC2396_PARSER.unescape(proxy.user),
+            proxy && proxy.password && URI::RFC2396_PARSER.unescape(proxy.password)
+          )
+
           http.use_ssl = uri.scheme == 'https'
           options[:tls].each { |name, value| http.public_send("#{name}=", value) }
           http.max_retries = 0
@@ -27,18 +35,22 @@ module Net
             http.open_timeout = operation.remaining([connect_deadline - Clock.now, 0].max)
             operation.on_cancel { socket.to_io.close unless socket.to_io.closed? }
           end)
+
           protocols = options[:protocols]
+
           if http.use_ssl? && OpenSSL::SSL::SSLContext.instance_methods.include?(:alpn_protocols=)
             alpn = protocols.map { |p| p == :http2 ? 'h2' : 'http/1.1' }
             http.instance_variable_set(:@client_alpn, alpn)
           elsif protocols == [:http2]
             raise ProtocolError, 'HTTP/2 requires HTTPS and ALPN support'
           end
+
           http.start
           operation.check!
           socket = http.instance_variable_get(:@socket).io
           socket = socket.raw_io if socket.is_a?(TimedSocket)
           selected = socket.respond_to?(:alpn_protocol) && socket.alpn_protocol
+
           if selected == 'h2'
             require_relative 'http2/session'
             http.instance_variable_set(:@socket, nil)
