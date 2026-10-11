@@ -22,7 +22,7 @@ module Net
         end
 
         # Client::Pool#acquire
-        def acquire(key, operation, origin: key)
+        def acquire(key, operation, origin: key) # origin = scheme・ホスト名・ポート
           reset_after_fork # => Client::Pool#reset_after_fork
           deadline = nil
 
@@ -62,38 +62,58 @@ module Net
                 end
               end
 
-              # WIP
+              # 予約できるSessionが見つからなかった場合
               unless found
-                origin_count = @entries.count { |e| e.origin == origin } + @connecting_origins.fetch(origin, 0)
+                origin_count =
+                  @entries.count { |e| e.origin == origin } + # プールに登録済みのEntry数
+                  @connecting_origins.fetch(origin, 0) # 現在作成中の接続数
+
+                # 今回のoriginの接続数が上限以上の場合
                 if origin_count >= @origin_limit
-                  idle = @entries.select { |e| e.origin == origin && e.session.idle? && e.key != key }.min_by(&:used_at)
+                  # 新しい接続のために枠を空けたい
+
+                  idle = @entries.select { |e|
+                    # 今回と同じoriginかつ現在予約されていないSessionかつ今回の設定で再利用できない別の共有キー
+                    e.origin == origin && e.session.idle? && e.key != key
+                  }.min_by(&:used_at) # ...のうち、最終使用時刻が最も古いEntry
+
                   if idle
-                    @entries.delete(idle)
-                    idle.session.close
-                    origin_count -= 1
+                    @entries.delete(idle) # Entryをプールから削除
+                    idle.session.close # Sessionを閉じる
+                    origin_count -= 1 # 接続数を減らす
                   end
                 end
 
+                # 今回のoriginの接続数が上限未満かつ同じ共有キーで作成中の接続がない場合
                 if origin_count < @origin_limit && @connecting.fetch(key, 0).zero?
+                  # @connecting = 共有キーごとの接続作成中の数を保持するHash
+
+                  # 登録済みの接続数 + 作成中の接続数が上限数を超えている場合
                   if @entries.size + @connecting.values.inject(0, :+) >= @limit
+                    # Entryのうち待機中かつ前回の接続が最も古いものを取得して削除
                     idle = @entries.select { |e| e.session.idle? }.min_by(&:used_at)
+
                     if idle
                       @entries.delete(idle)
                       idle.session.close
                     end
                   end
+
+                  # 登録済みの接続数 + 作成中の接続数が上限数未満の場合
                   if @entries.size + @connecting.values.inject(0, :+) < @limit
+                    # 接続作成中の数を登録
                     @connecting[key] = @connecting.fetch(key, 0) + 1
                     @connecting_origins[origin] = @connecting_origins.fetch(origin, 0) + 1
-                    create = true
+                    create = true # 接続枠を確保
                   end
                 end
               end
               found
             }
 
-            return lease if lease
+            return lease if lease # [Entry, 予約情報] もしくはnil
 
+            # WIP
             if create
               session = nil
               registered = false
