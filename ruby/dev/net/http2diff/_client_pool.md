@@ -41,16 +41,28 @@ module Net
               reap # => Client::Pool#reap 使えなくなったSessionや待機期限を過ぎたSessionを一覧から取り除く
               found = nil # 既存の接続の探索結果 [Entry, 予約情報] を格納する
 
-              # WIP
+              # プールが保持するEntryを走査
               @entries.each do |entry|
-                next unless entry.key == key
+                # Entryの接続共有キーが今回のリクエストのキーと一致しなければスキップ
+                next if entry.key != key
+
+                # Sessionに利用予約を依頼
                 reservation = entry.session.reserve
+                # => - Client::H1Session#reserve Sessionをbusy状態として記録し、trueを返す
+                #    - Client::H2::Session#reserve 新しいStreamを作って返す
+
+                # 予約できたらEntryと予約情報をfoundに格納
                 if reservation
                   found = [entry, reservation]
                   break
+                else
+                  # そのSessionに新しいリクエストを受け入れる枠がない、または終了済みの場合は予約に失敗する
+                  #   - H1Sessionの場合、リクエスト枠は一つ
+                  #   - H2::Sessionの場合、リクエスト枠はストリーム数の上限値
                 end
               end
 
+              # WIP
               unless found
                 origin_count = @entries.count { |e| e.origin == origin } + @connecting_origins.fetch(origin, 0)
                 if origin_count >= @origin_limit
