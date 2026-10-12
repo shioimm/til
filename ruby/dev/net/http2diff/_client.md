@@ -448,7 +448,8 @@ module Net
               key, # 再利用できる接続を探す条件
               operation, # 待機中に期限・キャンセルを確認するための情報
               origin: key[0] # 接続数をorigin単位で管理するための情報
-            ) { ConnectionFactory.open(request, @options, operation, nil) } # => ConnectionFactory.open 接続をつくる
+            ) { ConnectionFactory.open(request, @options, operation, nil) }
+            # => Client.ConnectionFactory.open プロトコルに応じてH1Session.new / HTTP2::Session.newを行う
 
           # 取得した接続でGETを送信
           entry.session.buffered_get(target, operation) # => H1Session#buffered_get
