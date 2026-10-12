@@ -113,44 +113,86 @@ module Net
 
             return lease if lease # [Entry, 予約情報] もしくはnil
 
-            # WIP
-            if create
-              session = nil
-              registered = false
+            if create # 接続枠が確保されている場合
+              session = nil # これから作るSessionを格納する
+              registered = false # そのSessionをプールへ登録できたかどうか
+
               begin
-                session = yield
-                operation.check!
-                lease = @mutex.synchronize do
+                # #acquireに渡されたブロックを実行
+                #   e.g. ConnectionFactory.open(attempt, options, operation, proxy)
+                session = yield # 接続を確立し、H1SessionまたはHTTP2::Sessionを取得してsessionに格納する
+
+                # 接続作成中にキャンセルや期限切れが起きていないか確認
+                operation.check! # => Client::Operation#check!
+
+                # プールをロックしてEntryを登録
+                lease = @mutex.synchronize {
                   raise ClosedError, 'connection pool shut down' if @closed
 
                   entry = Entry.new(key, session, Clock.now, origin)
-
                   @entries << entry
                   registered = true
+
+                  # Sessionに利用予約を依頼
                   reservation = session.reserve
-                  reservation && [entry, reservation]
-                end
+                  # => - Client::H1Session#reserve Sessionをbusy状態として記録し、trueを返す
+                  #    - Client::H2::Session#reserve 新しいStreamを作って返す
+
+                  reservation ? [entry, reservation] : nil
+                }
+
                 return lease if lease
               ensure
-                @mutex.synchronize do
+                # 成功・失敗にかかわらず、接続作成のためく確保していた枠を解除
+                @mutex.synchronize {
+                  # 共有キー単位の作成中カウントを減らす
                   count = @connecting.fetch(key, 1) - 1
-                  count.zero? ? @connecting.delete(key) : @connecting[key] = count
+
+                  if count.zero?
+                    @connecting.delete(key)
+                  else
+                    @connecting[key] = count
+                  end
+
+                  # origin単位の作成中カウントを減らす
                   origin_count = @connecting_origins.fetch(origin, 1) - 1
-                  origin_count.zero? ? @connecting_origins.delete(origin) : @connecting_origins[origin] = origin_count
-                end
+
+                  if origin_count.zero?
+                    @connecting_origins.delete(origin)
+                  else
+                    @connecting_origins[origin] = origin_count
+                  end
+                }
+
+                # Sessionを作ったがプールへ登録できなかった場合はSessionを閉じる
                 session.close if session && !registered
               end
             end
 
+            # 既存・新規のどちらのSessionも予約できず、return leaseできなかった場合
+
+            # プールが接続を待つ期限を取得
             deadline ||= Clock.now + operation.remaining(operation.options[:pool_timeout])
+            # プールをロックし、今回の共有キーと一致するEntryからSessionを取得
             sessions = @mutex.synchronize { @entries.select { |e| e.key == key }.map(&:session) }
+
             begin
-              sessions.each { |session| session.progress(operation) if session.respond_to?(:progress) }
+              sessions.each do |session|
+                session.progress(operation) if session.respond_to?(:progress)
+                # SessionがH1Sessionの場合: #progressが存在しないので何もしない
+                # SessionがHTTP2::Sessionの場合: => HTTP2::Session#process ソケットの読み取りやフレーム処理を進める
+                #                                   処理が進むことで次の探索では予約できるようになる可能性がある
+              end
+
             rescue StandardError
-              @mutex.synchronize { @entries.delete_if { |entry| entry.session.closed? } }
+              @mutex.synchronize do
+                @entries.delete_if { |entry| entry.session.closed? }
+              end
               raise
             end
-            Wait.pause(operation, deadline)
+
+            # キャンセルと期限を確認して待機
+            Wait.pause(operation, deadline) # => Client::Wait.pause ()
           end
         end
 
