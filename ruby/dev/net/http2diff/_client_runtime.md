@@ -82,11 +82,14 @@ module Net
       # No helper threads. Fiber Scheduler implementations can cooperate in sleep.
       # The uncontended pool and session paths never wait here.
       module Wait
+        # Client::Wait.pause
         def self.pause(operation, deadline = nil)
           operation.check!
+
           if deadline && Clock.now >= deadline
             raise PoolTimeout, 'timed out waiting for a connection'
           end
+
           interval = operation.remaining(0.002)
           interval = [interval, deadline - Clock.now].min if deadline
           sleep([interval, 0].max)
