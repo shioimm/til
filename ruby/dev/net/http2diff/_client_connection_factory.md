@@ -37,25 +37,60 @@ module Net
           # レスポンスボディを読み切る前に接続が切れた場合、切り詰められた本文を正常終了として扱わない
           http.ignore_eof = false
 
-          # WIP
-          connect_deadline = Clock.now + options[:open_timeout]
-          http.instance_variable_set(:@client_io_wrapper, proc { |io| TimedSocket.new(io, operation) }) if operation.deadline
-          http.instance_variable_set(:@client_socket_observer, proc do |socket|
-            http.open_timeout = operation.remaining([connect_deadline - Clock.now, 0].max)
-            operation.on_cancel { socket.to_io.close unless socket.to_io.closed? }
-          end)
 
+          # リクエスト全体の期限がある場合
+          if operation.deadline
+            http.instance_variable_set(
+              :@client_io_wrapper, # Connection#connect中、ソケットをBufferedIOに渡す直前に実行
+              proc { |io| TimedSocket.new(io, operation) } # IOをTimedSocketでラップ
+            )
+          end
+
+          connect_deadline = Clock.now + options[:open_timeout] # 接続処理の期限
+
+          http.instance_variable_set(
+            :@client_socket_observer, # Connection#connect中、TCPソケット作成後やTLSソケット作成後に実行
+            proc { |socket|
+              http.open_timeout = operation.remaining([connect_deadline - Clock.now, 0].max) # タイムアウトの設定
+              operation.on_cancel { socket.to_io.close if !socket.to_io.closed? } # キャンセル時のコールバック
+            }
+          )
+
+          # 許可するプロトコルの配列
           protocols = options[:protocols]
 
+          # HTTPS接続であり、ALPNが設定されている
           if http.use_ssl? && OpenSSL::SSL::SSLContext.instance_methods.include?(:alpn_protocols=)
+            # 設定値をALPNの設定値へ変換して@client_alpnにセット
             alpn = protocols.map { |p| p == :http2 ? 'h2' : 'http/1.1' }
             http.instance_variable_set(:@client_alpn, alpn)
+            # のちほどConnection#connect内で@ssl_context.alpn_protocols = に@client_alpnをセットする
           elsif protocols == [:http2]
             raise ProtocolError, 'HTTP/2 requires HTTPS and ALPN support'
           end
 
-          http.start
-          operation.check!
+          http.start # => Net::HTTP#start -> Net::HTTP#do_start -> Connection#connect
+
+          # Net::HTTP#start (lib/net/http.rb)
+          #
+          #   def start  # :yield: http
+          #     raise IOError, 'HTTP session already opened' if @started
+          #
+          #     # ...
+          #     do_start # => Net::HTTP#do_start
+          #     self
+          #   end
+
+          # Net::HTTP#do_start (lib/net/http.rb)
+          #
+          #   def do_start
+          #     connect
+          #     @started = true
+          #   end
+
+          operation.check! # => Client::Operation#check!
+
+          # WIP
           socket = http.instance_variable_get(:@socket).io
           socket = socket.raw_io if socket.is_a?(TimedSocket)
           selected = socket.respond_to?(:alpn_protocol) && socket.alpn_protocol
