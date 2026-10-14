@@ -8,27 +8,36 @@ module Net
     class Client
       class ConnectionFactory
         # H3 adds another connector here. It does not masquerade as a TCP socket.
-        # Client::ConnectionFactory.open WIP
+        # Client::ConnectionFactory.open
+        #   e.g. ConnectionFactory.open(attempt, options, operation, proxy)
         def self.open(request, options, operation, proxy, http: nil)
           uri = request.uri
 
+          # リクエストの送信先とプロキシ情報を使い、接続用のNet::HTTPオブジェクトを作成
           http ||= Net::HTTP.new(
-            uri.hostname,
-            uri.port,
-            proxy && proxy.hostname,
-            proxy && proxy.port,
-            proxy && proxy.user && URI::RFC2396_PARSER.unescape(proxy.user),
-            proxy && proxy.password && URI::RFC2396_PARSER.unescape(proxy.password)
+            uri.hostname, # 接続先のホスト名
+            uri.port,     # 接続先のポート番号
+            proxy && proxy.hostname, # プロキシのホスト名
+            proxy && proxy.port,     # プロキシのポート番号
+            proxy && proxy.user && URI::RFC2396_PARSER.unescape(proxy.user),        # プロキシ認証のユーザ名
+            proxy && proxy.password && URI::RFC2396_PARSER.unescape(proxy.password) # プロキシ認証のパスワード
           )
 
+          # TLS接続用の設定
           http.use_ssl = uri.scheme == 'https'
           options[:tls].each { |name, value| http.public_send("#{name}=", value) }
+
+          # リトライ・タイムアウトの設定
           http.max_retries = 0
           http.open_timeout = operation.remaining(options[:open_timeout])
           http.read_timeout = operation.remaining(options[:read_timeout])
           http.write_timeout = operation.remaining(options[:write_timeout])
           http.keep_alive_timeout = options[:idle_timeout]
+
+          # レスポンスボディを読み切る前に接続が切れた場合、切り詰められた本文を正常終了として扱わない
           http.ignore_eof = false
+
+          # WIP
           connect_deadline = Clock.now + options[:open_timeout]
           http.instance_variable_set(:@client_io_wrapper, proc { |io| TimedSocket.new(io, operation) }) if operation.deadline
           http.instance_variable_set(:@client_socket_observer, proc do |socket|
