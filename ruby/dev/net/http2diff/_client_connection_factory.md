@@ -1,5 +1,5 @@
 ## client/connection_factory.rb
-https://github.com/nurse/net-http/blob/8ac46b06f4c63388d03c59a1f05c036a9e8a99b3/lib/net/http/client/connection_factory
+https://github.com/nurse/net-http/blob/8ac46b06f4c63388d03c59a1f05c036a9e8a99b3/lib/net/http/client/connection_factory.rb
 
 ```ruby
 # frozen_string_literal: true
