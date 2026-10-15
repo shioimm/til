@@ -13,10 +13,12 @@ module Net
         if use_ssl?
           # reference early to load OpenSSL before connecting,
           # as OpenSSL may take time to load.
-          @ssl_context = OpenSSL::SSL::SSLContext.new
+          @ssl_context = OpenSSL::SSL::SSLContext.new # TLS接続設定
         end
 
-        if proxy? then
+        # conn_addr = TCP接続先アドレス
+        # conn_port = TCP接続先ポート番号
+        if proxy?
           conn_addr = proxy_address
           conn_port = proxy_port
         else
@@ -25,18 +27,40 @@ module Net
         end
 
         debug "opening connection to #{conn_addr}:#{conn_port}..."
+
         begin
-          s = timeouted_connect(conn_addr, conn_port)
+          s = timeouted_connect(conn_addr, conn_port) # => Net::HTTP#timeouted_connect (lib/net/http.rb)
+
+          # Net::HTTP#timeouted_connect (lib/net/http.rb)
+          #
+          #   def timeouted_connect(conn_addr, conn_port)
+          #     if TCP_SOCKET_NEW_HAS_OPEN_TIMEOUT
+          #       TCPSocket.open(conn_addr, conn_port, @local_host, @local_port, open_timeout: @open_timeout)
+          #     else
+          #       Timeout.timeout(@open_timeout, Net::OpenTimeout) {
+          #         TCPSocket.open(conn_addr, conn_port, @local_host, @local_port)
+          #       }
+          #     end
+          #   end
+
         rescue => e
-          if (defined?(IO::TimeoutError) && e.is_a?(IO::TimeoutError)) || e.is_a?(Errno::ETIMEDOUT)  # for compatibility with previous versions
+          if (defined?(IO::TimeoutError) &&
+              e.is_a?(IO::TimeoutError)) ||
+              e.is_a?(Errno::ETIMEDOUT)  # for compatibility with previous versions
+
             e = Net::OpenTimeout.new(e)
           end
-          raise e, "Failed to open TCP connection to " +
-            "#{conn_addr}:#{conn_port} (#{e.message})"
+
+          raise e, "Failed to open TCP connection to " + "#{conn_addr}:#{conn_port} (#{e.message})"
         end
+
+        # フックが設定されていればTCPSocketを渡して呼び出す
         @client_socket_observer.call(s) if @client_socket_observer
         s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+
         debug "opened"
+
+        # WIP
         if use_ssl?
           if proxy?
             if @proxy_use_ssl
@@ -115,22 +139,41 @@ module Net
           end
           debug "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
         end
+
+        # s = HTTPならTCPSocket、HTTPSならSSLSocket
+        # フックが設定されていればsを渡して呼び出す
         buffered_socket = @client_io_wrapper ? @client_io_wrapper.call(s) : s
-        @socket = BufferedIO.new(buffered_socket, read_timeout: @read_timeout,
-                                 write_timeout: @write_timeout,
-                                 continue_timeout: @continue_timeout,
-                                 debug_output: @debug_output)
-        @last_communicated = nil
-        on_connect
+
+        # buffered_socketをNet::HTTPが送受信に使用するBufferedIOでラップ
+        @socket = BufferedIO.new(
+          buffered_socket,
+          read_timeout: @read_timeout,
+          write_timeout: @write_timeout,
+          continue_timeout: @continue_timeout,
+          debug_output: @debug_output
+        )
+        @last_communicated = nil # 最後に通信した時刻をnilに設定
+
+        on_connect # => Net::HTTP#on_connect (lib/net/http.rb)
+
+        # Net::HTTP#on_connect (lib/net/http.rb)
+        #
+        #   def on_connect # 接続にフックして何かを実行したい場合にサブクラスでオーバーライドされることがある
+        #   end
+        #   private :on_connect
+
       rescue => exception
         if s
           debug "Conn close because of connect error #{exception}"
           s.close
         end
+
         raise
       end
+
       private :connect
     end
+
     private_constant :Connection
   end
 end
