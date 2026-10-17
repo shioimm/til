@@ -58,6 +58,7 @@ module Net
 
           # 許可するプロトコルの配列
           protocols = options[:protocols]
+          # Client::DEFAULTSではprotocols: [:http2, :http1]
 
           # HTTPS接続であり、ALPNが設定されている
           if http.use_ssl? && OpenSSL::SSL::SSLContext.instance_methods.include?(:alpn_protocols=)
