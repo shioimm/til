@@ -60,7 +60,6 @@ module Net
 
         debug "opened"
 
-        # WIP
         if use_ssl?
           if proxy?
             if @proxy_use_ssl
@@ -69,17 +68,24 @@ module Net
             else
               proxy_sock = s
             end
+
             proxy_sock = @client_io_wrapper.call(proxy_sock) if @client_io_wrapper
-            proxy_sock = BufferedIO.new(proxy_sock, read_timeout: @read_timeout,
-                                        write_timeout: @write_timeout,
-                                        continue_timeout: @continue_timeout,
-                                        debug_output: @debug_output)
-            buf = +"CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}\r\n" \
-              "Host: #{@address}:#{@port}\r\n"
+
+            proxy_sock = BufferedIO.new(
+              proxy_sock,
+              read_timeout: @read_timeout,
+              write_timeout: @write_timeout,
+              continue_timeout: @continue_timeout,
+              debug_output: @debug_output
+            )
+
+            buf = +"CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}\r\n" "Host: #{@address}:#{@port}\r\n"
+
             if proxy_user
               credential = ["#{proxy_user}:#{proxy_pass}"].pack('m0')
               buf << "Proxy-Authorization: Basic #{credential}\r\n"
             end
+
             buf << "\r\n"
             proxy_sock.write(buf)
             HTTPResponse.read_new(proxy_sock).value
@@ -148,7 +154,7 @@ module Net
 
           # Server Name Indication (SNI) RFC 3546/6066
           case @address
-          when Resolv::IPv4::Regex, Resolv::IPv6::Regex
+          when Resolv::IPv4::Regex, Resolv::IPv6::Regex # 接続先がIPv4 / IPv6のアドレスリテラルの場合
             # don't set SNI, as IP addresses in SNI is not valid
             # per RFC 6066, section 3.
 
@@ -159,21 +165,28 @@ module Net
           end
 
           debug "starting SSL for #{conn_addr}:#{conn_port}..."
+
+          # TCPSocketをSSLSocketでラップ
           s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
           s.sync_close = true
           @client_socket_observer.call(s) if @client_socket_observer
           s.hostname = ssl_host_address if s.respond_to?(:hostname=) && ssl_host_address
 
+          # 以前保存したTLSセッションがあり、まだ有効期限内の場合
           if @ssl_session and
-             Process.clock_gettime(Process::CLOCK_REALTIME) < @ssl_session.time.to_f + @ssl_session.timeout
-            s.session = @ssl_session
+             Process.clock_gettime(Process::CLOCK_REALTIME) < (@ssl_session.time.to_f + @ssl_session.timeout)
+            s.session = @ssl_session # 保存済みのTLSセッションをソケットに設定
           end
 
+          # TLSハンドシェイクを実行
           ssl_socket_connect(s, @open_timeout)
 
+          # 証明書検証が無効化されていない & verify_hostnameが有効
           if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
+            # 相手の証明書が、接続したいホスト名またはIPアドレスに対応しているかを確認
             s.post_connection_check(@address)
           end
+
           debug "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
         end
 
