@@ -60,7 +60,6 @@ module Net
 
         debug "opened"
 
-        # WIP
         if use_ssl?
           if proxy?
             if @proxy_use_ssl
@@ -69,51 +68,93 @@ module Net
             else
               proxy_sock = s
             end
+
             proxy_sock = @client_io_wrapper.call(proxy_sock) if @client_io_wrapper
-            proxy_sock = BufferedIO.new(proxy_sock, read_timeout: @read_timeout,
-                                        write_timeout: @write_timeout,
-                                        continue_timeout: @continue_timeout,
-                                        debug_output: @debug_output)
-            buf = +"CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}\r\n" \
-              "Host: #{@address}:#{@port}\r\n"
+
+            proxy_sock = BufferedIO.new(
+              proxy_sock,
+              read_timeout: @read_timeout,
+              write_timeout: @write_timeout,
+              continue_timeout: @continue_timeout,
+              debug_output: @debug_output
+            )
+
+            buf = +"CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}\r\n" "Host: #{@address}:#{@port}\r\n"
+
             if proxy_user
               credential = ["#{proxy_user}:#{proxy_pass}"].pack('m0')
               buf << "Proxy-Authorization: Basic #{credential}\r\n"
             end
+
             buf << "\r\n"
             proxy_sock.write(buf)
             HTTPResponse.read_new(proxy_sock).value
             # assuming nothing left in buffers after successful CONNECT response
           end
 
-          ssl_parameters = Hash.new
-          iv_list = instance_variables
+          ssl_parameters = {}
+          iv_list = instance_variables # 現在のNet::HTTPオブジェクトに存在するインスタンス変数名
+
+          # 現在のNet::HTTPオブジェクトが保持している値を利用してTLS設定用のインスタンス変数名をセットする
           SSL_IVNAMES.each_with_index do |ivname, i|
             if iv_list.include?(ivname)
               value = instance_variable_get(ivname)
+
               unless value.nil?
                 ssl_parameters[SSL_ATTRIBUTES[i]] = value
               end
             end
           end
+
+          # Net::HTTP::SSL_ATTRIBUTES (lib/net/http.rb)
+          #   SSL_ATTRIBUTES = [
+          #     :ca_file,
+          #     :ca_path,
+          #     :cert,
+          #     :cert_store,
+          #     :ciphers,
+          #     :extra_chain_cert,
+          #     :key,
+          #     :ssl_timeout,
+          #     :ssl_version,
+          #     :min_version,
+          #     :max_version,
+          #     :verify_callback,
+          #     :verify_depth,
+          #     :verify_mode,
+          #     :verify_hostname,
+          #   ].freeze
+          #
+          # Net::HTTP::SSL_IVNAMES  (lib/net/http.rb)
+          #   SSL_IVNAMES = SSL_ATTRIBUTES.map { |a| "@#{a}".to_sym }.freeze
+
+          # SSLContextにTLS設定をセット
           @ssl_context.set_params(ssl_parameters)
+          # Client::ConnectionFactory.openで用意したALPNをセット
           @ssl_context.alpn_protocols = @client_alpn if @client_alpn
-          unless @ssl_context.session_cache_mode.nil? # a dummy method on JRuby
+
+          # Client::ConnectionFactory.open
+          #   protocols = options[:protocols] # Client::DEFAULTSではprotocols: [:http2, :http1]
+          #   alpn = protocols.map { |p| p == :http2 ? 'h2' : 'http/1.1' }
+          #   http.instance_variable_set(:@client_alpn, alpn)
+
+          if !@ssl_context.session_cache_mode.nil? # a dummy method on JRuby
             @ssl_context.session_cache_mode =
-                OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT |
-                    OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+              OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT | # クライアント側のTLSセッションキャッシュ機構を有効化
+              OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE # OpenSSL内部のキャッシュには自動保存しない
           end
+
           if @ssl_context.respond_to?(:session_new_cb) # not implemented under JRuby
+            # 新しいTLSセッションが作られたとき、@ssl_sessionに作成されたTLSセッションを保存する
             @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
           end
 
-          # Still do the post_connection_check below even if connecting
-          # to IP address
-          verify_hostname = @ssl_context.verify_hostname
+          # Still do the post_connection_check below even if connecting to IP address
+          verify_hostname = @ssl_context.verify_hostname # 証明書のホスト名を検証するかどうか
 
           # Server Name Indication (SNI) RFC 3546/6066
           case @address
-          when Resolv::IPv4::Regex, Resolv::IPv6::Regex
+          when Resolv::IPv4::Regex, Resolv::IPv6::Regex # 接続先がIPv4 / IPv6のアドレスリテラルの場合
             # don't set SNI, as IP addresses in SNI is not valid
             # per RFC 6066, section 3.
 
@@ -124,19 +165,28 @@ module Net
           end
 
           debug "starting SSL for #{conn_addr}:#{conn_port}..."
+
+          # TCPSocketをSSLSocketでラップ
           s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
           s.sync_close = true
           @client_socket_observer.call(s) if @client_socket_observer
           s.hostname = ssl_host_address if s.respond_to?(:hostname=) && ssl_host_address
 
+          # 以前保存したTLSセッションがあり、まだ有効期限内の場合
           if @ssl_session and
-             Process.clock_gettime(Process::CLOCK_REALTIME) < @ssl_session.time.to_f + @ssl_session.timeout
-            s.session = @ssl_session
+             Process.clock_gettime(Process::CLOCK_REALTIME) < (@ssl_session.time.to_f + @ssl_session.timeout)
+            s.session = @ssl_session # 保存済みのTLSセッションをソケットに設定
           end
+
+          # TLSハンドシェイクを実行
           ssl_socket_connect(s, @open_timeout)
+
+          # 証明書検証が無効化されていない & verify_hostnameが有効
           if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname
+            # 相手の証明書が、接続したいホスト名またはIPアドレスに対応しているかを確認
             s.post_connection_check(@address)
           end
+
           debug "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
         end
 
