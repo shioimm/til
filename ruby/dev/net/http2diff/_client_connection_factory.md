@@ -91,20 +91,26 @@ module Net
 
           operation.check! # => Client::Operation#check!
 
-          # WIP
-          socket = http.instance_variable_get(:@socket).io
-          socket = socket.raw_io if socket.is_a?(TimedSocket)
-          selected = socket.respond_to?(:alpn_protocol) && socket.alpn_protocol
+          buffered_io = http.instance_variable_get(:@socket)
+          socket = buffered_io.io # 接続済みのソケットを取得
+          socket = socket.raw_io if socket.is_a?(TimedSocket) # socket = SSLSocketもしくはTCPSocket
+          selected = socket.respond_to?(:alpn_protocol) && socket.alpn_protocol # SSLSocketの場合はALPNを取得
 
           if selected == 'h2'
             require_relative 'http2/session'
+
+            # HTTP/2の場合既存のNet::HTTPオブジェクトの@socket, @startedは使わないので解除
             http.instance_variable_set(:@socket, nil)
             http.instance_variable_set(:@started, false)
+
+            # 接続済みソケットsocketを渡してHTTP2::Session.new
             HTTP2::Session.new(socket, operation)
           else
             if protocols == [:http2]
               raise ProtocolError, 'peer did not negotiate HTTP/2'
             end
+
+            # 接続済みNet::HTTPオブジェクトを渡してH1Session.new
             H1Session.new(http)
           end
         rescue Exception
@@ -112,7 +118,8 @@ module Net
             socket = http.instance_variable_get(:@socket)
             socket.close if socket && !socket.closed?
           end
-          operation.check!
+
+          operation.check! # => Client::Operation#check!
           raise
         end
       end

@@ -108,27 +108,19 @@ module Net
       @operations = {}
 
       class << self
-        def configure_pool(max_connections: 100, max_connections_per_origin: 10, idle_timeout: 30)
-          values = [max_connections, max_connections_per_origin, idle_timeout]
-          raise ArgumentError, 'pool limits must be positive' unless values.all? { |v| v.is_a?(Numeric) && v.finite? && v > 0 }
-          raise ArgumentError, 'connection limits must be integers' unless values[0,2].all? { |v| v.is_a?(Integer) }
-          reset_process
-          @pool_mutex.synchronize do
-            raise Error, 'configure_pool must precede use or follow shutdown' if @pool
-            @pool_options = {max_connections: max_connections, max_connections_per_origin: max_connections_per_origin, idle_timeout: idle_timeout}.freeze
-          end
-          nil
-        end
+        # ...
 
         # Cancel active requests, release all shared connections, and start a fresh
         # pool on the next request. Existing clients may be used after shutdown.
         def shutdown
           reset_process
-          pool, operations = @pool_mutex.synchronize do
+
+          pool, operations = @pool_mutex.synchronize {
             previous = @pool
             @pool = nil
             [previous, @operations.keys]
-          end
+          }
+
           operations.each(&:cancel)
           pool.shutdown if pool
           nil
@@ -136,7 +128,9 @@ module Net
 
         def pool_stats
           reset_process
-          @pool_mutex.synchronize { @pool ? @pool.stats : {connections: 0, connecting: 0, active: 0}.freeze }
+          @pool_mutex.synchronize {
+            @pool ? @pool.stats : {connections: 0, connecting: 0, active: 0}.freeze
+          }
         end
 
         private
@@ -364,7 +358,7 @@ module Net
         pool = Client.send(:register, operation) # => Client.register
 
         begin # 実際の送信処理をmiddlewareでラップし、順に呼び出す
-          terminal = proc { |req| execute(req, operation, pool, &block) } # => Client#execute WIP
+          terminal = proc { |req| execute(req, operation, pool, &block) } # => Client#execute
 
           # middlewareの配列を最後の要素から順に登録する。middlewareは外部からAPI経由で渡せる
           options[:middleware].reverse_each do |middleware|
@@ -385,16 +379,17 @@ module Net
         @mutex.synchronize { @closed = true }
         nil
       end
+
       def close!
         reset_after_fork
         operations = @mutex.synchronize { @closed = true; @active.keys }
         operations.each(&:cancel)
         nil
       end
-      def closed?; @closed; end
-      def inspect
-        "#<#{self.class} closed=#{closed?}>"
-      end
+
+      def closed? = @closed
+
+      def inspect = "#<#{self.class} closed=#{closed?}>"
 
       private
 
