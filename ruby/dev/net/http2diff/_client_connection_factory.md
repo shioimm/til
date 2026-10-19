@@ -56,7 +56,7 @@ module Net
             }
           )
 
-          # 許可するプロトコルの配列
+          # クライアントが許可するプロトコルの配列
           protocols = options[:protocols]
           # Client::DEFAULTSではprotocols: [:http2, :http1]
 
@@ -88,6 +88,9 @@ module Net
           #     connect
           #     @started = true
           #   end
+
+          # ConnectionFactory.open経由で接続を行う場合、ALPNを利用した結果に応じてh1／h2を切り替える
+          # 直接Net::HTTP#do_startを呼んだ場合はALPNを行わず、h1での接続を行う
 
           operation.check! # => Client::Operation#check!
 
