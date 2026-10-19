@@ -13,16 +13,18 @@ module Net
         attr_reader :length
 
         def initialize(source)
-          @position = nil
           @source = source.is_a?(String) ? source.b.dup.freeze : source
-          @position = source.pos if source && !source.is_a?(String) && source.respond_to?(:pos) && source.respond_to?(:seek)
-          @length = if @source.nil?
-            0
-          elsif @source.is_a?(String)
-            @source.bytesize
-          elsif @position && source.respond_to?(:size)
-            source.size - @position
-          end
+
+          @position =
+            source && !source.is_a?(String) && source.respond_to?(:pos) && source.respond_to?(:seek) ?
+              source.pos : nil
+
+          @length =
+            if @source.nil? then 0
+            elsif @source.is_a?(String) then @source.bytesize
+            elsif @position && source.respond_to?(:size) then  source.size - @position
+            end
+
           @mutex = Mutex.new
           @used = false
         rescue IOError, Errno::ESPIPE
@@ -38,18 +40,23 @@ module Net
         def each
           return enum_for(:each) unless block_given?
           raise IOError, 'request body is already in use' unless @mutex.try_lock
+
           begin
             if @used && !replayable?
               raise IOError, 'request body cannot be replayed'
             end
+
             @source.seek(@position) if @used && @position
             @used = true
+
             total = 0
-            emit = proc do |chunk|
+
+            emit = proc { |chunk|
               total += chunk.bytesize
               raise IOError, 'request body length changed during upload' if @length && total > @length
               yield chunk
-            end
+            }
+
             if @source.is_a?(String)
               emit.call(@source) unless @source.empty?
             elsif @source.respond_to?(:read)
@@ -57,8 +64,11 @@ module Net
                 emit.call(String(chunk).b)
               end
             elsif @source
-              @source.each { |chunk| emit.call(String(chunk).b) unless chunk.empty? }
+              @source.each do |chunk|
+                emit.call(String(chunk).b) unless chunk.empty?
+              end
             end
+
             raise IOError, 'request body length changed during upload' if @length && total != @length
           ensure
             @mutex.unlock
@@ -68,55 +78,85 @@ module Net
 
       class MultipartBody
         attr_reader :length, :boundary
+
         def initialize(parts, legacy_options: nil)
-          @boundary = ((legacy_options && legacy_options[:boundary]) || "net-http-#{SecureRandom.hex(16)}").to_s.dup.freeze
+          @boundary =
+            ((legacy_options && legacy_options[:boundary]) || "net-http-#{SecureRandom.hex(16)}").to_s.dup.freeze
+
           unless @boundary.match?(/\A[0-9A-Za-z'()+_,.\/:=? -]{1,70}\z/) && !@boundary.end_with?(' ')
             raise ArgumentError, 'invalid multipart boundary'
           end
+
           charset = legacy_options && legacy_options[:charset]
-          @parts = parts.map do |name, value, options|
+
+          @parts = parts.map { |name, value, options|
             name = quoted(name, charset)
             type = nil
+
             if legacy_options
               options ||= {}
-              filename = options.key?(:filename) ? options[:filename] : (File.basename(value.to_path) if value.respond_to?(:to_path))
+
+              if value.respond_to?(:to_path))
+                filename = options.key?(:filename) ? options[:filename] : (File.basename(value.to_path)
+              end
+
               source = value.respond_to?(:read) ? value : value.to_s
+
               disposition = +"form-data; name=\"#{name}\""
               disposition << "; filename=\"#{quoted(filename, charset)}\"" if filename
               type = (options[:content_type] || 'application/octet-stream').to_s if filename
+
             elsif value.is_a?(Hash)
               source = value.fetch(:body)
               disposition = "form-data; name=\"#{name}\"; filename=\"#{quoted(value.fetch(:filename))}\""
               type = value.fetch(:content_type, 'application/octet-stream').to_s
+
             else
               source = value.to_s
               disposition = "form-data; name=\"#{name}\""
               type = nil
             end
+
             raise ArgumentError, 'invalid multipart content type' if type && type.match?(/[\r\n]/)
+
             prefix = +"--#{@boundary}\r\nContent-Disposition: #{disposition}\r\n"
             prefix << "Content-Type: #{type}\r\n" if type
+
             [(prefix << "\r\n").b, Body.new(source)]
-          end
+          }
+
           @ending = "--#{@boundary}--\r\n".freeze
-          @length = @parts.all? { |_, body| body.length } && @parts.inject(@ending.bytesize) { |n, (prefix, body)| n + prefix.bytesize + body.length + 2 }
-          @length = nil unless @length
+          @length =
+            @parts.all? { |_, body| body.length } &&
+            @parts.inject(@ending.bytesize) { |n, (prefix, body)| n + prefix.bytesize + body.length + 2 }
         end
-        def replayable?; @parts.all? { |_, body| body.replayable? }; end
+
+        def replayable? = @parts.all? { |_, body| body.replayable? }
+
         def each
           return enum_for(:each) unless block_given?
+
           @parts.each do |prefix, body|
             yield prefix
-            body.each { |chunk| yield chunk }
+
+            body.each do |chunk|
+              yield chunk
+            end
+
             yield "\r\n"
           end
+
           yield @ending
         end
+
         private
+
         def quoted(value, charset = nil)
           value = value.to_s
           value = value.encode(charset, fallback: ->(c) { "&##{c.encode('UTF-8').ord};" }) if charset
+
           raise ArgumentError, 'invalid multipart name' if value.match?(/[\r\n]/)
+
           value.gsub(/["\\]/) { |c| "\\#{c}" }.b
         end
       end
@@ -184,10 +224,12 @@ module Net
           case value
           when URI::Generic
             copy = URI(value.to_s)
+
             copy.instance_variables.each do |name|
               component = copy.instance_variable_get(name)
               component.freeze if component.is_a?(String)
             end
+
             copy.freeze
           when Hash then value.each_with_object({}) { |(k,v), h| h[k] = snapshot(v) }.freeze
           when Array then value.map { |v| snapshot(v) }.freeze
@@ -195,45 +237,57 @@ module Net
           else value
           end
         end
+
         def self.headers(headers)
-          headers.each_with_object({}) do |(key, values), result|
+          headers.each_with_object({}) { |(key, values), result|
             name = key.to_s.downcase
             raise ArgumentError, 'invalid header name' unless name.match?(/\A[!#$%&'*+.^_`|~0-9a-z-]+\z/)
-            result[name.freeze] = Array(values).map do |value|
+
+            result[name.freeze] = Array(values).map { |value|
               text = value.to_s
-              raise ArgumentError, 'invalid header value' if text.match?(/[\x00-\x08\x0a-\x1f\x7f]/)
+
+              if text.match?(/[\x00-\x08\x0a-\x1f\x7f]/)
+                raise ArgumentError, 'invalid header value'
+              end
+
               text.dup.freeze
-            end.freeze
-          end.freeze
+            }.freeze
+          }.freeze
         end
+
         def with(method: @method, uri: @uri, headers: @headers, body: @body, **options)
           self.class.new(method, uri, headers: headers, body: body, **@options.merge(options))
         end
-        def replayable?; @body.replayable?; end
-        def body_length; @body.length; end
-        def each_body_chunk(&block); @body.each(&block); end
-        def body; @body; end
-        def origin; [@uri.scheme, @uri.hostname.downcase, @uri.port]; end
-        def request_target; @uri.request_uri; end
+
+        def replayable? = @body.replayable?
+        def body_length = @body.length
+        def each_body_chunk(&block) = @body.each(&block)
+        def body = @body
+        def origin = [@uri.scheme, @uri.hostname.downcase, @uri.port]
+        def request_target = @uri.request_uri
       end
 
       # Bridges a lazy body enumerator to the upstream HTTP/1 request writer.
       class BodyReader
         def initialize(body)
           @closed = @started = false
-          @enum = Enumerator.new do |output|
+
+          @enum = Enumerator.new { |output|
             catch(:body_reader_closed) do
               body.each do |chunk|
                 output << chunk
                 throw :body_reader_closed if @closed
               end
             end
-          end
+          }
+
           @buffer = ''.b
           @done = false
         end
+
         def read(length = nil, output = nil)
           raise IOError, 'body reader is closed' if @closed
+
           while !@done && (!length || @buffer.bytesize < length)
             begin
               @started = true
@@ -245,12 +299,16 @@ module Net
               raise
             end
           end
+
           result = @buffer.slice!(0, length || @buffer.bytesize)
           return nil if result.empty? && @done && length
+
           output ? output.replace(result) : result
         end
+
         def close
           return if @closed
+
           @closed = true
           # Resume only to unwind the suspended yield and release the body's
           # ownership lock; never read another chunk during cancellation.
@@ -262,6 +320,7 @@ module Net
           @buffer.clear
         end
       end
+
       private_constant :Body, :MultipartBody, :BodyReader
     end
   end

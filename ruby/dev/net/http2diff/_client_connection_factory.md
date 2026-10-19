@@ -164,13 +164,16 @@ module Net
         def buffered_get(path, operation)
           complete = false
           operation.on_cancel(&@cancel_callback)
+
           @http.open_timeout = operation.options[:open_timeout]
           @http.read_timeout = operation.options[:read_timeout]
           @http.write_timeout = operation.options[:write_timeout]
-          @http.instance_variable_set(:@client_socket_observer, proc do |socket|
+
+          @http.instance_variable_set(:@client_socket_observer, proc { |socket|
             @connecting_socket = socket
             operation.check!
-          end)
+          })
+
           # Only invariant default GET headers are cached. Every exchange owns
           # its request and writable header hash; auth and custom headers never
           # enter this template, including when another caller shares the session.
@@ -181,13 +184,16 @@ module Net
             @get_template.instance_variable_get(:@header).freeze
             @get_template.freeze
           end
+
           request = @get_template.dup
           request.instance_variable_set(:@path, path)
           request.instance_variable_set(:@header, @get_template.to_hash)
-          response = @http.request(request) do |r|
+
+          response = @http.request(request) { |r|
             r.instance_variable_set(:@client_capture_trailers, true)
             r.read_body
-          end
+          }
+
           operation.check!
           complete = true
           response
@@ -202,9 +208,14 @@ module Net
 
         # The convenience adapter retains upstream request parsing, compression
         # and response-block behavior, with retries owned by the adapter.
+        # H1Session#eexchange_legacy
+        # e.g. Net::HTTP.get_response(...)
+        #      -> Convenience.execute
+        #      -> Client::H1Session#exchange_legacy
         def exchange_legacy(request, operation, settings, &block)
           complete = false
           operation.on_cancel(&@cancel_callback)
+
           @http.open_timeout = operation.options[:open_timeout]
           @http.read_timeout = operation.options[:read_timeout]
           @http.write_timeout = operation.options[:write_timeout]
@@ -212,11 +223,14 @@ module Net
           @http.response_body_encoding = settings[:response_body_encoding]
           @http.close_on_empty_response = settings[:close_on_empty_response]
           @http.max_retries = 0
-          @http.instance_variable_set(:@client_socket_observer, proc do |socket|
+
+          @http.instance_variable_set(:@client_socket_observer, proc { |socket|
             @connecting_socket = socket
             operation.check!
-          end)
+          })
+
           response = @http.request(request, &block)
+
           operation.check!
           complete = true
           response
@@ -229,29 +243,61 @@ module Net
           close unless complete
         end
 
+        # Client::H1Session#exchange
+        # e.g. Client#perform
+        #      -> Client#execute
+        #      -> H1Session#exchange
         def exchange(request, operation, _reservation)
           operation.on_cancel { close }
           connect_deadline = Clock.now + operation.options[:open_timeout]
-          @http.instance_variable_set(:@client_io_wrapper, operation.deadline && proc { |io| TimedSocket.new(io, operation) })
-          @http.instance_variable_set(:@client_socket_observer, proc do |socket|
-            @http.open_timeout = operation.remaining([connect_deadline - Clock.now, 0].max)
-            operation.on_cancel { socket.to_io.close unless socket.to_io.closed? }
-          end)
+
+          @http.instance_variable_set(
+            :@client_io_wrapper,
+            operation.deadline && proc { |io| TimedSocket.new(io, operation) }
+          )
+          @http.instance_variable_set(
+            :@client_socket_observer,
+            proc { |socket|
+              @http.open_timeout = operation.remaining([connect_deadline - Clock.now, 0].max)
+              operation.on_cancel { socket.to_io.close unless socket.to_io.closed? }
+            }
+          )
+
           @http.open_timeout = operation.remaining(operation.options[:open_timeout])
           @http.read_timeout = operation.options[:read_timeout]
           @http.write_timeout = operation.options[:write_timeout]
+
           buffered = @http.instance_variable_get(:@socket)
           raw_io = buffered.io.is_a?(TimedSocket) ? buffered.io.raw_io : buffered.io
-          buffered.instance_variable_set(:@io, operation.deadline ? TimedSocket.new(raw_io, operation) : raw_io)
+
+          buffered.instance_variable_set(
+            :@io,
+            operation.deadline ? TimedSocket.new(raw_io, operation) : raw_io
+          )
+
           body_permitted = request.body_length != 0 || %w[POST PUT PATCH].include?(request.method)
-          req = Net::HTTPGenericRequest.new(request.method, body_permitted, request.method != 'HEAD', request.uri, {})
+
+          req = Net::HTTPGenericRequest.new(
+            request.method,
+            body_permitted,
+            request.method != 'HEAD',
+            request.uri,
+            {}
+          )
+
           req.delete('accept-encoding')
-          request.headers.each { |name, values| req[name] = values }
+
+          request.headers.each do |name, values|
+            req[name] = values
+          end
+
           # Compression and retries belong to the protocol-neutral request layer.
           req.instance_variable_set(:@decode_content, false)
+
           if request.body_length != 0
             body_reader = BodyReader.new(request.body)
             req.body_stream = body_reader
+
             if request.body_length
               req.content_length = request.body_length
             else
@@ -260,25 +306,32 @@ module Net
           elsif body_permitted
             req.body = ''
           end
+
           complete = false
           exposed = nil
+
           @http.request(req) do |raw|
             raw.decode_content = false
             raw.instance_variable_set(:@client_capture_trailers, true)
             raw_read = raw.method(:read_body)
+
             exposed = raw.dup
             exposed.instance_variable_set(:@header, raw.to_hash.transform_values(&:dup))
             exposed.extend(ResponseMethods)
             exposed.instance_variable_set(:@client_body_consumed, false)
             exposed.instance_variable_set(:@client_body_complete, false)
             exposed.instance_variable_set(:@client_body_allowed, raw.instance_variable_get(:@body_exist))
-            reader = ResponseBody.new(exposed, operation) do |&sink|
+
+            reader = ResponseBody.new(exposed, operation) { |&sink|
               raw_read.call(&sink)
               exposed.instance_variable_set(:@client_trailers, raw.trailers)
-            end
+            }
+
             exposed.instance_variable_set(:@client_body_source, proc { |&sink| reader.each(&sink) })
+
             begin
               yield exposed
+
               if !exposed.instance_variable_get(:@client_body_complete)
                 close
                 raw.instance_variable_set(:@read, true)
@@ -288,19 +341,25 @@ module Net
               exposed.instance_variable_set(:@socket, nil)
             end
           end
+
           complete = true
           exposed
         ensure
           body_reader.close if body_reader
+
           @http.instance_variable_set(:@client_socket_observer, nil)
           @http.instance_variable_set(:@client_io_wrapper, nil)
+
           buffered = @http.instance_variable_get(:@socket)
+
           if buffered && buffered.io.is_a?(TimedSocket)
             buffered.instance_variable_set(:@io, buffered.io.raw_io)
           end
+
           close unless complete
         end
       end
+
       private_constant :ConnectionFactory, :H1Session
     end
   end
