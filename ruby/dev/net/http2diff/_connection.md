@@ -64,7 +64,7 @@ module Net
           if proxy?
             if @proxy_use_ssl
               proxy_sock = OpenSSL::SSL::SSLSocket.new(s)
-              ssl_socket_connect(proxy_sock, @open_timeout)
+              ssl_socket_connect(proxy_sock, @open_timeout) # => Net::Protocol#ssl_socket_connect
             else
               proxy_sock = s
             end
@@ -179,7 +179,31 @@ module Net
           end
 
           # TLSハンドシェイクを実行
-          ssl_socket_connect(s, @open_timeout)
+          ssl_socket_connect(s, @open_timeout) # => Net::Protocol#ssl_socket_connect
+
+
+          # Net::Protocol#ssl_socket_connect
+          #
+          #   def ssl_socket_connect(s, timeout)
+          #     if timeout
+          #       while true
+          #         raise Net::OpenTimeout if timeout <= 0
+          #
+          #         start = Process.clock_gettime Process::CLOCK_MONOTONIC
+          #
+          #         # to_io is required because SSLSocket doesn't have wait_readable yet
+          #         case s.connect_nonblock(exception: false)
+          #         when :wait_readable; s.to_io.wait_readable(timeout)
+          #         when :wait_writable; s.to_io.wait_writable(timeout)
+          #         else; break
+          #         end
+          #
+          #         timeout -= Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+          #       end
+          #     else
+          #       s.connect
+          #     end
+          #   end
 
           # 証明書検証が無効化されていない & verify_hostnameが有効
           if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && verify_hostname

@@ -100,33 +100,48 @@ module Net
       # by the operation deadline. It is used only by modern H1 sessions.
       class TimedSocket
         attr_accessor :operation
-        def raw_io; @io; end
+
         def initialize(io, operation)
           @io, @operation = io, operation
         end
-        def inspect; "#<#{self.class}>"; end
-        def to_io; self; end
-        def closed?; @io.closed?; end
-        def close; @io.close unless @io.closed?; end
-        def eof?; @operation.check!; @io.eof?; end
+
+        def raw_io = @io
+        def inspect = "#<#{self.class}>"
+        def to_io = self
+        def closed? = @io.closed?
+
+        def close
+          @io.close unless @io.closed?
+        end
+
+        def eof?
+          @operation.check!
+          @io.eof?
+        end
+
         def wait_readable(timeout = nil)
           @io.to_io.wait_readable(@operation.remaining(timeout))
         end
+
         def wait_writable(timeout = nil)
           @io.to_io.wait_writable(@operation.remaining(timeout))
         end
+
         def read_nonblock(*args, **options)
           @operation.check!
           @io.read_nonblock(*args, **options)
         end
+
         def write_nonblock(*args, **options)
           @operation.check!
           @io.write_nonblock(*args, **options)
         end
+
         def <<(data)
           @io << data
         end
       end
+
       private_constant :Clock, :Operation, :Wait, :TimedSocket
     end
   end
