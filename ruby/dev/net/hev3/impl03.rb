@@ -31,19 +31,22 @@ class HTTPClient
 
     @ipv4_reachable = ipv4_connectivity
     @ipv6_reachable = ipv6_connectivity
-
-    @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER], raise_timeout_errors: true)
     @record_types = record_types
 
+    @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER], raise_timeout_errors: true)
     @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
 
     @hostname_resolution_result = HostnameResolutionResult.new
-    @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
     @hostname_resolution_threads = []
+
     @address_query_hostnames = []
-    @connecting_sockets = {}
-    @tls_handshaking_sockets = {}
-    @connected_socket = nil
+
+    @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
+
+    @tcp_connecting_sockets = {}  # TCPSocket => [SSLContext, Addrinfo]
+    @tls_handshaking_sockets = {} # SSLSocket => :read / :write
+
+    @tcp_connected_socket = nil
     @tls_connected_socket = nil
 
     @first_connection_attempted = false
@@ -78,10 +81,10 @@ class HTTPClient
 
         if !@use_ssl &&
             @address_candidate_list.empty? &&
-            @connecting_sockets.empty? &&
+            @tcp_connecting_sockets.empty? &&
             !@hostname_resolution_result.pending?
           begin
-            @connected_socket = addrinfo.connect
+            @tcp_connected_socket = addrinfo.connect
             break
           rescue SystemCallError => e
             last_error = e
@@ -101,12 +104,12 @@ class HTTPClient
 
               @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             else
-              @connected_socket = socket
+              @tcp_connected_socket = socket
               break
             end
           rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
-            @connecting_sockets[socket] = [ctx, addrinfo]
+            @tcp_connecting_sockets[socket] = [ctx, addrinfo]
           rescue SystemCallError => e
             socket.close
             last_error = e
@@ -130,12 +133,12 @@ class HTTPClient
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@connecting_sockets}, nil, 0)" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@tcp_connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
       waiting_rfds = (@hostname_resolution_result.notifier || []) +
         @tls_handshaking_sockets.select { |_, direction| direction == :read }.keys
-      waiting_wfds = @connecting_sockets.keys +
+      waiting_wfds = @tcp_connecting_sockets.keys +
         @tls_handshaking_sockets.select { |_, direction| direction == :write }.keys
 
       if waiting_rfds.empty? && waiting_wfds.empty?
@@ -157,7 +160,7 @@ class HTTPClient
 
       puts "[DEBUG] #{count}: ** Check for writable_fds **" if DEBUG
       puts "[DEBUG] #{count}: writable_fds #{writable_fds || 'nil'}" if DEBUG
-      puts "[DEBUG] #{count}: connecting_sockets #{@connecting_sockets}" if DEBUG
+      puts "[DEBUG] #{count}: tcp_connecting_sockets #{@tcp_connecting_sockets}" if DEBUG
 
       ssl_writable_sockets, writable_fds = (writable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
 
@@ -169,7 +172,7 @@ class HTTPClient
           )
 
           if is_connected
-            ctx, _ = @connecting_sockets.delete(writable_socket)
+            ctx, _ = @tcp_connecting_sockets.delete(writable_socket)
 
             if @use_ssl
               if (error = nonblocking_connect_with_tls(writable_socket, ctx))
@@ -179,16 +182,16 @@ class HTTPClient
 
               break if @tls_connected_socket
             else
-              @connected_socket = writable_socket
+              @tcp_connected_socket = writable_socket
               break
             end
           else
-            _, failed_ai = @connecting_sockets.delete writable_socket
+            _, failed_ai = @tcp_connecting_sockets.delete writable_socket
             writable_socket.close
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
 
-            if writable_fds.any? || @connecting_sockets.any? || @tls_handshaking_sockets.any?
+            if writable_fds.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
             elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
@@ -210,8 +213,8 @@ class HTTPClient
         end
       end
 
-      if last_error && !@connected_socket && !@tls_connected_socket &&
-          @tls_handshaking_sockets.empty? && @connecting_sockets.empty? &&
+      if last_error && !@tcp_connected_socket && !@tls_connected_socket &&
+          @tls_handshaking_sockets.empty? && @tcp_connecting_sockets.empty? &&
           !@address_candidate_list.any? && !@hostname_resolution_result.pending?
         raise last_error
       end
@@ -246,17 +249,17 @@ class HTTPClient
 
       puts "------------------------" if DEBUG
 
-      break if @connected_socket || @tls_connected_socket
+      break if @tcp_connected_socket || @tls_connected_socket
     end
 
     cancel_pending_operations
 
-    socket = @tls_connected_socket || @connected_socket
+    socket = @tls_connected_socket || @tcp_connected_socket
     request(socket)
   ensure
     cancel_pending_operations
     close_socket(@tls_connected_socket)
-    close_socket(@connected_socket)
+    close_socket(@tcp_connected_socket)
   end
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
@@ -395,7 +398,7 @@ class HTTPClient
   end
 
   def cancel_pending_operations
-    [@connecting_sockets, @tls_handshaking_sockets].each do |connections|
+    [@tcp_connecting_sockets, @tls_handshaking_sockets].each do |connections|
       connections.each_key do |socket|
         close_socket(socket)
       end
