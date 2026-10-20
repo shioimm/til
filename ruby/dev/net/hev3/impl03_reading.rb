@@ -48,7 +48,7 @@ class HTTPClient
     @hostname_resolution_threads = []
 
     # NAT64プレフィックス検出後にAレコードを問い合わせるホスト名のリスト
-    @address_query_hostnames = []
+    @nat64_a_query_hostnames = []
 
     # アドレスリスト
     @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
@@ -280,8 +280,8 @@ class HTTPClient
 
   def resolve_hostname_asynchronously!(type, hostname = HOST)
     if address_synthesis_needed?
-      if [AAAA_TYPE, A_TYPE].include?(type) && !@address_query_hostnames.include?(hostname)
-        @address_query_hostnames << hostname
+      if [AAAA_TYPE, A_TYPE].include?(type) && !@nat64_a_query_hostnames.include?(hostname)
+        @nat64_a_query_hostnames << hostname
       end
     end
     @hostname_resolution_result.count_up
@@ -326,7 +326,7 @@ class HTTPClient
     @address_candidate_list.nat64_prefix = prefix
     @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
-    @address_query_hostnames.each do |hostname|
+    @nat64_a_query_hostnames.each do |hostname|
       resolve_hostname_asynchronously!(A_TYPE, hostname)
     end
   end
