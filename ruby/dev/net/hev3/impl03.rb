@@ -270,12 +270,12 @@ class HTTPClient
       end
     end
 
-    @hostname_resolution_result.count_up
+    @hostname_resolution_result.expect_result
 
-    thread = Thread.new(type) { |type|
+    thread = Thread.new(type) do |type|
       records =
         if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
-          initial_getresources(type)
+          initial_getresources(type) # => HTTPClient#initial_getresources
         else
           @resolver.getresources(hostname, type)
         end
@@ -283,7 +283,7 @@ class HTTPClient
       @hostname_resolution_result.add(type, hostname, records:)
     rescue => e
       @hostname_resolution_result.add(type, hostname, error: e)
-    }
+    end
 
     Thread.pass
     @hostname_resolution_threads.push(thread)
@@ -293,7 +293,7 @@ class HTTPClient
 
   def resolve_nat64_prefix_asynchronously!
     # Keep the result notifier open even if all destination queries finish first.
-    @hostname_resolution_result.count_up
+    @hostname_resolution_result.expect_result
 
     thread = Thread.new do
       prefix = detect_nat64_prefix!
@@ -412,6 +412,7 @@ class HTTPClient
     @hostname_resolution_result.close_all
   end
 
+  # HTTPClient#initial_getresources
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
 
@@ -552,20 +553,19 @@ class HTTPClient
     attr_reader :notifier
 
     def initialize
-      @size = 0
-      @taken_count = 0
+      @pending_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
     end
 
-    def count_up
-      @size += 1
+    def expect_result
+      @pending_count += 1
     end
 
     def pending?
-      @taken_count < @size
+      @pending_count.positive?
     end
 
     def add(type, hostname, records: [], error: nil)
@@ -587,13 +587,13 @@ class HTTPClient
         res = @results.shift
       end
 
-      @taken_count += 1
+      @pending_count -= 1
       res
     end
 
     def close_if_done
       return if @notifier.nil?
-      close_all if @taken_count == @size
+      close_all if @pending_count.zero?
     end
 
     def close_all
