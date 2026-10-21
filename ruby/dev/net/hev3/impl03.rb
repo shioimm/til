@@ -60,6 +60,7 @@ class HTTPClient
     @record_types.each do |type|
       resolve_hostname_asynchronously!(type)
     end
+
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
 
     count = 0 if DEBUG
@@ -268,9 +269,10 @@ class HTTPClient
         @nat64_a_query_hostnames << hostname
       end
     end
+
     @hostname_resolution_result.count_up
 
-    thread = Thread.new(type) do |type|
+    thread = Thread.new(type) { |type|
       records =
         if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
           initial_getresources(type)
@@ -281,7 +283,7 @@ class HTTPClient
       @hostname_resolution_result.add(type, hostname, records:)
     rescue => e
       @hostname_resolution_result.add(type, hostname, error: e)
-    end
+    }
 
     Thread.pass
     @hostname_resolution_threads.push(thread)
@@ -435,24 +437,25 @@ class HTTPClient
   end
 
   def ipv4_reachable?
-    return @ipv4_reachable unless @ipv4_reachable.nil?
+    return @ipv4_reachable if !@ipv4_reachable.nil?
 
-    @ipv4_reachable = begin
-      socket = UDPSocket.new(Socket::AF_INET)
-      socket.connect("8.8.8.8", 443)
+    @ipv4_reachable =
+      begin
+        socket = UDPSocket.new(Socket::AF_INET)
+        socket.connect("8.8.8.8", 443)
 
-      n = IPAddr.new(socket.local_address.ip_address).to_i
-      # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
-      n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
-    rescue SystemCallError, SocketError
-      false
-    ensure
-      socket&.close
-    end
+        n = IPAddr.new(socket.local_address.ip_address).to_i
+        # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
+        n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
+      rescue SystemCallError, SocketError
+        false
+      ensure
+        socket&.close
+      end
   end
 
   def ipv6_reachable?
-    return @ipv6_reachable unless @ipv6_reachable.nil?
+    return @ipv6_reachable if !@ipv6_reachable.nil?
 
     @ipv6_reachable = begin
       socket = UDPSocket.new(Socket::AF_INET6)

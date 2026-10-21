@@ -49,6 +49,9 @@ class HTTPClient
 
     # NAT64プレフィックス検出後にAレコードを問い合わせるホスト名のリスト
     @nat64_a_query_hostnames = []
+    # IPv6-onlyの環境では、NAT64プレフィックスを検出してアドレス合成が可能になった後で
+    # まとめてAレコードのDNS問い合わせを行う。
+    # アドレス合成が可能かどうかが不明な間は、@nat64_a_query_hostnamesに対象のホスト名を保存しておく必要がある。
 
     # アドレスリスト
     @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
@@ -74,9 +77,12 @@ class HTTPClient
     now = current_clock_time
 
     @record_types.each do |type|
-      resolve_hostname_asynchronously!(type)
+      resolve_hostname_asynchronously!(type) # => HTTPClient#resolve_hostname_asynchronously!
     end
+
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
+    # => HTTPClient#resolve_nat64_prefix_asynchronously
+    # => HTTPClient#address_synthesis_needed?
 
     count = 0 if DEBUG
     last_error = nil
@@ -278,15 +284,20 @@ class HTTPClient
     close_socket(@tcp_connected_socket)
   end
 
+  # HTTPClient#resolve_hostname_asynchronously!
   def resolve_hostname_asynchronously!(type, hostname = HOST)
-    if address_synthesis_needed?
+    if address_synthesis_needed? # => HTTPClient#address_synthesis_needed? アドレス合成が必要?
+
+      # HTTPS RR以外の問い合わせ、かつ解決対象のホスト名が未登録の場合
       if [AAAA_TYPE, A_TYPE].include?(type) && !@nat64_a_query_hostnames.include?(hostname)
         @nat64_a_query_hostnames << hostname
       end
     end
+
+    # WIP
     @hostname_resolution_result.count_up
 
-    thread = Thread.new(type) do |type|
+    thread = Thread.new(type) { |type|
       records =
         if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
           initial_getresources(type)
@@ -297,7 +308,7 @@ class HTTPClient
       @hostname_resolution_result.add(type, hostname, records:)
     rescue => e
       @hostname_resolution_result.add(type, hostname, error: e)
-    end
+    }
 
     Thread.pass
     @hostname_resolution_threads.push(thread)
@@ -327,7 +338,7 @@ class HTTPClient
     @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
     @nat64_a_query_hostnames.each do |hostname|
-      resolve_hostname_asynchronously!(A_TYPE, hostname)
+      resolve_hostname_asynchronously!(A_TYPE, hostname) # => HTTPClient#resolve_hostname_asynchronously!
     end
   end
 
@@ -446,42 +457,66 @@ class HTTPClient
     end
   end
 
+  # HTTPClient#address_synthesis_needed?
+  # アドレス合成が必要? (IPv6の接続性があり、IPv4の接続性がない)
   def address_synthesis_needed?
     ipv6_reachable? && !ipv4_reachable?
+    # => HTTPClient#ipv6_reachable?
+    # => HTTPClient#ipv4_reachable?
   end
 
+  # HTTPClient#ipv4_reachable?
   def ipv4_reachable?
-    return @ipv4_reachable unless @ipv4_reachable.nil?
+    # 明示的な設定があれば or すでに取得済みならそれを利用
+    return @ipv4_reachable if !@ipv4_reachable.nil?
 
-    @ipv4_reachable = begin
-      socket = UDPSocket.new(Socket::AF_INET)
-      socket.connect("8.8.8.8", 443)
+    @ipv4_reachable =
+      begin
+        socket = UDPSocket.new(Socket::AF_INET)
 
-      n = IPAddr.new(socket.local_address.ip_address).to_i
-      # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
-      n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
-    rescue SystemCallError, SocketError
-      false
-    ensure
-      socket&.close
-    end
+        # 宛先を8.8.8.8へ設定 -> システムが経路に応じて送信元IPv4アドレスとポート番号を割り当てる
+        socket.connect("8.8.8.8", 443)
+        # UDPはハンドシェイクを行わないので、UDPSocket#connectを実行した時点では実際に送信は行わない
+
+        # システムが選択した送信元アドレスをビット演算できる整数に変換
+        n = IPAddr.new(socket.local_address.ip_address).to_i
+
+        # 送信元アドレスが次のいずれにも該当しない = IPv4接続性あり
+        #   - 0.0.0.0 未定義アドレス
+        #   - 127.0.0.0/8 ループバックアドレス
+        #   - 169.254.0.0/16 リンクローカルアドレス
+        n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
+      rescue SystemCallError, SocketError
+        false
+      ensure
+        socket&.close
+      end
   end
 
+  # HTTPClient#ipv6_reachable?
   def ipv6_reachable?
-    return @ipv6_reachable unless @ipv6_reachable.nil?
+    # 明示的な設定があれば or すでに取得済みならそれを利用
+    return @ipv6_reachable if !@ipv6_reachable.nil?
 
-    @ipv6_reachable = begin
-      socket = UDPSocket.new(Socket::AF_INET6)
-      socket.connect("2001:4860:4860::8888", 443)
+    @ipv6_reachable =
+      begin
+        socket = UDPSocket.new(Socket::AF_INET6)
 
-      n = IPAddr.new(socket.local_address.ip_address).to_i
-      # ::, ::1, fe80::/10
-      n != 0 && n != 1 && (n >> 118) != 0x3fa
-    rescue SystemCallError, SocketError
-      false
-    ensure
-      socket&.close
-    end
+        # 宛先を2001:4860:4860::8888へ設定 -> システムが経路に応じて送信元IPv6アドレスとポート番号を割り当てる
+        socket.connect("2001:4860:4860::8888", 443)
+          # UDPはハンドシェイクを行わないので、UDPSocket#connectを実行した時点では実際に送信は行わない
+
+        n = IPAddr.new(socket.local_address.ip_address).to_i
+        # 送信元アドレスが次のいずれにも該当しない = IPv6接続性あり
+        #   - :: 未定義アドレス
+        #   - ::1 ループバックアドレス
+        #   - fe80::/10 リンクローカルアドレス
+        n != 0 && n != 1 && (n >> 118) != 0x3fa
+      rescue SystemCallError, SocketError
+        false
+      ensure
+        socket&.close
+      end
   end
 
   def detect_nat64_prefix!
@@ -854,6 +889,7 @@ class HTTPClient
 
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
+        # => HTTPClient#resolve_hostname_asynchronously!
       else
         @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
@@ -925,6 +961,8 @@ class HTTPClient
     def resolve_target_addresses!(target_name)
       @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
       @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+      # => HTTPClient#resolve_hostname_asynchronously!
+
       @queried_hostnames << target_name
     end
 
