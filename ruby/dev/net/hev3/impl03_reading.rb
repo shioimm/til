@@ -80,6 +80,7 @@ class HTTPClient
       resolve_hostname_asynchronously!(type) # => HTTPClient#resolve_hostname_asynchronously!
     end
 
+    # アドレス合成が必要な場合、非同期でNAT64 prefixを取得
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
     # => HTTPClient#resolve_nat64_prefix_asynchronously
     # => HTTPClient#address_synthesis_needed?
@@ -299,9 +300,10 @@ class HTTPClient
 
     thread = Thread.new(type) do |type|
       records =
-        if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
+        if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type) # 最初のA/AAAA問い合わせ
           # getaddtinfoで名前解決する
-          initial_getresources(type)
+          initial_getresources(type) # => HTTPClient#initial_getresources
+          # HTTPS RRが返したホスト名に関してはDNSの設定に基づいて解決する
         else
           # DNS問い合わせする
           @resolver.getresources(hostname, type)
@@ -318,12 +320,13 @@ class HTTPClient
 
   private
 
+  # HTTPClient#resolve_nat64_prefix_asynchronously!
   def resolve_nat64_prefix_asynchronously!
     # Keep the result notifier open even if all destination queries finish first.
-    @hostname_resolution_result.expect_result
+    @hostname_resolution_result.expect_result # => HTTPClient::HostnameResolutionResult#expect_result↲
 
     thread = Thread.new do
-      prefix = detect_nat64_prefix!
+      prefix = detect_nat64_prefix! # => HTTPClient#detect_nat64_prefix!
       @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
     rescue => e
       @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
@@ -439,6 +442,7 @@ class HTTPClient
     @hostname_resolution_result.close_all
   end
 
+  # HTTPClient#initial_getresources
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
 
@@ -521,8 +525,9 @@ class HTTPClient
       end
   end
 
+  # HTTPClient#detect_nat64_prefix!
   def detect_nat64_prefix!
-    @nat64_discovery.discover!
+    @nat64_discovery.discover! # => NAT64PrefixDiscovery#discover!
   rescue Resolv::ResolvError, Resolv::ResolvTimeout
     nil
   end
@@ -609,6 +614,7 @@ class HTTPClient
       @notifier = [@rpipe]
     end
 
+    # HTTPClient::HostnameResolutionResult#expect_result↲
     def expect_result
       @pending_count += 1
     end
@@ -667,6 +673,8 @@ class HTTPClient
       @prefix = nil
     end
 
+    # NAT64PrefixDiscovery#discover!
+    # WIP
     def discover!
       records = @resolver.getresources("ipv4only.arpa", AAAA_TYPE)
       @prefix = extract_prefix!(records)
