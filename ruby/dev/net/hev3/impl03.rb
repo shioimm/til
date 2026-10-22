@@ -60,6 +60,7 @@ class HTTPClient
     @record_types.each do |type|
       resolve_hostname_asynchronously!(type)
     end
+
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
 
     count = 0 if DEBUG
@@ -268,12 +269,13 @@ class HTTPClient
         @nat64_a_query_hostnames << hostname
       end
     end
-    @hostname_resolution_result.count_up
+
+    @hostname_resolution_result.expect_result
 
     thread = Thread.new(type) do |type|
       records =
         if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
-          initial_getresources(type)
+          initial_getresources(type) # => HTTPClient#initial_getresources
         else
           @resolver.getresources(hostname, type)
         end
@@ -291,7 +293,7 @@ class HTTPClient
 
   def resolve_nat64_prefix_asynchronously!
     # Keep the result notifier open even if all destination queries finish first.
-    @hostname_resolution_result.count_up
+    @hostname_resolution_result.expect_result
 
     thread = Thread.new do
       prefix = detect_nat64_prefix!
@@ -410,6 +412,7 @@ class HTTPClient
     @hostname_resolution_result.close_all
   end
 
+  # HTTPClient#initial_getresources
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
 
@@ -435,24 +438,25 @@ class HTTPClient
   end
 
   def ipv4_reachable?
-    return @ipv4_reachable unless @ipv4_reachable.nil?
+    return @ipv4_reachable if !@ipv4_reachable.nil?
 
-    @ipv4_reachable = begin
-      socket = UDPSocket.new(Socket::AF_INET)
-      socket.connect("8.8.8.8", 443)
+    @ipv4_reachable =
+      begin
+        socket = UDPSocket.new(Socket::AF_INET)
+        socket.connect("8.8.8.8", 443)
 
-      n = IPAddr.new(socket.local_address.ip_address).to_i
-      # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
-      n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
-    rescue SystemCallError, SocketError
-      false
-    ensure
-      socket&.close
-    end
+        n = IPAddr.new(socket.local_address.ip_address).to_i
+        # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
+        n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
+      rescue SystemCallError, SocketError
+        false
+      ensure
+        socket&.close
+      end
   end
 
   def ipv6_reachable?
-    return @ipv6_reachable unless @ipv6_reachable.nil?
+    return @ipv6_reachable if !@ipv6_reachable.nil?
 
     @ipv6_reachable = begin
       socket = UDPSocket.new(Socket::AF_INET6)
@@ -549,20 +553,19 @@ class HTTPClient
     attr_reader :notifier
 
     def initialize
-      @size = 0
-      @taken_count = 0
+      @pending_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
     end
 
-    def count_up
-      @size += 1
+    def expect_result
+      @pending_count += 1
     end
 
     def pending?
-      @taken_count < @size
+      @pending_count.positive?
     end
 
     def add(type, hostname, records: [], error: nil)
@@ -584,13 +587,13 @@ class HTTPClient
         res = @results.shift
       end
 
-      @taken_count += 1
+      @pending_count -= 1
       res
     end
 
     def close_if_done
       return if @notifier.nil?
-      close_all if @taken_count == @size
+      close_all if @pending_count.zero?
     end
 
     def close_all

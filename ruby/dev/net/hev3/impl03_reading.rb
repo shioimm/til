@@ -49,6 +49,9 @@ class HTTPClient
 
     # NAT64プレフィックス検出後にAレコードを問い合わせるホスト名のリスト
     @nat64_a_query_hostnames = []
+    # IPv6-onlyの環境では、NAT64プレフィックスを検出してアドレス合成が可能になった後で
+    # まとめてAレコードのDNS問い合わせを行う。
+    # アドレス合成が可能かどうかが不明な間は、@nat64_a_query_hostnamesに対象のホスト名を保存しておく必要がある。
 
     # アドレスリスト
     @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
@@ -74,9 +77,13 @@ class HTTPClient
     now = current_clock_time
 
     @record_types.each do |type|
-      resolve_hostname_asynchronously!(type)
+      resolve_hostname_asynchronously!(type) # => HTTPClient#resolve_hostname_asynchronously!
     end
+
+    # アドレス合成が必要な場合、非同期でNAT64 prefixを取得
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
+    # => HTTPClient#resolve_nat64_prefix_asynchronously
+    # => HTTPClient#address_synthesis_needed?
 
     count = 0 if DEBUG
     last_error = nil
@@ -278,23 +285,31 @@ class HTTPClient
     close_socket(@tcp_connected_socket)
   end
 
+  # HTTPClient#resolve_hostname_asynchronously!
   def resolve_hostname_asynchronously!(type, hostname = HOST)
-    if address_synthesis_needed?
+    if address_synthesis_needed? # => HTTPClient#address_synthesis_needed? アドレス合成が必要?
+
+      # HTTPS RR以外の問い合わせ、かつ解決対象のホスト名が未登録の場合
       if [AAAA_TYPE, A_TYPE].include?(type) && !@nat64_a_query_hostnames.include?(hostname)
         @nat64_a_query_hostnames << hostname
       end
     end
-    @hostname_resolution_result.count_up
+
+    # 名前解決中のスレッド数をカウントアップ
+    @hostname_resolution_result.expect_result # => HTTPClient::HostnameResolutionResult#expect_result
 
     thread = Thread.new(type) do |type|
       records =
-        if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type)
-          initial_getresources(type)
+        if hostname == HOST && [AAAA_TYPE, A_TYPE].include?(type) # 最初のA/AAAA問い合わせ
+          # getaddtinfoで名前解決する
+          initial_getresources(type) # => HTTPClient#initial_getresources
+          # HTTPS RRが返したホスト名に関してはDNSの設定に基づいて解決する
         else
+          # DNS問い合わせする
           @resolver.getresources(hostname, type)
         end
 
-      @hostname_resolution_result.add(type, hostname, records:)
+      @hostname_resolution_result.add(type, hostname, records:) # => HTTPClient::HostnameResolutionResult#add
     rescue => e
       @hostname_resolution_result.add(type, hostname, error: e)
     end
@@ -305,12 +320,13 @@ class HTTPClient
 
   private
 
+  # HTTPClient#resolve_nat64_prefix_asynchronously!
   def resolve_nat64_prefix_asynchronously!
     # Keep the result notifier open even if all destination queries finish first.
-    @hostname_resolution_result.count_up
+    @hostname_resolution_result.expect_result # => HTTPClient::HostnameResolutionResult#expect_result↲
 
     thread = Thread.new do
-      prefix = detect_nat64_prefix!
+      prefix = detect_nat64_prefix! # => HTTPClient#detect_nat64_prefix!
       @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
     rescue => e
       @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
@@ -327,7 +343,7 @@ class HTTPClient
     @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
     @nat64_a_query_hostnames.each do |hostname|
-      resolve_hostname_asynchronously!(A_TYPE, hostname)
+      resolve_hostname_asynchronously!(A_TYPE, hostname) # => HTTPClient#resolve_hostname_asynchronously!
     end
   end
 
@@ -426,6 +442,7 @@ class HTTPClient
     @hostname_resolution_result.close_all
   end
 
+  # HTTPClient#initial_getresources
   def initial_getresources(type)
     family = type == AAAA_TYPE ? Socket::AF_INET6 : Socket::AF_INET
 
@@ -446,46 +463,71 @@ class HTTPClient
     end
   end
 
+  # HTTPClient#address_synthesis_needed?
+  # アドレス合成が必要? (IPv6の接続性があり、IPv4の接続性がない)
   def address_synthesis_needed?
     ipv6_reachable? && !ipv4_reachable?
+    # => HTTPClient#ipv6_reachable?
+    # => HTTPClient#ipv4_reachable?
   end
 
+  # HTTPClient#ipv4_reachable?
   def ipv4_reachable?
-    return @ipv4_reachable unless @ipv4_reachable.nil?
+    # 明示的な設定があれば or すでに取得済みならそれを利用
+    return @ipv4_reachable if !@ipv4_reachable.nil?
 
-    @ipv4_reachable = begin
-      socket = UDPSocket.new(Socket::AF_INET)
-      socket.connect("8.8.8.8", 443)
+    @ipv4_reachable =
+      begin
+        socket = UDPSocket.new(Socket::AF_INET)
 
-      n = IPAddr.new(socket.local_address.ip_address).to_i
-      # 0.0.0.0, 127.0.0.0/8, 169.254.0.0/16
-      n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
-    rescue SystemCallError, SocketError
-      false
-    ensure
-      socket&.close
-    end
+        # 宛先を8.8.8.8へ設定 -> システムが経路に応じて送信元IPv4アドレスとポート番号を割り当てる
+        socket.connect("8.8.8.8", 443)
+        # UDPはハンドシェイクを行わないので、UDPSocket#connectを実行した時点では実際に送信は行わない
+
+        # システムが選択した送信元アドレスをビット演算できる整数に変換
+        n = IPAddr.new(socket.local_address.ip_address).to_i
+
+        # 送信元アドレスが次のいずれにも該当しない = IPv4接続性あり
+        #   - 0.0.0.0 未定義アドレス
+        #   - 127.0.0.0/8 ループバックアドレス
+        #   - 169.254.0.0/16 リンクローカルアドレス
+        n != 0 && (n & 0xff000000) != 0x7f000000 && (n & 0xffff0000) != 0xa9fe0000
+      rescue SystemCallError, SocketError
+        false
+      ensure
+        socket&.close
+      end
   end
 
+  # HTTPClient#ipv6_reachable?
   def ipv6_reachable?
-    return @ipv6_reachable unless @ipv6_reachable.nil?
+    # 明示的な設定があれば or すでに取得済みならそれを利用
+    return @ipv6_reachable if !@ipv6_reachable.nil?
 
-    @ipv6_reachable = begin
-      socket = UDPSocket.new(Socket::AF_INET6)
-      socket.connect("2001:4860:4860::8888", 443)
+    @ipv6_reachable =
+      begin
+        socket = UDPSocket.new(Socket::AF_INET6)
 
-      n = IPAddr.new(socket.local_address.ip_address).to_i
-      # ::, ::1, fe80::/10
-      n != 0 && n != 1 && (n >> 118) != 0x3fa
-    rescue SystemCallError, SocketError
-      false
-    ensure
-      socket&.close
-    end
+        # 宛先を2001:4860:4860::8888へ設定 -> システムが経路に応じて送信元IPv6アドレスとポート番号を割り当てる
+        socket.connect("2001:4860:4860::8888", 443)
+          # UDPはハンドシェイクを行わないので、UDPSocket#connectを実行した時点では実際に送信は行わない
+
+        n = IPAddr.new(socket.local_address.ip_address).to_i
+        # 送信元アドレスが次のいずれにも該当しない = IPv6接続性あり
+        #   - :: 未定義アドレス
+        #   - ::1 ループバックアドレス
+        #   - fe80::/10 リンクローカルアドレス
+        n != 0 && n != 1 && (n >> 118) != 0x3fa
+      rescue SystemCallError, SocketError
+        false
+      ensure
+        socket&.close
+      end
   end
 
+  # HTTPClient#detect_nat64_prefix!
   def detect_nat64_prefix!
-    @nat64_discovery.discover!
+    @nat64_discovery.discover! # => NAT64PrefixDiscovery#discover!
   rescue Resolv::ResolvError, Resolv::ResolvTimeout
     nil
   end
@@ -565,22 +607,23 @@ class HTTPClient
     attr_reader :notifier
 
     def initialize
-      @size = 0
-      @taken_count = 0
+      @pending_count = 0
       @rpipe, @wpipe = IO.pipe
       @results = []
       @mutex = Mutex.new
       @notifier = [@rpipe]
     end
 
-    def count_up
-      @size += 1
+    # HTTPClient::HostnameResolutionResult#expect_result↲
+    def expect_result
+      @pending_count += 1
     end
 
     def pending?
-      @taken_count < @size
+      @pending_count.positive?
     end
 
+    # HTTPClient::HostnameResolutionResult#add
     def add(type, hostname, records: [], error: nil)
       @mutex.synchronize do
         @results.push ResolutionResult.new(type:, hostname:, records:, error:)
@@ -600,13 +643,13 @@ class HTTPClient
         res = @results.shift
       end
 
-      @taken_count += 1
+      @pending_count -= 1
       res
     end
 
     def close_if_done
       return if @notifier.nil?
-      close_all if @taken_count == @size
+      close_all if @pending_count.zero?
     end
 
     def close_all
@@ -630,6 +673,8 @@ class HTTPClient
       @prefix = nil
     end
 
+    # NAT64PrefixDiscovery#discover!
+    # WIP
     def discover!
       records = @resolver.getresources("ipv4only.arpa", AAAA_TYPE)
       @prefix = extract_prefix!(records)
@@ -854,6 +899,7 @@ class HTTPClient
 
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
+        # => HTTPClient#resolve_hostname_asynchronously!
       else
         @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
@@ -925,6 +971,8 @@ class HTTPClient
     def resolve_target_addresses!(target_name)
       @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
       @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+      # => HTTPClient#resolve_hostname_asynchronously!
+
       @queried_hostnames << target_name
     end
 
