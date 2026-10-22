@@ -57,11 +57,11 @@ class HTTPClient
   def run
     now = current_clock_time
 
+    resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
+
     @record_types.each do |type|
       resolve_hostname_asynchronously!(type)
     end
-
-    resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
 
     count = 0 if DEBUG
     last_error = nil
@@ -76,6 +76,7 @@ class HTTPClient
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
+
         @first_connection_attempted = true
         ctx, address, _hostname, port = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, port)
@@ -625,9 +626,7 @@ class HTTPClient
     private
 
     def extract_prefix!(records)
-      addresses = records.map { |rr|
-        AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i)
-      }
+      addresses = records.map { |rr| AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i) }
       prefixed_v4s = {}
 
       addresses.each do |addr_int|
