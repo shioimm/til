@@ -245,16 +245,22 @@ class HTTPClient
             else
               raise last_error
             end
+
           end
         end
       end
 
-      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+      # 読み込み可能なソケットをTLSハンドシェイクで読み込み可能になったものと名前解決が終わったもので分ける
+      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition {
+        @tls_handshaking_sockets.key?(it)
+      }
 
+      # TLSハンドシェイク中のすべてのソケット
       (ssl_ready_sockets + ssl_writable_sockets).uniq.each do |ssl_socket|
-        break if @tls_connected_socket
+        break if @tls_connected_socket # 接続が完了したものがあればbreak
 
-        if (error = advance_tls_handshake(ssl_socket))
+        if (error = advance_tls_handshake(ssl_socket)) # => HTTPClient#advance_tls_handshake
+          # HTTPClient#advance_tls_handshakeのなかでconnect_nonblockを再び呼び、IOのチェックをしている
           last_error = error
           @connection_attempt_delay_expires_at = nil
         end
@@ -266,6 +272,7 @@ class HTTPClient
         raise last_error
       end
 
+      # WIP
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
       if hostname_resolved.any?
@@ -583,10 +590,10 @@ class HTTPClient
     @tls_handshaking_sockets.delete(ssl_socket)
     @tls_connected_socket = ssl_socket
     nil
-  rescue IO::WaitReadable
+  rescue IO::WaitReadable # ハンドシェイク中、メッセージを送信したいが送信バッファに空きがなくまだ書き込めない
     @tls_handshaking_sockets[ssl_socket] = :read
     nil
-  rescue IO::WaitWritable
+  rescue IO::WaitWritable # ハンドシェイク中、サーバからの応答がまだ届いていない
     @tls_handshaking_sockets[ssl_socket] = :write
     nil
   rescue OpenSSL::SSL::SSLError, SystemCallError => e

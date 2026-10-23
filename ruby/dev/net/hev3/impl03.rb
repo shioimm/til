@@ -207,7 +207,9 @@ class HTTPClient
         end
       end
 
-      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition {
+        @tls_handshaking_sockets.key?(it)
+      }
 
       (ssl_ready_sockets + ssl_writable_sockets).uniq.each do |ssl_socket|
         break if @tls_connected_socket
