@@ -76,14 +76,15 @@ class HTTPClient
   def run
     now = current_clock_time
 
-    @record_types.each do |type|
-      resolve_hostname_asynchronously!(type) # => HTTPClient#resolve_hostname_asynchronously!
-    end
-
     # アドレス合成が必要な場合、非同期でNAT64 prefixを取得
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
-    # => HTTPClient#resolve_nat64_prefix_asynchronously
     # => HTTPClient#address_synthesis_needed?
+    # => HTTPClient#resolve_nat64_prefix_asynchronously
+
+    @record_types.each do |type|
+      # 非同期で名前解決を実行
+      resolve_hostname_asynchronously!(type) # => HTTPClient#resolve_hostname_asynchronously!
+    end
 
     count = 0 if DEBUG
     last_error = nil
@@ -95,9 +96,11 @@ class HTTPClient
       puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@candidates)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
+      # WIP
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
+
         @first_connection_attempted = true
         ctx, address, _hostname, port = @address_candidate_list.next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, port)
@@ -159,20 +162,35 @@ class HTTPClient
       puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@tcp_connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
-      waiting_rfds = (@hostname_resolution_result.notifier || []) +
+      # 読み取り可能になるまで待機するFDs
+      #  - 名前解決が完了したこと / NAT64 prefix検出が完了したこと
+      #  - TLSハンドシェイク中に読み取り待ちになったこと
+      waiting_rfds =
+        (@hostname_resolution_result.notifier || []) +
         @tls_handshaking_sockets.select { |_, direction| direction == :read }.keys
-      waiting_wfds = @tcp_connecting_sockets.keys +
+
+      # 書き込み可能になるまで待機するFDs
+      #   - TCP接続が完了したこと
+      #   - TLSハンドシェイク中に書き込み待ちになったこと
+      waiting_wfds =
+        @tcp_connecting_sockets.keys +
         @tls_handshaking_sockets.select { |_, direction| direction == :write }.keys
 
+      # 待機対象のFDがない場合
+      #   名前解決 / NAT64 prefix検出の結果をすべて回収済み (= @hostname_resolution_result.notifierがclose済み)
+      #   かつTCP接続中 / TLSハンドシェイク中のソケットがない場合
       if waiting_rfds.empty? && waiting_wfds.empty?
         # No delay remains: try the next candidate without waiting for IO.
-        next if ends_at.nil?
+        next if ends_at.nil? # 未試行の候補があり、待機期限が設定されていない場合は次のループへ
 
-        if ends_at == Float::INFINITY
+        if ends_at == Float::INFINITY # 未試行の候補がない場合
           raise last_error || SocketError.new("no addresses resolved for #{HOST}")
         end
+
+        # 未試行の候補があり、待機期限が設定されている場合はifを抜けてIO.selectへ進む
       end
 
+      # WIP
       readable_fds, writable_fds, _ = IO.select(
         waiting_rfds, waiting_wfds, nil, second_to_timeout(current_clock_time, ends_at),
       )
@@ -526,6 +544,7 @@ class HTTPClient
   end
 
   # HTTPClient#detect_nat64_prefix!
+  # NAT64 prefixを取得
   def detect_nat64_prefix!
     @nat64_discovery.discover! # => NAT64PrefixDiscovery#discover!
   rescue Resolv::ResolvError, Resolv::ResolvTimeout
@@ -673,19 +692,19 @@ class HTTPClient
       @prefix = nil
     end
 
-    # NAT64PrefixDiscovery#discover!
-    # WIP
+    # HTTPClient::NAT64PrefixDiscovery#discover!
     def discover!
+      # ipv4only.arpaのAAAAレコードを問い合わせ -> 192.0.0.170あるいは192.0.0.171に合成済みのAAAAレコードを取得
       records = @resolver.getresources("ipv4only.arpa", AAAA_TYPE)
-      @prefix = extract_prefix!(records)
+      # 取得したAAAAレコードからNAT64 prefixを取得
+      @prefix = extract_prefix!(records) # => HTTPClient::NAT64PrefixDiscovery#extract_prefix!
     end
 
     private
 
+    # HTTPClient::NAT64PrefixDiscovery#extract_prefix!
     def extract_prefix!(records)
-      addresses = records.map { |rr|
-        AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i)
-      }
+      addresses = records.map { |rr| AddrInt.new(IPAddr.new_ntoh(rr.address.address).to_i) }
       prefixed_v4s = {}
 
       addresses.each do |addr_int|
