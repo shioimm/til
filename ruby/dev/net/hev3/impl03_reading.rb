@@ -122,11 +122,13 @@ class HTTPClient
             socket.connect_nonblock(addrinfo)
             if @use_ssl
               if (error = nonblocking_connect_with_tls(socket, ctx))
+                # => HTTPClient#nonblocking_connect_with_tls TLS接続をノンブロッキングで開始
                 last_error = error
                 @connection_attempt_delay_expires_at = nil
                 next
               end
-              break if @tls_connected_socket
+
+              break if @tls_connected_socket # 即座にTLS接続完了した場合
 
               @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             else
@@ -190,7 +192,6 @@ class HTTPClient
         # 未試行の候補があり、待機期限が設定されている場合はifを抜けてIO.selectへ進む
       end
 
-      # WIP
       readable_fds, writable_fds, _ = IO.select(
         waiting_rfds, waiting_wfds, nil, second_to_timeout(current_clock_time, ends_at),
       )
@@ -203,10 +204,13 @@ class HTTPClient
       puts "[DEBUG] #{count}: writable_fds #{writable_fds || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: tcp_connecting_sockets #{@tcp_connecting_sockets}" if DEBUG
 
-      ssl_writable_sockets, writable_fds = (writable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+      # 書き込み可能なソケットをTLSハンドシェイク中のものとTCP接続中のものにわける
+      ssl_writable_sockets, tcp_writable_sockets = (writable_fds || []).partition {
+        @tls_handshaking_sockets.key?(it)
+      }
 
-      if writable_fds.any?
-        while (writable_socket = writable_fds.pop)
+      if tcp_writable_sockets.any? # TCP接続中のソケットがある場合
+        while (writable_socket = tcp_writable_sockets.pop)
           is_connected = (
             sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
             sockopt.int.zero?
@@ -217,38 +221,46 @@ class HTTPClient
 
             if @use_ssl
               if (error = nonblocking_connect_with_tls(writable_socket, ctx))
+                # => HTTPClient#nonblocking_connect_with_tls TLS接続をノンブロッキングで開始
                 last_error = error
                 @connection_attempt_delay_expires_at = nil
               end
 
-              break if @tls_connected_socket
+              break if @tls_connected_socket # 即座にTLS接続完了した場合
             else
               @tcp_connected_socket = writable_socket
               break
             end
+
           else
             _, failed_ai = @tcp_connecting_sockets.delete writable_socket
             writable_socket.close
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
 
-            if writable_fds.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
+            if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
             elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
             end
+
           end
         end
       end
 
-      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+      # 読み込み可能なソケットをTLSハンドシェイクで読み込み可能になったものと名前解決が終わったもので分ける
+      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition {
+        @tls_handshaking_sockets.key?(it)
+      }
 
+      # TLSハンドシェイク中のすべてのソケット
       (ssl_ready_sockets + ssl_writable_sockets).uniq.each do |ssl_socket|
-        break if @tls_connected_socket
+        break if @tls_connected_socket # 接続が完了したものがあればbreak
 
-        if (error = advance_tls_handshake(ssl_socket))
+        if (error = advance_tls_handshake(ssl_socket)) # => HTTPClient#advance_tls_handshake
+          # HTTPClient#advance_tls_handshakeのなかでconnect_nonblockを再び呼び、IOのチェックをしている
           last_error = error
           @connection_attempt_delay_expires_at = nil
         end
@@ -260,6 +272,7 @@ class HTTPClient
         raise last_error
       end
 
+      # WIP
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
       if hostname_resolved.any?
@@ -551,29 +564,36 @@ class HTTPClient
     nil
   end
 
+  # HTTPClient#nonblocking_connect_with_tls
   def nonblocking_connect_with_tls(tcp_socket, ctx)
     ssl_socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ctx)
     ssl_socket.sync_close = true
     # RFC 9460 Section 9.4: SNI identifies the origin, not the TargetName.
+    # TLSハンドシェイクで送るSNIのホスト名を設定
+    # 接続先がHTTPSレコードから得た別のTargetNameであってもSNIには元のアクセス先であるHOSTを指定する
+    # (接続先のサーバが変わっても利用したいWebサイトの名前は変わらない)
     ssl_socket.hostname = HOST
 
-    advance_tls_handshake(ssl_socket)
+    advance_tls_handshake(ssl_socket) # => HTTPClient#advance_tls_handshake
   rescue OpenSSL::SSL::SSLError, SystemCallError => e
     close_socket(ssl_socket)
     close_socket(tcp_socket)
     e
   end
 
+  # HTTPClient#advance_tls_handshake
   # Return nil on success or IO wait, and the exception on failure.
   def advance_tls_handshake(ssl_socket)
     ssl_socket.connect_nonblock
+
+    # connect_nonblockが例外を送出せずに戻った場合、TLS接続完了済み
     @tls_handshaking_sockets.delete(ssl_socket)
     @tls_connected_socket = ssl_socket
     nil
-  rescue IO::WaitReadable
+  rescue IO::WaitReadable # ハンドシェイク中、メッセージを送信したいが送信バッファに空きがなくまだ書き込めない
     @tls_handshaking_sockets[ssl_socket] = :read
     nil
-  rescue IO::WaitWritable
+  rescue IO::WaitWritable # ハンドシェイク中、サーバからの応答がまだ届いていない
     @tls_handshaking_sockets[ssl_socket] = :write
     nil
   rescue OpenSSL::SSL::SSLError, SystemCallError => e

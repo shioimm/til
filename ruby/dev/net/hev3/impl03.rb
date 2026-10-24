@@ -102,6 +102,7 @@ class HTTPClient
                 @connection_attempt_delay_expires_at = nil
                 next
               end
+
               break if @tls_connected_socket
 
               @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
@@ -164,10 +165,12 @@ class HTTPClient
       puts "[DEBUG] #{count}: writable_fds #{writable_fds || 'nil'}" if DEBUG
       puts "[DEBUG] #{count}: tcp_connecting_sockets #{@tcp_connecting_sockets}" if DEBUG
 
-      ssl_writable_sockets, writable_fds = (writable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+      ssl_writable_sockets, tcp_writable_sockets = (writable_fds || []).partition {
+        @tls_handshaking_sockets.key?(it)
+      }
 
-      if writable_fds.any?
-        while (writable_socket = writable_fds.pop)
+      if tcp_writable_sockets.any?
+        while (writable_socket = tcp_writable_sockets.pop)
           is_connected = (
             sockopt = writable_socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR)
             sockopt.int.zero?
@@ -193,7 +196,7 @@ class HTTPClient
             ip_address = failed_ai.ipv6? ? "[#{failed_ai.ip_address}]" : failed_ai.ip_address
             last_error = SystemCallError.new("connect(2) for #{ip_address}:#{failed_ai.ip_port}", sockopt.int)
 
-            if writable_fds.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
+            if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
             elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
@@ -204,7 +207,9 @@ class HTTPClient
         end
       end
 
-      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition { @tls_handshaking_sockets.key?(it) }
+      ssl_ready_sockets, hostname_resolved = (readable_fds || []).partition {
+        @tls_handshaking_sockets.key?(it)
+      }
 
       (ssl_ready_sockets + ssl_writable_sockets).uniq.each do |ssl_socket|
         break if @tls_connected_socket
