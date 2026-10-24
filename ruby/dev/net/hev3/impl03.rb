@@ -239,6 +239,7 @@ class HTTPClient
             last_error = result.error unless result.success?
           end
         end
+
         @hostname_resolution_result.close_if_done
 
         if @address_candidate_list.any?
@@ -851,7 +852,9 @@ class HTTPClient
     end
 
     def add_service_candidate(hostname, candidate)
-      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST || hostname == @alias_fallback_hostname
+      unless hostname == HOST || hostname == @alias_fallback_hostname
+        @candidates.delete([hostname, Float::INFINITY])
+      end
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
@@ -895,10 +898,10 @@ class HTTPClient
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
 
-    def normalize_ipv4_addresses(ipv4_address_hints)
+    def normalize_ipv4_addresses(ipv4_addresses)
       @nat64_prefix ?
-        ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
-        ipv4_address_hints
+        ipv4_addresses.map { synthesize_with_nat64_prefix(it) } :
+        ipv4_addresses
     end
 
     def ipv6_addresses_usable?

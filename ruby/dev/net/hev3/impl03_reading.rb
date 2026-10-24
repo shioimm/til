@@ -260,7 +260,7 @@ class HTTPClient
         break if @tls_connected_socket # 接続が完了したものがあればbreak
 
         if (error = advance_tls_handshake(ssl_socket)) # => HTTPClient#advance_tls_handshake
-          # HTTPClient#advance_tls_handshakeのなかでconnect_nonblockを再び呼び、IOのチェックをしている
+          # HTTPClient#advance_tls_handshakeのなかでconnect_nonblockを再び呼び、進行状況を確認
           last_error = error
           @connection_attempt_delay_expires_at = nil
         end
@@ -275,28 +275,37 @@ class HTTPClient
       # WIP
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
-      if hostname_resolved.any?
-        while (result = @hostname_resolution_result.get)
+      if hostname_resolved.any? # 読み込み可能なデータがある場合
+        while (result = @hostname_resolution_result.get) # 結果のうち先頭要素を取り出す
           raise result.error if result.unexpected_error?
 
-          if result.type == NAT64_PREFIX_RESULT
+          if result.type == NAT64_PREFIX_RESULT # NAT64 prefixを検出した場合
             resolve_hostname_with_nat64_prefix_asynchronously!(result.success? ? result.records.first : nil)
-          else
-            @address_candidate_list.add(result)
+            # result.records.first = 検出したNAT64 prefix
+            # => HTTPClient#resolve_hostname_with_nat64_prefix_asynchronously!
+
+          else # HTTPS / AAAA / A の名前解決結果を取得した場合
+            @address_candidate_list.add(result) # => HTTPClient::AddressCandidateList#add
             last_error = result.error unless result.success?
+
           end
         end
+
+        # NAT64 prefix検出済み / すべての名前解決結果を回収済みなら通知用パイプを閉じる
         @hostname_resolution_result.close_if_done
 
         if @address_candidate_list.any?
           if @address_candidate_list.all_resolved? ||
               (@address_candidate_list.resolved?(HTTPS_TYPE) &&
                @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
+
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
+
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
+
           end
         end
       end
@@ -359,6 +368,7 @@ class HTTPClient
     thread = Thread.new do
       prefix = detect_nat64_prefix! # => HTTPClient#detect_nat64_prefix!
       @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
+      # => HTTPClient::HostnameResolutionResult#add
     rescue => e
       @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
     end
@@ -367,13 +377,15 @@ class HTTPClient
     @hostname_resolution_threads.push(thread)
   end
 
+  # HTTPClient#resolve_hostname_with_nat64_prefix_asynchronously!
   def resolve_hostname_with_nat64_prefix_asynchronously!(prefix)
     return unless prefix
 
-    @address_candidate_list.nat64_prefix = prefix
-    @record_types << A_TYPE unless @record_types.include?(A_TYPE)
+    @address_candidate_list.nat64_prefix = prefix # HTTPClient::AddressCandidateList#nat64_prefix=
+    @record_types << A_TYPE unless @record_types.include?(A_TYPE) # 問い合わせ種別にAを追加
 
     @nat64_a_query_hostnames.each do |hostname|
+      # AレコードのDNS問い合わせを開始する
       resolve_hostname_asynchronously!(A_TYPE, hostname) # => HTTPClient#resolve_hostname_asynchronously!
     end
   end
@@ -653,7 +665,7 @@ class HTTPClient
       @notifier = [@rpipe]
     end
 
-    # HTTPClient::HostnameResolutionResult#expect_result↲
+    # HTTPClient::HostnameResolutionResult#expect_result
     def expect_result
       @pending_count += 1
     end
@@ -672,6 +684,7 @@ class HTTPClient
       end
     end
 
+    # HTTPClient::HostnameResolutionResult#get
     def get
       return nil if @results.empty?
 
@@ -828,19 +841,30 @@ class HTTPClient
       @queried_hostnames = [HOST]
     end
 
+    # HTTPClient::AddressCandidateList#nat64_prefix=
     def nat64_prefix=(prefix)
       return if prefix.nil? || prefix == @nat64_prefix
 
       @nat64_prefix = prefix
+
+      # @pending_ipv4_hints = 取得済みだがNAT64 prefixの検出待ちのため接続に利用できないIPv4アドレスヒント群
+      # ここまででIPv4アドレスヒントを取得済みの場合はアドレス合成を行う
       @pending_ipv4_hints.each do |key, hints|
         candidate = @candidates.fetch(key)
+
+        # アドレス合成を行う
         normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
+        # => HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
+
+        # アドレスリスト内のIPv4アドレスヒントを置き換え
         candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
         @resolution_state.mark_resolved(A_TYPE) if hints.any?
       end
+
       @pending_ipv4_hints.clear
     end
 
+    # HTTPClient::AddressCandidateList#add
     def add(result)
       if result.type == HTTPS_TYPE
         if result.records.empty?
@@ -868,12 +892,14 @@ class HTTPClient
         if result.success? && @alias_redirect_count.positive?
           add_alias_fallback_candidate(result.hostname)
         end
+
       elsif result.success?
         addresses = result.records.map(&:address)
 
         if result.type == A_TYPE
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
           addresses = normalize_ipv4_addresses(addresses)
+          # => HTTPClient::AddressCandidateList#normalize_ipv4_addresses
         end
 
         @resolution_state.update(result.hostname, result.type, addresses)
@@ -883,6 +909,7 @@ class HTTPClient
           @candidates[key] ||= build_connection_candidate!
           @candidates[key].addresses.candidates = @resolution_state.addresses(result.hostname)
         end
+
       end
 
       @resolution_state.mark_resolved(result.type)
@@ -945,7 +972,9 @@ class HTTPClient
     end
 
     def add_service_candidate(hostname, candidate)
-      @candidates.delete([hostname, Float::INFINITY]) unless hostname == HOST || hostname == @alias_fallback_hostname
+      unless hostname == HOST || hostname == @alias_fallback_hostname
+        @candidates.delete([hostname, Float::INFINITY])
+      end
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
@@ -959,6 +988,8 @@ class HTTPClient
       if resolved.key?(A_TYPE)
         ipv4_address_hints = []
       elsif !ipv4_addresses_usable?
+        # IPv4アドレスヒントを取得したものの、@record_typesにA_TYPEが含まれておらずNAT64 prefixも未検出、という状況
+
         # Retain unusable hints separately until a prefix is supplied.
         @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
       end
@@ -989,10 +1020,12 @@ class HTTPClient
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
 
-    def normalize_ipv4_addresses(ipv4_address_hints)
-      @nat64_prefix ?
-        ipv4_address_hints.map { |hint| synthesize_with_nat64_prefix(hint) } :
-        ipv4_address_hints
+    # HTTPClient::AddressCandidateList#normalize_ipv4_addresses
+    def normalize_ipv4_addresses(ipv4_addresses)
+      @nat64_prefix ? # NAT64 prefixを検出済みの場合
+        ipv4_addresses.map { synthesize_with_nat64_prefix(it) } :
+        ipv4_addresses
+        # => HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
     end
 
     def ipv6_addresses_usable?
@@ -1069,7 +1102,9 @@ class HTTPClient
       svcb_alpn_set & SUPPORTED_PROTOCOLS
     end
 
+    # HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
     def synthesize_with_nat64_prefix(addr)
+      # アドレス合成を行う
       ipv4_int = IPAddr.new_ntoh(addr.address).to_i
       AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
     end
