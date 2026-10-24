@@ -742,8 +742,7 @@ class HTTPClient
       @nat64_prefix = prefix
       @pending_ipv4_hints.each do |key, hints|
         candidate = @candidates.fetch(key)
-        normalized_ipv4_hints = hints.map { |hint| synthesize_with_nat64_prefix(hint) }
-        candidate.ipv4_address_hints.replace(normalized_ipv4_hints)
+        candidate.ipv4_address_hints.replace(hints)
         @resolution_state.mark_resolved(A_TYPE) if hints.any?
       end
       @pending_ipv4_hints.clear
@@ -781,7 +780,6 @@ class HTTPClient
 
         if result.type == A_TYPE
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
-          addresses = normalize_ipv4_addresses(addresses)
         end
 
         @resolution_state.update(result.hostname, result.type, addresses)
@@ -802,6 +800,10 @@ class HTTPClient
           address = candidate.addresses.next(type, candidate.address_hints(type))
 
           next unless address
+
+          if type == A_TYPE && @nat64_prefix
+            address = synthesize_with_nat64_prefix(address)
+          end
 
           return [candidate.ctx, address, key.first, candidate.port]
         end
@@ -858,7 +860,7 @@ class HTTPClient
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
-      ipv4_address_hints = ipv4_addresses_usable? ? normalize_ipv4_addresses(candidate.ipv4_address_hints) : []
+      ipv4_address_hints = ipv4_addresses_usable? ? candidate.ipv4_address_hints : []
 
       key = [hostname, candidate.rr.priority, candidate.rr]
       @pending_ipv4_hints.delete(key)
@@ -896,12 +898,6 @@ class HTTPClient
       @candidates[key].addresses.candidates = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
-    end
-
-    def normalize_ipv4_addresses(ipv4_addresses)
-      @nat64_prefix ?
-        ipv4_addresses.map { synthesize_with_nat64_prefix(it) } :
-        ipv4_addresses
     end
 
     def ipv6_addresses_usable?
