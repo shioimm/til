@@ -863,14 +863,15 @@ class HTTPClient
     end
 
     # HTTPClient::AddressCandidateList#add
-    # WIP
     def add(result)
       if result.type == HTTPS_TYPE
+        # DNS問い合わせは成功したが、HTTPS RRがなかった場合 / DNS問い合わせが失敗し、エラーが返ってきた場合
         if result.records.empty?
-          handle_empty_https_rr!(result)
+          handle_empty_https_rr!(result) # => HTTPClient::AddressCandidateList#handle_empty_https_rr!
           return
         end
 
+        # WIP
         # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
         # all ServiceMode records in the same set MUST be ignored.
         # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
@@ -954,13 +955,22 @@ class HTTPClient
 
     private
 
+    # HTTPClient::AddressCandidateList#handle_empty_https_rr!
     def handle_empty_https_rr!(result)
+      # DNS問い合わせが成功した、かつ元々のHTTPS RR問い合わせの結果がAliasModeだった場合
       if result.success? && @alias_redirect_count.positive?
+        # 最終結果を返したときのホスト名を@alias_fallback_hostnameに設定
+        # @alias_fallback_hostname = HTTPSのServiceModeレコードに基づく候補の後に接続を行う候補として扱う
         @alias_fallback_hostname = result.hostname
+
+        # A・AAAAの問い合わせを開始済みのホスト名でなければ名前解決を開始
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
+        # => HTTPClient::AddressCandidateList#queried_hostname?
+        # => HTTPClient::AddressCandidateList#resolve_target_addresses!
       end
 
       @resolution_state.mark_resolved(HTTPS_TYPE)
+      # => HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
     end
 
     def resolve_alias!(alias_record)
@@ -1031,10 +1041,13 @@ class HTTPClient
       !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
     end
 
+    # HTTPClient::AddressCandidateList#queried_hostname?
     def queried_hostname?(hostname)
+      # @queried_hostnames = A・AAAAの問い合わせを開始済みのホスト名
       @queried_hostnames.include?(hostname)
     end
 
+    # HTTPClient::AddressCandidateList#resolve_target_addresses!
     def resolve_target_addresses!(target_name)
       @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
       @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
