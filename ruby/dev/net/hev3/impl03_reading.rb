@@ -871,15 +871,16 @@ class HTTPClient
           return
         end
 
-        # WIP
         # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
         # all ServiceMode records in the same set MUST be ignored.
         # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
+        # HTTPSレコードの中にAliasModeのものがある場合
         if (alias_record = result.records.select(&:alias_mode?).sample)
-          resolve_alias!(alias_record)
+          resolve_alias!(alias_record) # => HTTPClient::AddressCandidateList#resolve_alias!
           return
         end
 
+        # WIP
         supported_records = result.records.filter_map { |rr| build_connection_candidate!(rr) }
         sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
 
@@ -969,13 +970,16 @@ class HTTPClient
         # => HTTPClient::AddressCandidateList#resolve_target_addresses!
       end
 
+      # HTTPSは解決済みということにする
       @resolution_state.mark_resolved(HTTPS_TYPE)
       # => HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
     end
 
+    # HTTPClient::AddressCandidateList#resolve_alias!
     def resolve_alias!(alias_record)
       @alias_redirect_count += 1
 
+      # RFC 9460に従いリダイレクト回数の条件を超えているかどうかを確認
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
         # => HTTPClient#resolve_hostname_asynchronously!
