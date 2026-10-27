@@ -763,8 +763,8 @@ class HTTPClient
           return
         end
 
-        supported_records = result.records.filter_map { |rr| build_connection_candidate!(rr) }
-        sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
+        available_candidates = result.records.filter_map { |rr| build_connection_candidate!(rr) }
+        sorted_candidates = available_candidates.sort_by { |c| c.rr.priority }
 
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
@@ -918,27 +918,11 @@ class HTTPClient
       @queried_hostnames << target_name
     end
 
-    def default_ctx
+    def build_ssl_context
       ctx = ::OpenSSL::SSL::SSLContext.new
       ctx.set_params
       ctx.alpn_protocols = SUPPORTED_PROTOCOLS
       ctx
-    end
-
-    def build_connection_candidate!(rr = nil)
-      if rr
-        return if !mandatory_params_supported?(rr)
-        return if extract_alpn_protocols_from_rr(rr).empty?
-      end
-
-      ConnectionCandidate.new(
-        rr:,
-        port: rr&.params&.[](3)&.port || @origin_port,
-        ctx: default_ctx,
-        addresses: CandidateAddresses.new,
-        ipv6_address_hints: (rr&.params&.[](6)&.addresses || []).dup,
-        ipv4_address_hints: (rr&.params&.[](4)&.addresses || []).dup,
-      )
     end
 
     def mandatory_params_supported?(rr)
@@ -970,6 +954,22 @@ class HTTPClient
         end
 
       svcb_alpn_set & SUPPORTED_PROTOCOLS
+    end
+
+    def build_connection_candidate!(https_rr = nil)
+      if https_rr
+        return if !mandatory_params_supported?(https_rr)
+        return if extract_alpn_protocols_from_rr(https_rr).empty?
+      end
+
+      ConnectionCandidate.new(
+        rr: https_rr,
+        port: https_rr&.params&.[](3)&.port || @origin_port,
+        ctx: build_ssl_context,
+        addresses: CandidateAddresses.new,
+        ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
+        ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
+      )
     end
 
     def synthesize_with_nat64_prefix(addr)
