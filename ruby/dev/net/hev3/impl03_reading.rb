@@ -881,8 +881,12 @@ class HTTPClient
         end
 
         # WIP
-        supported_records = result.records.filter_map { |rr| build_connection_candidate!(rr) }
-        sorted_candidates = supported_records.sort_by { |c| c.rr.priority }
+        # 必須パラメータがあり、かつ利用可能なALPNを持つHTTPS RRを取得
+        available_candidates = result.records.filter_map { |rr| build_connection_candidate!(rr) }
+        # => HTTPClient::AddressCandidateList#build_connection_candidate!
+
+        # 利用可能な接続候補をHTTPS RRの優先度が小さい順に並べ替える
+        sorted_candidates = available_candidates.sort_by { |c| c.rr.priority }
 
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
@@ -903,9 +907,12 @@ class HTTPClient
 
         @resolution_state.update(result.hostname, result.type, addresses)
 
-        if result.hostname == HOST || @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+        if result.hostname == HOST ||
+           @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+
           key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
+          # => HTTPClient::AddressCandidateList#build_connection_candidate!
           @candidates[key].addresses.candidates = @resolution_state.addresses(result.hostname)
         end
 
@@ -1031,6 +1038,7 @@ class HTTPClient
       @alias_fallback_hostname = hostname
       key = [hostname, Float::INFINITY]
       @candidates[key] ||= build_connection_candidate!
+      # => HTTPClient::AddressCandidateList#build_connection_candidate!
 
       @candidates[key].addresses.candidates = @resolution_state.addresses(hostname)
 
@@ -1060,58 +1068,68 @@ class HTTPClient
       @queried_hostnames << target_name
     end
 
-    def default_ctx
+    # HTTPClient::AddressCandidateList##build_ssl_context
+    def build_ssl_context
       ctx = ::OpenSSL::SSL::SSLContext.new
       ctx.set_params
       ctx.alpn_protocols = SUPPORTED_PROTOCOLS
       ctx
     end
 
-    def build_connection_candidate!(rr = nil)
-      if rr
-        return if !mandatory_params_supported?(rr)
-        return if extract_alpn_protocols_from_rr(rr).empty?
-      end
-
-      ConnectionCandidate.new(
-        rr:,
-        port: rr&.params&.[](3)&.port || @origin_port,
-        ctx: default_ctx,
-        addresses: CandidateAddresses.new,
-        ipv6_address_hints: (rr&.params&.[](6)&.addresses || []).dup,
-        ipv4_address_hints: (rr&.params&.[](4)&.addresses || []).dup,
-      )
-    end
-
+    # HTTPClient::AddressCandidateList#mandatory_params_supported?
     def mandatory_params_supported?(rr)
-      mandatory = rr.params[0]
+      mandatory = rr.params[0] # mandatoryを取得
       return true unless mandatory
 
-      keys = mandatory.keys
-      return false if keys.empty?
-      return false if keys.include?(0)
-      return false unless keys == keys.sort.uniq
+      keys = mandatory.keys # 必須として指定されたパラメータ番号一覧を取得
+      return false if keys.empty? # mandatoryがあるのにパラメータ番号一覧が空
+      return false if keys.include?(0) # mandatory自身の番号 (0) が一覧に含まれている
+      return false unless keys == keys.sort.uniq # 番号が昇順ではない、あるいは番号の重複がある
 
+      # 必須パラメータがクライアントの対応一覧に含まれ、レコード自身が実際にそのパラメータを持っている
       keys.all? { SUPPORTED_SVC_PARAM_KEYS.include?(it) && !rr.params[it].nil? }
     end
 
+    # HTTPClient::AddressCandidateList#extract_alpn_protocols_from_rr
     def extract_alpn_protocols_from_rr(rr)
-      alpn_param = rr.params[1]&.protocol_ids
-      no_default_alpn = rr.params[2]
+      alpn_param = rr.params[1]&.protocol_ids # サポートしているプロトコル一覧を取得
+      no_default_alpn = rr.params[2] # no-default-alpn (= デフォルトのプロトコルを補わない) があれば取得
 
+      # 利用できるプロトコルがない
       return [] if no_default_alpn && alpn_param.nil?
       return [] if alpn_param&.empty?
 
+      # 接続先が対応しているプロトコル
       svcb_alpn_set =
-        if alpn_param.nil?
-          DEFAULT_ALPN
-        elsif no_default_alpn
-          alpn_param
-        else
-          (alpn_param + DEFAULT_ALPN).uniq
+        if alpn_param.nil? # ALPNなし
+          DEFAULT_ALPN # ["http/1.1"]
+        elsif no_default_alpn # ALPNあり、no-default-alpnあり
+          alpn_param # ["h2"]
+        else # ALPNあり、no-default-alpnなし
+          (alpn_param + DEFAULT_ALPN).uniq # ["h2", "http/1.1"]
         end
 
+      # 接続先が対応しているプロトコルとクライアントが対応しているプロトコルの積集合を取る
       svcb_alpn_set & SUPPORTED_PROTOCOLS
+    end
+
+    # HTTPClient::AddressCandidateList#build_connection_candidate!
+    def build_connection_candidate!(https_rr = nil)
+      if https_rr
+        return if !mandatory_params_supported?(https_rr) # mandatory = このレコードを扱うための必須パラメータがある
+        # => HTTPClient::AddressCandidateList#mandatory_params_supported?
+        return if extract_alpn_protocols_from_rr(https_rr).empty? # 利用できるプロトコルがない
+        # => HTTPClient::AddressCandidateList#extract_alpn_protocols_from_rr
+      end
+
+      ConnectionCandidate.new(
+        rr: https_rr,
+        port: https_rr&.params&.[](3)&.port || @origin_port,
+        ctx: build_ssl_context, # => HTTPClient::AddressCandidateList##build_ssl_context
+        addresses: CandidateAddresses.new, # 候補が空のCandidateAddresses
+        ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
+        ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
+      )
     end
 
     # HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
