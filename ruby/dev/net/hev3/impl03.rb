@@ -694,10 +694,10 @@ class HTTPClient
 
     class CandidateAddresses
       attr_reader :last_type
-      attr_writer :candidates
+      attr_writer :resolved_addresses
 
       def initialize
-        @candidates = {}
+        @resolved_addresses = {}
         @non_candidates = []
         @last_type = nil
       end
@@ -718,7 +718,7 @@ class HTTPClient
       private
 
       def unselected_address(type, hints)
-        @candidates.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
+        @resolved_addresses.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
       end
     end
 
@@ -787,7 +787,7 @@ class HTTPClient
         if result.hostname == HOST || @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
           key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
-          @candidates[key].addresses.candidates = @resolution_state.addresses(result.hostname)
+          @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(result.hostname)
         end
       end
 
@@ -854,33 +854,33 @@ class HTTPClient
     end
 
     def add_service_candidate(hostname, candidate)
-      unless hostname == HOST || hostname == @alias_fallback_hostname
+      if hostname != HOST && hostname != @alias_fallback_hostname
         @candidates.delete([hostname, Float::INFINITY])
       end
+
+      service_candidate_key = [hostname, candidate.rr.priority, candidate.rr]
+      @pending_ipv4_hints.delete(service_candidate_key)
+
+      resolved = @resolution_state.addresses(hostname)
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
       ipv4_address_hints = ipv4_addresses_usable? ? candidate.ipv4_address_hints : []
 
-      key = [hostname, candidate.rr.priority, candidate.rr]
-      @pending_ipv4_hints.delete(key)
-
-      resolved = @resolution_state.addresses(hostname)
-
       if resolved.key?(A_TYPE)
         ipv4_address_hints = []
       elsif !ipv4_addresses_usable?
         # Retain unusable hints separately until a prefix is supplied.
-        @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
+        @pending_ipv4_hints[service_candidate_key] = candidate.ipv4_address_hints.dup
       end
 
-      @candidates[key] ||= candidate
-      candidate = @candidates[key]
+      @candidates[service_candidate_key] ||= candidate
+      candidate = @candidates[service_candidate_key]
 
       candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
       candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
-      candidate.addresses.candidates = resolved
+      candidate.addresses.resolved_addresses = resolved
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
@@ -895,7 +895,7 @@ class HTTPClient
       key = [hostname, Float::INFINITY]
       @candidates[key] ||= build_connection_candidate!
 
-      @candidates[key].addresses.candidates = @resolution_state.addresses(hostname)
+      @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
