@@ -801,10 +801,10 @@ class HTTPClient
 
     class CandidateAddresses
       attr_reader :last_type
-      attr_writer :candidates
+      attr_writer :resolved_addresses
 
       def initialize
-        @candidates = {}
+        @resolved_addresses = {}
         @non_candidates = []
         @last_type = nil
       end
@@ -825,7 +825,7 @@ class HTTPClient
       private
 
       def unselected_address(type, hints)
-        @candidates.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
+        @resolved_addresses.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
       end
     end
 
@@ -880,7 +880,6 @@ class HTTPClient
           return
         end
 
-        # WIP
         # 必須パラメータがあり、かつ利用可能なALPNを持つHTTPS RRを取得
         available_candidates = result.records.filter_map { |rr| build_connection_candidate!(rr) }
         # => HTTPClient::AddressCandidateList#build_connection_candidate!
@@ -888,10 +887,13 @@ class HTTPClient
         # 利用可能な接続候補をHTTPS RRの優先度が小さい順に並べ替える
         sorted_candidates = available_candidates.sort_by { |c| c.rr.priority }
 
+        # WIP
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
-          add_service_candidate(hostname, candidate)
+          # AliasModeの場合、result.hostname == AliasModeの指すホスト名
+
+          add_service_candidate(hostname, candidate) # => HTTPClient::AddressCandidateList#add_service_candidate
         end
 
         if result.success? && @alias_redirect_count.positive?
@@ -913,7 +915,7 @@ class HTTPClient
           key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
           # => HTTPClient::AddressCandidateList#build_connection_candidate!
-          @candidates[key].addresses.candidates = @resolution_state.addresses(result.hostname)
+          @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(result.hostname)
         end
 
       end
@@ -995,43 +997,74 @@ class HTTPClient
       end
     end
 
+    # HTTPClient::AddressCandidateList#add_service_candidate
     def add_service_candidate(hostname, candidate)
-      unless hostname == HOST || hostname == @alias_fallback_hostname
+      # hostnameが元の宛先ホストHOSTではなく、かつAliasModeのフォールバック先でもない場合
+      if hostname != HOST && hostname != @alias_fallback_hostname
+        # 当該ホストにはServiceModeの設定を利用して接続する必要があるので
+        # 接続候補からhostnameを削除する
         @candidates.delete([hostname, Float::INFINITY])
+
+        # @candidatesに [hostname, Float::INFINITY] (ServiceModeの設定を利用しない) が登録される契機
+        # 1. HTTPClient::AddressCandidateList#addでA/AAAAの成功結果を処理する時
+        #    条件: 問い合わせ先が元のHOST、または同じホスト名の候補がまだない
+        #    ([A/AAAAの問い合わせ先, Float::INFINITY])
+        #
+        # 2. AliasModeをたどった先のServiceMode HTTPS RRの内容を接続候補として登録処理後、
+        #    HTTPClient::AddressCandidateList#add_alias_fallback_candidateを呼ぶ時
+        #    条件: AliasModeをたどった先で、空ではないHTTPS結果を正常に取得した
+        #    ([最後のHTTPS問い合わせ先, Float::INFINITY])
+        #
+        # ServiceMode候補の場合は [hostname, candidate.rr.priority, candidate.rr] というキーで登録される
       end
+
+      # ServiceMode候補を識別するキー
+      service_candidate_key = [hostname, candidate.rr.priority, candidate.rr]
+
+      # @pending_ipv4_hintsにservice_candidate_keyが含まれていれば削除
+      @pending_ipv4_hints.delete(service_candidate_key)
+
+      # hostnameについて、@resolution_stateに対応するキーがあれば回収したA・AAAAの解決結果を取り出す
+      # なければ新しくキー名hostnameで実アドレスの辞書 (空) を登録
+      resolved = @resolution_state.addresses(hostname)
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
       ipv4_address_hints = ipv4_addresses_usable? ? candidate.ipv4_address_hints : []
+      # => HTTPClient::AddressCandidateList#ipv6_addresses_usable?
+      # => HTTPClient::AddressCandidateList#ipv4_addresses_usable?
 
-      key = [hostname, candidate.rr.priority, candidate.rr]
-      @pending_ipv4_hints.delete(key)
-
-      resolved = @resolution_state.addresses(hostname)
-
-      if resolved.key?(A_TYPE)
-        ipv4_address_hints = []
+      if resolved.key?(A_TYPE) # すでにhostnameのA RRの結果を取得済みの場合
+        ipv4_address_hints = [] # アドレスヒントは利用しない (candidate.ipv4_address_hints.replaceの行で使う用)
       elsif !ipv4_addresses_usable?
         # IPv4アドレスヒントを取得したものの、@record_typesにA_TYPEが含まれておらずNAT64 prefixも未検出、という状況
 
         # Retain unusable hints separately until a prefix is supplied.
-        @pending_ipv4_hints[key] = candidate.ipv4_address_hints.dup
+        @pending_ipv4_hints[service_candidate_key] = candidate.ipv4_address_hints.dup
       end
 
-      @candidates[key] ||= candidate
-      candidate = @candidates[key]
+      # @candidateに同じキーの候補があれば再利用し、なければ渡された候補を登録する
+      @candidates[service_candidate_key] ||= candidate
+      candidate = @candidates[service_candidate_key]
 
+      # すでにhostnameのAAAA RRの結果を取得済みの場合、アドレスヒントは利用しない
       candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
+      # すでにhostnameのA RRの結果を取得済みの場合、アドレスヒントは利用しない
       candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
-      candidate.addresses.candidates = resolved
+      # 接続候補のアドレス一覧に実アドレスの辞書を登録
+      candidate.addresses.resolved_addresses = resolved
 
+      # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
       @resolution_state.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
       @resolution_state.mark_resolved(A_TYPE) if ipv4_address_hints.any?
 
+      # hostnameのA/AAAAを未問い合わせの場合は問い合わせ開始
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
+      # => HTTPClient::AddressCandidateList#resolve_target_addresses!
+      # => HTTPClient::AddressCandidateList#queried_hostname?
     end
 
     def add_alias_fallback_candidate(hostname)
@@ -1040,15 +1073,17 @@ class HTTPClient
       @candidates[key] ||= build_connection_candidate!
       # => HTTPClient::AddressCandidateList#build_connection_candidate!
 
-      @candidates[key].addresses.candidates = @resolution_state.addresses(hostname)
+      @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
 
+    # HTTPClient::AddressCandidateList#ipv6_addresses_usable?
     def ipv6_addresses_usable?
       @record_types.include?(AAAA_TYPE)
     end
 
+    # HTTPClient::AddressCandidateList#ipv4_addresses_usable?
     def ipv4_addresses_usable?
       !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
     end
