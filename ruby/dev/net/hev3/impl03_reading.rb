@@ -887,7 +887,6 @@ class HTTPClient
         # 利用可能な接続候補をHTTPS RRの優先度が小さい順に並べ替える
         sorted_candidates = available_candidates.sort_by { |c| c.rr.priority }
 
-        # WIP
         sorted_candidates.each do |candidate|
           target_name = candidate.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
@@ -896,11 +895,16 @@ class HTTPClient
           add_service_candidate(hostname, candidate) # => HTTPClient::AddressCandidateList#add_service_candidate
         end
 
+        # 肯定回答かつ過去にリダイレクト履歴がある (= この結果はServiceModeとして取得)
         if result.success? && @alias_redirect_count.positive?
+          # HTTPSレコードの接続設定を使わない候補も追加する
           add_alias_fallback_candidate(result.hostname)
+          # hostname = 今回のHTTPS問い合わせ先のホスト名
+          # => HTTPClient::AddressCandidateList#add_alias_fallback_candidate
         end
 
       elsif result.success?
+        # WIP
         addresses = result.records.map(&:address)
 
         if result.type == A_TYPE
@@ -1067,8 +1071,9 @@ class HTTPClient
       # => HTTPClient::AddressCandidateList#queried_hostname?
     end
 
+    # HTTPClient::AddressCandidateList#add_alias_fallback_candidate
     def add_alias_fallback_candidate(hostname)
-      @alias_fallback_hostname = hostname
+      @alias_fallback_hostname = hostname # HTTPSレコードの接続設定を使わない接続先候補
       key = [hostname, Float::INFINITY]
       @candidates[key] ||= build_connection_candidate!
       # => HTTPClient::AddressCandidateList#build_connection_candidate!
@@ -1076,6 +1081,8 @@ class HTTPClient
       @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
+      # => HTTPClient::AddressCandidateList#resolve_target_addresses!
+      # => HTTPClient::AddressCandidateList#queried_hostname?
     end
 
     # HTTPClient::AddressCandidateList#ipv6_addresses_usable?
