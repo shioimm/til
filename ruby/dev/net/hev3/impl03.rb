@@ -706,12 +706,13 @@ class HTTPClient
         @resolved_types = Set.new
       end
 
-      def addresses(hostname)
-        @resolved_addresses[hostname] ||= {}
+      def fetch_addresses(hostname)
+        @resolved_addresses.fetch(hostname, {})
       end
 
       def update(hostname, type, addresses)
-        self.addresses(hostname)[type] = addresses
+        @resolved_addresses[hostname] ||= {}
+        @resolved_addresses[hostname][type] = addresses
       end
 
       def mark_resolved(type)
@@ -796,7 +797,7 @@ class HTTPClient
 
     def next_candidate
       ordered_candidates.each do |key, candidate|
-        resolved = @resolution_state.addresses(key.first)
+        resolved = @resolution_state.fetch_addresses(key.first)
         precedences(candidate.last_type).each do |type|
           address = candidate.next_address(type, resolved)
 
@@ -827,7 +828,7 @@ class HTTPClient
 
     def empty?
       @candidates.none? { |key, candidate|
-        resolved = @resolution_state.addresses(key.first)
+        resolved = @resolution_state.fetch_addresses(key.first)
         [AAAA_TYPE, A_TYPE].any? { |type| candidate.address_available?(type, resolved) }
       }
     end
@@ -865,7 +866,7 @@ class HTTPClient
       service_candidate_key = [hostname, candidate.rr.priority, candidate.rr]
       @pending_ipv4_hints.delete(service_candidate_key)
 
-      resolved = @resolution_state.addresses(hostname)
+      resolved = @resolution_state.fetch_addresses(hostname)
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
