@@ -293,16 +293,17 @@ class HTTPClient
         # NAT64 prefix検出済み / すべての名前解決結果を回収済みなら通知用パイプを閉じる
         @hostname_resolution_result.close_if_done
 
-        # WIP
+        # アドレス候補がある
         if @address_candidate_list.any?
-          if @address_candidate_list.all_resolved? ||
-              (@address_candidate_list.resolved?(HTTPS_TYPE) &&
+          if @address_candidate_list.all_resolved? || # 全てのアドレス種別で解決済み
+              (@address_candidate_list.resolved?(HTTPS_TYPE) && # あるいはHTTPS RRと優先ファミリを解決済み
                @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
 
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
-            @resolution_delay_expires_at = nil
+            @resolution_delay_expires_at = nil # Resolution Delayを解除
 
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
+            # Resolution Delay未設定かつ初回接続前
             puts "[DEBUG] #{count}: Resolution Delay is ready" if DEBUG
             @resolution_delay_expires_at = now + RESOLUTION_DELAY
 
