@@ -771,7 +771,7 @@ class HTTPClient
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
     # 接続設定・ヒントと候補ごとの選択状態を保持する。A/AAAAの結果は選択時に受け取る。
-    class ConnectionCandidate
+    class ConnectionPlan
       attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
 
       def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
@@ -818,11 +818,13 @@ class HTTPClient
         @resolved_addresses.fetch(hostname, {})
       end
 
+      # HTTPClient::AddressCandidateList::ResolutionState#update
       def update(hostname, type, addresses)
         @resolved_addresses[hostname] ||= {}
         @resolved_addresses[hostname][type] = addresses
       end
 
+      # HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
       def mark_resolved(type)
         @resolved_types << type
       end
@@ -835,7 +837,14 @@ class HTTPClient
     def initialize(record_types, client, origin_port:, nat64_prefix: nil)
       @record_types = record_types
       @origin_port = origin_port
+
+      # e.g.
+      # {
+      #   [ホスト名, 優先度, Resolv::DNS::Resource::IN::HTTPSオブジェクト] => ConnectionPlanオブジェクト,
+      #   [ホスト名, Float::INFINITY] => ConnectionPlanオブジェクト, (HTTPS RRの設定を利用しない候補の場合)
+      # }
       @candidates = {}
+
       @candidate_order = {}
       @resolution_state = ResolutionState.new
       @client = client
@@ -906,16 +915,21 @@ class HTTPClient
           # => HTTPClient::AddressCandidateList#add_alias_fallback_candidate
         end
 
-      elsif result.success?
-        # WIP
+      elsif result.success? # A/AAAA
         addresses = result.records.map(&:address)
 
         if result.type == A_TYPE
+          # hostnameに対応するIPv4アドレスを取得できたので待機中のIPv4アドレスを削除
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
         end
 
+        # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
         @resolution_state.update(result.hostname, result.type, addresses)
+        # => ResolutionState#update
 
+        # 問い合わせ先が元のHOST、
+        # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
+        # (HTTPS RRのTargetNameとして得たホスト名に対する名前解決結果の場合、このifブロックは通らない)
         if result.hostname == HOST ||
            @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
 
@@ -927,6 +941,7 @@ class HTTPClient
       end
 
       @resolution_state.mark_resolved(result.type)
+      # => HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
     end
 
     def next_candidate
@@ -1167,7 +1182,7 @@ class HTTPClient
         # => HTTPClient::AddressCandidateList#extract_alpn_protocols_from_rr
       end
 
-      ConnectionCandidate.new(
+      ConnectionPlan.new(
         rr: https_rr,
         port: https_rr&.params&.[](3)&.port || @origin_port,
         ctx: build_ssl_context, # => HTTPClient::AddressCandidateList##build_ssl_context

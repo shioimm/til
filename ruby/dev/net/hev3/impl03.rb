@@ -663,7 +663,7 @@ class HTTPClient
     SUPPORTED_SVC_PARAM_KEYS = [0, 1, 2, 3, 4, 6].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
-    class ConnectionCandidate
+    class ConnectionPlan
       attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
 
       def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
@@ -963,7 +963,7 @@ class HTTPClient
         return if extract_alpn_protocols_from_rr(https_rr).empty?
       end
 
-      ConnectionCandidate.new(
+      ConnectionPlan.new(
         rr: https_rr,
         port: https_rr&.params&.[](3)&.port || @origin_port,
         ctx: build_ssl_context,
