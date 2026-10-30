@@ -243,9 +243,8 @@ class HTTPClient
         @hostname_resolution_result.close_if_done
 
         if @address_candidate_list.any?
-          if @address_candidate_list.all_resolved? ||
-              (@address_candidate_list.resolved?(HTTPS_TYPE) &&
-               @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
+          if @address_candidate_list.resolved?(HTTPS_TYPE) &&
+             @address_candidate_list.resolved?(@address_candidate_list.preferred_type)
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
@@ -816,10 +815,6 @@ class HTTPClient
 
     def resolved?(type)
       @resolution_state.resolved?(type)
-    end
-
-    def all_resolved?
-      @record_types.all? { |type| resolved?(type) }
     end
 
     def preferred_type

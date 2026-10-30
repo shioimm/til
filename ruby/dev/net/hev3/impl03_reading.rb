@@ -295,9 +295,9 @@ class HTTPClient
 
         # アドレス候補がある
         if @address_candidate_list.any?
-          if @address_candidate_list.all_resolved? || # 全てのアドレス種別で解決済み
-              (@address_candidate_list.resolved?(HTTPS_TYPE) && # あるいはHTTPS RRと優先ファミリを解決済み
-               @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
+          # HTTPS RRと優先ファミリを解決済み
+          if @address_candidate_list.resolved?(HTTPS_TYPE) &&
+             @address_candidate_list.resolved?(@address_candidate_list.preferred_type)
 
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil # Resolution Delayを解除
@@ -969,10 +969,6 @@ class HTTPClient
 
     def resolved?(type)
       @resolution_state.resolved?(type)
-    end
-
-    def all_resolved?
-      @record_types.all? { |type| resolved?(type) }
     end
 
     def preferred_type
