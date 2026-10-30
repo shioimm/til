@@ -770,11 +770,43 @@ class HTTPClient
     SUPPORTED_SVC_PARAM_KEYS = [0, 1, 2, 3, 4, 6].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
-    ConnectionCandidate = Data.define(:rr, :port, :ctx, :addresses, :ipv6_address_hints, :ipv4_address_hints) {
+    # 接続設定・ヒントと候補ごとの選択状態を保持する。A/AAAAの結果は選択時に受け取る。
+    class ConnectionCandidate
+      attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
+
+      def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+        @rr = rr
+        @port = port
+        @ctx = ctx
+        @ipv6_address_hints = ipv6_address_hints
+        @ipv4_address_hints = ipv4_address_hints
+        @selected_addresses = []
+        @last_type = nil
+      end
+
       def address_hints(type)
         type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
       end
-    }
+
+      def next_address(type, resolved)
+        address = unselected_address(type, resolved)
+        return unless address
+
+        @selected_addresses << address.to_s
+        @last_type = type
+        address
+      end
+
+      def address_available?(type, resolved)
+        !unselected_address(type, resolved).nil?
+      end
+
+      private
+
+      def unselected_address(type, resolved)
+        resolved.fetch(type, address_hints(type)).find { !@selected_addresses.include?(it.to_s) }
+      end
+    end
 
     class ResolutionState
       def initialize
@@ -796,36 +828,6 @@ class HTTPClient
 
       def resolved?(type)
         @resolved_types.include?(type)
-      end
-    end
-
-    class CandidateAddresses
-      attr_reader :last_type
-      attr_writer :resolved_addresses
-
-      def initialize
-        @resolved_addresses = {}
-        @non_candidates = []
-        @last_type = nil
-      end
-
-      def next(type, hints)
-        address = unselected_address(type, hints)
-        return unless address
-
-        @non_candidates << address.to_s
-        @last_type = type
-        address
-      end
-
-      def any?(type, hints)
-        !unselected_address(type, hints).nil?
-      end
-
-      private
-
-      def unselected_address(type, hints)
-        @resolved_addresses.fetch(type, hints).find { !@non_candidates.include?(it.to_s) }
       end
     end
 
@@ -919,7 +921,6 @@ class HTTPClient
           key = [result.hostname, Float::INFINITY]
           @candidates[key] ||= build_connection_candidate!
           # => HTTPClient::AddressCandidateList#build_connection_candidate!
-          @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(result.hostname)
         end
 
       end
@@ -929,8 +930,10 @@ class HTTPClient
 
     def next_candidate
       ordered_candidates.each do |key, candidate|
-        precedences(candidate.addresses.last_type).each do |type|
-          address = candidate.addresses.next(type, candidate.address_hints(type))
+        # ホスト共通の最新の解決結果を取得し、この候補の選択処理に渡す
+        resolved = @resolution_state.addresses(key.first)
+        precedences(candidate.last_type).each do |type|
+          address = candidate.next_address(type, resolved)
 
           next unless address
 
@@ -960,7 +963,11 @@ class HTTPClient
     end
 
     def empty?
-      @candidates.none? { |_, candidate| [AAAA_TYPE, A_TYPE].any? { |type| address_available?(candidate, type) } }
+      @candidates.none? { |key, candidate|
+        # ホスト共通の最新の解決結果を取得し、この候補の選択処理に渡す
+        resolved = @resolution_state.addresses(key.first)
+        [AAAA_TYPE, A_TYPE].any? { |type| candidate.address_available?(type, resolved) }
+      }
     end
 
     def any?
@@ -1056,9 +1063,6 @@ class HTTPClient
       # すでにhostnameのA RRの結果を取得済みの場合、アドレスヒントは利用しない
       candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
-      # 接続候補のアドレス一覧に実アドレスの辞書を登録
-      candidate.addresses.resolved_addresses = resolved
-
       # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
@@ -1078,7 +1082,6 @@ class HTTPClient
       @candidates[key] ||= build_connection_candidate!
       # => HTTPClient::AddressCandidateList#build_connection_candidate!
 
-      @candidates[key].addresses.resolved_addresses = @resolution_state.addresses(hostname)
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
       # => HTTPClient::AddressCandidateList#resolve_target_addresses!
@@ -1168,7 +1171,6 @@ class HTTPClient
         rr: https_rr,
         port: https_rr&.params&.[](3)&.port || @origin_port,
         ctx: build_ssl_context, # => HTTPClient::AddressCandidateList##build_ssl_context
-        addresses: CandidateAddresses.new, # 候補が空のCandidateAddresses
         ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
         ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
       )
@@ -1202,9 +1204,6 @@ class HTTPClient
       end
     end
 
-    def address_available?(candidate, type)
-      candidate.addresses.any?(type, candidate.address_hints(type))
-    end
   end
 
   class AddrInt
