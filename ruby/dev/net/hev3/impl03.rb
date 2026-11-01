@@ -243,9 +243,8 @@ class HTTPClient
         @hostname_resolution_result.close_if_done
 
         if @address_candidate_list.any?
-          if @address_candidate_list.all_resolved? ||
-              (@address_candidate_list.resolved?(HTTPS_TYPE) &&
-               @address_candidate_list.resolved?(@address_candidate_list.preferred_type))
+          if @address_candidate_list.resolved?(HTTPS_TYPE) &&
+             @address_candidate_list.resolved?(@address_candidate_list.preferred_type)
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
@@ -663,7 +662,7 @@ class HTTPClient
     SUPPORTED_SVC_PARAM_KEYS = [0, 1, 2, 3, 4, 6].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
-    class ConnectionCandidate
+    class ConnectionPlan
       attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
 
       def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
@@ -818,10 +817,6 @@ class HTTPClient
       @resolution_state.resolved?(type)
     end
 
-    def all_resolved?
-      @record_types.all? { |type| resolved?(type) }
-    end
-
     def preferred_type
       ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
@@ -963,7 +958,7 @@ class HTTPClient
         return if extract_alpn_protocols_from_rr(https_rr).empty?
       end
 
-      ConnectionCandidate.new(
+      ConnectionPlan.new(
         rr: https_rr,
         port: https_rr&.params&.[](3)&.port || @origin_port,
         ctx: build_ssl_context,
