@@ -96,13 +96,14 @@ class HTTPClient
       puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@candidates)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
-      # WIP
+      # 接続可能な場合
       if @address_candidate_list.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
 
-        @first_connection_attempted = true
+        @first_connection_attempted = true # 最初の接続試行へ進んだことを記録
         ctx, address, _hostname, port = @address_candidate_list.next_candidate
+        # => HTTPClient::AddressCandidateList#next_candidate
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
         if !@use_ssl &&
@@ -945,8 +946,10 @@ class HTTPClient
       # => HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
     end
 
+    # HTTPClient::AddressCandidateList#next_candidate
     def next_candidate
-      ordered_candidates.each do |key, candidate|
+      ordered_candidates.each do |key, candidate| # =>  HTTPClient::AddressCandidateList#ordered_candidates
+        # WIP
         # ホスト共通の最新の解決結果を取得し、この候補の選択処理に渡す
         resolved = @resolution_state.fetch_addresses(key.first)
         precedences(candidate.last_type).each do |type|
@@ -1195,16 +1198,27 @@ class HTTPClient
       AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
     end
 
+    # HTTPClient::AddressCandidateList#ordered_candidates
     def ordered_candidates
       @candidates.sort_by { |key, candidate|
         hostname, priority = key
         group =
-          if    candidate.rr then 0
-          elsif hostname == @alias_fallback_hostname then 1
-          else  2
+          if candidate.rr
+            0 # HTTPSのServiceModeレコードに基づく候補
+          elsif hostname == @alias_fallback_hostname
+            1 # AliasModeの最終問い合わせ先のA/AAAA + 元のポートを利用する候補
+          else
+            2 # 元のHOSTのA/AAAA + 元のポートを使う候補など
           end
 
-        [group, priority, @candidate_order[key] ||= rand]
+        @candidate_order[key] ||= rand
+        # その候補のキーに乱数が未登録なら生成して保存
+        # グループも優先度も同じ候補の場合はrandの値が小さい方が優先的に接続対象となる
+
+        # 1. group の昇順
+        # 2. group が同じなら、priority の昇順
+        # 3. 両方同じなら、乱数の昇順
+        [group, priority, @candidate_order[key]]
       }
     end
 
