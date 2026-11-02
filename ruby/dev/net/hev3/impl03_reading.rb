@@ -106,6 +106,7 @@ class HTTPClient
         # => HTTPClient::ConnectionPlanner#next_connection_target
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
+        # WIP
         if !@use_ssl &&
             @connection_planner.empty? &&
             @tcp_connecting_sockets.empty? &&
@@ -792,10 +793,12 @@ class HTTPClient
 
       # HTTPClient::ConnectionPlanner::ConnectionPlan#next_address
       def next_address(type, resolved)
-        # WIP
+        # 解決済みのアドレスのうち未選択のものを取得
         address = unselected_address(type, resolved)
+        # => HTTPClient::ConnectionPlanner::ConnectionPlan#unselected_address
         return unless address
 
+        # 取得したアドレスを選択済みにする
         @selected_addresses << address.to_s
         @last_type = type
         address
@@ -803,10 +806,12 @@ class HTTPClient
 
       def address_available?(type, resolved)
         !unselected_address(type, resolved).nil?
+        # => HTTPClient::ConnectionPlanner::ConnectionPlan#unselected_address
       end
 
       private
 
+      # HTTPClient::ConnectionPlanner::ConnectionPlan#unselected_address
       def unselected_address(type, resolved)
         resolved.fetch(type, address_hints(type)).find { !@selected_addresses.include?(it.to_s) }
       end
@@ -964,7 +969,7 @@ class HTTPClient
 
           next unless address
 
-          # Aレコード・IPv4ヒント由来の候補は、必要なら接続直前に合成する
+          # Aレコード・IPv4ヒント由来の候補を接続前にアドレス合成
           if type == A_TYPE && @nat64_prefix
             address = synthesize_with_nat64_prefix(address)
             # => HTTPClient::ConnectionPlanner#synthesize_with_nat64_prefix
