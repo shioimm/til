@@ -54,7 +54,7 @@ class HTTPClient
     # アドレス合成が可能かどうかが不明な間は、@nat64_a_query_hostnamesに対象のホスト名を保存しておく必要がある。
 
     # アドレスリスト
-    @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
+    @connection_planner = ConnectionPlanner.new(@record_types, self, origin_port: @port)
 
     # 接続処理中のTCPSocket
     @tcp_connecting_sockets = {}  # TCPSocket => [SSLContext, Addrinfo]
@@ -93,21 +93,21 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@candidates)}" if DEBUG
+      puts "[DEBUG] #{count}: @connection_planner #{@connection_planner.instance_variable_get(:@connection_plans)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
       # 接続可能な場合
-      if @address_candidate_list.any?
+      if @connection_planner.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
 
         @first_connection_attempted = true # 最初の接続試行へ進んだことを記録
-        ctx, address, _hostname, port = @address_candidate_list.next_candidate
-        # => HTTPClient::AddressCandidateList#next_candidate
+        ctx, address, _hostname, port = @connection_planner.next_connection_target
+        # => HTTPClient::ConnectionPlanner#next_connection_target
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
         if !@use_ssl &&
-            @address_candidate_list.empty? &&
+            @connection_planner.empty? &&
             @tcp_connecting_sockets.empty? &&
             !@hostname_resolution_result.pending?
           begin
@@ -144,7 +144,7 @@ class HTTPClient
             last_error = e
             # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
             # 未試行の候補がある場合は待機せずに次のアドレスを試す
-            next if @address_candidate_list.any?
+            next if @connection_planner.any?
           end
         end
       end
@@ -153,7 +153,7 @@ class HTTPClient
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
       ends_at =
-        if @address_candidate_list.any?
+        if @connection_planner.any?
           @resolution_delay_expires_at || @connection_attempt_delay_expires_at
         else
           Float::INFINITY
@@ -183,7 +183,7 @@ class HTTPClient
       #   名前解決 / NAT64 prefix検出の結果をすべて回収済み (= @hostname_resolution_result.notifierがclose済み)
       #   かつTCP接続中 / TLSハンドシェイク中のソケットがない場合
       if waiting_rfds.empty? && waiting_wfds.empty?
-        # No delay remains: try the next candidate without waiting for IO.
+        # No delay remains: try the next connection target without waiting for IO.
         next if ends_at.nil? # 未試行の候補があり、待機期限が設定されていない場合は次のループへ
 
         if ends_at == Float::INFINITY # 未試行の候補がない場合
@@ -241,7 +241,7 @@ class HTTPClient
 
             if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
-            elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
+            elsif @connection_planner.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -269,7 +269,7 @@ class HTTPClient
 
       if last_error && !@tcp_connected_socket && !@tls_connected_socket &&
           @tls_handshaking_sockets.empty? && @tcp_connecting_sockets.empty? &&
-          !@address_candidate_list.any? && !@hostname_resolution_result.pending?
+          !@connection_planner.any? && !@hostname_resolution_result.pending?
         raise last_error
       end
 
@@ -285,7 +285,7 @@ class HTTPClient
             # => HTTPClient#resolve_hostname_with_nat64_prefix_asynchronously!
 
           else # HTTPS / AAAA / A の名前解決結果を取得した場合
-            @address_candidate_list.add(result) # => HTTPClient::AddressCandidateList#add
+            @connection_planner.add(result) # => HTTPClient::ConnectionPlanner#add
             last_error = result.error unless result.success?
 
           end
@@ -295,10 +295,10 @@ class HTTPClient
         @hostname_resolution_result.close_if_done
 
         # アドレス候補がある
-        if @address_candidate_list.any?
+        if @connection_planner.any?
           # HTTPS RRと優先ファミリを解決済み
-          if @address_candidate_list.resolved?(HTTPS_TYPE) &&
-             @address_candidate_list.resolved?(@address_candidate_list.preferred_type)
+          if @connection_planner.resolved?(HTTPS_TYPE) &&
+             @connection_planner.resolved?(@connection_planner.preferred_type)
 
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil # Resolution Delayを解除
@@ -383,7 +383,7 @@ class HTTPClient
     return unless prefix
 
     # 取得したNAT64 prefixを保持する
-    @address_candidate_list.nat64_prefix = prefix # => HTTPClient::AddressCandidateList#nat64_prefix=
+    @connection_planner.nat64_prefix = prefix # => HTTPClient::ConnectionPlanner#nat64_prefix=
     # 問い合わせ種別にAを追加
     @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
@@ -763,7 +763,7 @@ class HTTPClient
     end
   end
 
-  class AddressCandidateList
+  class ConnectionPlanner
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["h2", "http/1.1"].freeze
@@ -790,7 +790,7 @@ class HTTPClient
         type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
       end
 
-      # HTTPClient::AddressCandidateList::ConnectionPlan#next_address
+      # HTTPClient::ConnectionPlanner::ConnectionPlan#next_address
       def next_address(type, resolved)
         # WIP
         address = unselected_address(type, resolved)
@@ -818,18 +818,18 @@ class HTTPClient
         @resolved_types = Set.new
       end
 
-      # HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
+      # HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
       def fetch_addresses(hostname)
         @resolved_addresses.fetch(hostname, {})
       end
 
-      # HTTPClient::AddressCandidateList::ResolutionState#update
+      # HTTPClient::ConnectionPlanner::ResolutionState#update
       def update(hostname, type, addresses)
         @resolved_addresses[hostname] ||= {}
         @resolved_addresses[hostname][type] = addresses
       end
 
-      # HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
+      # HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
       def mark_resolved(type)
         @resolved_types << type
       end
@@ -848,9 +848,9 @@ class HTTPClient
       #   [ホスト名, 優先度, Resolv::DNS::Resource::IN::HTTPSオブジェクト] => ConnectionPlanオブジェクト,
       #   [ホスト名, Float::INFINITY] => ConnectionPlanオブジェクト, (HTTPS RRの設定を利用しない候補の場合)
       # }
-      @candidates = {}
+      @connection_plans = {}
 
-      @candidate_order = {}
+      @plan_order = {}
       @resolution_state = ResolutionState.new
       @client = client
       @nat64_prefix = nat64_prefix
@@ -860,7 +860,7 @@ class HTTPClient
       @queried_hostnames = [HOST]
     end
 
-    # HTTPClient::AddressCandidateList#nat64_prefix=
+    # HTTPClient::ConnectionPlanner#nat64_prefix=
     def nat64_prefix=(prefix)
       return if prefix.nil? || prefix == @nat64_prefix
 
@@ -869,22 +869,22 @@ class HTTPClient
       # @pending_ipv4_hints = 取得済みだがNAT64 prefixの検出待ちのため接続に利用できないIPv4アドレスヒント群
       # @pending_ipv4_hintsを接続候補へコピー
       @pending_ipv4_hints.each do |key, hints|
-        candidate = @candidates.fetch(key)
+        plan = @connection_plans.fetch(key)
 
-        # アドレス合成はnext_candidateで接続用アドレスを返す直前に行う
-        candidate.ipv4_address_hints.replace(hints)
+        # アドレス合成はnext_connection_targetで接続用アドレスを返す直前に行う
+        plan.ipv4_address_hints.replace(hints)
         @resolution_state.mark_resolved(A_TYPE) if hints.any?
       end
 
       @pending_ipv4_hints.clear
     end
 
-    # HTTPClient::AddressCandidateList#add
+    # HTTPClient::ConnectionPlanner#add
     def add(result)
       if result.type == HTTPS_TYPE
         # DNS問い合わせは成功したが、HTTPS RRがなかった場合 / DNS問い合わせが失敗し、エラーが返ってきた場合
         if result.records.empty?
-          handle_empty_https_rr!(result) # => HTTPClient::AddressCandidateList#handle_empty_https_rr!
+          handle_empty_https_rr!(result) # => HTTPClient::ConnectionPlanner#handle_empty_https_rr!
           return
         end
 
@@ -893,31 +893,31 @@ class HTTPClient
         # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
         # HTTPSレコードの中にAliasModeのものがある場合
         if (alias_record = result.records.select(&:alias_mode?).sample)
-          resolve_alias!(alias_record) # => HTTPClient::AddressCandidateList#resolve_alias!
+          resolve_alias!(alias_record) # => HTTPClient::ConnectionPlanner#resolve_alias!
           return
         end
 
         # 必須パラメータがあり、かつ利用可能なALPNを持つHTTPS RRを取得
-        available_candidates = result.records.filter_map { |rr| build_connection_candidate!(rr) }
-        # => HTTPClient::AddressCandidateList#build_connection_candidate!
+        available_plans = result.records.filter_map { |rr| build_connection_plan!(rr) }
+        # => HTTPClient::ConnectionPlanner#build_connection_plan!
 
         # 利用可能な接続候補をHTTPS RRの優先度が小さい順に並べ替える
-        sorted_candidates = available_candidates.sort_by { |c| c.rr.priority }
+        sorted_plans = available_plans.sort_by { |plan| plan.rr.priority }
 
-        sorted_candidates.each do |candidate|
-          target_name = candidate.rr.target.to_s
+        sorted_plans.each do |plan|
+          target_name = plan.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
           # AliasModeの場合、result.hostname == AliasModeの指すホスト名
 
-          add_service_candidate(hostname, candidate) # => HTTPClient::AddressCandidateList#add_service_candidate
+          add_service_plan(hostname, plan) # => HTTPClient::ConnectionPlanner#add_service_plan
         end
 
         # 肯定回答かつ過去にリダイレクト履歴がある (= この結果はServiceModeとして取得)
         if result.success? && @alias_redirect_count.positive?
           # HTTPSレコードの接続設定を使わない候補も追加する
-          add_alias_fallback_candidate(result.hostname)
+          add_alias_fallback_plan(result.hostname)
           # hostname = 今回のHTTPS問い合わせ先のホスト名
-          # => HTTPClient::AddressCandidateList#add_alias_fallback_candidate
+          # => HTTPClient::ConnectionPlanner#add_alias_fallback_plan
         end
 
       elsif result.success? # A/AAAA
@@ -936,41 +936,41 @@ class HTTPClient
         # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
         # (HTTPS RRのTargetNameとして得たホスト名に対する名前解決結果の場合、このifブロックは通らない)
         if result.hostname == HOST ||
-           @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+           @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
 
           key = [result.hostname, Float::INFINITY]
-          @candidates[key] ||= build_connection_candidate!
-          # => HTTPClient::AddressCandidateList#build_connection_candidate!
+          @connection_plans[key] ||= build_connection_plan!
+          # => HTTPClient::ConnectionPlanner#build_connection_plan!
         end
 
       end
 
       @resolution_state.mark_resolved(result.type)
-      # => HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
+      # => HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
     end
 
-    # HTTPClient::AddressCandidateList#next_candidate
-    def next_candidate
-      ordered_candidates.each do |(hostname, _priority, _https_rr), candidate|
-        # => HTTPClient::AddressCandidateList#ordered_candidates
+    # HTTPClient::ConnectionPlanner#next_connection_target
+    def next_connection_target
+      ordered_plans.each do |(hostname, _priority, _https_rr), plan|
+        # => HTTPClient::ConnectionPlanner#ordered_plans
 
         # hostnameに対応する解決済みのA/AAAAアドレスをそれぞれ含むハッシュ取得
         resolved = @resolution_state.fetch_addresses(hostname)
-        # => HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
+        # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
 
-        precedences(candidate.last_type).each do |type| # => HTTPClient::AddressCandidateList#precedences
-          address = candidate.next_address(type, resolved)
-          # => HTTPClient::AddressCandidateList::ConnectionPlan#next_address
+        precedences(plan.last_type).each do |type| # => HTTPClient::ConnectionPlanner#precedences
+          address = plan.next_address(type, resolved)
+          # => HTTPClient::ConnectionPlanner::ConnectionPlan#next_address
 
           next unless address
 
           # Aレコード・IPv4ヒント由来の候補は、必要なら接続直前に合成する
           if type == A_TYPE && @nat64_prefix
             address = synthesize_with_nat64_prefix(address)
-            # => HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
+            # => HTTPClient::ConnectionPlanner#synthesize_with_nat64_prefix
           end
 
-          return [candidate.ctx, address, hostname, candidate.port]
+          return [plan.ctx, address, hostname, plan.port]
         end
       end
 
@@ -981,16 +981,16 @@ class HTTPClient
       @resolution_state.resolved?(type)
     end
 
-    # HTTPClient::AddressCandidateList#preferred_type
+    # HTTPClient::ConnectionPlanner#preferred_type
     def preferred_type
       ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
     def empty?
-      @candidates.none? { |key, candidate|
+      @connection_plans.none? { |key, plan|
         resolved = @resolution_state.fetch_addresses(key.first)
-        # => HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
-        [AAAA_TYPE, A_TYPE].any? { |type| candidate.address_available?(type, resolved) }
+        # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+        [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
 
@@ -1000,7 +1000,7 @@ class HTTPClient
 
     private
 
-    # HTTPClient::AddressCandidateList#handle_empty_https_rr!
+    # HTTPClient::ConnectionPlanner#handle_empty_https_rr!
     def handle_empty_https_rr!(result)
       # DNS問い合わせが成功した、かつ元々のHTTPS RR問い合わせの結果がAliasModeだった場合
       if result.success? && @alias_redirect_count.positive?
@@ -1010,16 +1010,16 @@ class HTTPClient
 
         # A・AAAAの問い合わせを開始済みのホスト名でなければ名前解決を開始
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
-        # => HTTPClient::AddressCandidateList#queried_hostname?
-        # => HTTPClient::AddressCandidateList#resolve_target_addresses!
+        # => HTTPClient::ConnectionPlanner#queried_hostname?
+        # => HTTPClient::ConnectionPlanner#resolve_target_addresses!
       end
 
       # HTTPSは解決済みということにする
       @resolution_state.mark_resolved(HTTPS_TYPE)
-      # => HTTPClient::AddressCandidateList::ResolutionState#mark_resolved
+      # => HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
     end
 
-    # HTTPClient::AddressCandidateList#resolve_alias!
+    # HTTPClient::ConnectionPlanner#resolve_alias!
     def resolve_alias!(alias_record)
       @alias_redirect_count += 1
 
@@ -1032,60 +1032,60 @@ class HTTPClient
       end
     end
 
-    # HTTPClient::AddressCandidateList#add_service_candidate
-    def add_service_candidate(hostname, candidate)
+    # HTTPClient::ConnectionPlanner#add_service_plan
+    def add_service_plan(hostname, plan)
       # hostnameが元の宛先ホストHOSTではなく、かつAliasModeのフォールバック先でもない場合
       if hostname != HOST && hostname != @alias_fallback_hostname
         # 当該ホストにはServiceModeの設定を利用して接続する必要があるので
         # 接続候補からhostnameを削除する
-        @candidates.delete([hostname, Float::INFINITY])
+        @connection_plans.delete([hostname, Float::INFINITY])
 
-        # @candidatesに [hostname, Float::INFINITY] (ServiceModeの設定を利用しない) が登録される契機
-        # 1. HTTPClient::AddressCandidateList#addでA/AAAAの成功結果を処理する時
+        # @connection_plansに [hostname, Float::INFINITY] (ServiceModeの設定を利用しない) が登録される契機
+        # 1. HTTPClient::ConnectionPlanner#addでA/AAAAの成功結果を処理する時
         #    条件: 問い合わせ先が元のHOST、または同じホスト名の候補がまだない
         #    ([A/AAAAの問い合わせ先, Float::INFINITY])
         #
         # 2. AliasModeをたどった先のServiceMode HTTPS RRの内容を接続候補として登録処理後、
-        #    HTTPClient::AddressCandidateList#add_alias_fallback_candidateを呼ぶ時
+        #    HTTPClient::ConnectionPlanner#add_alias_fallback_planを呼ぶ時
         #    条件: AliasModeをたどった先で、空ではないHTTPS結果を正常に取得した
         #    ([最後のHTTPS問い合わせ先, Float::INFINITY])
         #
-        # ServiceMode候補の場合は [hostname, candidate.rr.priority, candidate.rr] というキーで登録される
+        # ServiceMode候補の場合は [hostname, plan.rr.priority, plan.rr] というキーで登録される
       end
 
       # ServiceMode候補を識別するキー
-      service_candidate_key = [hostname, candidate.rr.priority, candidate.rr]
+      service_plan_key = [hostname, plan.rr.priority, plan.rr]
 
-      # @pending_ipv4_hintsにservice_candidate_keyが含まれていれば削除
-      @pending_ipv4_hints.delete(service_candidate_key)
+      # @pending_ipv4_hintsにservice_plan_keyが含まれていれば削除
+      @pending_ipv4_hints.delete(service_plan_key)
 
       # hostnameに対応する解決済みのA/AAAAアドレスを取得
       resolved = @resolution_state.fetch_addresses(hostname)
-      # => HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
+      # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
-      ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
-      ipv4_address_hints = ipv4_addresses_usable? ? candidate.ipv4_address_hints : []
-      # => HTTPClient::AddressCandidateList#ipv6_addresses_usable?
-      # => HTTPClient::AddressCandidateList#ipv4_addresses_usable?
+      ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
+      ipv4_address_hints = ipv4_addresses_usable? ? plan.ipv4_address_hints : []
+      # => HTTPClient::ConnectionPlanner#ipv6_addresses_usable?
+      # => HTTPClient::ConnectionPlanner#ipv4_addresses_usable?
 
       if resolved.key?(A_TYPE) # すでにhostnameのA RRの結果を取得済みの場合
-        ipv4_address_hints = [] # アドレスヒントは利用しない (candidate.ipv4_address_hints.replaceの行で使う用)
+        ipv4_address_hints = [] # アドレスヒントは利用しない (plan.ipv4_address_hints.replaceの行で使う用)
       elsif !ipv4_addresses_usable?
         # IPv4アドレスヒントを取得したものの、@record_typesにA_TYPEが含まれておらずNAT64 prefixも未検出、という状況
 
         # Retain unusable hints separately until a prefix is supplied.
-        @pending_ipv4_hints[service_candidate_key] = candidate.ipv4_address_hints.dup
+        @pending_ipv4_hints[service_plan_key] = plan.ipv4_address_hints.dup
       end
 
       # @candidateに同じキーの候補があれば再利用し、なければ渡された候補を登録する
-      @candidates[service_candidate_key] ||= candidate
-      candidate = @candidates[service_candidate_key]
+      @connection_plans[service_plan_key] ||= plan
+      plan = @connection_plans[service_plan_key]
 
       # すでにhostnameのAAAA RRの結果を取得済みの場合、アドレスヒントは利用しない
-      candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
+      plan.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
       # すでにhostnameのA RRの結果を取得済みの場合、アドレスヒントは利用しない
-      candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+      plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
       # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
@@ -1095,40 +1095,40 @@ class HTTPClient
 
       # hostnameのA/AAAAを未問い合わせの場合は問い合わせ開始
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
-      # => HTTPClient::AddressCandidateList#resolve_target_addresses!
-      # => HTTPClient::AddressCandidateList#queried_hostname?
+      # => HTTPClient::ConnectionPlanner#resolve_target_addresses!
+      # => HTTPClient::ConnectionPlanner#queried_hostname?
     end
 
-    # HTTPClient::AddressCandidateList#add_alias_fallback_candidate
-    def add_alias_fallback_candidate(hostname)
+    # HTTPClient::ConnectionPlanner#add_alias_fallback_plan
+    def add_alias_fallback_plan(hostname)
       @alias_fallback_hostname = hostname # HTTPSレコードの接続設定を使わない接続先候補
       key = [hostname, Float::INFINITY]
-      @candidates[key] ||= build_connection_candidate!
-      # => HTTPClient::AddressCandidateList#build_connection_candidate!
+      @connection_plans[key] ||= build_connection_plan!
+      # => HTTPClient::ConnectionPlanner#build_connection_plan!
 
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
-      # => HTTPClient::AddressCandidateList#resolve_target_addresses!
-      # => HTTPClient::AddressCandidateList#queried_hostname?
+      # => HTTPClient::ConnectionPlanner#resolve_target_addresses!
+      # => HTTPClient::ConnectionPlanner#queried_hostname?
     end
 
-    # HTTPClient::AddressCandidateList#ipv6_addresses_usable?
+    # HTTPClient::ConnectionPlanner#ipv6_addresses_usable?
     def ipv6_addresses_usable?
       @record_types.include?(AAAA_TYPE)
     end
 
-    # HTTPClient::AddressCandidateList#ipv4_addresses_usable?
+    # HTTPClient::ConnectionPlanner#ipv4_addresses_usable?
     def ipv4_addresses_usable?
       !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
     end
 
-    # HTTPClient::AddressCandidateList#queried_hostname?
+    # HTTPClient::ConnectionPlanner#queried_hostname?
     def queried_hostname?(hostname)
       # @queried_hostnames = A・AAAAの問い合わせを開始済みのホスト名
       @queried_hostnames.include?(hostname)
     end
 
-    # HTTPClient::AddressCandidateList#resolve_target_addresses!
+    # HTTPClient::ConnectionPlanner#resolve_target_addresses!
     def resolve_target_addresses!(target_name)
       @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
       @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
@@ -1137,7 +1137,7 @@ class HTTPClient
       @queried_hostnames << target_name
     end
 
-    # HTTPClient::AddressCandidateList##build_ssl_context
+    # HTTPClient::ConnectionPlanner##build_ssl_context
     def build_ssl_context
       ctx = ::OpenSSL::SSL::SSLContext.new
       ctx.set_params
@@ -1145,7 +1145,7 @@ class HTTPClient
       ctx
     end
 
-    # HTTPClient::AddressCandidateList#mandatory_params_supported?
+    # HTTPClient::ConnectionPlanner#mandatory_params_supported?
     def mandatory_params_supported?(rr)
       mandatory = rr.params[0] # mandatoryを取得
       return true unless mandatory
@@ -1159,7 +1159,7 @@ class HTTPClient
       keys.all? { SUPPORTED_SVC_PARAM_KEYS.include?(it) && !rr.params[it].nil? }
     end
 
-    # HTTPClient::AddressCandidateList#extract_alpn_protocols_from_rr
+    # HTTPClient::ConnectionPlanner#extract_alpn_protocols_from_rr
     def extract_alpn_protocols_from_rr(rr)
       alpn_param = rr.params[1]&.protocol_ids # サポートしているプロトコル一覧を取得
       no_default_alpn = rr.params[2] # no-default-alpn (= デフォルトのプロトコルを補わない) があれば取得
@@ -1182,37 +1182,37 @@ class HTTPClient
       svcb_alpn_set & SUPPORTED_PROTOCOLS
     end
 
-    # HTTPClient::AddressCandidateList#build_connection_candidate!
-    def build_connection_candidate!(https_rr = nil)
+    # HTTPClient::ConnectionPlanner#build_connection_plan!
+    def build_connection_plan!(https_rr = nil)
       if https_rr
         return if !mandatory_params_supported?(https_rr) # mandatory = このレコードを扱うための必須パラメータがある
-        # => HTTPClient::AddressCandidateList#mandatory_params_supported?
+        # => HTTPClient::ConnectionPlanner#mandatory_params_supported?
         return if extract_alpn_protocols_from_rr(https_rr).empty? # 利用できるプロトコルがない
-        # => HTTPClient::AddressCandidateList#extract_alpn_protocols_from_rr
+        # => HTTPClient::ConnectionPlanner#extract_alpn_protocols_from_rr
       end
 
       ConnectionPlan.new(
         rr: https_rr,
         port: https_rr&.params&.[](3)&.port || @origin_port,
-        ctx: build_ssl_context, # => HTTPClient::AddressCandidateList##build_ssl_context
+        ctx: build_ssl_context, # => HTTPClient::ConnectionPlanner##build_ssl_context
         ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
         ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
       )
     end
 
-    # HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
+    # HTTPClient::ConnectionPlanner#synthesize_with_nat64_prefix
     def synthesize_with_nat64_prefix(addr)
       # アドレス合成を行う
       ipv4_int = IPAddr.new_ntoh(addr.address).to_i
       AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
     end
 
-    # HTTPClient::AddressCandidateList#ordered_candidates
-    def ordered_candidates
-      @candidates.sort_by { |key, candidate|
+    # HTTPClient::ConnectionPlanner#ordered_plans
+    def ordered_plans
+      @connection_plans.sort_by { |key, plan|
         hostname, priority = key
         group =
-          if candidate.rr
+          if plan.rr
             0 # HTTPSのServiceModeレコードに基づく候補
           elsif hostname == @alias_fallback_hostname
             1 # AliasModeの最終問い合わせ先のA/AAAA + 元のポートを利用する候補
@@ -1220,22 +1220,22 @@ class HTTPClient
             2 # 元のHOSTのA/AAAA + 元のポートを使う候補など
           end
 
-        @candidate_order[key] ||= rand
+        @plan_order[key] ||= rand
         # その候補のキーに乱数が未登録なら生成して保存
         # グループも優先度も同じ候補の場合はrandの値が小さい方が優先的に接続対象となる
 
         # 1. group の昇順
         # 2. group が同じなら、priority の昇順
         # 3. 両方同じなら、乱数の昇順
-        [group, priority, @candidate_order[key]]
+        [group, priority, @plan_order[key]]
       }
     end
 
-    # HTTPClient::AddressCandidateList#precedences
+    # HTTPClient::ConnectionPlanner#precedences
     def precedences(last_type)
       if last_type == AAAA_TYPE then PRIORITY_ON_V4
       elsif last_type == A_TYPE then PRIORITY_ON_V6
-      elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6 # => HTTPClient::AddressCandidateList#preferred_type
+      elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6 # => HTTPClient::ConnectionPlanner#preferred_type
       else PRIORITY_ON_V4
       end
     end

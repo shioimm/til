@@ -41,7 +41,7 @@ class HTTPClient
 
     @nat64_a_query_hostnames = []
 
-    @address_candidate_list = AddressCandidateList.new(@record_types, self, origin_port: @port)
+    @connection_planner = ConnectionPlanner.new(@record_types, self, origin_port: @port)
 
     @tcp_connecting_sockets = {}  # TCPSocket => [SSLContext, Addrinfo]
     @tls_handshaking_sockets = {} # SSLSocket => :read / :write
@@ -70,19 +70,19 @@ class HTTPClient
       count += 1 if DEBUG
 
       puts "[DEBUG] #{count}: ** Check for readying to connect **" if DEBUG
-      puts "[DEBUG] #{count}: @address_candidate_list #{@address_candidate_list.instance_variable_get(:@candidates)}" if DEBUG
+      puts "[DEBUG] #{count}: @connection_planner #{@connection_planner.instance_variable_get(:@connection_plans)}" if DEBUG
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
-      if @address_candidate_list.any?
+      if @connection_planner.any?
           && !@resolution_delay_expires_at
           && !@connection_attempt_delay_expires_at
 
         @first_connection_attempted = true
-        ctx, address, _hostname, port = @address_candidate_list.next_candidate
+        ctx, address, _hostname, port = @connection_planner.next_connection_target
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
         if !@use_ssl &&
-            @address_candidate_list.empty? &&
+            @connection_planner.empty? &&
             @tcp_connecting_sockets.empty? &&
             !@hostname_resolution_result.pending?
           begin
@@ -118,7 +118,7 @@ class HTTPClient
             last_error = e
             # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
             # 未試行の候補がある場合は待機せずに次のアドレスを試す
-            next if @address_candidate_list.any?
+            next if @connection_planner.any?
           end
         end
       end
@@ -127,7 +127,7 @@ class HTTPClient
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
       ends_at =
-        if @address_candidate_list.any?
+        if @connection_planner.any?
           @resolution_delay_expires_at || @connection_attempt_delay_expires_at
         else
           Float::INFINITY
@@ -145,7 +145,7 @@ class HTTPClient
         @tls_handshaking_sockets.select { |_, direction| direction == :write }.keys
 
       if waiting_rfds.empty? && waiting_wfds.empty?
-        # No delay remains: try the next candidate without waiting for IO.
+        # No delay remains: try the next connection target without waiting for IO.
         next if ends_at.nil?
 
         if ends_at == Float::INFINITY
@@ -198,7 +198,7 @@ class HTTPClient
 
             if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
-            elsif @address_candidate_list.any? || @hostname_resolution_result.pending?
+            elsif @connection_planner.any? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -222,7 +222,7 @@ class HTTPClient
 
       if last_error && !@tcp_connected_socket && !@tls_connected_socket &&
           @tls_handshaking_sockets.empty? && @tcp_connecting_sockets.empty? &&
-          !@address_candidate_list.any? && !@hostname_resolution_result.pending?
+          !@connection_planner.any? && !@hostname_resolution_result.pending?
         raise last_error
       end
 
@@ -235,16 +235,16 @@ class HTTPClient
           if result.type == NAT64_PREFIX_RESULT
             resolve_hostname_with_nat64_prefix_asynchronously!(result.success? ? result.records.first : nil)
           else
-            @address_candidate_list.add(result)
+            @connection_planner.add(result)
             last_error = result.error unless result.success?
           end
         end
 
         @hostname_resolution_result.close_if_done
 
-        if @address_candidate_list.any?
-          if @address_candidate_list.resolved?(HTTPS_TYPE) &&
-             @address_candidate_list.resolved?(@address_candidate_list.preferred_type)
+        if @connection_planner.any?
+          if @connection_planner.resolved?(HTTPS_TYPE) &&
+             @connection_planner.resolved?(@connection_planner.preferred_type)
             puts "[DEBUG] #{count}: Ready to start connecting" if DEBUG
             @resolution_delay_expires_at = nil
           elsif @resolution_delay_expires_at.nil? && !@first_connection_attempted
@@ -315,7 +315,7 @@ class HTTPClient
   def resolve_hostname_with_nat64_prefix_asynchronously!(prefix)
     return unless prefix
 
-    @address_candidate_list.nat64_prefix = prefix
+    @connection_planner.nat64_prefix = prefix
     @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
     @nat64_a_query_hostnames.each do |hostname|
@@ -653,7 +653,7 @@ class HTTPClient
     end
   end
 
-  class AddressCandidateList
+  class ConnectionPlanner
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
     SUPPORTED_PROTOCOLS = ["h2", "http/1.1"].freeze
@@ -726,8 +726,8 @@ class HTTPClient
     def initialize(record_types, client, origin_port:, nat64_prefix: nil)
       @record_types = record_types
       @origin_port = origin_port
-      @candidates = {}
-      @candidate_order = {}
+      @connection_plans = {}
+      @plan_order = {}
       @resolution_state = ResolutionState.new
       @client = client
       @nat64_prefix = nat64_prefix
@@ -742,8 +742,8 @@ class HTTPClient
 
       @nat64_prefix = prefix
       @pending_ipv4_hints.each do |key, hints|
-        candidate = @candidates.fetch(key)
-        candidate.ipv4_address_hints.replace(hints)
+        plan = @connection_plans.fetch(key)
+        plan.ipv4_address_hints.replace(hints)
         @resolution_state.mark_resolved(A_TYPE) if hints.any?
       end
       @pending_ipv4_hints.clear
@@ -764,17 +764,17 @@ class HTTPClient
           return
         end
 
-        available_candidates = result.records.filter_map { |rr| build_connection_candidate!(rr) }
-        sorted_candidates = available_candidates.sort_by { |c| c.rr.priority }
+        available_plans = result.records.filter_map { |rr| build_connection_plan!(rr) }
+        sorted_plans = available_plans.sort_by { |plan| plan.rr.priority }
 
-        sorted_candidates.each do |candidate|
-          target_name = candidate.rr.target.to_s
+        sorted_plans.each do |plan|
+          target_name = plan.rr.target.to_s
           hostname = target_name.empty? ? result.hostname : target_name
-          add_service_candidate(hostname, candidate)
+          add_service_plan(hostname, plan)
         end
 
         if result.success? && @alias_redirect_count.positive?
-          add_alias_fallback_candidate(result.hostname)
+          add_alias_fallback_plan(result.hostname)
         end
       elsif result.success?
         addresses = result.records.map(&:address)
@@ -785,20 +785,20 @@ class HTTPClient
 
         @resolution_state.update(result.hostname, result.type, addresses)
 
-        if result.hostname == HOST || @candidates.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+        if result.hostname == HOST || @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
           key = [result.hostname, Float::INFINITY]
-          @candidates[key] ||= build_connection_candidate!
+          @connection_plans[key] ||= build_connection_plan!
         end
       end
 
       @resolution_state.mark_resolved(result.type)
     end
 
-    def next_candidate
-      ordered_candidates.each do |(hostname, , _priority, _https_rr), candidate|
+    def next_connection_target
+      ordered_plans.each do |(hostname, _priority, _https_rr), plan|
         resolved = @resolution_state.fetch_addresses(hostname)
-        precedences(candidate.last_type).each do |type|
-          address = candidate.next_address(type, resolved)
+        precedences(plan.last_type).each do |type|
+          address = plan.next_address(type, resolved)
 
           next unless address
 
@@ -806,7 +806,7 @@ class HTTPClient
             address = synthesize_with_nat64_prefix(address)
           end
 
-          return [candidate.ctx, address, hostname, candidate.port]
+          return [plan.ctx, address, hostname, plan.port]
         end
       end
 
@@ -822,9 +822,9 @@ class HTTPClient
     end
 
     def empty?
-      @candidates.none? { |key, candidate|
+      @connection_plans.none? { |key, plan|
         resolved = @resolution_state.fetch_addresses(key.first)
-        [AAAA_TYPE, A_TYPE].any? { |type| candidate.address_available?(type, resolved) }
+        [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
 
@@ -853,32 +853,32 @@ class HTTPClient
       end
     end
 
-    def add_service_candidate(hostname, candidate)
+    def add_service_plan(hostname, plan)
       if hostname != HOST && hostname != @alias_fallback_hostname
-        @candidates.delete([hostname, Float::INFINITY])
+        @connection_plans.delete([hostname, Float::INFINITY])
       end
 
-      service_candidate_key = [hostname, candidate.rr.priority, candidate.rr]
-      @pending_ipv4_hints.delete(service_candidate_key)
+      service_plan_key = [hostname, plan.rr.priority, plan.rr]
+      @pending_ipv4_hints.delete(service_plan_key)
 
       resolved = @resolution_state.fetch_addresses(hostname)
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
-      ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
-      ipv4_address_hints = ipv4_addresses_usable? ? candidate.ipv4_address_hints : []
+      ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
+      ipv4_address_hints = ipv4_addresses_usable? ? plan.ipv4_address_hints : []
 
       if resolved.key?(A_TYPE)
         ipv4_address_hints = []
       elsif !ipv4_addresses_usable?
         # Retain unusable hints separately until a prefix is supplied.
-        @pending_ipv4_hints[service_candidate_key] = candidate.ipv4_address_hints.dup
+        @pending_ipv4_hints[service_plan_key] = plan.ipv4_address_hints.dup
       end
 
-      @candidates[service_candidate_key] ||= candidate
-      candidate = @candidates[service_candidate_key]
+      @connection_plans[service_plan_key] ||= plan
+      plan = @connection_plans[service_plan_key]
 
-      candidate.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
-      candidate.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+      plan.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
+      plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
@@ -888,10 +888,10 @@ class HTTPClient
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
 
-    def add_alias_fallback_candidate(hostname)
+    def add_alias_fallback_plan(hostname)
       @alias_fallback_hostname = hostname
       key = [hostname, Float::INFINITY]
-      @candidates[key] ||= build_connection_candidate!
+      @connection_plans[key] ||= build_connection_plan!
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
@@ -952,7 +952,7 @@ class HTTPClient
       svcb_alpn_set & SUPPORTED_PROTOCOLS
     end
 
-    def build_connection_candidate!(https_rr = nil)
+    def build_connection_plan!(https_rr = nil)
       if https_rr
         return if !mandatory_params_supported?(https_rr)
         return if extract_alpn_protocols_from_rr(https_rr).empty?
@@ -972,17 +972,17 @@ class HTTPClient
       AddrInt.synthesize(ipv4_int, @nat64_prefix).to_ipaddr
     end
 
-    def ordered_candidates
-      @candidates.sort_by { |key, candidate|
+    def ordered_plans
+      @connection_plans.sort_by { |key, plan|
         hostname, priority = key
         group =
-          if    candidate.rr then 0
+          if    plan.rr then 0
           elsif hostname == @alias_fallback_hostname then 1
           else  2
           end
 
-        @candidate_order[key] ||= rand
-        [group, priority, @candidate_order[key]]
+        @plan_order[key] ||= rand
+        [group, priority, @plan_order[key]]
       }
     end
 
