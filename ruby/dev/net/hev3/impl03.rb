@@ -981,7 +981,8 @@ class HTTPClient
           else  2
           end
 
-        [group, priority, @candidate_order[key] ||= rand]
+        @candidate_order[key] ||= rand
+        [group, priority, @candidate_order[key]]
       }
     end
 
