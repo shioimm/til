@@ -790,7 +790,9 @@ class HTTPClient
         type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
       end
 
+      # HTTPClient::AddressCandidateList::ConnectionPlan#next_address
       def next_address(type, resolved)
+        # WIP
         address = unselected_address(type, resolved)
         return unless address
 
@@ -816,6 +818,7 @@ class HTTPClient
         @resolved_types = Set.new
       end
 
+      # HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
       def fetch_addresses(hostname)
         @resolved_addresses.fetch(hostname, {})
       end
@@ -948,12 +951,16 @@ class HTTPClient
 
     # HTTPClient::AddressCandidateList#next_candidate
     def next_candidate
-      ordered_candidates.each do |key, candidate| # =>  HTTPClient::AddressCandidateList#ordered_candidates
-        # WIP
-        # ホスト共通の最新の解決結果を取得し、この候補の選択処理に渡す
-        resolved = @resolution_state.fetch_addresses(key.first)
-        precedences(candidate.last_type).each do |type|
+      ordered_candidates.each do |(hostname, _priority, _https_rr), candidate|
+        # => HTTPClient::AddressCandidateList#ordered_candidates
+
+        # hostnameに対応する解決済みのA/AAAAアドレスをそれぞれ含むハッシュ取得
+        resolved = @resolution_state.fetch_addresses(hostname)
+        # => HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
+
+        precedences(candidate.last_type).each do |type| # => HTTPClient::AddressCandidateList#precedences
           address = candidate.next_address(type, resolved)
+          # => HTTPClient::AddressCandidateList::ConnectionPlan#next_address
 
           next unless address
 
@@ -963,7 +970,7 @@ class HTTPClient
             # => HTTPClient::AddressCandidateList#synthesize_with_nat64_prefix
           end
 
-          return [candidate.ctx, address, key.first, candidate.port]
+          return [candidate.ctx, address, hostname, candidate.port]
         end
       end
 
@@ -974,14 +981,15 @@ class HTTPClient
       @resolution_state.resolved?(type)
     end
 
+    # HTTPClient::AddressCandidateList#preferred_type
     def preferred_type
       ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
     def empty?
       @candidates.none? { |key, candidate|
-        # ホスト共通の最新の解決結果を取得し、この候補の選択処理に渡す
         resolved = @resolution_state.fetch_addresses(key.first)
+        # => HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
         [AAAA_TYPE, A_TYPE].any? { |type| candidate.address_available?(type, resolved) }
       }
     end
@@ -1051,8 +1059,9 @@ class HTTPClient
       # @pending_ipv4_hintsにservice_candidate_keyが含まれていれば削除
       @pending_ipv4_hints.delete(service_candidate_key)
 
-      # @resolution_stateが持つ解決済みのhostnameがあればA・AAAAの結果を取り出す
+      # hostnameに対応する解決済みのA/AAAAアドレスを取得
       resolved = @resolution_state.fetch_addresses(hostname)
+      # => HTTPClient::AddressCandidateList::ResolutionState#fetch_addresses
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? candidate.ipv6_address_hints : []
@@ -1222,10 +1231,11 @@ class HTTPClient
       }
     end
 
+    # HTTPClient::AddressCandidateList#precedences
     def precedences(last_type)
       if last_type == AAAA_TYPE then PRIORITY_ON_V4
       elsif last_type == A_TYPE then PRIORITY_ON_V6
-      elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6
+      elsif preferred_type == AAAA_TYPE then PRIORITY_ON_V6 # => HTTPClient::AddressCandidateList#preferred_type
       else PRIORITY_ON_V4
       end
     end

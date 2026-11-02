@@ -795,8 +795,8 @@ class HTTPClient
     end
 
     def next_candidate
-      ordered_candidates.each do |key, candidate|
-        resolved = @resolution_state.fetch_addresses(key.first)
+      ordered_candidates.each do |(hostname, , _priority, _https_rr), candidate|
+        resolved = @resolution_state.fetch_addresses(hostname)
         precedences(candidate.last_type).each do |type|
           address = candidate.next_address(type, resolved)
 
@@ -806,7 +806,7 @@ class HTTPClient
             address = synthesize_with_nat64_prefix(address)
           end
 
-          return [candidate.ctx, address, key.first, candidate.port]
+          return [candidate.ctx, address, hostname, candidate.port]
         end
       end
 
