@@ -36,7 +36,7 @@ class HTTPClient
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER], raise_timeout_errors: true)
     @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
 
-    @hostname_resolution_result = HostnameResolutionResult.new
+    @network_query_result_channel = NetworkQueryResultChannel.new
     @hostname_resolution_threads = []
 
     @nat64_a_query_hostnames = []
@@ -84,7 +84,7 @@ class HTTPClient
         if !@use_ssl &&
            !@connection_planner.connection_target_available? &&
            @tcp_connecting_sockets.empty? &&
-           !@hostname_resolution_result.pending?
+           !@network_query_result_channel.pending?
           begin
             @tcp_connected_socket = addrinfo.connect
             break
@@ -135,10 +135,10 @@ class HTTPClient
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@tcp_connecting_sockets}, nil, 0)" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{@network_query_result_channel.notifier}, #{@tcp_connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
-      waiting_rfds = (@hostname_resolution_result.notifier || []) +
+      waiting_rfds = (@network_query_result_channel.notifier || []) +
         @tls_handshaking_sockets.select { |_, direction| direction == :read }.keys
       waiting_wfds = @tcp_connecting_sockets.keys +
         @tls_handshaking_sockets.select { |_, direction| direction == :write }.keys
@@ -197,7 +197,7 @@ class HTTPClient
 
             if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
-            elsif @connection_planner.connection_target_available? || @hostname_resolution_result.pending?
+            elsif @connection_planner.connection_target_available? || @network_query_result_channel.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -221,14 +221,14 @@ class HTTPClient
 
       if last_error && !@tcp_connected_socket && !@tls_connected_socket &&
           @tls_handshaking_sockets.empty? && @tcp_connecting_sockets.empty? &&
-          !@connection_planner.connection_target_available? && !@hostname_resolution_result.pending?
+          !@connection_planner.connection_target_available? && !@network_query_result_channel.pending?
         raise last_error
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
       if hostname_resolved.any?
-        while (result = @hostname_resolution_result.get)
+        while (result = @network_query_result_channel.get)
           raise result.error if result.unexpected_error?
 
           if result.type == NAT64_PREFIX_RESULT
@@ -239,7 +239,7 @@ class HTTPClient
           end
         end
 
-        @hostname_resolution_result.close_if_done
+        @network_query_result_channel.close_if_done
 
         if @connection_planner.connection_target_available?
           if @connection_planner.resolved?(HTTPS_TYPE) &&
@@ -275,7 +275,7 @@ class HTTPClient
       end
     end
 
-    @hostname_resolution_result.expect_result
+    @network_query_result_channel.expect_result
 
     thread = Thread.new(type) do |type|
       records =
@@ -285,9 +285,9 @@ class HTTPClient
           @resolver.getresources(hostname, type)
         end
 
-      @hostname_resolution_result.add(type, hostname, records:)
+      @network_query_result_channel.add(type, hostname, records:)
     rescue => e
-      @hostname_resolution_result.add(type, hostname, error: e)
+      @network_query_result_channel.add(type, hostname, error: e)
     end
 
     Thread.pass
@@ -298,13 +298,13 @@ class HTTPClient
 
   def resolve_nat64_prefix_asynchronously!
     # Keep the result notifier open even if all destination queries finish first.
-    @hostname_resolution_result.expect_result
+    @network_query_result_channel.expect_result
 
     thread = Thread.new do
       prefix = detect_nat64_prefix!
-      @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
+      @network_query_result_channel.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
     rescue => e
-      @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
+      @network_query_result_channel.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
     end
 
     Thread.pass
@@ -414,7 +414,7 @@ class HTTPClient
 
     @hostname_resolution_threads.each(&:exit)
     @hostname_resolution_threads.each(&:join)
-    @hostname_resolution_result.close_all
+    @network_query_result_channel.close_all
   end
 
   # HTTPClient#initial_getresources
@@ -529,7 +529,7 @@ class HTTPClient
     second_to_timeout(started_at, ends_at)&.zero?
   end
 
-  class HostnameResolutionResult
+  class NetworkQueryResultChannel
     HOSTNAME_RESOLUTION_QUEUE_UPDATED = 1
 
     ResolutionResult = Data.define(:type, :hostname, :records, :error) do
