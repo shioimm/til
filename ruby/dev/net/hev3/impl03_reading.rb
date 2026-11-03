@@ -125,6 +125,7 @@ class HTTPClient
           begin
             socket.connect_nonblock(addrinfo) # ノンブロッキング接続 (TCP)
 
+            # 以下は即座に接続が完了した場合
             if @use_ssl # HTTPS接続
               if (error = nonblocking_connect_with_tls(socket, ctx))
                 # => HTTPClient#nonblocking_connect_with_tls TLS接続をノンブロッキングで開始
@@ -301,6 +302,8 @@ class HTTPClient
 
         # アドレス候補がある
         if @connection_planner.connection_target_available?
+          # => HTTPClient::ConnectionPlanner#connection_target_available?
+
           # HTTPS RRと優先ファミリを解決済み
           if @connection_planner.resolved?(HTTPS_TYPE) &&
              @connection_planner.resolved?(@connection_planner.preferred_type)
@@ -995,6 +998,7 @@ class HTTPClient
       ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
+    # HTTPClient::ConnectionPlanner#connection_target_available?
     def connection_target_available?
       @connection_plans.any? { |key, plan|
         resolved = @resolution_state.fetch_addresses(key.first)
