@@ -97,9 +97,9 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
       # 接続可能な場合
-      if @connection_planner.any?
-          && !@resolution_delay_expires_at
-          && !@connection_attempt_delay_expires_at
+      if @connection_planner.connection_target_available?
+         && !@resolution_delay_expires_at
+         && !@connection_attempt_delay_expires_at
 
         @first_connection_attempted = true # 最初の接続試行へ進んだことを記録
         ctx, address, _hostname, port = @connection_planner.next_connection_target
@@ -107,9 +107,9 @@ class HTTPClient
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
         if !@use_ssl && # HTTP接続
-            @connection_planner.empty? && # 選択可能な未試行アドレスがない
-            @tcp_connecting_sockets.empty? && # 進行中のTCP接続がない
-            !@hostname_resolution_result.pending? # 未回収の名前解決・NAT64検出結果がない
+           !@connection_planner.connection_target_available? && # 選択可能な未試行アドレスがない
+           @tcp_connecting_sockets.empty? && # 進行中のTCP接続がない
+           !@hostname_resolution_result.pending? # 未回収の名前解決・NAT64検出結果がない
 
           begin
             @tcp_connected_socket = addrinfo.connect # ブロッキング接続
@@ -150,7 +150,7 @@ class HTTPClient
             last_error = e
             # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
             # 未試行の候補がある場合は待機せずに次のアドレスを試す
-            next if @connection_planner.any?
+            next if @connection_planner.connection_target_available?
           end
         end
       end
@@ -159,7 +159,7 @@ class HTTPClient
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
       ends_at =
-        if @connection_planner.any?
+        if @connection_planner.connection_target_available?
           @resolution_delay_expires_at || @connection_attempt_delay_expires_at
         else
           Float::INFINITY
@@ -247,7 +247,7 @@ class HTTPClient
 
             if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
-            elsif @connection_planner.any? || @hostname_resolution_result.pending?
+            elsif @connection_planner.connection_target_available? || @hostname_resolution_result.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -275,7 +275,7 @@ class HTTPClient
 
       if last_error && !@tcp_connected_socket && !@tls_connected_socket &&
           @tls_handshaking_sockets.empty? && @tcp_connecting_sockets.empty? &&
-          !@connection_planner.any? && !@hostname_resolution_result.pending?
+          !@connection_planner.connection_target_available? && !@hostname_resolution_result.pending?
         raise last_error
       end
 
@@ -301,7 +301,7 @@ class HTTPClient
         @hostname_resolution_result.close_if_done
 
         # アドレス候補がある
-        if @connection_planner.any?
+        if @connection_planner.connection_target_available?
           # HTTPS RRと優先ファミリを解決済み
           if @connection_planner.resolved?(HTTPS_TYPE) &&
              @connection_planner.resolved?(@connection_planner.preferred_type)
@@ -996,16 +996,12 @@ class HTTPClient
       ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
-    def empty?
-      @connection_plans.none? { |key, plan|
+    def connection_target_available?
+      @connection_plans.any? { |key, plan|
         resolved = @resolution_state.fetch_addresses(key.first)
         # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
-    end
-
-    def any?
-      !empty?
     end
 
     private
