@@ -698,7 +698,7 @@ class HTTPClient
       end
     end
 
-    class ResolutionState
+    class NameResolutionStore
       def initialize
         @resolved_addresses = {}
         @resolved_types = Set.new
@@ -727,7 +727,7 @@ class HTTPClient
       @origin_port = origin_port
       @connection_plans = {}
       @plan_order = {}
-      @resolution_state = ResolutionState.new
+      @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -743,7 +743,7 @@ class HTTPClient
       @pending_ipv4_hints.each do |key, hints|
         plan = @connection_plans.fetch(key)
         plan.ipv4_address_hints.replace(hints)
-        @resolution_state.mark_resolved(A_TYPE) if hints.any?
+        @name_resolution_store.mark_resolved(A_TYPE) if hints.any?
       end
       @pending_ipv4_hints.clear
     end
@@ -782,7 +782,7 @@ class HTTPClient
           @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
         end
 
-        @resolution_state.update(result.hostname, result.type, addresses)
+        @name_resolution_store.update(result.hostname, result.type, addresses)
 
         if result.hostname == HOST || @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
           key = [result.hostname, Float::INFINITY]
@@ -790,12 +790,12 @@ class HTTPClient
         end
       end
 
-      @resolution_state.mark_resolved(result.type)
+      @name_resolution_store.mark_resolved(result.type)
     end
 
     def next_connection_target
       ordered_plans.each do |(hostname, _priority, _https_rr), plan|
-        resolved = @resolution_state.fetch_addresses(hostname)
+        resolved = @name_resolution_store.fetch_addresses(hostname)
         precedences(plan.last_type).each do |type|
           address = plan.next_address(type, resolved)
 
@@ -813,7 +813,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @resolution_state.resolved?(type)
+      @name_resolution_store.resolved?(type)
     end
 
     def preferred_type
@@ -822,7 +822,7 @@ class HTTPClient
 
     def connection_target_available?
       @connection_plans.any? { |key, plan|
-        resolved = @resolution_state.fetch_addresses(key.first)
+        resolved = @name_resolution_store.fetch_addresses(key.first)
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
@@ -835,7 +835,7 @@ class HTTPClient
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
       end
 
-      @resolution_state.mark_resolved(HTTPS_TYPE)
+      @name_resolution_store.mark_resolved(HTTPS_TYPE)
     end
 
     def resolve_alias!(alias_record)
@@ -844,7 +844,7 @@ class HTTPClient
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
       else
-        @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @name_resolution_store.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -856,7 +856,7 @@ class HTTPClient
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
       @pending_ipv4_hints.delete(service_plan_key)
 
-      resolved = @resolution_state.fetch_addresses(hostname)
+      resolved = @name_resolution_store.fetch_addresses(hostname)
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
@@ -877,8 +877,8 @@ class HTTPClient
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @resolution_state.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
-      @resolution_state.mark_resolved(A_TYPE) if ipv4_address_hints.any?
+      @name_resolution_store.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
+      @name_resolution_store.mark_resolved(A_TYPE) if ipv4_address_hints.any?
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end

@@ -824,24 +824,24 @@ class HTTPClient
       end
     end
 
-    class ResolutionState
+    class NameResolutionStore
       def initialize
         @resolved_addresses = {}
         @resolved_types = Set.new
       end
 
-      # HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+      # HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
       def fetch_addresses(hostname)
         @resolved_addresses.fetch(hostname, {})
       end
 
-      # HTTPClient::ConnectionPlanner::ResolutionState#update
+      # HTTPClient::ConnectionPlanner::NameResolutionStore#update
       def update(hostname, type, addresses)
         @resolved_addresses[hostname] ||= {}
         @resolved_addresses[hostname][type] = addresses
       end
 
-      # HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
+      # HTTPClient::ConnectionPlanner::NameResolutionStore#mark_resolved
       def mark_resolved(type)
         @resolved_types << type
       end
@@ -863,7 +863,7 @@ class HTTPClient
       @connection_plans = {}
 
       @plan_order = {}
-      @resolution_state = ResolutionState.new
+      @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -885,7 +885,7 @@ class HTTPClient
 
         # アドレス合成はnext_connection_targetで接続用アドレスを返す直前に行う
         plan.ipv4_address_hints.replace(hints)
-        @resolution_state.mark_resolved(A_TYPE) if hints.any?
+        @name_resolution_store.mark_resolved(A_TYPE) if hints.any?
       end
 
       @pending_ipv4_hints.clear
@@ -941,8 +941,8 @@ class HTTPClient
         end
 
         # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
-        @resolution_state.update(result.hostname, result.type, addresses)
-        # => ResolutionState#update
+        @name_resolution_store.update(result.hostname, result.type, addresses)
+        # => NameResolutionStore#update
 
         # 問い合わせ先が元のHOST、
         # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
@@ -957,8 +957,8 @@ class HTTPClient
 
       end
 
-      @resolution_state.mark_resolved(result.type)
-      # => HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
+      @name_resolution_store.mark_resolved(result.type)
+      # => HTTPClient::ConnectionPlanner::NameResolutionStore#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#next_connection_target
@@ -967,8 +967,8 @@ class HTTPClient
         # => HTTPClient::ConnectionPlanner#ordered_plans
 
         # hostnameに対応する解決済みのA/AAAAアドレスをそれぞれ含むハッシュ取得
-        resolved = @resolution_state.fetch_addresses(hostname)
-        # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+        resolved = @name_resolution_store.fetch_addresses(hostname)
+        # => HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
 
         precedences(plan.last_type).each do |type| # => HTTPClient::ConnectionPlanner#precedences
           address = plan.next_address(type, resolved)
@@ -990,7 +990,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @resolution_state.resolved?(type)
+      @name_resolution_store.resolved?(type)
     end
 
     # HTTPClient::ConnectionPlanner#preferred_type
@@ -1001,8 +1001,8 @@ class HTTPClient
     # HTTPClient::ConnectionPlanner#connection_target_available?
     def connection_target_available?
       @connection_plans.any? { |key, plan|
-        resolved = @resolution_state.fetch_addresses(key.first)
-        # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+        resolved = @name_resolution_store.fetch_addresses(key.first)
+        # => HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
@@ -1024,8 +1024,8 @@ class HTTPClient
       end
 
       # HTTPSは解決済みということにする
-      @resolution_state.mark_resolved(HTTPS_TYPE)
-      # => HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
+      @name_resolution_store.mark_resolved(HTTPS_TYPE)
+      # => HTTPClient::ConnectionPlanner::NameResolutionStore#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#resolve_alias!
@@ -1037,7 +1037,7 @@ class HTTPClient
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
         # => HTTPClient#resolve_hostname_asynchronously!
       else
-        @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @name_resolution_store.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -1069,8 +1069,8 @@ class HTTPClient
       @pending_ipv4_hints.delete(service_plan_key)
 
       # hostnameに対応する解決済みのA/AAAAアドレスを取得
-      resolved = @resolution_state.fetch_addresses(hostname)
-      # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+      resolved = @name_resolution_store.fetch_addresses(hostname)
+      # => HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
@@ -1099,8 +1099,8 @@ class HTTPClient
       # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @resolution_state.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
-      @resolution_state.mark_resolved(A_TYPE) if ipv4_address_hints.any?
+      @name_resolution_store.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
+      @name_resolution_store.mark_resolved(A_TYPE) if ipv4_address_hints.any?
 
       # hostnameのA/AAAAを未問い合わせの場合は問い合わせ開始
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
