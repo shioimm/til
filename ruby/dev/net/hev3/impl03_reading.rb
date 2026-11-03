@@ -106,22 +106,26 @@ class HTTPClient
         # => HTTPClient::ConnectionPlanner#next_connection_target
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
-        # WIP
-        if !@use_ssl &&
-            @connection_planner.empty? &&
-            @tcp_connecting_sockets.empty? &&
-            !@hostname_resolution_result.pending?
+        if !@use_ssl && # HTTP接続
+            @connection_planner.empty? && # 選択可能な未試行アドレスがない
+            @tcp_connecting_sockets.empty? && # 進行中のTCP接続がない
+            !@hostname_resolution_result.pending? # 未回収の名前解決・NAT64検出結果がない
+
           begin
-            @tcp_connected_socket = addrinfo.connect
+            @tcp_connected_socket = addrinfo.connect # ブロッキング接続
             break
           rescue SystemCallError => e
             last_error = e
             raise last_error
           end
+
         else
+          # WIP
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
+
           begin
             socket.connect_nonblock(addrinfo)
+
             if @use_ssl
               if (error = nonblocking_connect_with_tls(socket, ctx))
                 # => HTTPClient#nonblocking_connect_with_tls TLS接続をノンブロッキングで開始
@@ -137,6 +141,7 @@ class HTTPClient
               @tcp_connected_socket = socket
               break
             end
+
           rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             @tcp_connecting_sockets[socket] = [ctx, addrinfo]
