@@ -99,7 +99,6 @@ class HTTPClient
             if @use_ssl
               if (error = nonblocking_connect_with_tls(socket, ctx))
                 last_error = error
-                @connection_attempt_delay_expires_at = nil
                 next
               end
 

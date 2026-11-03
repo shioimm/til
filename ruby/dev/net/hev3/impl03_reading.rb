@@ -112,7 +112,7 @@ class HTTPClient
            !@hostname_resolution_result.pending? # 未回収の名前解決・NAT64検出結果がない
 
           begin
-            @tcp_connected_socket = addrinfo.connect # ブロッキング接続
+            @tcp_connected_socket = addrinfo.connect # ブロッキング接続 (TCP)
             break
           rescue SystemCallError => e
             last_error = e
@@ -120,17 +120,16 @@ class HTTPClient
           end
 
         else
-          # WIP
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
 
           begin
-            socket.connect_nonblock(addrinfo)
+            socket.connect_nonblock(addrinfo) # ノンブロッキング接続 (TCP)
 
-            if @use_ssl
+            if @use_ssl # HTTPS接続
               if (error = nonblocking_connect_with_tls(socket, ctx))
                 # => HTTPClient#nonblocking_connect_with_tls TLS接続をノンブロッキングで開始
+
                 last_error = error
-                @connection_attempt_delay_expires_at = nil
                 next
               end
 
