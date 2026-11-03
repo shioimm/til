@@ -771,6 +771,33 @@ class HTTPClient
     end
   end
 
+  class NameResolutionStore
+    def initialize
+      @resolved_addresses = {}
+      @resolved_types = Set.new
+    end
+
+    # HTTPClient::NameResolutionStore#fetch_addresses
+    def fetch_addresses(hostname)
+      @resolved_addresses.fetch(hostname, {})
+    end
+
+    # HTTPClient::NameResolutionStore#update
+    def update(hostname, type, addresses)
+      @resolved_addresses[hostname] ||= {}
+      @resolved_addresses[hostname][type] = addresses
+    end
+
+    # HTTPClient::NameResolutionStore#mark_resolved
+    def mark_resolved(type)
+      @resolved_types << type
+    end
+
+    def resolved?(type)
+      @resolved_types.include?(type)
+    end
+  end
+
   class ConnectionPlanner
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
@@ -821,33 +848,6 @@ class HTTPClient
       # HTTPClient::ConnectionPlanner::ConnectionPlan#unselected_address
       def unselected_address(type, resolved)
         resolved.fetch(type, address_hints(type)).find { !@selected_addresses.include?(it.to_s) }
-      end
-    end
-
-    class NameResolutionStore
-      def initialize
-        @resolved_addresses = {}
-        @resolved_types = Set.new
-      end
-
-      # HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
-      def fetch_addresses(hostname)
-        @resolved_addresses.fetch(hostname, {})
-      end
-
-      # HTTPClient::ConnectionPlanner::NameResolutionStore#update
-      def update(hostname, type, addresses)
-        @resolved_addresses[hostname] ||= {}
-        @resolved_addresses[hostname][type] = addresses
-      end
-
-      # HTTPClient::ConnectionPlanner::NameResolutionStore#mark_resolved
-      def mark_resolved(type)
-        @resolved_types << type
-      end
-
-      def resolved?(type)
-        @resolved_types.include?(type)
       end
     end
 
@@ -942,7 +942,7 @@ class HTTPClient
 
         # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
         @name_resolution_store.update(result.hostname, result.type, addresses)
-        # => NameResolutionStore#update
+        # => HTTPClient::NameResolutionStore#update
 
         # 問い合わせ先が元のHOST、
         # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
@@ -958,7 +958,7 @@ class HTTPClient
       end
 
       @name_resolution_store.mark_resolved(result.type)
-      # => HTTPClient::ConnectionPlanner::NameResolutionStore#mark_resolved
+      # => HTTPClient::NameResolutionStore#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#next_connection_target
@@ -968,7 +968,7 @@ class HTTPClient
 
         # hostnameに対応する解決済みのA/AAAAアドレスをそれぞれ含むハッシュ取得
         resolved = @name_resolution_store.fetch_addresses(hostname)
-        # => HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
+        # => HTTPClient::NameResolutionStore#fetch_addresses
 
         precedences(plan.last_type).each do |type| # => HTTPClient::ConnectionPlanner#precedences
           address = plan.next_address(type, resolved)
@@ -1002,7 +1002,7 @@ class HTTPClient
     def connection_target_available?
       @connection_plans.any? { |key, plan|
         resolved = @name_resolution_store.fetch_addresses(key.first)
-        # => HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
+        # => HTTPClient::NameResolutionStore#fetch_addresses
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
@@ -1025,7 +1025,7 @@ class HTTPClient
 
       # HTTPSは解決済みということにする
       @name_resolution_store.mark_resolved(HTTPS_TYPE)
-      # => HTTPClient::ConnectionPlanner::NameResolutionStore#mark_resolved
+      # => HTTPClient::NameResolutionStore#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#resolve_alias!
@@ -1070,7 +1070,7 @@ class HTTPClient
 
       # hostnameに対応する解決済みのA/AAAAアドレスを取得
       resolved = @name_resolution_store.fetch_addresses(hostname)
-      # => HTTPClient::ConnectionPlanner::NameResolutionStore#fetch_addresses
+      # => HTTPClient::NameResolutionStore#fetch_addresses
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []

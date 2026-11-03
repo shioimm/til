@@ -652,6 +652,30 @@ class HTTPClient
     end
   end
 
+  class NameResolutionStore
+    def initialize
+      @resolved_addresses = {}
+      @resolved_types = Set.new
+    end
+
+    def fetch_addresses(hostname)
+      @resolved_addresses.fetch(hostname, {})
+    end
+
+    def update(hostname, type, addresses)
+      @resolved_addresses[hostname] ||= {}
+      @resolved_addresses[hostname][type] = addresses
+    end
+
+    def mark_resolved(type)
+      @resolved_types << type
+    end
+
+    def resolved?(type)
+      @resolved_types.include?(type)
+    end
+  end
+
   class ConnectionPlanner
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
@@ -695,30 +719,6 @@ class HTTPClient
 
       def unselected_address(type, resolved)
         resolved.fetch(type, address_hints(type)).find { !@selected_addresses.include?(it.to_s) }
-      end
-    end
-
-    class NameResolutionStore
-      def initialize
-        @resolved_addresses = {}
-        @resolved_types = Set.new
-      end
-
-      def fetch_addresses(hostname)
-        @resolved_addresses.fetch(hostname, {})
-      end
-
-      def update(hostname, type, addresses)
-        @resolved_addresses[hostname] ||= {}
-        @resolved_addresses[hostname][type] = addresses
-      end
-
-      def mark_resolved(type)
-        @resolved_types << type
-      end
-
-      def resolved?(type)
-        @resolved_types.include?(type)
       end
     end
 
