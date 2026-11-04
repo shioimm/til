@@ -686,7 +686,7 @@ class HTTPClient
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
     class ConnectionPlan
-      attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
+      attr_reader :rr, :port, :ctx, :last_type
       attr_accessor :ipv4_hints_pending
 
       def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:, ipv4_hints_pending:)
@@ -700,10 +700,26 @@ class HTTPClient
         @last_type = nil
       end
 
-      def address_hints(type)
-        return ipv6_address_hints if type == AAAA_TYPE
+      def ipv6_address_hints
+        @ipv6_address_hints
+      end
 
-        ipv4_hints_pending ? [] : ipv4_address_hints
+      def ipv4_address_hints
+        ipv4_hints_pending ? [] : @ipv4_address_hints
+      end
+
+      def update_address_hints(resolved_types:)
+        aaaa_record_resolved! if resolved_types.include?(AAAA_TYPE)
+        a_record_resolved! if resolved_types.include?(A_TYPE)
+      end
+
+      def aaaa_record_resolved!
+        ipv6_address_hints.clear
+      end
+
+      def a_record_resolved!
+        @ipv4_address_hints.clear
+        @ipv4_hints_pending = false
       end
 
       def next_address(type, resolved)
@@ -722,7 +738,8 @@ class HTTPClient
       private
 
       def unselected_address(type, resolved)
-        resolved.fetch(type, address_hints(type)).find { !@selected_addresses.include?(it.to_s) }
+        hints = type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
+        resolved.fetch(type, hints).find { !@selected_addresses.include?(it.to_s) }
       end
     end
 
@@ -785,8 +802,7 @@ class HTTPClient
           @connection_plans.each do |(hostname, _priority, _https_rr), plan|
             next unless hostname == result.hostname
 
-            plan.ipv4_address_hints.clear
-            plan.ipv4_hints_pending = false
+            plan.a_record_resolved!
           end
         end
 
@@ -864,27 +880,14 @@ class HTTPClient
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
       resolved = @name_resolution_store.fetch_addresses(hostname)
 
-      # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
-      ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
       @connection_plans[service_plan_key] ||= plan
       plan = @connection_plans[service_plan_key]
-
-      if resolved.key?(A_TYPE)
-        plan.ipv4_address_hints.clear
-        plan.ipv4_hints_pending = false
-      end
-
-      ipv4_address_hints = plan.address_hints(A_TYPE)
-
-      plan.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
-      if !plan.ipv4_hints_pending
-        plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
-      end
+      plan.update_address_hints(resolved_types: resolved.keys)
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @name_resolution_store.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
-      @name_resolution_store.mark_resolved(A_TYPE) if ipv4_address_hints.any?
+      @name_resolution_store.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
+      @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
@@ -963,7 +966,7 @@ class HTTPClient
         rr: https_rr,
         port: https_rr&.params&.[](3)&.port || @origin_port,
         ctx: build_ssl_context,
-        ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
+        ipv6_address_hints: (ipv6_addresses_usable? && https_rr&.params&.[](6)&.addresses&.dup) || [],
         ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
         ipv4_hints_pending: !ipv4_addresses_usable?,
       )
