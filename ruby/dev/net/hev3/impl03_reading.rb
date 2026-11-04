@@ -810,19 +810,23 @@ class HTTPClient
     # 接続設定・ヒントと候補ごとの選択状態を保持する。A/AAAAの結果は選択時に受け取る。
     class ConnectionPlan
       attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
+      attr_accessor :ipv4_hints_pending
 
-      def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+      def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:, ipv4_hints_pending:)
         @rr = rr
         @port = port
         @ctx = ctx
         @ipv6_address_hints = ipv6_address_hints
         @ipv4_address_hints = ipv4_address_hints
+        @ipv4_hints_pending = ipv4_hints_pending
         @selected_addresses = []
         @last_type = nil
       end
 
       def address_hints(type)
-        type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
+        return ipv6_address_hints if type == AAAA_TYPE
+
+        ipv4_hints_pending ? [] : ipv4_address_hints
       end
 
       # HTTPClient::ConnectionPlanner::ConnectionPlan#next_address
@@ -866,7 +870,6 @@ class HTTPClient
       @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
-      @pending_ipv4_hints = {}
       @alias_redirect_count = 0
       @alias_fallback_hostname = nil
       @queried_hostnames = [HOST]
@@ -878,17 +881,12 @@ class HTTPClient
 
       @nat64_prefix = prefix
 
-      # @pending_ipv4_hints = 取得済みだがNAT64 prefixの検出待ちのため接続に利用できないIPv4アドレスヒント群
-      # @pending_ipv4_hintsを接続候補へコピー
-      @pending_ipv4_hints.each do |key, hints|
-        plan = @connection_plans.fetch(key)
+      @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+        next unless plan.ipv4_hints_pending
 
-        # アドレス合成はnext_connection_targetで接続用アドレスを返す直前に行う
-        plan.ipv4_address_hints.replace(hints)
-        @name_resolution_store.mark_resolved(A_TYPE) if hints.any?
+        plan.ipv4_hints_pending = false
+        @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
       end
-
-      @pending_ipv4_hints.clear
     end
 
     # HTTPClient::ConnectionPlanner#add
@@ -936,8 +934,12 @@ class HTTPClient
         addresses = result.records.map(&:address)
 
         if result.type == A_TYPE
-          # hostnameに対応するIPv4アドレスを取得できたので待機中のIPv4アドレスを削除
-          @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
+          @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+            next unless hostname == result.hostname
+
+            plan.ipv4_address_hints.clear
+            plan.ipv4_hints_pending = false
+          end
         end
 
         # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
@@ -1065,36 +1067,32 @@ class HTTPClient
       # ServiceMode候補を識別するキー
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
 
-      # @pending_ipv4_hintsにservice_plan_keyが含まれていれば削除
-      @pending_ipv4_hints.delete(service_plan_key)
-
       # hostnameに対応する解決済みのA/AAAAアドレスを取得
       resolved = @name_resolution_store.fetch_addresses(hostname)
       # => HTTPClient::NameResolutionStore#fetch_addresses
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
-      ipv4_address_hints = ipv4_addresses_usable? ? plan.ipv4_address_hints : []
       # => HTTPClient::ConnectionPlanner#ipv6_addresses_usable?
       # => HTTPClient::ConnectionPlanner#ipv4_addresses_usable?
-
-      if resolved.key?(A_TYPE) # すでにhostnameのA RRの結果を取得済みの場合
-        ipv4_address_hints = [] # アドレスヒントは利用しない (plan.ipv4_address_hints.replaceの行で使う用)
-      elsif !ipv4_addresses_usable?
-        # IPv4アドレスヒントを取得したものの、@record_typesにA_TYPEが含まれておらずNAT64 prefixも未検出、という状況
-
-        # Retain unusable hints separately until a prefix is supplied.
-        @pending_ipv4_hints[service_plan_key] = plan.ipv4_address_hints.dup
-      end
 
       # @candidateに同じキーの候補があれば再利用し、なければ渡された候補を登録する
       @connection_plans[service_plan_key] ||= plan
       plan = @connection_plans[service_plan_key]
 
+      if resolved.key?(A_TYPE)
+        plan.ipv4_address_hints.clear
+        plan.ipv4_hints_pending = false
+      end
+
+      ipv4_address_hints = plan.address_hints(A_TYPE)
+
       # すでにhostnameのAAAA RRの結果を取得済みの場合、アドレスヒントは利用しない
       plan.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
       # すでにhostnameのA RRの結果を取得済みの場合、アドレスヒントは利用しない
-      plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+      if !plan.ipv4_hints_pending
+        plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+      end
 
       # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
@@ -1206,6 +1204,7 @@ class HTTPClient
         ctx: build_ssl_context, # => HTTPClient::ConnectionPlanner##build_ssl_context
         ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
         ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
+        ipv4_hints_pending: !ipv4_addresses_usable?,
       )
     end
 

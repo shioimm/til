@@ -687,19 +687,23 @@ class HTTPClient
 
     class ConnectionPlan
       attr_reader :rr, :port, :ctx, :ipv6_address_hints, :ipv4_address_hints, :last_type
+      attr_accessor :ipv4_hints_pending
 
-      def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:)
+      def initialize(rr:, port:, ctx:, ipv6_address_hints:, ipv4_address_hints:, ipv4_hints_pending:)
         @rr = rr
         @port = port
         @ctx = ctx
         @ipv6_address_hints = ipv6_address_hints
         @ipv4_address_hints = ipv4_address_hints
+        @ipv4_hints_pending = ipv4_hints_pending
         @selected_addresses = []
         @last_type = nil
       end
 
       def address_hints(type)
-        type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
+        return ipv6_address_hints if type == AAAA_TYPE
+
+        ipv4_hints_pending ? [] : ipv4_address_hints
       end
 
       def next_address(type, resolved)
@@ -730,7 +734,6 @@ class HTTPClient
       @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
-      @pending_ipv4_hints = {}
       @alias_redirect_count = 0
       @alias_fallback_hostname = nil
       @queried_hostnames = [HOST]
@@ -740,12 +743,12 @@ class HTTPClient
       return if prefix.nil? || prefix == @nat64_prefix
 
       @nat64_prefix = prefix
-      @pending_ipv4_hints.each do |key, hints|
-        plan = @connection_plans.fetch(key)
-        plan.ipv4_address_hints.replace(hints)
-        @name_resolution_store.mark_resolved(A_TYPE) if hints.any?
+      @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+        next unless plan.ipv4_hints_pending
+
+        plan.ipv4_hints_pending = false
+        @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
       end
-      @pending_ipv4_hints.clear
     end
 
     def add(result)
@@ -779,7 +782,12 @@ class HTTPClient
         addresses = result.records.map(&:address)
 
         if result.type == A_TYPE
-          @pending_ipv4_hints.delete_if { |(hostname, _), _hints| hostname == result.hostname }
+          @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+            next unless hostname == result.hostname
+
+            plan.ipv4_address_hints.clear
+            plan.ipv4_hints_pending = false
+          end
         end
 
         @name_resolution_store.update(result.hostname, result.type, addresses)
@@ -854,26 +862,24 @@ class HTTPClient
       end
 
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
-      @pending_ipv4_hints.delete(service_plan_key)
-
       resolved = @name_resolution_store.fetch_addresses(hostname)
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
-      ipv4_address_hints = ipv4_addresses_usable? ? plan.ipv4_address_hints : []
-
-      if resolved.key?(A_TYPE)
-        ipv4_address_hints = []
-      elsif !ipv4_addresses_usable?
-        # Retain unusable hints separately until a prefix is supplied.
-        @pending_ipv4_hints[service_plan_key] = plan.ipv4_address_hints.dup
-      end
-
       @connection_plans[service_plan_key] ||= plan
       plan = @connection_plans[service_plan_key]
 
+      if resolved.key?(A_TYPE)
+        plan.ipv4_address_hints.clear
+        plan.ipv4_hints_pending = false
+      end
+
+      ipv4_address_hints = plan.address_hints(A_TYPE)
+
       plan.ipv6_address_hints.replace(resolved.key?(AAAA_TYPE) ? [] : ipv6_address_hints)
-      plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+      if !plan.ipv4_hints_pending
+        plan.ipv4_address_hints.replace(resolved.key?(A_TYPE) ? [] : ipv4_address_hints)
+      end
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
@@ -959,6 +965,7 @@ class HTTPClient
         ctx: build_ssl_context,
         ipv6_address_hints: (https_rr&.params&.[](6)&.addresses || []).dup,
         ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
+        ipv4_hints_pending: !ipv4_addresses_usable?,
       )
     end
 
