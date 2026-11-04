@@ -43,7 +43,7 @@ class HTTPClient
     @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
 
     # 名前解決完了通知・解決結果チャネル
-    @hostname_resolution_result = HostnameResolutionResult.new
+    @network_query_result_channel = NetworkQueryResultChannel.new
     # 名前解決スレッド管理リスト
     @hostname_resolution_threads = []
 
@@ -97,36 +97,40 @@ class HTTPClient
       puts "[DEBUG] #{count}: resolution_delay_expires_at #{@resolution_delay_expires_at}" if DEBUG
 
       # 接続可能な場合
-      if @connection_planner.any?
-          && !@resolution_delay_expires_at
-          && !@connection_attempt_delay_expires_at
+      if @connection_planner.connection_target_available?
+         && !@resolution_delay_expires_at
+         && !@connection_attempt_delay_expires_at
 
         @first_connection_attempted = true # 最初の接続試行へ進んだことを記録
         ctx, address, _hostname, port = @connection_planner.next_connection_target
         # => HTTPClient::ConnectionPlanner#next_connection_target
         addrinfo = Addrinfo.tcp(address.to_s, port)
 
-        # WIP
-        if !@use_ssl &&
-            @connection_planner.empty? &&
-            @tcp_connecting_sockets.empty? &&
-            !@hostname_resolution_result.pending?
+        if !@use_ssl && # HTTP接続
+           !@connection_planner.connection_target_available? && # 選択可能な未試行アドレスがない
+           @tcp_connecting_sockets.empty? && # 進行中のTCP接続がない
+           !@network_query_result_channel.pending? # 未回収の名前解決・NAT64検出結果がない
+
           begin
-            @tcp_connected_socket = addrinfo.connect
+            @tcp_connected_socket = addrinfo.connect # ブロッキング接続 (TCP)
             break
           rescue SystemCallError => e
             last_error = e
             raise last_error
           end
+
         else
           socket = Socket.new(addrinfo.afamily, Socket::SOCK_STREAM)
+
           begin
-            socket.connect_nonblock(addrinfo)
-            if @use_ssl
+            socket.connect_nonblock(addrinfo) # ノンブロッキング接続 (TCP)
+
+            # 以下は即座に接続が完了した場合
+            if @use_ssl # HTTPS接続
               if (error = nonblocking_connect_with_tls(socket, ctx))
                 # => HTTPClient#nonblocking_connect_with_tls TLS接続をノンブロッキングで開始
+
                 last_error = error
-                @connection_attempt_delay_expires_at = nil
                 next
               end
 
@@ -137,6 +141,7 @@ class HTTPClient
               @tcp_connected_socket = socket
               break
             end
+
           rescue IO::WaitWritable
             @connection_attempt_delay_expires_at = now + CONNECTION_ATTEMPT_DELAY
             @tcp_connecting_sockets[socket] = [ctx, addrinfo]
@@ -145,7 +150,7 @@ class HTTPClient
             last_error = e
             # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
             # 未試行の候補がある場合は待機せずに次のアドレスを試す
-            next if @connection_planner.any?
+            next if @connection_planner.connection_target_available?
           end
         end
       end
@@ -154,7 +159,7 @@ class HTTPClient
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
       ends_at =
-        if @connection_planner.any?
+        if @connection_planner.connection_target_available?
           @resolution_delay_expires_at || @connection_attempt_delay_expires_at
         else
           Float::INFINITY
@@ -163,14 +168,14 @@ class HTTPClient
       puts "[DEBUG] #{count}: ends_at #{ends_at || 'nil'}" if DEBUG
 
       puts "[DEBUG] #{count}: ** Start to wait **" if DEBUG
-      puts "[DEBUG] #{count}: IO.select(#{@hostname_resolution_result.notifier}, #{@tcp_connecting_sockets}, nil, 0)" if DEBUG
+      puts "[DEBUG] #{count}: IO.select(#{@network_query_result_channel.notifier}, #{@tcp_connecting_sockets}, nil, 0)" if DEBUG
       puts "[DEBUG] #{count}: connection_attempt_delay_expires_at #{@connection_attempt_delay_expires_at || 'nil'}" if DEBUG
 
       # 読み取り可能になるまで待機するFDs
       #  - 名前解決が完了したこと / NAT64 prefix検出が完了したこと
       #  - TLSハンドシェイク中に読み取り待ちになったこと
       waiting_rfds =
-        (@hostname_resolution_result.notifier || []) +
+        (@network_query_result_channel.notifier || []) +
         @tls_handshaking_sockets.select { |_, direction| direction == :read }.keys
 
       # 書き込み可能になるまで待機するFDs
@@ -181,7 +186,7 @@ class HTTPClient
         @tls_handshaking_sockets.select { |_, direction| direction == :write }.keys
 
       # 待機対象のFDがない場合
-      #   名前解決 / NAT64 prefix検出の結果をすべて回収済み (= @hostname_resolution_result.notifierがclose済み)
+      #   名前解決 / NAT64 prefix検出の結果をすべて回収済み (= @network_query_result_channel.notifierがclose済み)
       #   かつTCP接続中 / TLSハンドシェイク中のソケットがない場合
       if waiting_rfds.empty? && waiting_wfds.empty?
         # No delay remains: try the next connection target without waiting for IO.
@@ -242,7 +247,7 @@ class HTTPClient
 
             if tcp_writable_sockets.any? || @tcp_connecting_sockets.any? || @tls_handshaking_sockets.any?
               # Try other writable socket
-            elsif @connection_planner.any? || @hostname_resolution_result.pending?
+            elsif @connection_planner.connection_target_available? || @network_query_result_channel.pending?
               @connection_attempt_delay_expires_at = nil
             else
               raise last_error
@@ -270,14 +275,14 @@ class HTTPClient
 
       if last_error && !@tcp_connected_socket && !@tls_connected_socket &&
           @tls_handshaking_sockets.empty? && @tcp_connecting_sockets.empty? &&
-          !@connection_planner.any? && !@hostname_resolution_result.pending?
+          !@connection_planner.connection_target_available? && !@network_query_result_channel.pending?
         raise last_error
       end
 
       puts "[DEBUG] #{count}: ** Check for hostname resolution finish **" if DEBUG
       puts "[DEBUG] #{count}: hostname_resolved #{hostname_resolved}" if DEBUG
       if hostname_resolved.any? # 読み込み可能なデータがある場合
-        while (result = @hostname_resolution_result.get) # 結果のうち先頭要素を取り出す
+        while (result = @network_query_result_channel.get) # 結果のうち先頭要素を取り出す
           raise result.error if result.unexpected_error?
 
           if result.type == NAT64_PREFIX_RESULT # NAT64 prefixを検出した場合
@@ -293,10 +298,12 @@ class HTTPClient
         end
 
         # NAT64 prefix検出済み / すべての名前解決結果を回収済みなら通知用パイプを閉じる
-        @hostname_resolution_result.close_if_done
+        @network_query_result_channel.close_if_done
 
         # アドレス候補がある
-        if @connection_planner.any?
+        if @connection_planner.connection_target_available?
+          # => HTTPClient::ConnectionPlanner#connection_target_available?
+
           # HTTPS RRと優先ファミリを解決済み
           if @connection_planner.resolved?(HTTPS_TYPE) &&
              @connection_planner.resolved?(@connection_planner.preferred_type)
@@ -338,7 +345,7 @@ class HTTPClient
     end
 
     # 名前解決中のスレッド数をカウントアップ
-    @hostname_resolution_result.expect_result # => HTTPClient::HostnameResolutionResult#expect_result
+    @network_query_result_channel.expect_result # => HTTPClient::NetworkQueryResultChannel#expect_result
 
     thread = Thread.new(type) do |type|
       records =
@@ -351,9 +358,9 @@ class HTTPClient
           @resolver.getresources(hostname, type)
         end
 
-      @hostname_resolution_result.add(type, hostname, records:) # => HTTPClient::HostnameResolutionResult#add
+      @network_query_result_channel.add(type, hostname, records:) # => HTTPClient::NetworkQueryResultChannel#add
     rescue => e
-      @hostname_resolution_result.add(type, hostname, error: e)
+      @network_query_result_channel.add(type, hostname, error: e)
     end
 
     Thread.pass
@@ -365,14 +372,14 @@ class HTTPClient
   # HTTPClient#resolve_nat64_prefix_asynchronously!
   def resolve_nat64_prefix_asynchronously!
     # Keep the result notifier open even if all destination queries finish first.
-    @hostname_resolution_result.expect_result # => HTTPClient::HostnameResolutionResult#expect_result↲
+    @network_query_result_channel.expect_result # => HTTPClient::NetworkQueryResultChannel#expect_result↲
 
     thread = Thread.new do
       prefix = detect_nat64_prefix! # => HTTPClient#detect_nat64_prefix!
-      @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
-      # => HTTPClient::HostnameResolutionResult#add
+      @network_query_result_channel.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", records: [prefix])
+      # => HTTPClient::NetworkQueryResultChannel#add
     rescue => e
-      @hostname_resolution_result.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
+      @network_query_result_channel.add(NAT64_PREFIX_RESULT, "ipv4only.arpa", error: e)
     end
 
     Thread.pass
@@ -487,7 +494,7 @@ class HTTPClient
 
     @hostname_resolution_threads.each(&:exit)
     @hostname_resolution_threads.each(&:join)
-    @hostname_resolution_result.close_all
+    @network_query_result_channel.close_all
   end
 
   # HTTPClient#initial_getresources
@@ -634,7 +641,7 @@ class HTTPClient
     second_to_timeout(started_at, ends_at)&.zero?
   end
 
-  class HostnameResolutionResult
+  class NetworkQueryResultChannel
     HOSTNAME_RESOLUTION_QUEUE_UPDATED = 1
 
     ResolutionResult = Data.define(:type, :hostname, :records, :error) do
@@ -670,7 +677,7 @@ class HTTPClient
       @notifier = [@rpipe]
     end
 
-    # HTTPClient::HostnameResolutionResult#expect_result
+    # HTTPClient::NetworkQueryResultChannel#expect_result
     def expect_result
       @pending_count += 1
     end
@@ -679,7 +686,7 @@ class HTTPClient
       @pending_count.positive?
     end
 
-    # HTTPClient::HostnameResolutionResult#add
+    # HTTPClient::NetworkQueryResultChannel#add
     def add(type, hostname, records: [], error: nil)
       @mutex.synchronize do
         @results.push ResolutionResult.new(type:, hostname:, records:, error:)
@@ -689,7 +696,7 @@ class HTTPClient
       end
     end
 
-    # HTTPClient::HostnameResolutionResult#get
+    # HTTPClient::NetworkQueryResultChannel#get
     def get
       return nil if @results.empty?
 
@@ -764,6 +771,33 @@ class HTTPClient
     end
   end
 
+  class NameResolutionStore
+    def initialize
+      @resolved_addresses = {}
+      @resolved_types = Set.new
+    end
+
+    # HTTPClient::NameResolutionStore#fetch_addresses
+    def fetch_addresses(hostname)
+      @resolved_addresses.fetch(hostname, {})
+    end
+
+    # HTTPClient::NameResolutionStore#update
+    def update(hostname, type, addresses)
+      @resolved_addresses[hostname] ||= {}
+      @resolved_addresses[hostname][type] = addresses
+    end
+
+    # HTTPClient::NameResolutionStore#mark_resolved
+    def mark_resolved(type)
+      @resolved_types << type
+    end
+
+    def resolved?(type)
+      @resolved_types.include?(type)
+    end
+  end
+
   class ConnectionPlanner
     PRIORITY_ON_V6 = [AAAA_TYPE, A_TYPE]
     PRIORITY_ON_V4 = [A_TYPE, AAAA_TYPE]
@@ -817,33 +851,6 @@ class HTTPClient
       end
     end
 
-    class ResolutionState
-      def initialize
-        @resolved_addresses = {}
-        @resolved_types = Set.new
-      end
-
-      # HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
-      def fetch_addresses(hostname)
-        @resolved_addresses.fetch(hostname, {})
-      end
-
-      # HTTPClient::ConnectionPlanner::ResolutionState#update
-      def update(hostname, type, addresses)
-        @resolved_addresses[hostname] ||= {}
-        @resolved_addresses[hostname][type] = addresses
-      end
-
-      # HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
-      def mark_resolved(type)
-        @resolved_types << type
-      end
-
-      def resolved?(type)
-        @resolved_types.include?(type)
-      end
-    end
-
     def initialize(record_types, client, origin_port:, nat64_prefix: nil)
       @record_types = record_types
       @origin_port = origin_port
@@ -856,7 +863,7 @@ class HTTPClient
       @connection_plans = {}
 
       @plan_order = {}
-      @resolution_state = ResolutionState.new
+      @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
       @pending_ipv4_hints = {}
@@ -878,7 +885,7 @@ class HTTPClient
 
         # アドレス合成はnext_connection_targetで接続用アドレスを返す直前に行う
         plan.ipv4_address_hints.replace(hints)
-        @resolution_state.mark_resolved(A_TYPE) if hints.any?
+        @name_resolution_store.mark_resolved(A_TYPE) if hints.any?
       end
 
       @pending_ipv4_hints.clear
@@ -934,8 +941,8 @@ class HTTPClient
         end
 
         # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
-        @resolution_state.update(result.hostname, result.type, addresses)
-        # => ResolutionState#update
+        @name_resolution_store.update(result.hostname, result.type, addresses)
+        # => HTTPClient::NameResolutionStore#update
 
         # 問い合わせ先が元のHOST、
         # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
@@ -950,8 +957,8 @@ class HTTPClient
 
       end
 
-      @resolution_state.mark_resolved(result.type)
-      # => HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
+      @name_resolution_store.mark_resolved(result.type)
+      # => HTTPClient::NameResolutionStore#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#next_connection_target
@@ -960,8 +967,8 @@ class HTTPClient
         # => HTTPClient::ConnectionPlanner#ordered_plans
 
         # hostnameに対応する解決済みのA/AAAAアドレスをそれぞれ含むハッシュ取得
-        resolved = @resolution_state.fetch_addresses(hostname)
-        # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+        resolved = @name_resolution_store.fetch_addresses(hostname)
+        # => HTTPClient::NameResolutionStore#fetch_addresses
 
         precedences(plan.last_type).each do |type| # => HTTPClient::ConnectionPlanner#precedences
           address = plan.next_address(type, resolved)
@@ -983,7 +990,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @resolution_state.resolved?(type)
+      @name_resolution_store.resolved?(type)
     end
 
     # HTTPClient::ConnectionPlanner#preferred_type
@@ -991,16 +998,13 @@ class HTTPClient
       ipv6_addresses_usable? ? AAAA_TYPE : A_TYPE
     end
 
-    def empty?
-      @connection_plans.none? { |key, plan|
-        resolved = @resolution_state.fetch_addresses(key.first)
-        # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+    # HTTPClient::ConnectionPlanner#connection_target_available?
+    def connection_target_available?
+      @connection_plans.any? { |key, plan|
+        resolved = @name_resolution_store.fetch_addresses(key.first)
+        # => HTTPClient::NameResolutionStore#fetch_addresses
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
-    end
-
-    def any?
-      !empty?
     end
 
     private
@@ -1020,8 +1024,8 @@ class HTTPClient
       end
 
       # HTTPSは解決済みということにする
-      @resolution_state.mark_resolved(HTTPS_TYPE)
-      # => HTTPClient::ConnectionPlanner::ResolutionState#mark_resolved
+      @name_resolution_store.mark_resolved(HTTPS_TYPE)
+      # => HTTPClient::NameResolutionStore#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#resolve_alias!
@@ -1033,7 +1037,7 @@ class HTTPClient
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
         # => HTTPClient#resolve_hostname_asynchronously!
       else
-        @resolution_state.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @name_resolution_store.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -1065,8 +1069,8 @@ class HTTPClient
       @pending_ipv4_hints.delete(service_plan_key)
 
       # hostnameに対応する解決済みのA/AAAAアドレスを取得
-      resolved = @resolution_state.fetch_addresses(hostname)
-      # => HTTPClient::ConnectionPlanner::ResolutionState#fetch_addresses
+      resolved = @name_resolution_store.fetch_addresses(hostname)
+      # => HTTPClient::NameResolutionStore#fetch_addresses
 
       # 対応していないアドレスファミリ (接続性のない側) のヒントはアドレスリストから除外する
       ipv6_address_hints = ipv6_addresses_usable? ? plan.ipv6_address_hints : []
@@ -1095,8 +1099,8 @@ class HTTPClient
       # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @resolution_state.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
-      @resolution_state.mark_resolved(A_TYPE) if ipv4_address_hints.any?
+      @name_resolution_store.mark_resolved(AAAA_TYPE) if ipv6_address_hints.any?
+      @name_resolution_store.mark_resolved(A_TYPE) if ipv4_address_hints.any?
 
       # hostnameのA/AAAAを未問い合わせの場合は問い合わせ開始
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
