@@ -733,8 +733,8 @@ class HTTPClient
       end
     end
 
-    def initialize(record_types, client, origin_port:, nat64_prefix: nil)
-      @record_types = record_types
+    def initialize(query_record_types, client, origin_port:, nat64_prefix: nil)
+      @query_record_types = query_record_types
       @origin_port = origin_port
       @connection_plans = {}
       @plan_order = {}
@@ -901,11 +901,11 @@ class HTTPClient
     end
 
     def ipv6_addresses_usable?
-      @record_types.include?(AAAA_TYPE)
+      @query_record_types.include?(AAAA_TYPE)
     end
 
     def ipv4_addresses_usable?
-      !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
+      !@nat64_prefix.nil? || @query_record_types.include?(A_TYPE)
     end
 
     def queried_hostname?(hostname)
@@ -913,8 +913,8 @@ class HTTPClient
     end
 
     def resolve_target_addresses!(target_name)
-      @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
-      @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+      @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @query_record_types.include?(AAAA_TYPE)
+      @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @query_record_types.include?(A_TYPE)
       @queried_hostnames << target_name
     end
 
