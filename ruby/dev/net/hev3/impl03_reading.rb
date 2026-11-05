@@ -773,19 +773,7 @@ class HTTPClient
 
   class NameResolutionStore
     def initialize
-      @resolved_addresses = {}
       @resolved_types = Set.new
-    end
-
-    # HTTPClient::NameResolutionStore#fetch_addresses
-    def fetch_addresses(hostname)
-      @resolved_addresses.fetch(hostname, {})
-    end
-
-    # HTTPClient::NameResolutionStore#update
-    def update(hostname, type, addresses)
-      @resolved_addresses[hostname] ||= {}
-      @resolved_addresses[hostname][type] = addresses
     end
 
     # HTTPClient::NameResolutionStore#mark_resolved
@@ -884,6 +872,7 @@ class HTTPClient
       @connection_plans = {}
 
       @plan_order = {}
+      @resolved_addresses = {}
       @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
@@ -959,8 +948,8 @@ class HTTPClient
         end
 
         # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
-        @name_resolution_store.update(result.hostname, result.type, addresses)
-        # => HTTPClient::NameResolutionStore#update
+        update(result.hostname, result.type, addresses)
+        # => HTTPClient::ConnectionPlanner#update
 
         # 問い合わせ先が元のHOST、
         # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
@@ -985,8 +974,8 @@ class HTTPClient
         # => HTTPClient::ConnectionPlanner#ordered_plans
 
         # hostnameに対応する解決済みのA/AAAAアドレスをそれぞれ含むハッシュ取得
-        resolved = @name_resolution_store.fetch_addresses(hostname)
-        # => HTTPClient::NameResolutionStore#fetch_addresses
+        resolved = fetch_addresses(hostname)
+        # => HTTPClient::ConnectionPlanner#fetch_addresses
 
         precedences(plan.last_type).each do |type| # => HTTPClient::ConnectionPlanner#precedences
           address = plan.next_address(type, resolved)
@@ -1019,13 +1008,24 @@ class HTTPClient
     # HTTPClient::ConnectionPlanner#connection_target_available?
     def connection_target_available?
       @connection_plans.any? { |key, plan|
-        resolved = @name_resolution_store.fetch_addresses(key.first)
-        # => HTTPClient::NameResolutionStore#fetch_addresses
+        resolved = fetch_addresses(key.first)
+        # => HTTPClient::ConnectionPlanner#fetch_addresses
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
 
     private
+
+    # HTTPClient::ConnectionPlanner#fetch_addresses
+    def fetch_addresses(hostname)
+      @resolved_addresses.fetch(hostname, {})
+    end
+
+    # HTTPClient::ConnectionPlanner#update
+    def update(hostname, type, addresses)
+      @resolved_addresses[hostname] ||= {}
+      @resolved_addresses[hostname][type] = addresses
+    end
 
     # HTTPClient::ConnectionPlanner#handle_empty_https_rr!
     def handle_empty_https_rr!(result)
@@ -1084,8 +1084,8 @@ class HTTPClient
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
 
       # hostnameに対応する解決済みのA/AAAAアドレスを取得
-      resolved = @name_resolution_store.fetch_addresses(hostname)
-      # => HTTPClient::NameResolutionStore#fetch_addresses
+      resolved = fetch_addresses(hostname)
+      # => HTTPClient::ConnectionPlanner#fetch_addresses
 
       # @candidateに同じキーの候補があれば再利用し、なければ渡された候補を登録する
       @connection_plans[service_plan_key] ||= plan

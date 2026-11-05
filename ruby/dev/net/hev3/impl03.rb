@@ -654,17 +654,7 @@ class HTTPClient
 
   class NameResolutionStore
     def initialize
-      @resolved_addresses = {}
       @resolved_types = Set.new
-    end
-
-    def fetch_addresses(hostname)
-      @resolved_addresses.fetch(hostname, {})
-    end
-
-    def update(hostname, type, addresses)
-      @resolved_addresses[hostname] ||= {}
-      @resolved_addresses[hostname][type] = addresses
     end
 
     def mark_resolved(type)
@@ -748,6 +738,7 @@ class HTTPClient
       @origin_port = origin_port
       @connection_plans = {}
       @plan_order = {}
+      @resolved_addresses = {}
       @name_resolution_store = NameResolutionStore.new
       @client = client
       @nat64_prefix = nat64_prefix
@@ -806,7 +797,7 @@ class HTTPClient
           end
         end
 
-        @name_resolution_store.update(result.hostname, result.type, addresses)
+        update(result.hostname, result.type, addresses)
 
         if result.hostname == HOST || @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
           key = [result.hostname, Float::INFINITY]
@@ -819,7 +810,7 @@ class HTTPClient
 
     def next_connection_target
       ordered_plans.each do |(hostname, _priority, _https_rr), plan|
-        resolved = @name_resolution_store.fetch_addresses(hostname)
+        resolved = fetch_addresses(hostname)
         precedences(plan.last_type).each do |type|
           address = plan.next_address(type, resolved)
 
@@ -846,12 +837,21 @@ class HTTPClient
 
     def connection_target_available?
       @connection_plans.any? { |key, plan|
-        resolved = @name_resolution_store.fetch_addresses(key.first)
+        resolved = fetch_addresses(key.first)
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
 
     private
+
+    def fetch_addresses(hostname)
+      @resolved_addresses.fetch(hostname, {})
+    end
+
+    def update(hostname, type, addresses)
+      @resolved_addresses[hostname] ||= {}
+      @resolved_addresses[hostname][type] = addresses
+    end
 
     def handle_empty_https_rr!(result)
       if result.success? && @alias_redirect_count.positive?
@@ -878,7 +878,7 @@ class HTTPClient
       end
 
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
-      resolved = @name_resolution_store.fetch_addresses(hostname)
+      resolved = fetch_addresses(hostname)
 
       @connection_plans[service_plan_key] ||= plan
       plan = @connection_plans[service_plan_key]
