@@ -652,7 +652,7 @@ class HTTPClient
     end
   end
 
-  class NameResolutionStore
+  class NameResolutionStatus
     def initialize
       @resolved_types = Set.new
     end
@@ -739,7 +739,7 @@ class HTTPClient
       @connection_plans = {}
       @plan_order = {}
       @resolved_addresses = {}
-      @name_resolution_store = NameResolutionStore.new
+      @name_resolution_status = NameResolutionStatus.new
       @client = client
       @nat64_prefix = nat64_prefix
       @alias_redirect_count = 0
@@ -755,7 +755,7 @@ class HTTPClient
         next unless plan.ipv4_hints_pending
 
         plan.ipv4_hints_pending = false
-        @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
+        @name_resolution_status.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
       end
     end
 
@@ -805,7 +805,7 @@ class HTTPClient
         end
       end
 
-      @name_resolution_store.mark_resolved(result.type)
+      @name_resolution_status.mark_resolved(result.type)
     end
 
     def next_connection_target
@@ -828,7 +828,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @name_resolution_store.resolved?(type)
+      @name_resolution_status.resolved?(type)
     end
 
     def preferred_type
@@ -859,7 +859,7 @@ class HTTPClient
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
       end
 
-      @name_resolution_store.mark_resolved(HTTPS_TYPE)
+      @name_resolution_status.mark_resolved(HTTPS_TYPE)
     end
 
     def resolve_alias!(alias_record)
@@ -868,7 +868,7 @@ class HTTPClient
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
       else
-        @name_resolution_store.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @name_resolution_status.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -886,8 +886,8 @@ class HTTPClient
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @name_resolution_store.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
-      @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
+      @name_resolution_status.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
+      @name_resolution_status.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end

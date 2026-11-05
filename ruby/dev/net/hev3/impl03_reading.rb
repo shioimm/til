@@ -771,12 +771,12 @@ class HTTPClient
     end
   end
 
-  class NameResolutionStore
+  class NameResolutionStatus
     def initialize
       @resolved_types = Set.new
     end
 
-    # HTTPClient::NameResolutionStore#mark_resolved
+    # HTTPClient::NameResolutionStatus#mark_resolved
     def mark_resolved(type)
       @resolved_types << type
     end
@@ -873,7 +873,7 @@ class HTTPClient
 
       @plan_order = {}
       @resolved_addresses = {}
-      @name_resolution_store = NameResolutionStore.new
+      @name_resolution_status = NameResolutionStatus.new
       @client = client
       @nat64_prefix = nat64_prefix
       @alias_redirect_count = 0
@@ -891,7 +891,7 @@ class HTTPClient
         next unless plan.ipv4_hints_pending
 
         plan.ipv4_hints_pending = false
-        @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
+        @name_resolution_status.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
       end
     end
 
@@ -964,8 +964,8 @@ class HTTPClient
 
       end
 
-      @name_resolution_store.mark_resolved(result.type)
-      # => HTTPClient::NameResolutionStore#mark_resolved
+      @name_resolution_status.mark_resolved(result.type)
+      # => HTTPClient::NameResolutionStatus#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#next_connection_target
@@ -997,7 +997,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @name_resolution_store.resolved?(type)
+      @name_resolution_status.resolved?(type)
     end
 
     # HTTPClient::ConnectionPlanner#preferred_type
@@ -1042,8 +1042,8 @@ class HTTPClient
       end
 
       # HTTPSは解決済みということにする
-      @name_resolution_store.mark_resolved(HTTPS_TYPE)
-      # => HTTPClient::NameResolutionStore#mark_resolved
+      @name_resolution_status.mark_resolved(HTTPS_TYPE)
+      # => HTTPClient::NameResolutionStatus#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#resolve_alias!
@@ -1055,7 +1055,7 @@ class HTTPClient
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
         # => HTTPClient#resolve_hostname_asynchronously!
       else
-        @name_resolution_store.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @name_resolution_status.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -1096,8 +1096,8 @@ class HTTPClient
       # アドレスヒントを以てA/AAAAを解決済みとする
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @name_resolution_store.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
-      @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
+      @name_resolution_status.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
+      @name_resolution_status.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
 
       # hostnameのA/AAAAを未問い合わせの場合は問い合わせ開始
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
