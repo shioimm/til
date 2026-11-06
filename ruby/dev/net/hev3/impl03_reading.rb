@@ -898,74 +898,10 @@ class HTTPClient
     # HTTPClient::ConnectionPlanner#add
     def add(result)
       if result.type == HTTPS_TYPE
-        # DNS問い合わせは成功したが、HTTPS RRがなかった場合 / DNS問い合わせが失敗し、エラーが返ってきた場合
-        if result.records.empty?
-          handle_empty_https_rr!(result) # => HTTPClient::ConnectionPlanner#handle_empty_https_rr!
-          return
-        end
-
-        # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
-        # all ServiceMode records in the same set MUST be ignored.
-        # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
-        # HTTPSレコードの中にAliasModeのものがある場合
-        if (alias_record = result.records.select(&:alias_mode?).sample)
-          resolve_alias!(alias_record) # => HTTPClient::ConnectionPlanner#resolve_alias!
-          return
-        end
-
-        # 必須パラメータがあり、かつ利用可能なALPNを持つHTTPS RRを取得
-        available_plans = result.records.filter_map { |rr| build_connection_plan!(rr) }
-        # => HTTPClient::ConnectionPlanner#build_connection_plan!
-
-        # 利用可能な接続候補をHTTPS RRの優先度が小さい順に並べ替える
-        sorted_plans = available_plans.sort_by { |plan| plan.rr.priority }
-
-        sorted_plans.each do |plan|
-          target_name = plan.rr.target.to_s
-          hostname = target_name.empty? ? result.hostname : target_name
-          # AliasModeの場合、result.hostname == AliasModeの指すホスト名
-
-          add_service_plan(hostname, plan) # => HTTPClient::ConnectionPlanner#add_service_plan
-        end
-
-        # 肯定回答かつ過去にリダイレクト履歴がある (= この結果はServiceModeとして取得)
-        if result.success? && @alias_redirect_count.positive?
-          # HTTPSレコードの接続設定を使わない候補も追加する
-          add_alias_fallback_plan(result.hostname)
-          # hostname = 今回のHTTPS問い合わせ先のホスト名
-          # => HTTPClient::ConnectionPlanner#add_alias_fallback_plan
-        end
-
-      elsif result.success? # A/AAAA
-        addresses = result.records.map(&:address)
-
-        if result.type == A_TYPE
-          @connection_plans.each do |(hostname, _priority, _https_rr), plan|
-            next unless hostname == result.hostname
-
-            plan.a_record_resolved! # => HTTPClient::ConnectionPlanner::ConnectionPlan#a_record_resolved!
-          end
-        end
-
-        # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
-        update(result.hostname, result.type, addresses)
-        # => HTTPClient::ConnectionPlanner#update
-
-        # 問い合わせ先が元のHOST、
-        # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
-        # (HTTPS RRのTargetNameとして得たホスト名に対する名前解決結果の場合、このifブロックは通らない)
-        if result.hostname == HOST ||
-           @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
-
-          key = [result.hostname, Float::INFINITY]
-          @connection_plans[key] ||= build_connection_plan!
-          # => HTTPClient::ConnectionPlanner#build_connection_plan!
-        end
-
+        add_https_result(result)
+      else
+        add_address_result(result)
       end
-
-      @name_resolution_status.mark_resolved(result.type)
-      # => HTTPClient::NameResolutionStatus#mark_resolved
     end
 
     # HTTPClient::ConnectionPlanner#next_connection_target
@@ -1015,6 +951,83 @@ class HTTPClient
     end
 
     private
+
+    # HTTPClient::ConnectionPlanner#add_https_result
+    def add_https_result(result)
+      # DNS問い合わせは成功したが、HTTPS RRがなかった場合 / DNS問い合わせが失敗し、エラーが返ってきた場合
+      if result.records.empty?
+        handle_empty_https_rr!(result) # => HTTPClient::ConnectionPlanner#handle_empty_https_rr!
+        return
+      end
+
+      # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
+      # all ServiceMode records in the same set MUST be ignored.
+      # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
+      # HTTPSレコードの中にAliasModeのものがある場合
+      if (alias_record = result.records.select(&:alias_mode?).sample)
+        resolve_alias!(alias_record) # => HTTPClient::ConnectionPlanner#resolve_alias!
+        return
+      end
+
+      # 必須パラメータがあり、かつ利用可能なALPNを持つHTTPS RRを取得
+      available_plans = result.records.filter_map { |rr| build_connection_plan!(rr) }
+      # => HTTPClient::ConnectionPlanner#build_connection_plan!
+
+      # 利用可能な接続候補をHTTPS RRの優先度が小さい順に並べ替える
+      sorted_plans = available_plans.sort_by { |plan| plan.rr.priority }
+
+      sorted_plans.each do |plan|
+        target_name = plan.rr.target.to_s
+        hostname = target_name.empty? ? result.hostname : target_name
+        # AliasModeの場合、result.hostname == AliasModeの指すホスト名
+
+        add_service_plan(hostname, plan) # => HTTPClient::ConnectionPlanner#add_service_plan
+      end
+
+      # 肯定回答かつ過去にリダイレクト履歴がある (= この結果はServiceModeとして取得)
+      if result.success? && @alias_redirect_count.positive?
+        # HTTPSレコードの接続設定を使わない候補も追加する
+        add_alias_fallback_plan(result.hostname)
+        # hostname = 今回のHTTPS問い合わせ先のホスト名
+        # => HTTPClient::ConnectionPlanner#add_alias_fallback_plan
+      end
+
+      @name_resolution_status.mark_resolved(result.type)
+      # => HTTPClient::NameResolutionStatus#mark_resolved
+    end
+
+    # HTTPClient::ConnectionPlanner#add_address_result
+    def add_address_result(result)
+      if result.success?
+        addresses = result.records.map(&:address)
+
+        if result.type == A_TYPE
+          @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+            next unless hostname == result.hostname
+
+            plan.a_record_resolved! # => HTTPClient::ConnectionPlanner::ConnectionPlan#a_record_resolved!
+          end
+        end
+
+        # 名前解決できたアドレスを、問い合わせ先ホスト名ごとのレコード種別ごとに保存
+        update(result.hostname, result.type, addresses)
+        # => HTTPClient::ConnectionPlanner#update
+
+        # 問い合わせ先が元のHOST、
+        # あるいは今回の問い合わせ先と同じホスト名の候補がまだ一件もない場合
+        # (HTTPS RRのTargetNameとして得たホスト名に対する名前解決結果の場合、このifブロックは通らない)
+        if result.hostname == HOST ||
+           @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+
+          key = [result.hostname, Float::INFINITY]
+          @connection_plans[key] ||= build_connection_plan!
+          # => HTTPClient::ConnectionPlanner#build_connection_plan!
+        end
+      end
+
+      @name_resolution_status.mark_resolved(result.type)
+      # => HTTPClient::NameResolutionStatus#mark_resolved
+    end
 
     # HTTPClient::ConnectionPlanner#fetch_addresses
     def fetch_addresses(hostname)
