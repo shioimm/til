@@ -699,17 +699,14 @@ class HTTPClient
       end
 
       def update_address_hints(resolved_types:)
-        aaaa_record_resolved! if resolved_types.include?(AAAA_TYPE)
-        a_record_resolved! if resolved_types.include?(A_TYPE)
-      end
+        if resolved_types.include?(AAAA_TYPE)
+          @ipv6_address_hints.clear
+        end
 
-      def aaaa_record_resolved!
-        ipv6_address_hints.clear
-      end
-
-      def a_record_resolved!
-        @ipv4_address_hints.clear
-        @ipv4_hints_pending = false
+        if resolved_types.include?(A_TYPE)
+          @ipv4_address_hints.clear
+          @ipv4_hints_pending = false
+        end
       end
 
       def next_address(type, resolved)
@@ -837,12 +834,10 @@ class HTTPClient
       if result.success?
         addresses = result.records.map(&:address)
 
-        if result.type == A_TYPE
-          @connection_plans.each do |(hostname, _priority, _https_rr), plan|
-            next unless hostname == result.hostname
+        @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+          next unless hostname == result.hostname
 
-            plan.a_record_resolved!
-          end
+          plan.update_address_hints(resolved_types: [result.type])
         end
 
         update(result.hostname, result.type, addresses)
