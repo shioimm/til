@@ -652,19 +652,9 @@ class HTTPClient
     end
   end
 
-  class NameResolutionStore
+  class NameResolutionStatus
     def initialize
-      @resolved_addresses = {}
       @resolved_types = Set.new
-    end
-
-    def fetch_addresses(hostname)
-      @resolved_addresses.fetch(hostname, {})
-    end
-
-    def update(hostname, type, addresses)
-      @resolved_addresses[hostname] ||= {}
-      @resolved_addresses[hostname][type] = addresses
     end
 
     def mark_resolved(type)
@@ -743,12 +733,13 @@ class HTTPClient
       end
     end
 
-    def initialize(record_types, client, origin_port:, nat64_prefix: nil)
-      @record_types = record_types
+    def initialize(query_record_types, client, origin_port:, nat64_prefix: nil)
+      @query_record_types = query_record_types
       @origin_port = origin_port
       @connection_plans = {}
       @plan_order = {}
-      @name_resolution_store = NameResolutionStore.new
+      @resolved_addresses = {}
+      @name_resolution_status = NameResolutionStatus.new
       @client = client
       @nat64_prefix = nat64_prefix
       @alias_redirect_count = 0
@@ -764,7 +755,7 @@ class HTTPClient
         next unless plan.ipv4_hints_pending
 
         plan.ipv4_hints_pending = false
-        @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
+        @name_resolution_status.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
       end
     end
 
@@ -806,7 +797,7 @@ class HTTPClient
           end
         end
 
-        @name_resolution_store.update(result.hostname, result.type, addresses)
+        update(result.hostname, result.type, addresses)
 
         if result.hostname == HOST || @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
           key = [result.hostname, Float::INFINITY]
@@ -814,12 +805,12 @@ class HTTPClient
         end
       end
 
-      @name_resolution_store.mark_resolved(result.type)
+      @name_resolution_status.mark_resolved(result.type)
     end
 
     def next_connection_target
       ordered_plans.each do |(hostname, _priority, _https_rr), plan|
-        resolved = @name_resolution_store.fetch_addresses(hostname)
+        resolved = fetch_addresses(hostname)
         precedences(plan.last_type).each do |type|
           address = plan.next_address(type, resolved)
 
@@ -837,7 +828,7 @@ class HTTPClient
     end
 
     def resolved?(type)
-      @name_resolution_store.resolved?(type)
+      @name_resolution_status.resolved?(type)
     end
 
     def preferred_type
@@ -846,12 +837,21 @@ class HTTPClient
 
     def connection_target_available?
       @connection_plans.any? { |key, plan|
-        resolved = @name_resolution_store.fetch_addresses(key.first)
+        resolved = fetch_addresses(key.first)
         [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
       }
     end
 
     private
+
+    def fetch_addresses(hostname)
+      @resolved_addresses.fetch(hostname, {})
+    end
+
+    def update(hostname, type, addresses)
+      @resolved_addresses[hostname] ||= {}
+      @resolved_addresses[hostname][type] = addresses
+    end
 
     def handle_empty_https_rr!(result)
       if result.success? && @alias_redirect_count.positive?
@@ -859,7 +859,7 @@ class HTTPClient
         resolve_target_addresses!(result.hostname) unless queried_hostname?(result.hostname)
       end
 
-      @name_resolution_store.mark_resolved(HTTPS_TYPE)
+      @name_resolution_status.mark_resolved(HTTPS_TYPE)
     end
 
     def resolve_alias!(alias_record)
@@ -868,7 +868,7 @@ class HTTPClient
       if @alias_redirect_count <= MAX_ALIAS_REDIRECTS
         @client.resolve_hostname_asynchronously!(HTTPS_TYPE, alias_record.target.to_s)
       else
-        @name_resolution_store.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
+        @name_resolution_status.mark_resolved(HTTPS_TYPE) # HTTPSは解決済みとしてA/AAAAへフォールバック
       end
     end
 
@@ -878,7 +878,7 @@ class HTTPClient
       end
 
       service_plan_key = [hostname, plan.rr.priority, plan.rr]
-      resolved = @name_resolution_store.fetch_addresses(hostname)
+      resolved = fetch_addresses(hostname)
 
       @connection_plans[service_plan_key] ||= plan
       plan = @connection_plans[service_plan_key]
@@ -886,8 +886,8 @@ class HTTPClient
 
       # HEv3 draft Section 4.2.1: address hints in ServiceMode records SHOULD be
       # treated as positive answers until the real AAAA/A records arrive.
-      @name_resolution_store.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
-      @name_resolution_store.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
+      @name_resolution_status.mark_resolved(AAAA_TYPE) if plan.ipv6_address_hints.any?
+      @name_resolution_status.mark_resolved(A_TYPE) if plan.ipv4_address_hints.any?
 
       resolve_target_addresses!(hostname) unless queried_hostname?(hostname)
     end
@@ -901,11 +901,11 @@ class HTTPClient
     end
 
     def ipv6_addresses_usable?
-      @record_types.include?(AAAA_TYPE)
+      @query_record_types.include?(AAAA_TYPE)
     end
 
     def ipv4_addresses_usable?
-      !@nat64_prefix.nil? || @record_types.include?(A_TYPE)
+      !@nat64_prefix.nil? || @query_record_types.include?(A_TYPE)
     end
 
     def queried_hostname?(hostname)
@@ -913,8 +913,8 @@ class HTTPClient
     end
 
     def resolve_target_addresses!(target_name)
-      @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @record_types.include?(AAAA_TYPE)
-      @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @record_types.include?(A_TYPE)
+      @client.resolve_hostname_asynchronously!(AAAA_TYPE, target_name) if @query_record_types.include?(AAAA_TYPE)
+      @client.resolve_hostname_asynchronously!(A_TYPE, target_name) if @query_record_types.include?(A_TYPE)
       @queried_hostnames << target_name
     end
 
