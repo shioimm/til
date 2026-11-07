@@ -31,7 +31,6 @@ class HTTPClient
 
     @ipv4_reachable = ipv4_connectivity
     @ipv6_reachable = ipv6_connectivity
-    @record_types = record_types
 
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER], raise_timeout_errors: true)
     @nat64_discovery = NAT64PrefixDiscovery.new(resolver: @resolver)
@@ -41,7 +40,7 @@ class HTTPClient
 
     @nat64_a_query_hostnames = []
 
-    @connection_planner = ConnectionPlanner.new(@record_types, self, origin_port: @port)
+    @connection_planner = ConnectionPlanner.new(record_types, self, origin_port: @port)
 
     @tcp_connecting_sockets = {}  # TCPSocket => [SSLContext, Addrinfo]
     @tls_handshaking_sockets = {} # SSLSocket => :read / :write
@@ -59,7 +58,7 @@ class HTTPClient
 
     resolve_nat64_prefix_asynchronously! if address_synthesis_needed?
 
-    @record_types.each do |type|
+    @connection_planner.query_record_types.each do |type|
       resolve_hostname_asynchronously!(type)
     end
 
@@ -315,7 +314,6 @@ class HTTPClient
     return unless prefix
 
     @connection_planner.nat64_prefix = prefix
-    @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
     @nat64_a_query_hostnames.each do |hostname|
       resolve_hostname_asynchronously!(A_TYPE, hostname)
@@ -730,8 +728,11 @@ class HTTPClient
       end
     end
 
+    attr_reader :query_record_types
+
     def initialize(query_record_types, client, origin_port:, nat64_prefix: nil)
       @query_record_types = query_record_types
+      @query_record_types << A_TYPE if nat64_prefix && !@query_record_types.include?(A_TYPE)
       @origin_port = origin_port
       @connection_plans = {}
       @plan_order = {}
@@ -748,6 +749,7 @@ class HTTPClient
       return if prefix.nil? || prefix == @nat64_prefix
 
       @nat64_prefix = prefix
+      @query_record_types << A_TYPE unless @query_record_types.include?(A_TYPE)
       @connection_plans.each do |(hostname, _priority, _https_rr), plan|
         next unless plan.ipv4_hints_pending
 

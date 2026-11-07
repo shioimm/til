@@ -35,7 +35,6 @@ class HTTPClient
     @ipv4_reachable = ipv4_connectivity
     @ipv6_reachable = ipv6_connectivity
     # IPv4 / IPv6接続性に応じて問い合わせるDNSレコード種別
-    @record_types = record_types
 
     # DNSリゾルバ
     @resolver = Resolv::DNS.new(nameserver_port: [NAMESERVER], raise_timeout_errors: true)
@@ -54,7 +53,7 @@ class HTTPClient
     # アドレス合成が可能かどうかが不明な間は、@nat64_a_query_hostnamesに対象のホスト名を保存しておく必要がある。
 
     # アドレスリスト
-    @connection_planner = ConnectionPlanner.new(@record_types, self, origin_port: @port)
+    @connection_planner = ConnectionPlanner.new(record_types, self, origin_port: @port)
 
     # 接続処理中のTCPSocket
     @tcp_connecting_sockets = {}  # TCPSocket => [SSLContext, Addrinfo]
@@ -81,7 +80,7 @@ class HTTPClient
     # => HTTPClient#address_synthesis_needed?
     # => HTTPClient#resolve_nat64_prefix_asynchronously
 
-    @record_types.each do |type|
+    @connection_planner.query_record_types.each do |type|
       # 非同期で名前解決を実行
       resolve_hostname_asynchronously!(type) # => HTTPClient#resolve_hostname_asynchronously!
     end
@@ -392,8 +391,6 @@ class HTTPClient
 
     # 取得したNAT64 prefixを保持する
     @connection_planner.nat64_prefix = prefix # => HTTPClient::ConnectionPlanner#nat64_prefix=
-    # 問い合わせ種別にAを追加
-    @record_types << A_TYPE unless @record_types.include?(A_TYPE)
 
     # @nat64_a_query_hostnames = NAT64 prefix検出後にAレコードを問い合わせるホスト名のリスト
     @nat64_a_query_hostnames.each do |hostname|
@@ -857,8 +854,11 @@ class HTTPClient
       end
     end
 
+    attr_reader :query_record_types
+
     def initialize(query_record_types, client, origin_port:, nat64_prefix: nil)
       @query_record_types = query_record_types
+      @query_record_types << A_TYPE if nat64_prefix && !@query_record_types.include?(A_TYPE)
       @origin_port = origin_port
 
       # e.g.
@@ -883,6 +883,7 @@ class HTTPClient
       return if prefix.nil? || prefix == @nat64_prefix
 
       @nat64_prefix = prefix
+      @query_record_types << A_TYPE unless @query_record_types.include?(A_TYPE)
 
       @connection_plans.each do |(hostname, _priority, _https_rr), plan|
         next unless plan.ipv4_hints_pending
