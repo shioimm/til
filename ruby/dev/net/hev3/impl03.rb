@@ -699,17 +699,14 @@ class HTTPClient
       end
 
       def update_address_hints(resolved_types:)
-        aaaa_record_resolved! if resolved_types.include?(AAAA_TYPE)
-        a_record_resolved! if resolved_types.include?(A_TYPE)
-      end
+        if resolved_types.include?(AAAA_TYPE)
+          @ipv6_address_hints.clear
+        end
 
-      def aaaa_record_resolved!
-        ipv6_address_hints.clear
-      end
-
-      def a_record_resolved!
-        @ipv4_address_hints.clear
-        @ipv4_hints_pending = false
+        if resolved_types.include?(A_TYPE)
+          @ipv4_address_hints.clear
+          @ipv4_hints_pending = false
+        end
       end
 
       def next_address(type, resolved)
@@ -761,51 +758,10 @@ class HTTPClient
 
     def add(result)
       if result.type == HTTPS_TYPE
-        if result.records.empty?
-          handle_empty_https_rr!(result)
-          return
-        end
-
-        # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
-        # all ServiceMode records in the same set MUST be ignored.
-        # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
-        if (alias_record = result.records.select(&:alias_mode?).sample)
-          resolve_alias!(alias_record)
-          return
-        end
-
-        available_plans = result.records.filter_map { |rr| build_connection_plan!(rr) }
-        sorted_plans = available_plans.sort_by { |plan| plan.rr.priority }
-
-        sorted_plans.each do |plan|
-          target_name = plan.rr.target.to_s
-          hostname = target_name.empty? ? result.hostname : target_name
-          add_service_plan(hostname, plan)
-        end
-
-        if result.success? && @alias_redirect_count.positive?
-          add_alias_fallback_plan(result.hostname)
-        end
-      elsif result.success?
-        addresses = result.records.map(&:address)
-
-        if result.type == A_TYPE
-          @connection_plans.each do |(hostname, _priority, _https_rr), plan|
-            next unless hostname == result.hostname
-
-            plan.a_record_resolved!
-          end
-        end
-
-        update(result.hostname, result.type, addresses)
-
-        if result.hostname == HOST || @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
-          key = [result.hostname, Float::INFINITY]
-          @connection_plans[key] ||= build_connection_plan!
-        end
+        add_https_result(result)
+      else
+        add_address_result(result)
       end
-
-      @name_resolution_status.mark_resolved(result.type)
     end
 
     def next_connection_target
@@ -843,6 +799,57 @@ class HTTPClient
     end
 
     private
+
+    def add_https_result(result)
+      if result.records.empty?
+        handle_empty_https_rr!(result)
+        return
+      end
+
+      # RFC 9460 Section 2.4.1: if the RRset contains any AliasMode record,
+      # all ServiceMode records in the same set MUST be ignored.
+      # Section 2.4.2: if multiple AliasMode records are present, pick one at random.
+      if (alias_record = result.records.select(&:alias_mode?).sample)
+        resolve_alias!(alias_record)
+        return
+      end
+
+      available_plans = result.records.filter_map { |rr| build_connection_plan!(rr) }
+      sorted_plans = available_plans.sort_by { |plan| plan.rr.priority }
+
+      sorted_plans.each do |plan|
+        target_name = plan.rr.target.to_s
+        hostname = target_name.empty? ? result.hostname : target_name
+        add_service_plan(hostname, plan)
+      end
+
+      if result.success? && @alias_redirect_count.positive?
+        add_alias_fallback_plan(result.hostname)
+      end
+
+      @name_resolution_status.mark_resolved(result.type)
+    end
+
+    def add_address_result(result)
+      if result.success?
+        addresses = result.records.map(&:address)
+
+        @connection_plans.each do |(hostname, _priority, _https_rr), plan|
+          next unless hostname == result.hostname
+
+          plan.update_address_hints(resolved_types: [result.type])
+        end
+
+        update(result.hostname, result.type, addresses)
+
+        if result.hostname == HOST || @connection_plans.keys.none? { |(hostname, _priority)| hostname == result.hostname }
+          key = [result.hostname, Float::INFINITY]
+          @connection_plans[key] ||= build_connection_plan!
+        end
+      end
+
+      @name_resolution_status.mark_resolved(result.type)
+    end
 
     def fetch_addresses(hostname)
       @resolved_addresses.fetch(hostname, {})
