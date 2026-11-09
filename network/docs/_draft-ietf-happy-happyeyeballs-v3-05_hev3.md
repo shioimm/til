@@ -41,3 +41,16 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 - 本書は、優先ポリシーがTCPよりQUICを優先することを前提とする
   - QUICは、セキュアな接続を確立するのに1パケットのみを必要とし、TCPと比べて高速 [QUIC]
 -  ホストが異なる優先設定になっている場合でも本書の推奨事項は容易に適応できる
+
+## 4. Hostname Resolution
+- クライアントが名前のあるホストへ接続を確立しようとする際、
+  接続を確立するために使用できる宛先エンドポイントを特定する必要がある
+- クライアントはDNS問い合わせを送信して応答を収集することにより、エンドポイントを名前解決する
+- 本節では、クライアントがDNS問い合わせをどのように開始し、その応答を非同期にどのように処理するかを説明する
+
+### 4.1 Sending DNS Queries
+### 4.2 Handling DNS Answers Asynchronously
+#### 4.2.1. Resolving SVCB/HTTPS Aliases and Targets
+#### 4.2.2. Examples
+### 4.3. Handling New Answers
+### 4.4. Handling Expired Answers
