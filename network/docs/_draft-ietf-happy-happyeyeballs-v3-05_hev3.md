@@ -99,7 +99,7 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
     - かつ名前解決の待機時間が経過し、他の応答が届いていない
   - すべての応答が否定的な応答で返ってきた場合、接続確立は失敗するか、他の応答を受信するまで待つ必要がある
 
-```
+```text
 肯定的な応答 ... AAAAまたはAレコードで受信したIPアドレス、またはSVCB/HTTPSレコードで直接受信したIPアドレスヒント
 
 否定的な応答 ... IPアドレスを含まないAAAAまたはAレコードへの応答
@@ -131,5 +131,192 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
       - それらのレコードを受信したときは、ヒントを置き換え、利用可能な応答の集合を新しい応答として更新する (4.3)
 
 #### 4.2.2. Examples
+
+AAAAの応答がAの応答より少し先に返る、単純なデュアルスタックの場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- HTTPS (no hints)   |
+     |    <--- AAAA (2 addresses) |
+     |                            |
+     | Start w/IPv6               |
+     |                            |
+     |        (2ms delay)         |
+     |                            |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Update w/IPv6 + IPv4       |
+     |                            |
+```
+
+Aの応答がAAAAの応答より先に返るが、短い遅延のあとにAAAAの応答も届く場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- HTTPS (no hints)   |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Set 25ms timer             |
+     |                            |
+     |        (10ms delay)        |
+     |                            |
+     |    <--- AAAA (2 addresses) |
+     |                            |
+     | Start w/IPv6 + IPv4        |
+     |                            |
+```
+
+Aの応答がAAAAの応答よりかなり先に返る場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- HTTPS (no hints)   |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Set 25ms timer             |
+     |                            |
+     |        (25ms delay)        |
+     |                            |
+     | Start w/IPv4               |
+     |                            |
+     |        (100ms delay)       |
+     |                            |
+     |    <--- AAAA (2 addresses) |
+     |                            |
+     | Update w/IPv6 + IPv4       |
+     |                            |
+```
+
+SVCB/HTTPSの応答が少し遅れる場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- AAAA (2 addresses) |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Set 25ms timer             |
+     |                            |
+     |        (10ms delay)        |
+     |                            |
+     |    <--- HTTPS (no hints)   |
+     |                            |
+     | Start w/IPv6 + IPv4        |
+     |                            |
+```
+
+SVCB/HTTPSの応答がかなり遅れる、または届かない場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- AAAA (2 addresses) |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Set 25ms timer             |
+     |                            |
+     |        (25ms delay)        |
+     |                            |
+     | Start w/IPv6 + IPv4        |
+     |                            |
+```
+
+AAAAの応答は遅れるが、ヒントが利用できる場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- HTTPS (w/hints)    |
+     |                            |
+     | Start w/IPv6 + IPv4        |
+     |                            |
+```
+
+SVCB/HTTPSの応答が複数のサービス名とともに返る場合
+
+```text
+"."は、そのサービスが元の問い合わせ名に適用されることを示し、"alt"は代替サービス名
+この場合、接続試行は、新しいAAAAおよびA問い合わせと並行して開始できる
+
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |     AAAA?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- HTTPS (".")        |
+     |    <--- HTTPS ("alt")      |
+     |    <--- AAAA (2 addresses) |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Start w/IPv6 + IPv4        |
+     |                            |
+     |     AAAA? ("alt")  --->    |
+     |        A? ("alt")  --->    |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- AAAA (1 address)   |
+     |    <--- A (1 address)      |
+     |                            |
+     | Update w/IPv6 + IPv4       |
+     |                            |
+```
+
+IPv4のみのネットワーク接続で、SVCB/HTTPSの応答が少し遅れる場合
+
+```text
+   Client                    DNS Server
+     |    HTTPS?  --->            |
+     |        A?  --->            |
+     |                            |
+     |        (30ms delay)        |
+     |                            |
+     |    <--- A (2 addresses)    |
+     |                            |
+     | Set 25ms timer             |
+     |                            |
+     |        (10ms delay)        |
+     |                            |
+     |    <--- HTTPS (no hints)   |
+     |                            |
+     | Start w/IPv4               |
+     |                            |
+```
+
 ### 4.3. Handling New Answers
 ### 4.4. Handling Expired Answers
