@@ -18,7 +18,7 @@ class HTTPClient
   HOST = "localhost"
   HTTPS_PORT = 8443
   HTTP_PORT = 8080
-  RESOLUTION_DELAY = 0.05
+  RESOLUTION_DELAY = 0.025
   CONNECTION_ATTEMPT_DELAY = 0.25
 
   def self.run(**options)
