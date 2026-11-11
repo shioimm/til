@@ -33,7 +33,7 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 ## 3. Overview
 - 本書は、Happy Eyeballs Connection Setupと呼ぶ接続確立方式を定義する。この方式には、次のいくつかの段階がある
   - 1. ホスト名を宛先エンドポイントへ非同期に名前解決する (4. Hostname Resolution)
-  - 2. 名前解決された宛先エンドポイントを並べ替える (5. Grouping and Sorting Addresses)
+  - 2. 名前解決された宛先エンドポイントを並べ替える (5. Grouping and Sorting Endpoints)
   - 3. 非同期の接続試行を開始する (6. Connection Attempts)
   - 4. 1つの接続を正常に確立し、その他の試行をキャンセルする (6. Connection Attempts)
 - 本書は、宛先アドレスファミリの優先ポリシーがIPv4よりIPv6を優先することを前提とする
@@ -83,7 +83,7 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 
 ### 4.2 Handling DNS Answers Asynchronously
 - クライアントはDNS問い合わせに対する十分な応答を受け取ると、
-  エンドポイントの並べ替え (5. Grouping and Sorting Addresses) と接続確立 (6. Connection Attempts) の段階へ
+  エンドポイントの並べ替え (5. Grouping and Sorting Endpoints) と接続確立 (6. Connection Attempts) の段階へ
   進むことができる
 - [SHOULD NOT] 実装は接続確立の次の手順を開始する前にすべてのDNS応答が返ってくるのを待つべきではない
   - ある問い合わせが失敗したり返ってくるまでに時間がかかる場合、
@@ -319,4 +319,45 @@ IPv4のみのネットワーク接続で、SVCB/HTTPSの応答が少し遅れる
 ```
 
 ### 4.3. Handling New Answers
+- 接続試行が進行中で、まだ接続が1つも確立されていない間に新しいレコードが届いた場合、新しく受信したエンドポイントは
+  利用可能な候補エンドポイントのリストに組み込まれ (7. DNS Answer Changes During Happy Eyeballs Connection Setup) 、
+  接続が1つ確立されるまで新しいエンドポイントを含めて接続試行の処理を続ける
+
 ### 4.4. Handling Expired Answers
+- 以前に受信したDNS応答は、接続試行が進行中の間に有効期限切れ (TTLの超過) になることがある
+- Happy Eyeballsクライアントは応答の有効期限が切れても、進行中のそれらの試行をキャンセルしない
+  - [MAY] ただし、元の応答がまだ接続の成功につながっていない場合に限り、
+    クライアントは元のレコードの有効期限が切れたあとに、期限切れでない応答を取得するため
+    新しいDNS問い合わせを発行してもよい
+    - 新しい応答の追加は、4.3 および 7. DNS Answer Changes During Happy Eyeballs Connection Setup のとおりに扱われる
+    - つまり、進行中の接続試行はキャンセルされないが接続試行がまだ開始されておらず、
+      かつ解決済みエンドポイントのリストにもう存在しないエンドポイントは削除される
+- Happy Eyeballsにより、クライアントが解決済みエンドポイントのリストへの更新を非同期に扱えることによって、
+  期限切れでない応答を待つ間、期限切れの応答を楽観的 (optimistically) に使うことが可能になる
+  - この方式はoptimistic DNSと呼ばれ、[OPTIMISTIC-DNS] で説明されている
+
+## 5. Grouping and Sorting Endpoints
+- 名前解決された宛先エンドポイントのいずれかに接続を試みる前に、クライアントは試行を開始する順序を定める
+  - 順序が定まると、クライアントは短い遅延のあとに各選択肢を競争させる単純なアルゴリズムを使うことができる
+    (6. Connection Attempts)
+  - 順序付きリストには、この時点までに受信した両方のアドレスファミリのすべてのエンドポイントと
+    すべてのプロトコルを含めることが重要
+    - これによりクライアントは、最初のIPv4アドレスと最初のIPv6アドレスだけでなく、
+      リスト全体についてHappy Eyeballsの競争効果を得られる
+- クライアントは受信したDNS応答に基づいてエンドポイントを3段階でグループ化し、並べ替える
+  - 後続の各段階の並べ替えは、それ以前に定義されたグループの中での順序と優先度だけを変更する
+
+```text
+1. アプリケーションプロトコルとセキュリティ要件によるグループ化と並べ替え (5.1)
+2. サービスの優先度によるグループ化と並べ替え (5.2)
+3. 宛先エンドポイントの優先設定による並べ替え (5.3)
+```
+
+### 5.1. Grouping By Application Protocols and Security Requirements
+#### 5.1.1. When to Apply Application Preferences
+### 5.2. Grouping By Service Priority
+### 5.3. Sorting Destination Endpoints Within Groups
+
+## TODO
+- Address表記を必要があればEndpoints表記に変更
+- DNSのTTLを扱うかどうかを検討する (4.4)
