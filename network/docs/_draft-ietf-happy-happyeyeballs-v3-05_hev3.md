@@ -336,6 +336,28 @@ IPv4のみのネットワーク接続で、SVCB/HTTPSの応答が少し遅れる
   期限切れでない応答を待つ間、期限切れの応答を楽観的 (optimistically) に使うことが可能になる
   - この方式はoptimistic DNSと呼ばれ、[OPTIMISTIC-DNS] で説明されている
 
+## 5. Grouping and Sorting Endpoints
+- 名前解決された宛先エンドポイントのいずれかに接続を試みる前に、クライアントは試行を開始する順序を定める
+  - 順序が定まると、クライアントは短い遅延のあとに各選択肢を競争させる単純なアルゴリズムを使うことができる
+    (6. Connection Attempts)
+  - 順序付きリストには、この時点までに受信した両方のアドレスファミリのすべてのエンドポイントと
+    すべてのプロトコルを含めることが重要
+    - これによりクライアントは、最初のIPv4アドレスと最初のIPv6アドレスだけでなく、
+      リスト全体についてHappy Eyeballsの競争効果を得られる
+- クライアントは受信したDNS応答に基づいてエンドポイントを3段階でグループ化し、並べ替える
+  - 後続の各段階の並べ替えは、それ以前に定義されたグループの中での順序と優先度だけを変更する
+
+```text
+1. アプリケーションプロトコルとセキュリティ要件によるグループ化と並べ替え (5.1)
+2. サービスの優先度によるグループ化と並べ替え (5.2)
+3. 宛先エンドポイントの優先設定による並べ替え (5.3)
+```
+
+### 5.1. Grouping By Application Protocols and Security Requirements
+#### 5.1.1. When to Apply Application Preferences
+### 5.2. Grouping By Service Priority
+### 5.3. Sorting Destination Endpoints Within Groups
+
 ## TODO
 - Address表記を必要があればEndpoints表記に変更
 - DNSのTTLを扱うかどうかを検討する (4.4)
