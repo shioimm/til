@@ -8,10 +8,10 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 - (03) 8.2 Discovering and Utilizing PREF64 -> (05) 8.1 Discovering PREF64
 - (03) 8.3 Supporting DNS64 -> (05) 削除
 - (03) 8.4 Hostnames with Broken AAAA Records -> (05) 削除
-- (03) 8.5 Virtual Private Networks -> (05) 削除 (9 Multiple Networks に置き換え)
+- (03) 8.5 Virtual Private Networks -> (05) 削除 (9 Handling Multiple Networks and Network Changes に置き換え)
 - (03) なし -> (05) 8.2 Handling Synthesized Answers (新規)
 - (03) なし -> (05) 8.3 Synthesizing IPv6 Addresses During Connection Establishment (新規)
-- (03) なし -> (05) 9 Multiple Networks (新規)
+- (03) なし -> (05) 9 Handling Multiple Networks and Network Changes (新規)
 - (03) 9 Summary of Configurable Values -> (05) 10 (Configurable Values)
 - (03) 10 Limitations (10.1 / 10.2 / 10.3) -> (05) 11 (11.1 / 11.2 / 11.3)
 - (03) 11 Security Considerations -> (05) 12
@@ -83,7 +83,7 @@ https://datatracker.ietf.org/doc/draft-ietf-happy-happyeyeballs-v3/
 - 8.3 (新規) [MUST] 「適用されるIPv4ルートが存在しない」場合、PREF64でIPv4アドレスをIPv6アドレスに合成する
   - 対象: Aレコード、IPv4アドレスヒント、逆合成したアドレス、アプリケーションが渡したIPv4リテラル
 
-### 9 Multiple Networks (新規)
+### 9 Handling Multiple Networks and Network Changes (新規)
 - [MUST] アルゴリズムを導く情報をPvDごとに分離する
 - PvD間で共有してはならない情報: DNS応答、NAT64 prefix、履歴データ (RTT、過去に使用したアドレスなど)
 - [SHOULD] PvDが変わったらPvDごとのキャッシュを消去する
