@@ -319,4 +319,8 @@ IPv4のみのネットワーク接続で、SVCB/HTTPSの応答が少し遅れる
 ```
 
 ### 4.3. Handling New Answers
+- 接続試行が進行中で、まだ接続が1つも確立されていない間に新しいレコードが届いた場合、新しく受信したエンドポイントは
+  利用可能な候補エンドポイントのリストに組み込まれ (7. DNS Answer Changes During Happy Eyeballs Connection Setup) 、
+  接続が1つ確立されるまで新しいエンドポイントを含めて接続試行の処理を続ける
+
 ### 4.4. Handling Expired Answers
