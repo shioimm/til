@@ -702,6 +702,17 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
     ネットワークがDNS64を動かす必要がなくなる
 
 ### 8.2. Handling Synthesized Answers
+- [MUST] 合成されたIPv6アドレス
+  (PREF64を利用してローカルで / またはDNS64リゾルバによってIPv6アドレスに合成されたIPv4アドレス) は、
+  Happy Eyeballsクライアントがグループ化と並べ替え (5. Grouping and Sorting Endpoints)
+  および接続に使う前に、IPv4アドレスに逆合成 (de-synthesize) されなければならない
+  - これらのアドレスはIPv6アドレスに再合成される場合がある (8.3)
+    - その場合、実装は元のアドレスを保存しておくことで処理を最適化することを選べるが、
+      並べ替えと経路の検索には引き続きIPv4アドレスを使う
+- AAAAレコードから受信したIPv6アドレスはDNS64 [DNS64] 由来の場合がある
+  - [MUST] PREF64の値を認識しているクライアントはDNSから受信したIPv6アドレスが、
+    実際にはIPv4アドレスではないかを確認しなければならない
+
 ### 8.3. Synthesizing IPv6 Addresses During Connection Establishment
 
 ## TODO
@@ -714,3 +725,6 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
 - ECHを有効にできる構成になったらSVCB応答を待つ必要がある (6.3) [MUST]
   - 投機的にTCP接続するべき...?
 - Connection Attempt Delayのタイマが動作している間にDNS応答が変わった場合、タイマを再設定するかどうか (7) [MAY]
+- 合成したIPv6アドレスの逆合成やってたっけ? (8.2) [MUST]
+- DNSから受信したIPv6アドレスは実際にはIPv4アドレスではないかの確認 (8.2) [MUST]
+  - IPv4アドレスだった場合はどうすればいいんだ
