@@ -681,6 +681,15 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
     - その場合タイマを早めに発火させて、更新後のリストの次のアドレスへの接続試行を開始する
       - ただし、Minimum Connection Attempt Delayの制約を受ける。
 
+## 8. Handling NAT64 Networks
+- NAT64 [NAT64] は、IPv6のみの接続性を持つクライアントが
+  ローカルリンクの外にあるIPv4のみのピアにアクセスできるようにするIPv6移行プロトコル
+- NAT64を使用している場合、NATによってIPv4アドレスをIPv6アドレスに合成する際にPREF64と呼ばれるIPv6 prefixが使われる
+
+### 8.1. Discovering PREF64
+### 8.2. Handling Synthesized Answers
+### 8.3. Synthesizing IPv6 Addresses During Connection Establishment
+
 ## TODO
 - Address表記を必要があればEndpoints表記に変更
 - DNSのTTLを扱うかどうかを検討する (4.4)
