@@ -714,6 +714,17 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
     実際にはIPv4アドレスではないかを確認しなければならない
 
 ### 8.3. Synthesizing IPv6 Addresses During Connection Establishment
+- [New] クライアントがPREF64を発見した場合、そのプレフィックスを使って、[RFC6052] で定義されているとおりに
+  IPv4アドレスをIPv6アドレスに合成できる。
+- [New] [MUST] Happy EyeballsクライアントがIPv4アドレスへの接続を試みており、
+  かつそのアドレスに適用されるIPv4ルートがない場合、クライアントはPREF64を使ってそのアドレスを
+  IPv6アドレスに合成しなければならない
+  - これらのIPv4アドレスはDNSから (Aレコード、またはSVCB/HTTPSレコードで受信したIPv4アドレスヒントを通じて)、
+    あるいはIPv6アドレスの逆合成から、あるいはアプリケーションから渡されたIPv4リテラルアドレスから得られる。
+    - この解決策は「Bump-in-the-Host」[RFC6535] に似ているが、Happy Eyeballsクライアントの内部で実装される
+- NAT64によるアドレス合成は常に必要または可能とは限らない
+  - 一部のIPv4プレフィックスは、特定のホストやネットワークにスコープされており、合成を必要としない
+    - e.g. 0.0.0.0/8、127.0.0.0/8、169.254.0.0/16、255.255.255.255/32 がある。
 
 ## TODO
 - Address表記を必要があればEndpoints表記に変更
