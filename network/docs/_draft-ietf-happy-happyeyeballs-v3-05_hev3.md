@@ -687,6 +687,20 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
 - NAT64を使用している場合、NATによってIPv4アドレスをIPv6アドレスに合成する際にPREF64と呼ばれるIPv6 prefixが使われる
 
 ### 8.1. Discovering PREF64
+- クライアントは、次のいずれかの方法でネットワークのPREF64を発見できる
+  - 1. Router Advertisementのオプション ([PREF64])
+  - 2.  ipv4only.arpa へのDNS問い合わせ ([RFC7050])
+- [New] [SHOULD] IPv6のみの接続性を持つネットワークがRouter Advertisement [PREF64] で
+  プレフィックスを提供していない場合、クライアントはプレフィックスを発見するためにDNS問い合わせを送るべき [RFC7050]
+- NAT64を使うネットワークはDNS64 [DNS64] も含んでいる場合があり、DNS64ではDNSリゾルバがA応答をAAAA応答に合成する
+- ただし、Router Advertisement [PREF64] でプレフィックスが利用できる場合、
+  DNS64には多くの欠点があるため (3 [V6-MOSTLY] 4.3.4)、ネットワークはDNS64を導入しないことを選ぶ場合がある
+- [MUST] あらゆるNAT64ネットワークとの互換性を確保するため、
+  クライアントは上記のいずれかの方法でNAT64プレフィックスを検出したときは常に、
+  AAAA問い合わせに加えてA問い合わせも送らなければならない (4.1)
+  - これによりクライアントは既存のIPv4のAレコードを受信してローカルでNAT64アドレス合成を実行でき、
+    ネットワークがDNS64を動かす必要がなくなる
+
 ### 8.2. Handling Synthesized Answers
 ### 8.3. Synthesizing IPv6 Addresses During Connection Establishment
 
