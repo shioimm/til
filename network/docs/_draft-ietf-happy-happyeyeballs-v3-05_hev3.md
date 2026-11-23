@@ -757,9 +757,40 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
       - VPNが接続または切断された場合 (スプリットホライズンの構成が追加または削除された場合)、
         クライアントはそれをPvDの変更とみなし、DNS応答などのキャッシュされた状態を破棄または再取得するべき
 
+## 10. Summary of Configurable Values
+- Happy Eyeballsで使うために、クライアントのデフォルトとして設定できる値
+  - Resolution Delay (4. Hostname Resolution)
+    - Aレコードを受信したあと、AAAAレコードおよび/またはSVCB/HTTPSレコードを待つ時間
+    - 推奨値は25ms
+  - Preferred Address Family Count (5. Grouping and Sorting Endpoints)
+    - 次のアドレスファミリを試行する前に試行するべき優先アドレスファミリ (IPv6など) に属するエンドポイントの数
+    - 推奨値は1
+      - アドレスファミリとプロトコルの特定の組み合わせをより積極的に優先するために2でもよい
+  - Connection Attempt Delay (6. Connection Attempts)
+    - RTTデータがない場合に、接続試行の間で待つ時間
+    - 推奨値は250ms
+  - Minimum Connection Attempt Delay (6. Connection Attempts)
+    - 接続試行の間で待つ最小時間
+    - 推奨値は100ms
+    - [MUST NOT] 10ms未満にしてはならない
+  - Maximum Connection Attempt Delay (6. Connection Attempts)
+    - 接続試行の間で待つ最大時間
+    - 推奨値は2s
+  - [New] Connection Attempt Delay Multiplier (6. Connection Attempts)
+    - 進行中の追加の並行する接続試行ごとにConnection Attempt Delayに掛ける任意の係数
+    - 推奨値は1 (一定の遅延)
+    - 1より大きい値は試行ごとに遅延を増やし、より短い基準遅延を使えるようにする
+- 遅延値は非常に多くの本番デバイスで接続のタイミングを測定することにより経験的に決められたものである
+  - これらはユーザが感じる待ち時間を減らしつつ、ネットワークへの負荷を最小限に抑えるように選ばれた
+    - 時間が経つにつれ、ネットワークの特性は変化していくと考えられる
+      - そのため、実装が選ぶ値も、時間とともに変わっていくと考えられる
+      - [MAY] 実装者は最小遅延などの規範的な要件に違反しない限り、本仕様を変更することなく
+        上に挙げた推奨値とは異なる値を使ってもよい
+
 ## TODO
 - Address表記を必要があればEndpoints表記に変更
 - DNSのTTLを扱うかどうかを検討する (4.4)
+- Preferred Address Family Countを導入するかどうか? (5) [MAY]
 - 履歴を伴うRTTルールを適用するべきかどうかを検討する (5.3)
 - 接続確立後により優先する接続試行を継続させるかキャンセルするかを考える (6) [MAY]
 - セッション再開時にCADを使うようにできるか検討する (6) [SHOULD]
