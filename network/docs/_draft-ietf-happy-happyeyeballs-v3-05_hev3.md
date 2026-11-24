@@ -806,7 +806,14 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
       提案されている方法の1つはPacketization Layer Path MTU Discovery [RFC4821] を使うことである
 
 ### 11.2. Application Layer
+- DNSが異なるアプリケーションサーバに対する複数のエンドポイントを返した場合、
+  アプリケーション自体がそのすべてで動作・機能しているとは限らない
+  - 一般的な例として、Transport Layer Security (TLS) と HTTPがある
+
 ### 11.3. Hiding Operational Issues
+変更なし
+
+## 12. Security Considerations
 
 ## TODO
 - Address表記を必要があればEndpoints表記に変更
