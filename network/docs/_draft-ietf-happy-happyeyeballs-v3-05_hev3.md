@@ -843,7 +843,7 @@ example.com. 60 IN HTTPS 1 svc2.example.com. ( alpn="h2" ipv6hint=2001:db8::4 )
 
 ## TODO
 - [x] RDの待機時間を25msへ変更 (4.2)
-- [ ] Address表記を必要があればEndpoints表記に変更
+- [x] Address表記を必要があればEndpoints表記に変更
 - [ ] DNSスタブリゾルバが、[RFC10001] 4.3 の指針に沿ってデュアルスタック環境を扱うかを確認する (4.1)
 - [ ] IPv6とIPv4の両方にデフォルトルートがあればIPv6を、どちらか一方にだけあればそのアドレスファミリを
   優先アドレスファミリとして扱う (4.2) [なし]

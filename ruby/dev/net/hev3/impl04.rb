@@ -115,7 +115,7 @@ class HTTPClient
             socket.close
             last_error = e
             # この時点で待機対象のIOがない場合無期限に待機する可能性があるため、
-            # 未試行の候補がある場合は待機せずに次のアドレスを試す
+            # 未試行の候補がある場合は待機せずに次のエンドポイントを試す
             next if @connection_planner.connection_target_available?
           end
         end
@@ -684,7 +684,7 @@ class HTTPClient
         @ipv6_address_hints = ipv6_address_hints
         @ipv4_address_hints = ipv4_address_hints
         @ipv4_hints_pending = ipv4_hints_pending
-        @selected_addresses = []
+        @selected_endpoints = []
         @last_type = nil
       end
 
@@ -707,24 +707,24 @@ class HTTPClient
         end
       end
 
-      def next_address(type, resolved)
-        address = unselected_address(type, resolved)
+      def next_endpoint(type, resolved)
+        address = unselected_endpoint(type, resolved)
         return unless address
 
-        @selected_addresses << address.to_s
+        @selected_endpoints << address.to_s
         @last_type = type
         address
       end
 
-      def address_available?(type, resolved)
-        !unselected_address(type, resolved).nil?
+      def endpoint_available?(type, resolved)
+        !unselected_endpoint(type, resolved).nil?
       end
 
       private
 
-      def unselected_address(type, resolved)
+      def unselected_endpoint(type, resolved)
         hints = type == AAAA_TYPE ? ipv6_address_hints : ipv4_address_hints
-        resolved.fetch(type, hints).find { !@selected_addresses.include?(it.to_s) }
+        resolved.fetch(type, hints).find { !@selected_endpoints.include?(it.to_s) }
       end
     end
 
@@ -770,7 +770,7 @@ class HTTPClient
       ordered_plans.each do |(hostname, _priority, _https_rr), plan|
         resolved = fetch_addresses(hostname)
         precedences(plan.last_type).each do |type|
-          address = plan.next_address(type, resolved)
+          address = plan.next_endpoint(type, resolved)
 
           next unless address
 
@@ -796,7 +796,7 @@ class HTTPClient
     def connection_target_available?
       @connection_plans.any? { |key, plan|
         resolved = fetch_addresses(key.first)
-        [AAAA_TYPE, A_TYPE].any? { |type| plan.address_available?(type, resolved) }
+        [AAAA_TYPE, A_TYPE].any? { |type| plan.endpoint_available?(type, resolved) }
       }
     end
 
