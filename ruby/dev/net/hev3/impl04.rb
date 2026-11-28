@@ -673,6 +673,14 @@ class HTTPClient
     SUPPORTED_SVC_PARAM_KEYS = [0, 1, 2, 3, 4, 6].freeze
     MAX_ALIAS_REDIRECTS = 8 # RFC 9460
 
+    # HEv3 draft-05 Section 8.3: these IPv4 ranges do not require NAT64 synthesis.
+    NAT64_SYNTHESIS_EXCLUDED_IPV4_RANGES = [
+      IPAddr.new("0.0.0.0/8"),
+      IPAddr.new("127.0.0.0/8"),
+      IPAddr.new("169.254.0.0/16"),
+      IPAddr.new("255.255.255.255/32"),
+    ].freeze
+
     class ConnectionPlan
       attr_reader :rr, :port, :ctx, :last_type
       attr_accessor :ipv4_hints_pending
@@ -774,7 +782,7 @@ class HTTPClient
 
           next unless address
 
-          if type == A_TYPE && @nat64_prefix
+          if type == A_TYPE && @nat64_prefix && !nat64_synthesis_excluded?(address)
             address = synthesize_with_nat64_prefix(address)
           end
 
@@ -979,6 +987,11 @@ class HTTPClient
         ipv4_address_hints: (https_rr&.params&.[](4)&.addresses || []).dup,
         ipv4_hints_pending: !ipv4_addresses_usable?,
       )
+    end
+
+    def nat64_synthesis_excluded?(address)
+      ipv4_address = IPAddr.new(address.to_s)
+      NAT64_SYNTHESIS_EXCLUDED_IPV4_RANGES.any? { it.include?(ipv4_address) }
     end
 
     def synthesize_with_nat64_prefix(addr)
